@@ -14,9 +14,11 @@ The naming sweep is recorded and the crate name is settled.
   it ships rather than waiting on a transfer.
 - `docs/design.md` records the names and the licence in its decided list,
   with the reason and a pointer to the sweep.
-- The transfer ask is drafted and is the maintainer's to send. Its status is
-  recorded in `docs/prior-art.md`; a granted transfer later is an improvement
-  landed by a patch run and does not reopen R0.
+- The transfer ask was drafted, put to the maintainer, and **deferred**: the
+  collision costs nothing until the project publishes to crates.io, which is
+  not near, so no ask has been sent to the name's holder. `docs/prior-art.md`
+  records the decision and its date. If the ask is made later and granted,
+  publishing under `rumor` is an improvement landed by a patch run.
 
 Two findings from the sweep belong to later phases and are recorded, not
 acted on: in the Nostr protocol *rumor* is a defined term for an unsigned

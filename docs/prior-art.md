@@ -133,11 +133,30 @@ first. It argues for a tagline that always carries the hearsay sense.
     curl 'https://en.wiktionary.org/w/api.php?action=parse&page=rumor&prop=wikitext&format=json'
     curl 'https://en.wiktionary.org/w/api.php?action=parse&page=rumore&prop=wikitext&format=json'
 
-## 6. What this does not settle
+## 6. The transfer ask: deferred by the maintainer, not sent
 
-- Whether the holder will transfer. Unasked as of this draft; the ask is
-  cal's to authorize and send (a third party), and its text belongs in
-  `ask-crate-name`.
-- The fallback name, if the answer is no. Nothing here proposes one; that is
-  a decision, not a sweep.
+Asked and answered on **2026-10-10**. The ask was drafted and put in front of
+the maintainer, who deferred it:
+
+> We can perhaps do this after the development of the project. Name collision
+> is fine for now since we won't publish initially to crates.io.
+
+So **no ask has been sent to the holder of the `rumor` crate name**, and none
+will be until the project is further along. The reasoning is sound and worth
+keeping beside the decision: the collision only costs anything at the moment
+of publishing to crates.io, and that moment is not near. A name the project
+does not yet need is not worth a stranger's attention.
+
+What this fixes in place: the crate is `rumor-cli`, as the epic decided, and
+nothing in the project depends on the bare name. If the ask is made later and
+granted, publishing under `rumor` is an improvement landed by a patch run.
+
+## 7. What this does not settle
+
+- Whether the holder would transfer the name. **Unasked**, by the
+  maintainer's decision above, rather than asked and refused.
 - Trademark. No search of any trademark register was made.
+- Whether `rumor-cli` remains the right crate name if the project never
+  publishes to crates.io. It is a Decided item and stays until an ADR moves
+  it; a crate named `rumor` that cannot be published would only defer the
+  collision to the first `cargo publish`.
