@@ -1,0 +1,28 @@
+# probe-rustc -- fails iff rustc cannot compile a trivial program.
+#
+# Independent of cargo: no manifest, no lockfile, no CARGO_HOME, no registry. If
+# this fails and probe-cargo passed, the runner has the binaries and not a
+# working toolchain, and R0.2 cannot build anything until that is fixed on the
+# host -- which would be cal's, not mine.
+#
+# Instrument, not a test. Comes out with the others.
+
+name: probe-rustc
+
+on:
+  push:
+    branches:
+      - r0.2-ci
+  workflow_dispatch:
+
+jobs:
+  freebsd:
+    runs-on: freebsd-15-jail
+    steps:
+      - name: rustc compiles and the binary runs
+        run: |
+          printf 'fn main() { println!("rustc-works"); }\n' > probe.rs
+          rustc probe.rs -o probe-bin
+          out=$(./probe-bin)
+          test "$out" = rustc-works
+          echo "PROOF $out"

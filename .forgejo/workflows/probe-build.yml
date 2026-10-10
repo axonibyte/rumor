@@ -1,0 +1,34 @@
+# probe-build -- fails iff cargo cannot actually BUILD on this runner.
+#
+# MY OWN ERROR, named: probe-cargo ran `command -v cargo` and I read its success
+# as "cargo works". That is a PRESENCE check read as a CAPABILITY check. Cargo
+# on PATH with no working sysroot, no writable CARGO_HOME, or no std is exactly
+# a runner where `command -v cargo` passes and `cargo build` dies at once --
+# which fits ci.yml failing at 2 s with steps 1 and 2 both proven.
+#
+# Three hypotheses are already falsified (step-1 body, step-2 --branch,
+# workspace persistence), each by a probe that passed. This is the first one
+# that tests the thing ci.yml step 3 actually does.
+#
+# Instrument, not a test. Comes out with the others.
+
+name: probe-build
+
+on:
+  push:
+    branches:
+      - r0.2-ci
+  workflow_dispatch:
+
+jobs:
+  freebsd:
+    runs-on: freebsd-15-jail
+    steps:
+      - name: clone and build, exactly what step 3 needs
+        run: |
+          echo "HOME=${HOME:-unset} CARGO_HOME=${CARGO_HOME:-unset}"
+          rm -rf build-tree
+          git clone --quiet --depth 1 https://forge.axonibyte.com/axonibyte/rumor.git build-tree
+          cd build-tree
+          cargo build --locked --all-targets
+          test -x target/debug/rumor
