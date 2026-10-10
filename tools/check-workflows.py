@@ -129,7 +129,20 @@ SEPARATORS = {";", "&&", "||", "|", "(", ")", "{", "}", "!",
 # ratchet's gate-pipeline rule failed to fire and I asked why rather than
 # adjusting the arm.
 WRAPPERS = {"timeout", "sudo", "doas", "env", "nice", "nohup", "stdbuf",
-            "time", "ionice", "setsid"}
+            "time", "ionice", "setsid", "command"}
+
+# `command` IS a wrapper -- `command cargo build` runs cargo, and before this
+# was added the checker never saw the cargo at all, so the call passed in
+# silence exactly as `timeout 900 cargo build` once did. But `command -v NAME`
+# and `command -V NAME` LOOK UP a name without running it, so the tool that
+# follows them is an OPERAND, not an invocation. quill predicted that the naive
+# fix (adding `command` to WRAPPERS alone) would false-positive on the lookup
+# form, and it is not hypothetical: ci.yml:236 is
+# `command -v cargo-deny >/dev/null 2>&1`, and `cargo-deny` is in
+# BOUNDED_TOOLS, so the naive fix flags the repo's own capability probe as an
+# unbounded build. POSIX allows the options to be clustered (`-pv`), so the
+# test is "an option cluster of only -p/-v/-V that contains v or V".
+COMMAND_LOOKUP_OPT = re.compile(r"^-[pvV]+$")
 
 TIMEOUT_RE = re.compile(r"^timeout$")
 # curl's own hard ceiling on the whole operation. ratchet r0.2/7 used this form
@@ -166,10 +179,12 @@ def invocations(line: str):
         norm = norm.replace(ch, f" {ch} ")
     toks = norm.split()
     found, cmd_pos = [], True
+    saw_command = lookup_only = False
     for i, t in enumerate(toks):
         bare = t.strip("'\"")
         if bare in SEPARATORS or t in SEPARATORS:
             cmd_pos = True
+            saw_command = lookup_only = False
             continue
         if cmd_pos:
             name = bare.split("/")[-1]
@@ -181,10 +196,16 @@ def invocations(line: str):
                     or name in WRAPPERS
                     or bare.startswith("-")
                     or re.match(r"^\d+(?:\.\d+)?[smhd]?$", bare)):
+                if name == "command":
+                    saw_command = True
+                elif (saw_command and COMMAND_LOOKUP_OPT.match(bare)
+                        and ("v" in bare or "V" in bare)):
+                    lookup_only = True
                 continue
-            if name in BOUNDED_TOOLS:
+            if name in BOUNDED_TOOLS and not lookup_only:
                 found.append((i, name, toks))
             cmd_pos = False
+            saw_command = lookup_only = False
     return found
 
 
@@ -192,12 +213,22 @@ def bounded(idx: int, name: str, toks: list, line: str) -> bool:
     """Is this invocation bounded? Either a `timeout` wrapper immediately
     governing it, or the tool's own hard ceiling."""
     # walk left past timeout's own arguments (-k 5, --signal=TERM, the duration)
+    # Walk left past timeout's options and duration, AND past any further
+    # WRAPPER, because a wrapper by definition does not consume command
+    # position: `timeout 10 command cargo build` and `timeout 10 sudo pkg
+    # install` are both genuinely bounded, and without this the `command` fix
+    # above would turn the first into a false positive.
+    # NOT FIXED, and named rather than silently left: an interpreter is not a
+    # wrapper, so `timeout 60 sh -c 'cargo fetch'` still reports the inner
+    # cargo as unbounded. It is absent from this repo's workflows (grepped), and
+    # treating arbitrary interpreters as transparent needs its own evidence.
     j = idx - 1
     while j >= 0:
         t = toks[j].strip("'\"")
         if TIMEOUT_RE.match(t.split("/")[-1]):
             return True
-        if re.match(r"^-|^\d+[smhd]?$|^--", t):
+        if (re.match(r"^-|^\d+[smhd]?$|^--", t)
+                or t.split("/")[-1] in WRAPPERS):
             j -= 1
             continue
         break
@@ -206,8 +237,31 @@ def bounded(idx: int, name: str, toks: list, line: str) -> bool:
     return False
 
 
+# The four defect CLASSES this checker finds. They are not one class, and the
+# summary used to call all of them "unbounded invocation(s) or job(s)" --
+# quill measured a 24-finding run in which 6 were pipeline-class, so the
+# headline misattributed a quarter of them to a cause they did not have. A
+# reader triaging by that line would have gone looking for missing timeouts in
+# six places that had none missing.
+KIND_BOUND_JOB = "bound-job"
+KIND_BOUND_CALL = "bound-call"
+KIND_PIPELINE = "pipeline"
+KIND_EXIT_STATUS = "exit-status"
+
+KIND_HEADLINES = {
+    KIND_BOUND_CALL: "invocation with no bound -- on a single-concurrency "
+                     "runner a hang blocks every queued job",
+    KIND_BOUND_JOB:  "job with no timeout-minutes -- nothing bounds the job "
+                     "itself, whatever hangs inside it",
+    KIND_PIPELINE:   "pipeline that reports the wrong status -- a failing "
+                     "command can leave the step GREEN",
+    KIND_EXIT_STATUS: "dead exit-status capture under bash -e",
+}
+
+
 def check_file(path: Path):
-    """(findings, jobs_seen). Textual: see the module docstring for the bound."""
+    """(findings, jobs_seen). Each finding is (lineno, kind, msg).
+    Textual: see the module docstring for the bound."""
     text = path.read_text("utf-8")
     findings = []
 
@@ -234,8 +288,9 @@ def check_file(path: Path):
                 cur[2].append(raw)
     for name, lineno, body in jobs:
         if not any(re.match(r"^\s+timeout-minutes:\s*\d+", b) for b in body):
-            findings.append((lineno, f"job `{name}` has no timeout-minutes: "
-                                     f"nothing bounds the job itself"))
+            findings.append((lineno, KIND_BOUND_JOB,
+                             f"job `{name}` has no timeout-minutes: "
+                             f"nothing bounds the job itself"))
 
     # --- per-invocation bounds ----------------------------------------------
     # Pull each `run:` block scalar with its starting line number.
@@ -251,7 +306,7 @@ def check_file(path: Path):
             for idx, name, toks in invocations(code):
                 if not bounded(idx, name, toks, code):
                     findings.append(
-                        (base + offset + rel - 1,
+                        (base + offset + rel - 1, KIND_BOUND_CALL,
                          f"`{name}` runs unbounded: no timeout wrapper "
                          f"(or -m for curl) -- {code[:70]}"))
     # --- a pipe without pipefail --------------------------------------------
@@ -274,7 +329,7 @@ def check_file(path: Path):
             bare = bare.replace("||", "")
             if "|" in bare and not has_pipefail:
                 findings.append(
-                    (base + offset + rel - 1,
+                    (base + offset + rel - 1, KIND_PIPELINE,
                      "pipe in a run block with no `set -o pipefail`: the "
                      "pipeline reports its LAST stage's status, so a failing "
                      "command piped to a formatter exits 0 and the step goes "
@@ -302,7 +357,7 @@ def check_file(path: Path):
                 continue            # reads a file -> extraction, leave it
             if EARLY_CLOSE.search(stripped):
                 findings.append(
-                    (base + offset + rel - 1,
+                    (base + offset + rel - 1, KIND_PIPELINE,
                      "early-closing consumer (`head`/`grep -q`) in a pipeline "
                      "whose producer is an external tool: that is a GATE "
                      "pipeline, and closing the pipe early SIGPIPEs the "
@@ -321,7 +376,7 @@ def check_file(path: Path):
         for rel, raw in enumerate(body.splitlines(), 1):
             if re.match(r"^\s*rc=\$\?\s*$", raw):
                 findings.append(
-                    (base + offset + rel - 1,
+                    (base + offset + rel - 1, KIND_EXIT_STATUS,
                      "bare `rc=$?` on its own line: under the runner's bash -e "
                      "the failing command aborts the step first, so this capture "
                      "and every line after it is dead code -- write `rc=0` then "
@@ -563,6 +618,67 @@ jobs:
 """
 
 
+# quill's two findings on this checker, as fixtures. `command` is a WRAPPER, so
+# before the fix the cargo in `command cargo build` was never reached and the
+# call passed in silence -- the same shape as the `timeout 900 cargo build` hole
+# that made bounded() nearly dead code.
+COMMAND_WRAPS_A_BUILD = """\
+jobs:
+  freebsd:
+    timeout-minutes: 5
+    steps:
+      - name: command does not bound anything
+        run: |
+          command cargo build --locked
+"""
+
+# And the false positive quill PREDICTED for the naive fix. This is not an
+# invented case: ci.yml:236 ships `command -v cargo-deny >/dev/null 2>&1`, and
+# `cargo-deny` is in BOUNDED_TOOLS, so adding `command` to WRAPPERS without the
+# lookup exception flags the repo's own capability probe as an unbounded build.
+COMMAND_LOOKUP_IS_NOT_A_RUN = """\
+jobs:
+  freebsd:
+    timeout-minutes: 5
+    steps:
+      - name: a lookup runs nothing
+        run: |
+          command -v cargo-deny >/dev/null 2>&1 && echo present
+          command -V rustc >/dev/null 2>&1 || echo absent
+          p=$(command -v cargo) && echo "cargo at $p"
+"""
+
+# A wrapper to the LEFT of the tool must not hide the timeout: both of these
+# are genuinely bounded, and the `command` fix would have turned the first into
+# a false positive without the matching change in bounded().
+WRAPPER_CHAIN_IS_STILL_BOUNDED = """\
+jobs:
+  freebsd:
+    timeout-minutes: 5
+    steps:
+      - name: bounded through a wrapper chain
+        run: |
+          timeout 600 command cargo build --locked
+          timeout 300 sudo pkg install -y curl
+          timeout 60 env -i nice -n 5 git fetch --all
+"""
+
+# A file carrying BOTH a bound-class and a pipeline-class finding, for the
+# headline. quill measured that the summary attributed all 24 findings to the
+# bound class when 6 were pipeline-class, so the arm asserts the CLASSIFIER
+# rather than the wording of the print.
+MIXED_CLASSES = """\
+jobs:
+  freebsd:
+    steps:
+      - name: one unbounded call and one unguarded pipe
+        run: |
+          pkg install -y curl
+          timeout 300 cargo deny check licenses | tail -20
+          rc=$?
+"""
+
+
 def self_test() -> int:
     import tempfile
     cases = [
@@ -607,6 +723,24 @@ def self_test() -> int:
          GATE_PIPELINE_WITH_HEAD, ["early-closing consumer"], []),
         ("`head` on an extraction from a file is correct and must pass",
          EXTRACTION_FROM_FILE, [], ["early-closing consumer", "pipefail"]),
+        # quill's finding 1: `command` wraps a real build and did not bound it
+        ("`command cargo build` is an unbounded build, not a lookup",
+         COMMAND_WRAPS_A_BUILD, ["`cargo` runs unbounded"], []),
+        # quill's PREDICTED false positive for the naive fix, from ci.yml:236
+        ("`command -v NAME` looks up and must not read as an invocation",
+         COMMAND_LOOKUP_IS_NOT_A_RUN, [], ["unbounded"]),
+        ("a wrapper chain does not hide the timeout to its left",
+         WRAPPER_CHAIN_IS_STILL_BOUNDED, [], ["unbounded"]),
+        # Asserts the CLASSIFICATION, not just that each finding appears: a
+        # checker that reported all four as bound-class would satisfy the
+        # message-only version of this arm, which is exactly the defect quill
+        # measured in the headline.
+        ("a mixed file classifies all four kinds, not all as bound-class",
+         MIXED_CLASSES,
+         ["[bound-call] `pkg` runs unbounded",
+          "[bound-job] job `freebsd` has no timeout-minutes",
+          "[pipeline] pipe in a run block",
+          "[exit-status] bare `rc=$?`"], []),
     ]
     failures = 0
     with tempfile.TemporaryDirectory() as d:
@@ -614,7 +748,9 @@ def self_test() -> int:
             p = Path(d) / "case.yml"
             p.write_text(yml)
             findings, _ = check_file(p)
-            blob = " | ".join(msg for _, msg in findings)
+            # the KIND is in the blob deliberately: it lets an arm assert how
+            # a finding was CLASSIFIED and not merely that it was reported.
+            blob = " | ".join(f"[{kind}] {msg}" for _, kind, msg in findings)
             ok = True
             for needle in must:
                 if needle not in blob:
@@ -645,15 +781,20 @@ def main(argv) -> int:
               f"goes quiet without anyone deciding it should")
         return 1
     total = 0
+    counts = {}
     for f in files:
         findings, jobs = check_file(f)
-        for lineno, msg in findings:
+        for lineno, kind, msg in findings:
             print(f"{f}:{lineno}: {msg}")
+            counts[kind] = counts.get(kind, 0) + 1
         total += len(findings)
     if total:
-        print(f"\n{total} unbounded invocation(s) or job(s) across "
-              f"{len(files)} workflow file(s). A hang on a single-concurrency "
-              f"runner blocks every queued job, so each is a defect.")
+        print(f"\n{total} finding(s) across {len(files)} workflow file(s), "
+              f"BY CLASS -- they do not share a cause:")
+        for kind in (KIND_BOUND_CALL, KIND_BOUND_JOB, KIND_PIPELINE,
+                     KIND_EXIT_STATUS):
+            if counts.get(kind):
+                print(f"  {counts[kind]:>4}  {KIND_HEADLINES[kind]}")
         return 1
     print(f"{len(files)} workflow file(s), every job and invocation bounded")
     return 0
