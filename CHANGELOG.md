@@ -1,9 +1,9 @@
 # Changelog
 
-Every tag has one section. A section is written in the bump commit for that
-tag and is never edited afterwards.
+Every tag has one section. A section is written in the bump commit for its
+tag and is never edited once that tag exists.
 
-## 0.1.3 — 2026-10-10
+## 0.1.1 — 2026-10-10
 
 The naming sweep is recorded and the crate name is settled.
 
@@ -19,6 +19,11 @@ The naming sweep is recorded and the crate name is settled.
   not near, so no ask has been sent to the name's holder. `docs/prior-art.md`
   records the decision and its date. If the ask is made later and granted,
   publishing under `rumor` is an improvement landed by a patch run.
+- `docs/release.md` gains its **Versioning** section: semantic versioning with
+  the pre-1.0 reading of minor and patch, `main` fast-forward only so the
+  version cannot go backwards, and the rule that a version number is not a
+  reservation — the next tag is the next patch at the time its bump lands, in
+  landing order. The remaining six headings are still owed by later phases.
 
 Two findings from the sweep belong to later phases and are recorded, not
 acted on: in the Nostr protocol *rumor* is a defined term for an unsigned
@@ -30,10 +35,11 @@ No code changed, so no test was added: this run is documents. `rumor docs
 --check` covers the new file through the existing `docs/*.md` entry and passes
 at 24 paths.
 
-TAG ORDER, because the version numbers were assigned per child and the work
-ran in parallel: v0.1.3 must not be tagged before v0.1.1 (R0.2) and v0.1.2
-(R0.3) exist, or the release gate's "the new version is greater than the
-latest tag" refuses both of them afterwards.
+VERSION NUMBER, because this section was drafted as 0.1.3 and ships as 0.1.1:
+the breakout assigned a number to each child while they ran in parallel, and
+that was retired — a number is not a reservation, and the next tag is the next
+patch at the time its bump lands, in landing order. This child landed first, so
+it takes 0.1.1. `docs/release.md` carries the rule.
 
 ## 0.1.0 — 2026-10-10
 
