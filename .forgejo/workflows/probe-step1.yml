@@ -1,0 +1,31 @@
+# probe-step1 -- fails iff ci.yml's own step 1 body fails.
+#
+# The exact text of ci.yml's probe step, alone. If this passes and probe-clone
+# passes, the fault in run 9 is in a LATER step and the 2-second failure was not
+# where I assumed.
+#
+# Instrument, not a test. Comes out with the others.
+
+name: probe-step1
+
+on:
+  push:
+    branches:
+      - r0.2-ci
+  workflow_dispatch:
+
+jobs:
+  freebsd:
+    runs-on: freebsd-15-jail
+    steps:
+      - name: the probe body from ci.yml, verbatim
+        run: |
+          echo "uname   $(uname -a)"
+          echo "whoami  $(whoami)"
+          echo "cwd     $(pwd)"
+          for t in git cargo rustc node curl; do
+            p=$(command -v "$t" 2>/dev/null) && echo "$t  FOUND  $p" || echo "$t  ABSENT"
+          done
+          cargo --version 2>/dev/null || echo "cargo: none"
+          rustc --version 2>/dev/null || echo "rustc: none"
+          git --version 2>/dev/null || echo "git: none"
