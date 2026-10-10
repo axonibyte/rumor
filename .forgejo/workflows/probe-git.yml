@@ -1,0 +1,30 @@
+# probe-git -- fails iff git is absent
+#
+# ONE FACT PER WORKFLOW, because the run's CONCLUSION is observable to me and
+# its LOG is not: /actions/runs/<n>/jobs is 404 and the HTML redirects to a
+# login (ibis measured this at r0.runners/0, and I built a logging probe anyway
+# before reading my own failure). So the evidence has to arrive in the only
+# channel I can read, which is pass/fail per run.
+#
+# probe-alive is the CONTROL and must always pass. Without it, every probe
+# failing is ambiguous between "the tools are absent" and "nothing ran at all" --
+# which is the same silence-reads-as-health trap this epic keeps finding.
+#
+# These are instruments, not tests. They come out in the same commit that reads
+# them, exactly as ibis removed their 25 s sleep.
+
+name: probe-git
+
+on:
+  push:
+    branches:
+      - r0.2-ci
+  workflow_dispatch:
+
+jobs:
+  freebsd:
+    runs-on: freebsd-15-jail
+    steps:
+      - name: fails iff git is absent
+        run: |
+          command -v git
