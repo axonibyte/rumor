@@ -1,0 +1,38 @@
+# probe-persist -- fails iff the workspace does NOT persist between steps.
+#
+# THE HYPOTHESIS THIS TESTS, and it is the only one left standing: ci.yml dies
+# at 2 s, three runs in a row, with step 1 (probe-step1) and step 2
+# (probe-clone) both PASSING in isolation. Two seconds is far too fast to have
+# reached a cargo build after cloning, so the failure is not in a step body --
+# it is that step 3's `cd src-tree` finds nothing, because the directory step 2
+# created is gone.
+#
+# ibis's smoke test had two steps and proved a second step RUNS. It never
+# proved the two share a filesystem, because both were bare echoes. That is the
+# gap, and it is the difference between a workflow of self-contained steps and
+# one that builds up state.
+#
+# Instrument, not a test. Comes out with the others.
+
+name: probe-persist
+
+on:
+  push:
+    branches:
+      - r0.2-ci
+  workflow_dispatch:
+
+jobs:
+  freebsd:
+    runs-on: freebsd-15-jail
+    steps:
+      - name: step one writes a marker and reports where
+        run: |
+          echo "step1 pwd $(pwd)"
+          echo persisted > marker.txt
+          test -f marker.txt
+      - name: step two requires step one's marker
+        run: |
+          echo "step2 pwd $(pwd)"
+          test -f marker.txt || { echo "MARKER GONE: steps do not share a workspace"; exit 1; }
+          test "$(cat marker.txt)" = persisted
