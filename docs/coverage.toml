@@ -60,3 +60,11 @@ docs = ["docs/release.md"]
 [[entry]]
 path = "deny.toml"
 docs = ["docs/release.md"]
+
+[[entry]]
+# The local workflow checker. Mapped to release.md because what it refuses --
+# an unbounded external call, a job with no ceiling, a bare `rc=$?` that cannot
+# run under bash -e -- is a property of how this repo RELEASES and gates, not of
+# the library.
+path = "tools/check-workflows.py"
+docs = ["docs/release.md"]

@@ -116,3 +116,86 @@ tool means the gate's verdict can change with no commit.
   control rather than assumed — allowing only `BSD-2-Clause` plus the exception
   returns 4, so the passing case means something.
 - `Unicode-DFS-2016` is absent: nothing in the dependency set carries it.
+
+### Every external call is bounded, and a hang is a named finding
+
+The runner is **single-concurrency**. One job that hangs does not merely fail
+slowly: it head-of-line blocks every queued run and every push anyone makes
+until someone cancels it. This happened twice. `runner-smoke` run 3 ran 1816 s
+and was cancelled; `probe-pkg` run 97 ran past 20 minutes on 2026-10-10 with
+three unbounded `pkg` calls, holding three queued runs behind it.
+
+So every workflow carries two bounds, and the duplication is deliberate:
+
+| mechanism | bounds | why not alone |
+| --- | --- | --- |
+| `timeout-minutes` on the job | anything, including what the file does not anticipate | a runner feature nobody here has observed working — the run logs are 404 to us |
+| `timeout N` on each call | the specific call, and names which one | cannot bound a hang somewhere no call was expected |
+
+**`rc` 124 is reported separately from any other failure.** They are different
+findings: 124 says the tool never answered inside its bound, which is a
+statement about the *runner*; any other non-zero says the tool answered and the
+answer was no, which is a statement about the *code*. Collapsing them files a
+wedged runner as a broken build.
+
+**Capture status with `cmd ... || rc=$?`, never a bare `rc=$?` on the next
+line.** `run:` blocks execute under `bash -e`, where a failing command aborts
+the step immediately — so a capture on the following line never executes, and
+neither does the `tail` of the log nor the 124 discrimination. This is measured,
+not inferred: under `bash -e`, `false; rc=$?; echo "$rc"` prints nothing and
+exits 1, and `timeout 1 sleep 5; rc=$?; test "$rc" -eq 124 && echo HANG` exits
+124 *without printing HANG*. `-e` is also in force inside a group on the right
+of `||`, so `cmd || { cmd2; rc=$?; }` fails the same way. A command on the left
+of `||` is exempt from `-e`, which is what makes the guarded form work.
+
+This one is worth stating plainly because the first version of `ci.yml` used the
+bare form at every step. That file had just been corrected for four
+pipeline-status defects — `cargo build | tail` returning `tail`'s status — and
+the correction was "redirect, read the status, then format". The redirect was
+right and the read was unreachable, so on a failure the log still never printed.
+One bug was replaced by another with the same symptom.
+
+### Why one version is a literal and the other is derived
+
+The deny step holds two versions and treats them oppositely, which looks
+inconsistent until you ask what each one is *for* (ratchet, r0.2/16):
+
+| value | treatment | because |
+| --- | --- | --- |
+| `cargo-deny` 0.20.2 | hard-coded literal, asserted by `grep` | the pin is the **subject** of the check. Deriving it would make the check agree with whatever is installed, which is the drift it exists to refuse. |
+| `rumor-cli@<version>` | derived from `cargo metadata` | the crate version is an **input** to the check. A literal here carries the author's context — the first draft of this assertion said `0.1.3`, which was the author's branch, and would have failed on `0.1.0` and again at every bump. |
+
+So: *derived pin, no guard; derived version, no brittleness.* The test is whether
+the value is what the check is about or merely something the check needs. Do not
+"unify" these two by reading both from one place — the duplication of `0.20.2`
+between the install line and the assertion is deliberate, and is itself the
+check.
+
+### tools/check-workflows.py
+
+`tools/check-workflows.py` refuses a workflow that can hang or cannot report
+why. Three checks: every job declares `timeout-minutes`; every invocation of a
+network or build tool carries a bound (`timeout`, or `curl -m` — *not*
+`--connect-timeout`, which bounds only the handshake); and no bare `rc=$?`.
+
+Run it before committing a workflow change, with its own self-test:
+
+    python3 tools/check-workflows.py --self-test      # 10 arms
+    python3 tools/check-workflows.py .forgejo/workflows
+
+The self-test's primary fixture is `probe-pkg.yml` **as it actually shipped** —
+the file that wedged the runner. A checker that does not refuse that
+byte-for-byte would not have prevented what it exists to prevent.
+
+Two bounds on it, stated here rather than only in its header:
+
+- **It is textual, not semantic.** It finds a tool name in command position on a
+  logical line. It does not follow `sh -c`, a variable holding a command name, a
+  script the workflow writes and then runs, or `eval`. Its silence is not proof
+  that nothing can hang.
+- **It is local-only, and that is a limitation rather than a design.** It is
+  Python because the runner cannot compile anything, so a Rust gate could not run
+  there; and adding a Python dependency to CI would repeat the `actions/checkout`
+  mistake of depending on an unmeasured interpreter on the runner. It should
+  become a `rumor` subcommand beside `docs --check` once that jail has a working
+  toolchain. Until then nothing *enforces* it — a reviewer has to run it.

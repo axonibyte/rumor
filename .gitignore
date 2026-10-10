@@ -1,1 +1,9 @@
 /target
+
+# Python bytecode from tools/. Not a style preference: `rumor docs --check`
+# requires every path in the tree to be mapped, and the coverage TEST
+# (committed_tree_is_fully_mapped) fails on an unmapped one -- so a stray
+# __pycache__ from running tools/check-workflows.py turns the whole suite red.
+# It caught exactly that, after a `git add -A` swept one into a commit.
+__pycache__/
+*.pyc
