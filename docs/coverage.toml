@@ -1,0 +1,54 @@
+# Doc coverage map.
+#
+# Every path in the workspace must match at least one entry, and `rumor docs
+# --check` fails naming the first path that does not. An entry maps a path
+# glob to the documents that describe those paths: `*` matches within one path
+# segment and `**` matches zero or more whole segments.
+#
+# The parser is deliberately strict. Any line it does not recognise is an
+# error rather than a skip, because a lenient reader of this file would turn a
+# typo into silent uncovered source.
+
+[[entry]]
+path = ".gitignore"
+docs = ["docs/release.md"]
+
+[[entry]]
+path = "Cargo.toml"
+docs = ["docs/design.md", "docs/release.md"]
+
+[[entry]]
+path = "Cargo.lock"
+docs = ["docs/release.md"]
+
+[[entry]]
+path = "LICENSE"
+docs = ["README.md"]
+
+[[entry]]
+path = "README.md"
+docs = ["README.md"]
+
+[[entry]]
+path = "CHANGELOG.md"
+docs = ["docs/release.md"]
+
+[[entry]]
+path = "docs/*.md"
+docs = ["docs/release.md"]
+
+[[entry]]
+path = "docs/adr/*.md"
+docs = ["docs/adr/README.md"]
+
+[[entry]]
+path = "docs/coverage.toml"
+docs = ["docs/release.md"]
+
+[[entry]]
+path = "crates/*/Cargo.toml"
+docs = ["docs/design.md", "docs/release.md"]
+
+[[entry]]
+path = "crates/rumor-cli/src/**/*.rs"
+docs = ["docs/cli.md", "docs/design.md"]

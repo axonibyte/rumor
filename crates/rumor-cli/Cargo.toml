@@ -1,0 +1,13 @@
+[package]
+name = "rumor-cli"
+description = "Drive a system under test as simulated users against a ledger, and report where they disagree"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "rumor"
+path = "src/main.rs"
+
+[dependencies]
