@@ -1,0 +1,124 @@
+# CI for the rumor workspace -- R0.2, issue 3.
+#
+# ONE JOB, FREEBSD ONLY. cal ruled 2026-10-10: "no linux runner, just freebsd
+# for now." Linux is R0.2b and returns when a host exists. A second job whose
+# label no runner answers would QUEUE FOREVER, and a queued job is not red --
+# it reads as "no failure" rather than "never ran", which makes every green in
+# this file ambiguous. One job that can run beats two where one cannot.
+#
+# `runs-on` binds to the runner's LABEL, not its name. cal renamed the runner
+# forge-01_jail on 2026-10-10 (was forge-01-ci-jail) and ibis measured the label
+# unchanged across the rename (r0.runners run #6, an 8 s probe reporting 8 s).
+# Change this only if a registration changes the label.
+#
+# EVERY STEP PROVES IT RAN, which is the design decision in this file rather
+# than the step list. A zero-elapsed success is what a FAST run and a PHANTOM
+# run both look like (ibis, r0.runners/4, after it cost two pushes), so elapsed
+# time cannot settle execution in either direction. Each step therefore emits a
+# value only execution could have produced -- a version string, a count it
+# computed, a name resolved out of Cargo.lock -- never a duration and never the
+# absence of red. fable ruled that form at rumor/96.
+#
+# STEP 1 IS A PROBE AND IS DELIBERATELY NON-FATAL. Nobody had measured what this
+# runner carries; ibis's smoke test proved execution and left the toolchain to
+# R0.2 "with its own evidence". If a later step dies for want of a tool, step 1
+# has already named which. A red probe would tell us less than a green one that
+# lists what is absent.
+#
+# NO actions/checkout. It is a JavaScript action and needs node ON THE RUNNER
+# (ibis, r0.runners-smoke). If node is absent there, checkout fails for a reason
+# that has nothing to do with the code under test. git is the narrower
+# dependency and the repo is public, so an anonymous clone needs no credential
+# on the runner -- no secret reaches CI from this file.
+
+name: ci
+
+on:
+  push:
+    branches:
+      - r0.2-ci
+  workflow_dispatch:
+
+jobs:
+  freebsd:
+    runs-on: freebsd-15-jail
+    steps:
+      - name: probe the runner (non-fatal; names what is absent)
+        run: |
+          echo "uname   $(uname -a)"
+          echo "whoami  $(whoami)"
+          echo "cwd     $(pwd)"
+          for t in git cargo rustc node curl; do
+            p=$(command -v "$t" 2>/dev/null) && echo "$t  FOUND  $p" || echo "$t  ABSENT"
+          done
+          cargo --version 2>/dev/null || echo "cargo: none"
+          rustc --version 2>/dev/null || echo "rustc: none"
+          git --version 2>/dev/null || echo "git: none"
+
+      - name: fetch the tree with git, not a JS action
+        run: |
+          rm -rf src-tree
+          git clone --quiet --depth 1 --branch "${GITHUB_REF_NAME:-r0.2-ci}" \
+            https://forge.axonibyte.com/axonibyte/rumor.git src-tree
+          cd src-tree
+          echo "HEAD $(git rev-parse HEAD)"
+          test -f Cargo.toml || { echo "no Cargo.toml: wrong tree"; exit 1; }
+
+      - name: build
+        run: |
+          cd src-tree
+          cargo build --locked --all-targets 2>&1 | tail -20
+          test -x target/debug/rumor || { echo "no binary produced"; exit 1; }
+          echo "PROOF built binary: $(./target/debug/rumor 2>&1 | head -1 || true)"
+
+      - name: test
+        run: |
+          cd src-tree
+          cargo test --locked 2>&1 | tee ../test.log | tail -20
+          # a value only execution produces: the harness's own pass count
+          grep -E 'test result: ok\. [0-9]+ passed' ../test.log \
+            || { echo "no test-result line: the harness did not run"; exit 1; }
+          echo "PROOF $(grep -oE 'test result: ok\. [0-9]+ passed' ../test.log | head -1)"
+
+      - name: fmt
+        run: |
+          cd src-tree
+          cargo fmt --version
+          cargo fmt --all --check
+
+      - name: clippy
+        run: |
+          cd src-tree
+          cargo clippy --version
+          cargo clippy --locked --all-targets -- -D warnings
+
+      - name: docs coverage
+        run: |
+          cd src-tree
+          cargo run --locked -q -- docs --check
+
+      - name: deny (licences)
+        run: |
+          cd src-tree
+          # pinned: an unpinned gate tool means the verdict can change with no commit.
+          # no FreeBSD binary release exists, so it builds (~5 min).
+          command -v cargo-deny >/dev/null 2>&1 \
+            || cargo install cargo-deny --locked --version 0.20.2
+          cargo deny --version
+          # NO -D. Default is green on an unused allowlist entry; under -D a
+          # cosmetic warning and a real licence violation both return 4 and are
+          # indistinguishable by exit status. 7 warnings are EXPECTED while the
+          # workspace has no dependencies (ratchet, r0.2/0) and are not silenced.
+          cargo deny check licenses 2>&1 | tee ../deny.log
+          grep -q 'licenses ok' ../deny.log \
+            || { echo "no 'licenses ok' line: the gate did not run"; exit 1; }
+          # the crate name AND its version DERIVED from the manifest, never a
+          # literal: ratchet's example string carried 0.1.3 from their own branch
+          # and would fail here at 0.1.0 and again at every bump.
+          VER=$(cargo metadata --no-deps --format-version 1 \
+                | sed -n 's/.*"name":"rumor-cli","version":"\([^"]*\)".*/\1/p' | head -1)
+          test -n "$VER" || { echo "could not derive the crate version"; exit 1; }
+          cargo deny list 2>&1 | tee ../denylist.log
+          grep -q "rumor-cli@${VER}" ../denylist.log \
+            || { echo "deny list did not name rumor-cli@${VER}"; exit 1; }
+          echo "PROOF deny resolved rumor-cli@${VER} from Cargo.lock"

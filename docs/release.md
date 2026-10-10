@@ -67,4 +67,52 @@ Not yet written.
 
 ## CI
 
-Not yet written.
+One workflow, `.forgejo/workflows/ci.yml`, on the FreeBSD runner. Linux waits on
+a host and is R0.2b; `runs-on` binds to the runner's **label**,
+`freebsd-15-jail`, not to its name, which has already been renamed once.
+
+### Every step proves it ran
+
+A queued job is not red. A job whose label no runner answers sits pending
+forever, and pending reads as "no failure" rather than "never ran" — so a green
+overall run is not evidence that any step executed. A zero-elapsed success is
+also what a *fast* run looks like, so elapsed time cannot settle it either
+direction.
+
+So each step asserts **a value only execution could have produced**: a version
+string, a count the step computed, a name resolved out of `Cargo.lock`. Never a
+duration, and never the absence of red.
+
+### The deny step, and its two exit codes
+
+`cargo deny check licenses` runs with **no `-D` flag**; use `-W` to surface
+warnings. This matters more than it looks:
+
+| exit | meaning | fix |
+|------|---------|-----|
+| 0 | the graph's licences are all on the allowlist | — |
+| 4 | a crate's licence is outside the allowlist, named in the output | decide: allow it, or drop the dependency |
+| 1 | **the config failed to deserialize and the gate never ran** | fix `deny.toml` |
+
+Exit 1 and exit 4 are opposite problems and the step's message must distinguish
+them: 4 is the gate working, 1 is the gate absent. Under `-D` the distinction
+collapses further — an unused allowlist entry and a real licence violation both
+return 4, so a cosmetic warning becomes indistinguishable from a violation by
+exit status alone.
+
+An allowlist entry that matches nothing warns on **every** run. That warning is
+the cost of having decided the list in advance, and the fix is never to trim the
+Decided list to quiet it.
+
+The tool is pinned: `cargo install cargo-deny --locked --version 0.20.2`. There
+is no FreeBSD binary release, so the job builds it (~5 min). An unpinned gate
+tool means the gate's verdict can change with no commit.
+
+### Licence id spellings, and why they are not the Decided words
+
+- `Unicode-3.0`, where the Decided line says "Unicode", which is not an SPDX id.
+- `Apache-2.0 WITH LLVM-exception` is **absent** on purpose: the crates needing
+  it declare a disjunction, so plain `Apache-2.0` satisfies them. Proved with a
+  control rather than assumed — allowing only `BSD-2-Clause` plus the exception
+  returns 4, so the passing case means something.
+- `Unicode-DFS-2016` is absent: nothing in the dependency set carries it.

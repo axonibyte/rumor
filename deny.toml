@@ -1,0 +1,69 @@
+# cargo-deny configuration.
+#
+# `cargo deny check licenses` gates every pull request. The allowlist below is
+# the epic's Decided list and is never trimmed to silence a warning: an entry
+# nothing uses yet warns on every run, and that warning is the cost of having
+# decided the list in advance. See docs/release.md for why each id is spelled
+# the way it is and for the two questions this file used to carry.
+
+[graph]
+# The epic's CI is FreeBSD; Linux waits on a host (R0.2b). Both are declared
+# because a licence graph is per-TARGET, not per-host: cargo-deny resolves it
+# from cargo metadata, so one run on the FreeBSD runner covers every target
+# listed here, Linux included.
+targets = [
+    "x86_64-unknown-freebsd",
+    "aarch64-unknown-freebsd",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+]
+all-features = true
+
+[licenses]
+# High confidence before a licence is inferred from text rather than read from
+# crate metadata. Upstream's own example uses the same threshold.
+confidence-threshold = 0.93
+
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",   # the project's own licence
+    "BSD-3-Clause",
+    "ISC",
+    "MPL-2.0",
+    "UPL-1.0",
+    "Unicode-3.0",    # the Decided line says "Unicode", which is not an SPDX id
+]
+
+# Empty on purpose. An exception is a per-crate widening of a Decided list, so
+# it is a decision for the maintainer or an ADR, never a side effect of making
+# a build go green. If one is ever added it owes a POSITIVE control -- that
+# crate in the graph, that licence outside `allow`, and the check GREEN -- or
+# the exception is indistinguishable from one that never fires.
+exceptions = []
+
+# Not set: `private`. The workspace's own crates are BSD-2-Clause, which is
+# allowed above, so they pass as themselves and need no exemption.
+
+[bans]
+# Both strict, adopted while the workspace is empty because that is the only
+# moment they are free. Each will need `skip` entries later, and a skip with a
+# reason is a deliberate duplicate -- which is the point.
+multiple-versions = "deny"
+wildcards = "deny"
+deny = []
+skip = []
+skip-tree = []
+
+[bans.std-replacements]
+scope = "workspace"
+
+[advisories]
+unmaintained = "workspace"
+unsound = "all"          # all|workspace|transitive|none, NOT a lint level
+yanked = "deny"
+ignore = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

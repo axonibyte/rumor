@@ -52,3 +52,11 @@ docs = ["docs/design.md", "docs/release.md"]
 [[entry]]
 path = "crates/rumor-cli/src/**/*.rs"
 docs = ["docs/cli.md", "docs/design.md"]
+
+[[entry]]
+path = ".forgejo/workflows/*.yml"
+docs = ["docs/release.md"]
+
+[[entry]]
+path = "deny.toml"
+docs = ["docs/release.md"]
