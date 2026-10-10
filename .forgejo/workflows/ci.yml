@@ -67,15 +67,26 @@ jobs:
       - name: build
         run: |
           cd src-tree
-          cargo build --locked --all-targets 2>&1 | tail -20
+          # NOT `cargo build | tail`: a pipeline's status is the LAST stage's, so
+          # tail's success would mask a failing build -- the exact defect this
+          # gate exists to catch, and the sixth instance of it in this room.
+          # Redirect, then read the status, then format.
+          cargo build --locked --all-targets > ../build.log 2>&1
+          rc=$?
+          tail -20 ../build.log
+          test "$rc" -eq 0 || { echo "cargo build exited $rc"; exit "$rc"; }
           test -x target/debug/rumor || { echo "no binary produced"; exit 1; }
           echo "PROOF built binary: $(./target/debug/rumor 2>&1 | head -1 || true)"
 
       - name: test
         run: |
           cd src-tree
-          cargo test --locked 2>&1 | tee ../test.log | tail -20
-          # a value only execution produces: the harness's own pass count
+          # same reason as the build step: `| tee | tail` returns tail's status.
+          cargo test --locked > ../test.log 2>&1
+          rc=$?
+          tail -20 ../test.log
+          test "$rc" -eq 0 || { echo "cargo test exited $rc"; exit "$rc"; }
+          # and a value only execution produces: the harness's own pass count
           grep -E 'test result: ok\. [0-9]+ passed' ../test.log \
             || { echo "no test-result line: the harness did not run"; exit 1; }
           echo "PROOF $(grep -oE 'test result: ok\. [0-9]+ passed' ../test.log | head -1)"
@@ -109,7 +120,14 @@ jobs:
           # cosmetic warning and a real licence violation both return 4 and are
           # indistinguishable by exit status. 7 warnings are EXPECTED while the
           # workspace has no dependencies (ratchet, r0.2/0) and are not silenced.
-          cargo deny check licenses 2>&1 | tee ../deny.log
+          # redirect then read the status: exit 4 (a licence outside the allowlist)
+          # and exit 1 (the config did not deserialize, so the gate never ran) are
+          # opposite problems and a pipe would hide both behind tee's success.
+          cargo deny check licenses > ../deny.log 2>&1
+          rc=$?
+          cat ../deny.log
+          test "$rc" -eq 1 && { echo "deny exited 1: deny.toml did not deserialize, the gate did NOT run"; exit 1; }
+          test "$rc" -eq 0 || { echo "deny exited $rc: a licence is outside the allowlist, named above"; exit "$rc"; }
           grep -q 'licenses ok' ../deny.log \
             || { echo "no 'licenses ok' line: the gate did not run"; exit 1; }
           # the crate name AND its version DERIVED from the manifest, never a
@@ -118,7 +136,9 @@ jobs:
           VER=$(cargo metadata --no-deps --format-version 1 \
                 | sed -n 's/.*"name":"rumor-cli","version":"\([^"]*\)".*/\1/p' | head -1)
           test -n "$VER" || { echo "could not derive the crate version"; exit 1; }
-          cargo deny list 2>&1 | tee ../denylist.log
+          cargo deny list > ../denylist.log 2>&1
+          rc=$?
+          test "$rc" -eq 0 || { cat ../denylist.log; echo "deny list exited $rc"; exit "$rc"; }
           grep -q "rumor-cli@${VER}" ../denylist.log \
             || { echo "deny list did not name rumor-cli@${VER}"; exit 1; }
           echo "PROOF deny resolved rumor-cli@${VER} from Cargo.lock"
