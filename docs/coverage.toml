@@ -68,3 +68,10 @@ docs = ["docs/release.md"]
 # the library.
 path = "tools/check-workflows.py"
 docs = ["docs/release.md"]
+
+[[entry]]
+# Test 3's negative control for the licence gate: a GPL-licensed fixture crate
+# that must make `cargo deny check licenses` refuse. Described in release.md
+# under "Test 3: the licence gate's negative control".
+path = "tests/fixtures/deny-gpl/**"
+docs = ["docs/release.md"]

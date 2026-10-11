@@ -1,0 +1,32 @@
+# TEST 3's FIXTURE WORKSPACE -- the negative control for the licence gate.
+#
+# WHY THIS EXISTS. ibis read task 139's log (thread:rumor/303) and found the gate
+# green and VACUOUS: all seven unused allowances raised license-not-encountered,
+# `deny` resolved rumor-cli@0.1.0 alone, and so it passed having examined no
+# dependency licence at all. A gate that encounters none of its own allowances
+# cannot fail, and one that has never been seen to fail is not a gate.
+#
+# WHY A SEPARATE WORKSPACE AND NOT A DEV-DEPENDENCY. The GPL crate must be in a
+# dependency graph `deny` resolves, and it must NOT be in the shipped one -- a
+# GPL dep in the real graph would turn the real gate red for the rest of the
+# project's life. The root manifest excludes this path, and Test 3's clean half
+# proves the exclusion worked.
+#
+# THE CONFIG IS THE REAL ONE. This fixture is driven with `--config ../../../deny.toml`,
+# never a copy: a check derived from a copy of the thing it checks agrees with
+# itself no matter what the real file says.
+[workspace]
+members = ["gpl-fixture"]
+resolver = "2"
+
+[package]
+name = "deny-gpl-fixture-root"
+version = "0.0.0"
+edition = "2021"
+# BSD-2-Clause so this crate is ALLOWED. The only violation in the graph must be
+# the GPL dependency, or a failure would not discriminate between the two.
+license = "BSD-2-Clause"
+publish = false
+
+[dependencies]
+gpl-fixture = { path = "gpl-fixture" }

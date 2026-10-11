@@ -171,6 +171,39 @@ the value is what the check is about or merely something the check needs. Do not
 between the install line and the assertion is deliberate, and is itself the
 check.
 
+### Test 3: the licence gate's negative control
+
+`cargo deny check licenses` passed from the first run, and that proved nothing.
+ibis read task 139's job log and found why: all seven unused allowances raised
+`license-not-encountered`, and `deny` resolved `rumor-cli@0.1.0` alone, so the
+gate passed having examined **no dependency licence at all**. A gate that
+encounters none of its own allowances cannot fail, and a gate never seen to fail
+is indistinguishable from one that is not wired up.
+
+`tests/fixtures/deny-gpl/` is the control. It is a separate workspace holding one
+crate licensed `GPL-3.0-only` -- a valid SPDX id, absent from `deny.toml`'s
+`allow` -- depended on by a `BSD-2-Clause` root, so the only violation in that
+graph is the GPL crate and a refusal cannot be about anything else. The root
+manifest `exclude`s the path, so the fixture reaches the control and never the
+shipped graph.
+
+The CI step drives it with the **real** `deny.toml` (`--config deny.toml`), never
+a copy: a control derived from a copy of the thing it checks agrees with itself
+whatever the real file says. It then reads two oracles, because an exit status
+alone does not say which licence was refused:
+
+| oracle | failure it catches |
+| --- | --- |
+| `rc` is not 0 | the gate passed a GPL dependency, so it does not gate |
+| `rc` is not 1 | `deny.toml` did not deserialize, so the control never ran |
+| log names `GPL-3.0-only` | something else refused, so this shows nothing |
+| log names `gpl-fixture` | the refusal is not about the fixture crate |
+
+Driven locally against cargo-deny 0.20.2 before the step was written: rc 4,
+`rejected: license is not explicitly allowed`, both names present; and the real
+workspace still rc 0 with the same seven warnings, which is what proves the
+exclusion held.
+
 ### tools/check-workflows.py
 
 `tools/check-workflows.py` refuses a workflow that can hang or cannot report

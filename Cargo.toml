@@ -1,5 +1,9 @@
 [workspace]
 members = ["crates/rumor-cli"]
+# Test 3's fixture carries a GPL dependency on purpose. Excluded so it stays
+# out of the shipped licence graph; the clean half of Test 3 is what proves
+# this exclusion holds.
+exclude = ["tests/fixtures/deny-gpl"]
 resolver = "2"
 
 [workspace.package]

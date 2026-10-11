@@ -255,6 +255,35 @@ jobs:
           grep -q '0\.20\.2' ../denyver.log \
             || { echo "cargo-deny is not the pinned 0.20.2: the licence verdict could change with no commit"; exit 1; }
           echo "PROOF cargo-deny $(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' ../denyver.log | head -1 || true) matches the pin"
+          # TEST 3, THE NEGATIVE CONTROL, AND IT RUNS BEFORE THE CLEAN CHECK.
+          # ibis read task 139's log (thread:rumor/303): the gate was green and
+          # VACUOUS. All seven unused allowances raised license-not-encountered and
+          # `deny` resolved rumor-cli@0.1.0 alone, so it passed having examined no
+          # dependency licence at all. A gate that encounters none of its own
+          # allowances cannot fail, and one never seen to fail is not a gate.
+          #
+          # THE CONFIG IS THE REAL deny.toml, not a copy: a control derived from a
+          # copy of the thing it checks agrees with itself whatever the real file
+          # says. The fixture is a separate workspace, EXCLUDED by the root
+          # manifest, so the GPL crate reaches this check and never the shipped
+          # graph -- and the clean check below is what proves that exclusion held.
+          #
+          # TWO ORACLES, because rc 4 alone does not say WHICH licence was refused:
+          # the status, and then the log naming both GPL-3.0-only and gpl-fixture.
+          # Driven locally against cargo-deny 0.20.2 before this step existed:
+          # rc 4, "rejected: license is not explicitly allowed", both names present.
+          rc=0
+          timeout 300 cargo deny --manifest-path tests/fixtures/deny-gpl/Cargo.toml \
+            --config deny.toml check licenses > ../deny-gpl.log 2>&1 || rc=$?
+          cat ../deny-gpl.log
+          test "$rc" -eq 124 && { echo "HANG: the GPL control exceeded 300s. RUNNER finding; the control did NOT run."; exit 124; }
+          test "$rc" -eq 1 && { echo "the GPL control exited 1: deny.toml did not deserialize, so the control never ran"; exit 1; }
+          test "$rc" -eq 0 && { echo "CONTROL FAILED: deny PASSED a GPL-3.0-only dependency. The licence gate does not gate, and the clean verdict below would mean nothing."; exit 1; }
+          grep -q 'GPL-3.0-only' ../deny-gpl.log \
+            || { echo "the GPL control exited $rc without naming GPL-3.0-only: something else refused, so this does not show the licence gate working"; exit 1; }
+          grep -q 'gpl-fixture' ../deny-gpl.log \
+            || { echo "the GPL control exited $rc without naming gpl-fixture: the refusal is not about the fixture crate"; exit 1; }
+          echo "PROOF the licence gate REFUSED gpl-fixture GPL-3.0-only, rc $rc"
           # NO -D. Default is green on an unused allowlist entry; under -D a
           # cosmetic warning and a real licence violation both return 4 and are
           # indistinguishable by exit status. 7 warnings are EXPECTED while the
