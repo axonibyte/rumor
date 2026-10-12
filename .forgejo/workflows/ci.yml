@@ -108,7 +108,7 @@ jobs:
           rc=0
           timeout 180 git clone --quiet --depth 1 --branch "${GITHUB_REF_NAME:-r0.2-ci}" \
             https://forge.axonibyte.com/axonibyte/rumor.git src-tree || rc=$?
-          test "$rc" -eq 124 && { echo "HANG: git clone exceeded 180s. The runner could not reach or finish reading the forge; this is a RUNNER finding, not a code failure."; exit 124; }
+          test "$rc" -eq 124 && { echo "HANG: git clone exceeded 180s. rc 124 proves only that 180s elapsed -- a clone that would have finished at 181s gives this same status, so 'could not reach the forge' is not something this bound can tell you. RUNNER finding; read the step output above for whether any object transfer started."; exit 124; }
           test "$rc" -eq 0 || { echo "git clone exited $rc"; exit "$rc"; }
           cd src-tree
           echo "HEAD $(timeout 30 git rev-parse HEAD)"
@@ -129,7 +129,7 @@ jobs:
           rc=0
           timeout 900 cargo build --locked --all-targets > ../build.log 2>&1 || rc=$?
           tail -20 ../build.log
-          test "$rc" -eq 124 && { echo "HANG: cargo build exceeded 900s -- most likely a registry fetch with no route out. RUNNER finding."; exit 124; }
+          test "$rc" -eq 124 && { echo "HANG: cargo build exceeded 900s. rc 124 proves only that the time elapsed, so read build.log rather than this line: 'Downloaded' lines mean the registry WAS reached and the box is slow; a stall at 'Updating index' means no byte moved, which is route or DNS. RUNNER finding either way."; exit 124; }
           test "$rc" -eq 0 || { echo "cargo build exited $rc"; exit "$rc"; }
           test -x target/debug/rumor || { echo "no binary produced"; exit 1; }
           echo "PROOF built binary: $(timeout 30 ./target/debug/rumor 2>&1 | head -1 || true)"
@@ -146,7 +146,7 @@ jobs:
           rc=0
           timeout 900 cargo test --locked > ../test.log 2>&1 || rc=$?
           tail -20 ../test.log
-          test "$rc" -eq 124 && { echo "HANG: cargo test exceeded 900s. A test that does not terminate is a finding against the test, not a red build."; exit 124; }
+          test "$rc" -eq 124 && { echo "HANG: cargo test exceeded 900s. The CONSEQUENCE holds either way -- this is a finding against the test, not a red build -- but the premise does not: rc 124 proves only that 900s elapsed, and a test taking 901s terminates. Read test.log for which test started last."; exit 124; }
           test "$rc" -eq 0 || { echo "cargo test exited $rc"; exit "$rc"; }
           # and a value only execution produces: the harness's own pass count
           grep -E 'test result: ok\. [0-9]+ passed' ../test.log \
@@ -234,10 +234,23 @@ jobs:
           # mismatch is a finding, and quietly installing over it would hide which
           # of the two is wrong.
           command -v cargo-deny >/dev/null 2>&1 \
-            || { rc=0
+            || { # THE PRE-CHECK TAKES THE CAUSAL CLAIM OUT OF THE TIMEOUT (ibis r0.2/36).
+                 # This step read rc 124 on a 900 s wrapper and announced "almost certainly
+                 # no route to the registry". rc 124 proves only that 900 s elapsed. A 60 s
+                 # index touch fails in its OWN words when there is no route, so by the time
+                 # the wrapper can fire, no-route is excluded and "too slow" is the only
+                 # reading left. INSIDE this branch, so a provisioned cargo-deny costs no
+                 # network call at all.
+                 rc=0
+                 timeout 60 cargo search --limit 1 cargo-deny > ../index.log 2>&1 || rc=$?
+                 tail -3 ../index.log
+                 test "$rc" -eq 124 && { echo "the registry index did not answer in 60s. That is the bound, not a diagnosis: an index answering at 61s gives this same status. The install was never attempted either way"; exit 1; }
+                 test "$rc" -eq 0 || { echo "cargo search exited $rc: the registry index is unreachable or refused, and the install was never attempted"; exit 1; }
+                 echo "PROOF the registry index answered in under 60s, so a 900s install can only mean slow"
+                 rc=0
                  timeout 900 cargo install cargo-deny --locked --version 0.20.2 > ../install.log 2>&1 || rc=$?
                  tail -20 ../install.log
-                 test "$rc" -eq 124 && { echo "HANG: cargo install cargo-deny exceeded 900s -- almost certainly no route to the registry. RUNNER finding, and it blocks the licence gate rather than failing it."; exit 124; }
+                 test "$rc" -eq 124 && { echo "HANG: cargo install cargo-deny exceeded 900s. The index answered above, so this is NOT no-route: read install.log -- 'Downloaded' lines mean bytes moved and the box is slow. RUNNER finding, and it blocks the licence gate rather than failing it."; exit 124; }
                  test "$rc" -eq 0 || { echo "cargo install cargo-deny exited $rc"; exit "$rc"; } }
           # ASSERT the pinned version, do not merely print it. ratchet r0.2/4's
           # drift guard: a gate tool whose version can move is a gate whose

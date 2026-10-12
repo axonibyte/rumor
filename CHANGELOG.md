@@ -3,6 +3,36 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.2 — 2026-10-12
+
+CI exists on the FreeBSD runner, and the licence gate has been seen to refuse.
+
+- `.forgejo/workflows/ci.yml`: eight steps on the `freebsd-15-jail` runner, each
+  asserting a value only execution could have produced rather than printing a
+  status. Every external call carries a `timeout` and a hung call is a named
+  finding against the runner, not a red build.
+- The licence gate pins `cargo-deny 0.20.2` and asserts the pin rather than
+  printing it: the literal is duplicated from the install line on purpose, so
+  moving one without the other fails the step.
+- **Test 3, the gate's negative control.** `tests/fixtures/deny-gpl/` is a
+  separate workspace — excluded by the root manifest — holding one crate
+  licensed `GPL-3.0-only` under a `BSD-2-Clause` root, so the only violation in
+  that graph is the GPL crate. The step drives it with the real `deny.toml`
+  rather than a copy, and asserts the exact status 4 plus the log naming both
+  `GPL-3.0-only` and `gpl-fixture`. Before this, the gate had passed from the
+  first run having examined no dependency licence at all; a gate never seen to
+  fail is indistinguishable from one that is not wired up.
+- **A timeout is a bound, not a diagnosis.** Four `rc 124` messages asserted
+  causes the bound cannot support — a clone finishing at 181 s, a test taking
+  901 s, and two that named the registry. Each now states what the status
+  proves and says which log decides the rest. The cargo-deny install gains a
+  60-second index touch ahead of its 900-second wrapper, so no-route fails in
+  its own words and the wrapper can only mean slow.
+- `tools/check-workflows.py` reads every workflow and refuses an unbounded job
+  or invocation.
+- `docs/release.md` gains **Test 3: the licence gate's negative control**, and
+  `docs/coverage.toml` maps the fixture to it.
+
 ## 0.1.1 — 2026-10-10
 
 The naming sweep is recorded and the crate name is settled.
