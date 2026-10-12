@@ -43,6 +43,7 @@ import os
 import re
 import subprocess
 import sys
+import typing
 import tempfile
 from pathlib import Path
 
@@ -102,7 +103,23 @@ _WS_VERSION = re.compile(r"^version\s*=\s*\"(?P<ver>[^\"]+)\"", re.M)
 _TRAILER_HEAD = re.compile(r"\ADocs-Unchanged:\s*(?P<doc>\S+)\s*(?:--|\u2014)\s*(?P<rest>.*)\Z")
 
 
-def docs_unchanged(message: str) -> dict[str, str]:
+class Trailers(typing.NamedTuple):
+    """What a commit message's trailers grant, AND what they claimed in vain.
+
+    `malformed` exists because arm 9's finding used to say "with no
+    `Docs-Unchanged` trailer in the run for them", which is flatly FALSE when a
+    trailer is present and unreadable -- ibis r0.3/22: an author whose reason
+    wrapped reads that, sees the reason sitting in their own commit message, and
+    concludes the gate is broken. Refusing the exemption is right; refusing it
+    while describing the message incorrectly is a second defect, and the author
+    is the person least able to tell them apart.
+    """
+
+    exempt: dict[str, str]
+    malformed: list[str]
+
+
+def docs_unchanged(message: str) -> Trailers:
     """{doc: reason} from a commit message, folding wrapped reasons as git does.
 
     A reason continues onto any following line that begins with whitespace, which
@@ -122,6 +139,7 @@ def docs_unchanged(message: str) -> dict[str, str]:
     reading of git's documentation.
     """
     out: dict[str, str] = {}
+    malformed: list[str] = []
     doc = None
     parts: list[str] = []
 
@@ -159,7 +177,18 @@ def docs_unchanged(message: str) -> dict[str, str]:
                     f"one line, or indent the continuation.",
                     file=sys.stderr,
                 )
-                return {}
+                # EVERY doc the broken message claimed is reported malformed,
+                # not just the wrapped one: git discards the whole block, so the
+                # well-formed sibling's author is equally entitled to be told why
+                # their trailer did nothing.
+                claimed = [doc]
+                for other in lines[idx + 1 :]:
+                    if other[:1].isspace():
+                        continue
+                    head = _TRAILER_HEAD.match(other.strip())
+                    if head:
+                        claimed.append(head.group("doc"))
+                return Trailers({}, sorted(set(list(out) + claimed)))
             continue
         if doc is not None and line[:1].isspace() and line.strip():
             parts.append(line)
@@ -168,7 +197,7 @@ def docs_unchanged(message: str) -> dict[str, str]:
             flush()
             doc, parts = None, []
     flush()
-    return out
+    return Trailers(out, malformed)
 
 
 class CannotRun(Exception):
@@ -557,8 +586,11 @@ def evaluate(repo: Path, base: str, head: str, today: str | None = None) -> list
     # --- arm 9: a source path changed with no mapped doc, and no trailer ---
     coverage = show(repo, head_rev, "docs/coverage.toml")
     trailers: dict[str, str] = {}
+    malformed_trailers: list[str] = []
     for rev in revs:
-        trailers.update(docs_unchanged(bodies[rev]))
+        read = docs_unchanged(bodies[rev])
+        trailers.update(read.exempt)
+        malformed_trailers.extend(read.malformed)
     # THE BUMP'S OWN MECHANICS ARE NOT A SOURCE CHANGE, and this narrowing is
     # exactly as wide as its reason. A bump commit must change Cargo.toml (and
     # with it Cargo.lock); if that counted as "a source path changed", EVERY
@@ -592,11 +624,34 @@ def evaluate(repo: Path, base: str, head: str, today: str | None = None) -> list
             continue
         missing = [doc for doc in unchanged if doc not in trailers]
         if missing:
+            # NAME THE MALFORMED TRAILER RATHER THAN DENYING IT EXISTS. "no
+            # trailer in the run for them" is false when one is present and
+            # unreadable, and the author -- who can see the reason in their own
+            # message -- would read the finding as a bug in the gate.
+            claimed = [doc for doc in missing if doc in malformed_trailers]
+            if claimed:
+                # a SENTENCE BREAK, not a comma: this clause is a second
+                # statement about the run, and ", A trailer IS present" read as
+                # a splice in the finding the author has to act on.
+                why = (
+                    ". "
+                    f"A `Docs-Unchanged` trailer for {', '.join(claimed)} IS "
+                    f"present in the run but was not readable: a reason wrapped "
+                    f"to column 0 ends the trailer block, so `git "
+                    f"interpret-trailers` reads no trailers from that message "
+                    f"at all (exit 0, no output) and nothing in it exempts "
+                    f"anything. Indent the continuation, or put the reason on "
+                    f"one line. This is not a missing trailer"
+                )
+            else:
+                why = (
+                    ", with no `Docs-Unchanged: <doc> -- <reason>` trailer in "
+                    "the run for them"
+                )
             add(
                 "docs-unchanged-no-trailer",
                 f"{path} changed and its mapped doc(s) {', '.join(missing)} did "
-                f"not, with no `Docs-Unchanged: <doc> -- <reason>` trailer in the "
-                f"run for them. The mapping is read from docs/coverage.toml, which "
+                f"not{why}. The mapping is read from docs/coverage.toml, which "
                 f"`rumor docs --check` owns; a mapping this reader misparses is a "
                 f"defect in this arm rather than in the run",
             )
@@ -863,7 +918,30 @@ def _trailer_battery() -> int:
     failures = 0
     print("  docs_unchanged() shapes:")
     for name, message, want in cases:
-        got = docs_unchanged(message)
+        got = docs_unchanged(message).exempt
+        if got == want:
+            print(f"    ok   {name}")
+        else:
+            print(f"    FAIL {name}\n         want {want}\n         got  {got}")
+            failures += 1
+
+    # THE REFUSAL MUST ALSO BE EXPLAINED. Exempting nothing is correct and
+    # insufficient: the author can see the reason in their own message, so the
+    # finding has to say the trailer was present and unreadable (ibis r0.3/22).
+    # Asserted on the DOCS NAMED, since that is what reaches the finding text.
+    for name, message, want in (
+        ("the wrapped doc is named malformed",
+         "release: v1\n\nDocs-Unchanged: docs/a.md -- a reason that\nwrapped\n",
+         ["docs/a.md"]),
+        ("a well-formed SIBLING in a broken block is named too",
+         "release: v1\n\nDocs-Unchanged: docs/a.md -- a reason that\nwrapped\n"
+         "Docs-Unchanged: docs/b.md -- a good reason\n",
+         ["docs/a.md", "docs/b.md"]),
+        ("a well-formed message names nothing malformed",
+         "release: v1\n\nDocs-Unchanged: docs/a.md -- a reason\n",
+         []),
+    ):
+        got = docs_unchanged(message).malformed
         if got == want:
             print(f"    ok   {name}")
         else:
@@ -879,8 +957,17 @@ def _trailer_battery() -> int:
     for name, message in (
         ("folded", "release: v1\n\nDocs-Unchanged: docs/a.md -- "
                    "the edit is a comment and changes no\n  command, flag or output\n"),
-        ("broken", "release: v1\n\nDocs-Unchanged: docs/a.md -- "
-                   "the edit is a comment and changes no\ncommand, flag or output\n"),
+        # THE BROKEN MESSAGE CARRIES A WELL-FORMED SIBLING ON PURPOSE. With a
+        # single trailer both the right rule and the WIDER one yield {}, so the
+        # agreement check could not see the divergence that actually happened
+        # here -- it was the sibling shape case that caught it. Measured by
+        # restoring the wider rule and watching which case failed (ibis
+        # r0.3/22's first vacuity question). The cross-check now covers the real
+        # defect rather than a neighbouring one.
+        ("broken, with a well-formed sibling",
+         "release: v1\n\nDocs-Unchanged: docs/a.md -- "
+         "the edit is a comment and changes no\ncommand, flag or output\n"
+         "Docs-Unchanged: docs/b.md -- a perfectly good reason\n"),
     ):
         try:
             done = subprocess.run(
@@ -888,14 +975,23 @@ def _trailer_battery() -> int:
                 input=message, capture_output=True, text=True, timeout=60, check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            print(f"    UNMEASURED git-agreement/{name}: git could not be run: {exc}")
+            # GIT ABSENT IS A FAILED SELF-TEST, NOT AN UNMEASURED ARM. Elsewhere
+            # in this file "cannot run" is reported rather than counted, because
+            # a missing cargo must not refuse a release. Here the opposite holds:
+            # every other arm asks git about the range, so a gate on a box
+            # without git cannot reach any verdict at all. Letting this case
+            # print UNMEASURED and pass would have let the workflow's
+            # "0 failed" grep succeed with the agreement unchecked -- ibis
+            # r0.3/22's second vacuity question, and it was a real hole.
+            print(f"    FAIL git agreement, {name} shape: git could not be run: {exc}")
+            failures += 1
             continue
         theirs = {}
         for line in done.stdout.splitlines():
             found = _TRAILER_HEAD.match(line.strip())
             if found:
                 theirs[found.group("doc")] = found.group("rest").strip()
-        mine = docs_unchanged(message)
+        mine = docs_unchanged(message).exempt
         if mine == theirs:
             print(f"    ok   git agreement, {name} shape: both read {sorted(mine) or '[]'}")
         else:
