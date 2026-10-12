@@ -307,6 +307,32 @@ Until a signer exists on the runner, a tag run reports `SHA256SUMS` written and
 UNSIGNED, and the release is incomplete by the epic's own list rather than by
 the file's silence.
 
+## Runner requirements
+
+Every tool a workflow in this repository depends on, so a second runner is stood
+up from this list rather than from archaeology in the YAML. A dependency on the
+runner is allowed **when it is declared** (fable, thread:rumor/342); this is that
+declaration, and anything a workflow needs which is not here is a defect in this
+list.
+
+| tool | used by | pinned? |
+| --- | --- | --- |
+| `rustc`, `cargo` | every build, test and lint step; the release build | by the repository's toolchain file |
+| `cargo-deny` | `ci.yml`'s licence gate | **0.20.2**, asserted against the install line so moving one without the other fails the step |
+| `python3` | `release-gate.yml` runs `tools/release-gate.py`; `tools/check-workflows.py` is local-only | no version pin; the gate's probe step measures it and fails loudly when absent |
+| `sha256` or `sha256sum` | `tag-pipeline.yml`'s checksum step | either; the step measures which is present and refuses when neither is |
+| `gpg` | `tag-pipeline.yml`'s signature step | optional — a missing trust store is reported separately from a failed signature |
+
+**The gate's own probe is the enforcement, not this table.** `release-gate.yml`
+measures `python3` and fails the run when it is absent rather than skipping, so a
+runner missing it produces a named failure instead of a quiet pass. The table
+exists so the failure is anticipated rather than diagnosed.
+
+**`runs-on` binds to a LABEL, not to a platform.** The label says which runner
+answers; it does not measure what that runner has. `tag-pipeline.yml` therefore
+asserts its host triple against `x86_64-unknown-freebsd` from `rustc -vV` rather
+than trusting the label, and refuses to publish from any other host.
+
 ## CI
 
 One workflow, `.forgejo/workflows/ci.yml`, on the FreeBSD runner. Linux waits on
