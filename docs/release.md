@@ -137,13 +137,98 @@ asserts directly. Two further rules, both learned the hard way:
   as open PRs, all twelve also fail `not-rebased` and no fixture shows its own
   reason — a confounder that has already bitten this repo once, when `r0.2-ci`
   went three commits behind inside a day.
+- **A fixture must be red for one reason across the whole PR, not just in the
+  gate.** The branch's other checks run too. The first
+  `revision-entry-missing` fixture put its constant above `main.rs`'s inner doc
+  comments, so the tree did not compile: the arm fired correctly, `docs --check`
+  could not build, arm `docs-stale` went UNMEASURED, and `ci.yml` would have
+  been red for E0753 — a second reason the fixture does not name. Run
+  `cargo test --locked`, `cargo fmt --all --check` and
+  `cargo clippy --locked --all-targets -- -D warnings` on each fixture before
+  opening its PR.
+- **Verify each fixture with its own tree checked out.** Arm `docs-stale` runs
+  `rumor docs --check`, which reads the working tree, so it is the one arm whose
+  answer depends on the checkout. The gate reports UNMEASURED when the checkout
+  is not the run being gated; a verification from another branch therefore
+  leaves that arm unmeasured rather than wrong, but it also leaves it unproven.
+- **Never rewrite a pushed fixture.** Re-cut it under a `-<n>` suffix, as
+  `r0.2-ci-2` was, and leave the original on the forge as the record. The
+  asserting step strips a trailing `-<digits>` when it derives the arm from the
+  branch name, so a re-cut keeps the arm it declares.
+
+#### The branches, and the window that bounds them
+
+Eleven fixtures plus the arm-9 half of the pair were driven in one window whose
+endpoints were read with `git ls-remote origin main` and are identical, so
+`main` did not move across the batch and arm `not-rebased` cannot have
+confounded the rest:
+
+| window | `main` | |
+| --- | --- | --- |
+| open | `5e8a6392c4c612b72fc2006b070a7e3513af3158` | |
+| close | `5e8a6392c4c612b72fc2006b070a7e3513af3158` | identical |
+
+| arm | branch |
+| --- | --- |
+| `version-unchanged` | `r0.3-fix-version-unchanged` |
+| `subject-mismatch` | `r0.3-fix-subject-mismatch` |
+| `commit-after-bump` | `r0.3-fix-commit-after-bump` |
+| `version-not-greater` | `r0.3-fix-version-not-greater` |
+| `changelog-section-absent` | `r0.3-fix-changelog-section-absent` |
+| `changelog-section-empty` | `r0.3-fix-changelog-section-empty` |
+| `changelog-date-wrong` | `r0.3-fix-changelog-date-wrong` |
+| `docs-stale` | `r0.3-fix-docs-stale` |
+| `revision-entry-missing` | `r0.3-fix-revision-entry-missing-2` |
+| `doc-run-block-failed` | `r0.3-fix-doc-run-block-failed` |
+| `not-rebased` | `r0.3-fix-not-rebased` |
+| `docs-unchanged-no-trailer` | `r0.3-fix-docs-unchanged-no-trailer-2` |
+| *(none — the control)* | `r0.3-control-docs-unchanged-3` |
+
+Three branches are superseded and stay on the forge unrewritten:
+`r0.3-fix-docs-unchanged-no-trailer` and `r0.3-control-docs-unchanged` carried a
+changelog section inserted above the file's preamble, and
+`r0.3-fix-revision-entry-missing` did not compile. `r0.3-control-docs-unchanged-2`
+is kept deliberately: its trailer is hard-wrapped to column 0, so it is now a
+**red** control for the wrap rule below.
+
+#### `r0.3-fix-docs-stale` is red twice, from one cause
+
+Its unmapped path also fails `coverage::tests::committed_tree_is_fully_mapped`,
+because the arm and that test measure the same property. This is one cause with
+two reporters, not the two-unrelated-reasons ambiguity the rule above forbids,
+and it is not removable: mapping the path would destroy the fixture. Every other
+fixture and the control are green in `ci.yml`.
+
+#### Writing a `Docs-Unchanged` trailer
+
+It is a git trailer and the gate reads it as one.
+
+- The separator is `--` or an em dash. A lone `-` is **not** accepted: it is
+  ambiguous against a hyphenated filename, and widening the separator widens the
+  exemption, which is the one direction worth being strict in.
+- A reason longer than one line **continues on an indented line**, which is
+  git's own folding rule. The gate joins the indented continuations.
+- A reason wrapped to **column 0 does not exempt.** git itself would read only
+  the first line, so there is no honest way to accept it: truncating publishes a
+  sentence nobody wrote — the first version of this reader turned "the edit is a
+  comment and changes no command, flag or output" into "…and changes no", which
+  reverses it, and the epic copies these reasons into the PR summary. Such a
+  trailer is dropped with a note on stderr naming the file, and
+  `docs-unchanged-no-trailer` fires for that doc.
+- An empty reason does not exempt.
 
 ### The positive control
 
 One further branch that the gate must **pass**: a source change whose mapped doc
 is unchanged, carrying `Docs-Unchanged: <doc> — <reason>`. It differs from arm
 9's fixture **only by the trailer** — same source path, same mapped doc, same
-edit. Two branches differing in two things would not show which one the gate
+edit. `r0.3-control-docs-unchanged-3` is made with `git commit-tree` on arm 9's
+fixture's own tree object, so `git diff` between the two branches is empty and
+the message is provably the only difference either run can see.
+
+A control is only a control when every arm actually ran. Verify it with its own
+tree checked out and **require stderr to be empty**: a control that passes with
+`docs-stale` UNMEASURED has twelve arms on paper and eleven in fact. Two branches differing in two things would not show which one the gate
 read. Without a passing control, twelve refusals prove the gate is loud rather
 than discriminating: a gate that refuses everything satisfies all twelve.
 
