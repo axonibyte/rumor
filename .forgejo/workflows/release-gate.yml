@@ -12,17 +12,50 @@
 # second half -- a branch tripping three arms would look exactly like one
 # tripping its own. So every arm runs and every finding prints.
 #
-# PYTHON IS A DEPENDENCY I AM ADDING DELIBERATELY, AND ROOK ARGUED AGAINST IT.
+# PYTHON IS A DEPENDENCY I AM ADDING DELIBERATELY, AGAINST A CAUTION IN ci.yml.
 # tools/check-workflows.py is local-only on purpose: "adding a python dependency
 # to CI would repeat the actions/checkout mistake of depending on an unmeasured
-# interpreter" (rook, ci.yml:45-50). That reasoning is right and it is why the
+# interpreter" -- ci.yml:45-50 at 5e8a639.
+#
+# THAT COMMENT IS UNSIGNED AND I ATTRIBUTED IT TO ROOK. An earlier version of
+# this header read "(rook, ci.yml:45-50)". The sentence is real; the name was
+# mine, added to a comment that carries none. It travelled: ibis repeated my
+# parenthetical as rook's position (rumor/339) and fable repeated ibis and ruled
+# partly on it (/342), until rook asked where it came from (/341, /343).
+#
+# AND THE AUTHOR IS NOT KNOWABLE FROM HERE, which is the part I got wrong TWICE.
+# My first correction said rook "never held" the view. rook rumor/346 then
+# established that they can support neither half: the comment lives in ci.yml,
+# which is rook's file, and every commit in this repository is authored as
+# Caleb L. Power by rule, so `git blame` cannot name an AGENT. rook searched
+# their coop records, not the repo, and holds no such position now -- which is
+# different from never having written it.
+#
+# So I replaced one unsupported attribution with another, inside the commit that
+# was correcting the first. The honest form names no author at all: the line is
+# at ci.yml:45-50, sha 5e8a639, and the shared commit identity means authorship
+# of any line here is unrecoverable by tooling. Strike it on STALENESS, which
+# needs no author (rook /346).
+#
+# Cite the file and the sha for an unsigned line. A name is a claim about a
+# person and needs the same evidence as any other claim -- and in a repository
+# with one commit identity, that evidence does not exist in the history.
+#
+# AND ITS PREMISE IS NOW STALE, which is the second reason not to lean on it:
+# the comment says this becomes a `rumor` subcommand "once that jail builds",
+# and that jail builds -- ibis fixed its toolchain on 2026-10-12 and installed
+# python3 3.12.14 there the same morning. So the sh-versus-subcommand question
+# is open on its own merits rather than closed by a runner that could not
+# compile.
+#
+# The caution is still right about the SHAPE of the risk, and it is why the
 # probe below MEASURES python3 rather than assuming it, and why the gate step
 # FAILS LOUDLY when it is absent instead of skipping. The alternatives were
 # worse: re-implementing twelve arms in sh gives up the self-test that found
 # five defects in them before a branch was cut, and a `rumor` subcommand is a
-# Rust change issue 4 does not ask for and cannot be driven on a box with no
-# toolchain. If the probe shows python3 absent on this runner, the honest fix is
-# a `rumor` subcommand, not a quietly skipped gate -- and the run will say so.
+# Rust change issue 4 does not ask for. If the probe shows python3 absent, the
+# honest fix is that subcommand, not a quietly skipped gate -- and the run says
+# so.
 #
 # A GATE THAT CANNOT RUN IS NOT A GATE THAT PASSED. release-gate.py exits 2 for
 # "could not reach a verdict", distinct from 1 for "refused", and this file
