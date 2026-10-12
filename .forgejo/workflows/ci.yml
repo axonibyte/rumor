@@ -279,6 +279,12 @@ jobs:
           test "$rc" -eq 124 && { echo "HANG: the GPL control exceeded 300s. RUNNER finding; the control did NOT run."; exit 124; }
           test "$rc" -eq 1 && { echo "the GPL control exited 1: deny.toml did not deserialize, so the control never ran"; exit 1; }
           test "$rc" -eq 0 && { echo "CONTROL FAILED: deny PASSED a GPL-3.0-only dependency. The licence gate does not gate, and the clean verdict below would mean nothing."; exit 1; }
+          # PIN THE STATUS, not merely "nonzero". ibis rumor/316: this ladder tested 124,
+          # then 1, then 0, then the two names -- so ANY other nonzero passed, and a panic
+          # at 101 whose output happened to print both strings would have PROOF-passed as a
+          # licence refusal. Two oracles are not two while one of them admits any mechanism.
+          # cargo-deny returns 4 for a licence outside the allowlist, so 4 is the assertion.
+          test "$rc" -eq 4 || { echo "the GPL control exited $rc, not 4. cargo-deny returns 4 for a licence outside the allowlist; any other nonzero is a different failure wearing a refusal's clothes"; exit 1; }
           grep -q 'GPL-3.0-only' ../deny-gpl.log \
             || { echo "the GPL control exited $rc without naming GPL-3.0-only: something else refused, so this does not show the licence gate working"; exit 1; }
           grep -q 'gpl-fixture' ../deny-gpl.log \
