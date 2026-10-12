@@ -70,7 +70,13 @@ ARMS = (
 _SUBJECT = re.compile(r"\Arelease: v(?P<ver>\d+\.\d+\.\d+)\Z")
 _WS_VERSION = re.compile(r"^version\s*=\s*\"(?P<ver>[^\"]+)\"", re.M)
 _TRAILER = re.compile(
-    r"^Docs-Unchanged:\s*(?P<doc>\S+)\s*(?:--|—|-)\s*(?P<reason>.+?)\s*$", re.M
+    # A LONE HYPHEN IS NOT A SEPARATOR. ibis r0.3/8: accepting `-` beside `--`
+    # and the em dash widens the EXEMPTION, and the exemption is the one
+    # direction worth being strict in -- it is what lets a run skip a doc. A
+    # single `-` is also ambiguous against a hyphenated filename, so
+    # "docs/a-b.md - why" has two readings. `--` is this project's ASCII form
+    # and the em dash is the epic's own spelling.
+    r"^Docs-Unchanged:\s*(?P<doc>\S+)\s*(?:--|—)\s*(?P<reason>.+?)\s*$", re.M
 )
 
 
@@ -799,6 +805,15 @@ def main(argv: list[str]) -> int:
         default=None,
         help="exactly this arm must fire, and no other; for a fixture branch",
     )
+    parser.add_argument(
+        "--ids-to",
+        default=None,
+        metavar="PATH",
+        help="write the finding ids, one per line, sorted and unique. ROOK r0.3/9: "
+        "a second oracle that parses this tool's HUMAN log shares a corpus with "
+        "it, and their display gate poisoned its own corpus exactly that way. "
+        "The file boundary is the fix, not more parsing.",
+    )
     args = parser.parse_args(argv)
 
     if args.self_test:
@@ -814,6 +829,15 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
         return RC_CANNOT_RUN
+
+    if args.ids_to:
+        try:
+            with open(args.ids_to, "w", encoding="utf-8") as fh:
+                for arm in sorted({arm for arm, _ in found}):
+                    fh.write(arm + "\n")
+        except OSError as exc:
+            print(f"release-gate: could not write {args.ids_to}: {exc}", file=sys.stderr)
+            return RC_CANNOT_RUN
 
     for arm, detail in found:
         print(f"REFUSED [{arm}] {detail}")

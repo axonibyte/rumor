@@ -118,7 +118,7 @@ jobs:
           HEAD_SHA="${GITHUB_SHA:-HEAD}"
           rc=0
           timeout 600 python3 tools/release-gate.py \
-            --base origin/main --head "$HEAD_SHA" > ../gate.log 2>&1 || rc=$?
+            --base origin/main --head "$HEAD_SHA" --ids-to ../gate-ids.txt > ../gate.log 2>&1 || rc=$?
           cat ../gate.log
           test "$rc" -eq 124 && { echo "HANG: the release gate exceeded 600s. RUNNER finding; the gate did NOT reach a verdict and this is not a pass."; exit 124; }
           test "$rc" -eq 2 && { echo "the gate CANNOT RUN on this input, which is neither a pass nor a refusal -- read the reason above"; exit 1; }
@@ -127,3 +127,43 @@ jobs:
           grep -q 'PROOF the release gate found nothing' ../gate.log \
             || { echo "the gate exited 0 without its own clean line: it did not run to completion"; exit 1; }
           echo "PROOF the release gate admitted this run with every arm measured"
+
+      - name: a fixture branch must name its arm AND NO OTHER
+        if: always()
+        run: |
+          set -o pipefail
+          # IBIS r0.3/8: the step above runs the gate PLAIN, so a fixture PR goes
+          # red and NOTHING asserts "and no other reason" -- two arms firing give
+          # the same red as one. The mechanism was in the gate and the workflow
+          # never called it. `--expect` alone cannot fix it either: it exits 0 on a
+          # match, so a correctly-refused fixture would go GREEN and contradict the
+          # same Test's first half. So: plain above for the red, and the SET
+          # asserted here. Red either way, and the step names which kind of red.
+          #
+          # THE ARM IS DECLARED BY THE BRANCH NAME, r0.3-fix-<arm-id>, which is the
+          # convention docs/release.md states. Deriving it from the ref rather than
+          # from a file in the branch means the declaration and the branch cannot
+          # drift apart.
+          BR="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+          case "$BR" in
+            r0.3-fix-*) WANT="${BR#r0.3-fix-}" ;;
+            *) echo "not a fixture branch ($BR): the gate's own verdict above stands and there is no declared arm to compare"; exit 0 ;;
+          esac
+          # ROOK r0.3/9: compare the gate's MACHINE-READABLE id list, never its
+          # human log. A second oracle that greps the first's prose shares a
+          # corpus with it, and a finding whose TEXT quoted an id would be read
+          # as a finding. Both scratch files live OUTSIDE the checkout, because
+          # the docs walk exempts only .git and target and any untracked file in
+          # the tree fails `docs --check` -- rook's own third hazard, r0.3/0.
+          test -f ../gate-ids.txt || { echo "no gate-ids.txt: the gate step did not run, so its finding set cannot be checked"; exit 1; }
+          echo "declared arm: ${WANT}"
+          echo "findings:"; cat ../gate-ids.txt
+          printf '%s\n' "$WANT" > ../want-ids.txt
+          cmp -s ../gate-ids.txt ../want-ids.txt \
+            || { echo "FIXTURE DOES NOT ISOLATE ITS ARM: branch ${BR} declares ${WANT} and the gate found $(tr '\n' ' ' < ../gate-ids.txt). Issue 4 requires the reason it names AND NO OTHER -- a fixture tripping two arms shows neither."; exit 1; }
+          echo "PROOF the fixture tripped exactly [${WANT}] and no other arm"
+          # AND THE RED IS STILL REQUIRED. A fixture whose gate run went GREEN has
+          # not shown a refusal at all, which is the Test's first half.
+          grep -q "^REFUSED \[${WANT}\]" gate.log \
+            || { echo "the gate did not refuse ${WANT} at all, so this fixture shows nothing"; exit 1; }
+          echo "PROOF the gate was RED for ${WANT}, which is the half a passing expectation would hide"
