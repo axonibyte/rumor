@@ -57,6 +57,15 @@ jobs:
           # pipefail: without it a pipeline reports its LAST stage's status, so a
           # failing gate piped to a formatter exits 0 and this step goes GREEN.
           set -o pipefail
+          # THE LINES BELOW ARE A CENSUS, NOT A PROOF, and are deliberately
+          # left as bare substitutions. They are not labeled PROOF and assert
+          # nothing: a blank `uname` degrades the record without claiming
+          # anything false, which is the distinction the swept sites failed.
+          # The `command -v` line is the pattern to copy -- its status is
+          # consumed into FOUND/ABSENT branches rather than discarded.
+          # Interpolations inside REFUSAL branches elsewhere in this file are
+          # also left alone: an empty one is itself information, and the step is
+          # already exiting non-zero.
           echo "uname   $(uname -a)"
           echo "whoami  $(whoami)"
           for t in git python3 python cargo; do
@@ -81,8 +90,19 @@ jobs:
           rc=0
           timeout 120 git fetch --quiet origin "+refs/pull/${GITHUB_REF_NAME:-0}/head:refs/pr-head" || rc=$?
           test "$rc" -eq 0 || echo "no refs/pull head for ${GITHUB_REF_NAME:-0}; falling back to the event sha"
-          echo "PROOF clone head $(timeout 30 git rev-parse HEAD)"
-          echo "PROOF origin/main $(timeout 30 git rev-parse origin/main)"
+          # THESE TWO LINES ARE THE ONLY RECORD OF WHICH COMMITS THE GATE
+          # JUDGED (ibis thread:r0.3/36), and they were interpolated command
+          # substitutions with nothing asserting them. There is no `set -e` here,
+          # so a failed rev-parse printed "PROOF clone head " and the run carried
+          # on -- a verdict with no subject, which is the one thing a gate's
+          # output must never be. The fetch above is allowed to fail and fall
+          # back, which is exactly the path that makes this reachable.
+          HEADSHA=$(timeout 30 git rev-parse HEAD) || HEADSHA=""
+          test -n "$HEADSHA" || { echo "could not read the clone's HEAD, so this run cannot record WHICH commit it judged. A verdict without a subject is not a verdict."; exit 1; }
+          MAINSHA=$(timeout 30 git rev-parse origin/main) || MAINSHA=""
+          test -n "$MAINSHA" || { echo "could not read origin/main, which every arm's merge-base rests on."; exit 1; }
+          echo "PROOF clone head $HEADSHA"
+          echo "PROOF origin/main $MAINSHA"
 
       - name: python3 is present, or the gate cannot run
         run: |
@@ -92,7 +112,19 @@ jobs:
           cat ../py.log
           test "$rc" -eq 124 && { echo "HANG: python3 --version exceeded 20s. RUNNER finding."; exit 124; }
           test "$rc" -eq 0 || { echo "python3 is ABSENT on this runner, so the release gate CANNOT RUN. This is NOT a pass: twelve refusal arms went unmeasured. The fix is a rumor subcommand, not a skipped step -- see this file's header."; exit 1; }
-          echo "PROOF python3 $(timeout 20 python3 --version 2>&1)"
+          # THE PROOF READS THE RUN THAT WAS CHECKED, not a second one. This
+          # line used to invoke python3 AGAIN to interpolate its version, so the
+          # rc assertion above covered one execution and the evidence came from
+          # a different one -- ibis thread:r0.3/36 separates this as a weaker
+          # class than a wrong proof, and it is: the CLAIM is pinned, only the
+          # DATA was unasserted. It is still worth closing, because WHICH python3
+          # ran is the whole substance of this step, and a second invocation on a
+          # box with two interpreters on PATH can answer differently from the one
+          # that passed.
+          PYVER=""
+          read -r PYVER < ../py.log || true
+          test -n "$PYVER" || { echo "python3 --version exited 0 and printed nothing, so WHICH python3 ran is unrecorded and this step proves only that something exited 0."; exit 1; }
+          echo "PROOF python3 $PYVER"
 
       - name: the gate's own self-test, before it judges anything
         run: |

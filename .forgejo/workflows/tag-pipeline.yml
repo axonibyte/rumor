@@ -46,6 +46,15 @@ jobs:
       - name: probe the runner (non-fatal; names what is absent)
         run: |
           set -o pipefail
+          # THE LINES BELOW ARE A CENSUS, NOT A PROOF, and are deliberately
+          # left as bare substitutions. They are not labeled PROOF and assert
+          # nothing: a blank `uname` degrades the record without claiming
+          # anything false, which is the distinction the swept sites failed.
+          # The `command -v` line is the pattern to copy -- its status is
+          # consumed into FOUND/ABSENT branches rather than discarded.
+          # Interpolations inside REFUSAL branches elsewhere in this file are
+          # also left alone: an empty one is itself information, and the step is
+          # already exiting non-zero.
           echo "uname   $(uname -a)"
           for t in git cargo rustc sha256 sha256sum gpg ssh-keygen; do
             p=$(command -v "$t" 2>/dev/null) && echo "$t  FOUND  $p" || echo "$t  ABSENT"
@@ -65,7 +74,12 @@ jobs:
           timeout 120 git fetch --quiet --tags origin || rc=$?
           test "$rc" -eq 124 && { echo "HANG: git fetch --tags exceeded 120s. RUNNER finding."; exit 124; }
           test "$rc" -eq 0 || { echo "git fetch --tags exited $rc"; exit "$rc"; }
-          echo "PROOF origin/main $(timeout 30 git rev-parse origin/main)"
+          # ASSERTED, for release-gate.yml's reason: this is the only record of
+          # the main this tag is checked against, and an unasserted substitution
+          # printed "PROOF origin/main " and published anyway.
+          MAINSHA=$(timeout 30 git rev-parse origin/main) || MAINSHA=""
+          test -n "$MAINSHA" || { echo "could not read origin/main, and every check below compares the tag against it. Publishing nothing."; exit 1; }
+          echo "PROOF origin/main $MAINSHA"
 
       - name: the tag is ANNOTATED, not lightweight
         run: |
