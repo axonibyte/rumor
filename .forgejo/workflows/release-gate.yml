@@ -107,8 +107,13 @@ jobs:
           cat ../self.log
           test "$rc" -eq 124 && { echo "HANG: the gate's self-test exceeded 300s. RUNNER finding; the gate was NOT checked."; exit 124; }
           test "$rc" -eq 0 || { echo "the gate's own self-test FAILED, so its verdict on this PR means nothing"; exit "$rc"; }
-          grep -q 'of 12 cases ok, 0 failed' ../self.log \
-            || { echo "the self-test did not report 12 of 12: it did not run to completion"; exit 1; }
+          # THE COUNT IS PINNED ON PURPOSE. `0 failed` alone passes when a
+          # case silently stops being registered, which is how an arm quietly
+          # becomes unmeasured. Raise this number when a case is added -- 14 is
+          # 12 arm cases (docs-stale excepted, UNMEASURED by construction) plus
+          # the clean run plus the trailer pair's exempting half.
+          grep -q 'of 14 cases ok, 0 failed' ../self.log \
+            || { echo "the self-test did not report 14 of 14: a case did not run, or none ran"; exit 1; }
           echo "PROOF $(grep -oE '[0-9]+ of [0-9]+ cases ok, [0-9]+ failed' ../self.log | head -1 || true)"
 
       - name: gate this run against main

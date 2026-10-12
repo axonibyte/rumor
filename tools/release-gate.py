@@ -69,15 +69,79 @@ ARMS = (
 
 _SUBJECT = re.compile(r"\Arelease: v(?P<ver>\d+\.\d+\.\d+)\Z")
 _WS_VERSION = re.compile(r"^version\s*=\s*\"(?P<ver>[^\"]+)\"", re.M)
-_TRAILER = re.compile(
-    # A LONE HYPHEN IS NOT A SEPARATOR. ibis r0.3/8: accepting `-` beside `--`
-    # and the em dash widens the EXEMPTION, and the exemption is the one
-    # direction worth being strict in -- it is what lets a run skip a doc. A
-    # single `-` is also ambiguous against a hyphenated filename, so
-    # "docs/a-b.md - why" has two readings. `--` is this project's ASCII form
-    # and the em dash is the epic's own spelling.
-    r"^Docs-Unchanged:\s*(?P<doc>\S+)\s*(?:--|—)\s*(?P<reason>.+?)\s*$", re.M
-)
+# THE TRAILER IS A GIT TRAILER AND FOLDS LIKE ONE. `re.M` makes `$` end of
+# LINE, so a wrapped reason was captured only as far as the break -- ibis r0.3/13
+# measured it on my own control: "the edit is a comment and changes no" where the
+# sentence continues "command, flag or output". That REVERSES the meaning, and the
+# epic copies these reasons into the PR summary, so the exemption's audit trail
+# was corrupted exactly when a reason was long enough to wrap, which is when it is
+# worth reading. Silent truncation is the only option here that publishes a
+# sentence nobody wrote, so continuation lines are folded as git folds them: a
+# following line that begins with whitespace continues the reason.
+#
+# A LONE HYPHEN IS STILL NOT A SEPARATOR (ibis r0.3/8): accepting `-` beside `--`
+# and the em dash widens the EXEMPTION, which is the one direction worth being
+# strict in, and it is ambiguous against a hyphenated filename. NOTE this applies
+# to the TRAILER ONLY -- changelog_section deliberately keeps `-`, because arm 4's
+# fixture section is `## 0.1.1 -- 2026-10-12` and tightening both would break it.
+_TRAILER_HEAD = re.compile(r"\ADocs-Unchanged:\s*(?P<doc>\S+)\s*(?:--|\u2014)\s*(?P<rest>.*)\Z")
+
+
+def docs_unchanged(message: str) -> dict[str, str]:
+    """{doc: reason} from a commit message, folding wrapped reasons.
+
+    A reason continues onto any following line that begins with whitespace, which
+    is git's own trailer-continuation rule. A trailer whose reason folds to
+    nothing is not an exemption and is dropped, so an empty `Docs-Unchanged:`
+    cannot silently excuse a doc.
+    """
+    out: dict[str, str] = {}
+    doc = None
+    parts: list[str] = []
+
+    def flush():
+        if doc is not None:
+            reason = " ".join(p.strip() for p in parts if p.strip()).strip()
+            if reason:
+                out[doc] = reason
+
+    lines = message.splitlines()
+    for idx, line in enumerate(lines):
+        found = _TRAILER_HEAD.match(line.strip()) if not line[:1].isspace() else None
+        if found:
+            flush()
+            doc = found.group("doc")
+            parts = [found.group("rest")]
+            # A HARD-WRAPPED TRAILER IS MALFORMED AND MUST NOT EXEMPT. git's
+            # continuation is an INDENTED line; a reason wrapped to column 0 is
+            # not a continuation, and git itself would read the value as the
+            # first line alone. Folding by whitespace therefore does NOT rescue
+            # it -- measured on my own control, where "changes no" is where the
+            # sentence stopped and "command, flag or output" began a new line at
+            # column 0. So such a trailer is DROPPED rather than truncated,
+            # which makes arm docs-unchanged-no-trailer fire for that doc: the
+            # run claimed an exemption and did not receive one, loudly, with no
+            # new arm and no sentence published that nobody wrote.
+            nxt = lines[idx + 1] if idx + 1 < len(lines) else ""
+            if nxt.strip() and not nxt[:1].isspace() and not _TRAILER_HEAD.match(nxt.strip()):
+                print(
+                    f"release-gate: the Docs-Unchanged trailer for {doc} is "
+                    f"followed by an unindented line, so its reason is wrapped "
+                    f"and git would read only the first line. It does NOT "
+                    f"exempt. Put the reason on one line, or indent the "
+                    f"continuation.",
+                    file=sys.stderr,
+                )
+                doc, parts = None, []
+            continue
+        if doc is not None and line[:1].isspace() and line.strip():
+            parts.append(line)
+            continue
+        if doc is not None:
+            flush()
+            doc, parts = None, []
+    flush()
+    return out
 
 
 class CannotRun(Exception):
@@ -465,11 +529,9 @@ def evaluate(repo: Path, base: str, head: str, today: str | None = None) -> list
 
     # --- arm 9: a source path changed with no mapped doc, and no trailer ---
     coverage = show(repo, head_rev, "docs/coverage.toml")
-    trailers = {
-        found.group("doc"): found.group("reason")
-        for rev in revs
-        for found in _TRAILER.finditer(bodies[rev])
-    }
+    trailers: dict[str, str] = {}
+    for rev in revs:
+        trailers.update(docs_unchanged(bodies[rev]))
     # THE BUMP'S OWN MECHANICS ARE NOT A SOURCE CHANGE, and this narrowing is
     # exactly as wide as its reason. A bump commit must change Cargo.toml (and
     # with it Cargo.lock); if that counted as "a source path changed", EVERY
@@ -539,15 +601,69 @@ def _revisions(doc: str) -> list[str]:
 
 
 def _docs_check(repo: Path, ref: str) -> str | None:
-    """`rumor docs --check` at a ref, or None when it passes or cannot run.
+    """`rumor docs --check` for the run at `ref`, or None when it cannot answer.
 
     CANNOT RUN IS NOT A FINDING. If cargo is absent -- which was true of this
     runner until 2026-10-11 and is true of any box without a toolchain -- the
     arm reports nothing rather than refusing, and says so on stderr. A gate
     that refuses because its own tool is missing is the "always-refuse" mutant
     that makes every other arm meaningless.
+
+    THIS ARM READS THE CHECKOUT, SO IT VERIFIES THE CHECKOUT IS `ref`. Every
+    other arm asks git about the range and so is independent of what is checked
+    out; this one has to build and run `rumor`, and there is no way to ask a
+    cargo binary about a ref without putting that ref in a tree. `git worktree`
+    is not available as a route: `docs --check` fails inside one, because `.git`
+    is a file there (rumor issue 6, filed and not started). So the arm states
+    its premise and measures it, rather than taking `ref` and quietly ignoring
+    it -- which is what it did until now.
+
+    That was a SILENT WRONG ANSWER, not a limitation. Run from another branch,
+    the arm read THAT branch's tree and reported docs-stale clean for the
+    fixture whose unmapped path exists only on the fixture branch. The fixture
+    verification could not see it: it checked each branch out before gating, so
+    the premise held by accident every time it was tested. Found by running the
+    same fixture from a different checkout.
+
+    One hazard remains and is the safe direction. `docs --check` walks the
+    filesystem, so a gitignored stray (a `tools/__pycache__` from running this
+    very file as a module) is named as unmapped even though it is in no commit,
+    and the arm then REFUSES a clean run naming that path. A false refusal that
+    prints the offending filename is recoverable in seconds; a false pass is
+    not. The disagreement is rumor's -- `docs --check` and its own
+    committed_tree_is_fully_mapped test read different sets -- and is filed
+    rather than worked around here.
     """
     if not (Path(repo) / "Cargo.toml").exists():
+        return None
+    try:
+        checked_out = git(repo, "rev-parse", "HEAD").strip()
+        wanted = git(repo, "rev-parse", f"{ref}^{{commit}}").strip()
+    except CannotRun as exc:
+        print(
+            f"release-gate: {exc}; arm docs-stale UNMEASURED, not passed",
+            file=sys.stderr,
+        )
+        return None
+    if checked_out != wanted:
+        print(
+            "release-gate: arm docs-stale reads the CHECKOUT, and the checkout "
+            f"is {checked_out[:12]} while the run being gated ends at "
+            f"{wanted[:12]}. `rumor docs --check` would answer about the wrong "
+            "tree, so the arm is UNMEASURED, not passed. Check out the run (or "
+            "let CI, which gates its own checkout) to measure it.",
+            file=sys.stderr,
+        )
+        return None
+    dirty = git(repo, "status", "--porcelain", "--untracked-files=no").strip()
+    if dirty:
+        print(
+            "release-gate: arm docs-stale reads the checkout and the checkout "
+            f"has uncommitted changes to tracked files ({len(dirty.splitlines())} "
+            "path(s)), so `rumor docs --check` would answer about a tree that is "
+            "in no commit. UNMEASURED, not passed.",
+            file=sys.stderr,
+        )
         return None
     try:
         done = subprocess.run(
@@ -641,13 +757,99 @@ def _clean_run(repo: Path, today: str, ver: str = "0.2.1") -> None:
     _commit(repo, f"release: v{ver}")
 
 
+def _trailer_battery() -> int:
+    """Drive docs_unchanged() over every shape a trailer arrives in.
+
+    This is a unit battery and not a repo case because the shapes are a property
+    of one function and a repo case can only show one of them per run -- and
+    because the defect ibis found at r0.3/13 was INVISIBLE at the arm level: a
+    truncated reason still exempts the doc, so the arm stayed green while the
+    sentence it published was reversed. What a repo case can measure is the pair
+    below: exempt and not-exempt on the same tree.
+
+    Both directions are here. A guard that refuses a wrapped trailer can also
+    eat a legitimate one -- a trailer followed immediately by another trailer at
+    column 0 is the case that would break -- so that is asserted too.
+    """
+    long_reason = "the edit is a comment and changes no command, flag or output"
+    cases: list[tuple[str, str, dict[str, str]]] = [
+        (
+            "one line",
+            f"release: v1\n\nDocs-Unchanged: docs/a.md -- {long_reason}\n",
+            {"docs/a.md": long_reason},
+        ),
+        (
+            "an em dash separates",
+            "release: v1\n\nDocs-Unchanged: docs/a.md \u2014 a reason\n",
+            {"docs/a.md": "a reason"},
+        ),
+        (
+            "an INDENTED continuation folds, whole",
+            "release: v1\n\nDocs-Unchanged: docs/a.md -- the edit is a comment and changes no\n"
+            "  command, flag or output\n",
+            {"docs/a.md": long_reason},
+        ),
+        (
+            "a continuation at COLUMN 0 does not exempt",
+            "release: v1\n\nDocs-Unchanged: docs/a.md -- the edit is a comment and changes no\n"
+            "command, flag or output\n",
+            {},
+        ),
+        (
+            "an empty reason does not exempt",
+            "release: v1\n\nDocs-Unchanged: docs/a.md --\n",
+            {},
+        ),
+        (
+            "a lone hyphen is not a separator",
+            "release: v1\n\nDocs-Unchanged: docs/a.md - a reason\n",
+            {},
+        ),
+        (
+            "two trailers, adjacent, BOTH survive the wrap guard",
+            "release: v1\n\nDocs-Unchanged: docs/a.md -- reason one\n"
+            "Docs-Unchanged: docs/b.md -- reason two\n",
+            {"docs/a.md": "reason one", "docs/b.md": "reason two"},
+        ),
+        (
+            "a folded trailer followed by another trailer",
+            "release: v1\n\nDocs-Unchanged: docs/a.md -- reason one\n"
+            "  folded on\n"
+            "Docs-Unchanged: docs/b.md -- reason two\n",
+            {"docs/a.md": "reason one folded on", "docs/b.md": "reason two"},
+        ),
+        (
+            "prose after the trailer block ends the reason",
+            "release: v1\n\nDocs-Unchanged: docs/a.md -- a reason\n\nSome closing prose.\n",
+            {"docs/a.md": "a reason"},
+        ),
+    ]
+    failures = 0
+    print("  docs_unchanged() shapes:")
+    for name, message, want in cases:
+        got = docs_unchanged(message)
+        if got == want:
+            print(f"    ok   {name}")
+        else:
+            print(f"    FAIL {name}\n         want {want}\n         got  {got}")
+            failures += 1
+    return failures
+
+
 def self_test() -> int:
     today = "2026-01-01"
-    cases: list[tuple[str, callable]] = []
+    cases: list[tuple[str | None, str, callable]] = []
 
-    def case(arm: str):
+    def case(arm: str | None, label: str | None = None):
+        """Register a case. `label` names it when two cases share one arm.
+
+        The trailer pair below is two cases on the same subject -- one that
+        must fire and one that must NOT -- so the arm alone stopped being a
+        usable name for a case.
+        """
+
         def wrap(fn):
-            cases.append((arm, fn))
+            cases.append((arm, label or arm or "clean", fn))
             return fn
 
         return wrap
@@ -750,9 +952,36 @@ def self_test() -> int:
         _mk(repo, "docs/contract.md", "contract, edited\n\n## Revisions\n\n- one\n")
         _clean_run(repo, today)
 
-    failures = 0
+    # THE TRAILER PAIR. Same tree in both -- src/lib.rs changed, its mapped
+    # docs/design.md not -- differing ONLY in the trailer's shape, which is
+    # ibis r0.3/1 point 3 applied to the self-test rather than only to the
+    # fixture branches. Without the first case the gate could refuse every
+    # trailer and still show twelve green arms.
+    @case(None, "a folded trailer EXEMPTS")
+    def trailer_exempts(repo):
+        _mk(repo, "src/lib.rs", "// three\n")
+        _mk(repo, "Cargo.toml", '[workspace]\n\n[workspace.package]\nversion = "0.2.1"\n')
+        text = (repo / "CHANGELOG.md").read_text()
+        _mk(repo, "CHANGELOG.md",
+            text.replace("# Changelog\n", f"# Changelog\n\n## 0.2.1 -- {today}\n\na line.\n", 1))
+        _commit(repo, "release: v0.2.1",
+                "Docs-Unchanged: docs/design.md -- the edit is a comment and changes no\n"
+                "  command, flag or output\n")
+
+    @case("docs-unchanged-no-trailer", "a trailer wrapped at column 0 does NOT exempt")
+    def trailer_wrapped(repo):
+        _mk(repo, "src/lib.rs", "// three\n")
+        _mk(repo, "Cargo.toml", '[workspace]\n\n[workspace.package]\nversion = "0.2.1"\n')
+        text = (repo / "CHANGELOG.md").read_text()
+        _mk(repo, "CHANGELOG.md",
+            text.replace("# Changelog\n", f"# Changelog\n\n## 0.2.1 -- {today}\n\na line.\n", 1))
+        _commit(repo, "release: v0.2.1",
+                "Docs-Unchanged: docs/design.md -- the edit is a comment and changes no\n"
+                "command, flag or output\n")
+
+    failures = _trailer_battery()
     ran = 0
-    for arm, build in cases:
+    for arm, label, build in cases:
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
             repo = _world(tmp, today)
@@ -761,7 +990,7 @@ def self_test() -> int:
             try:
                 got = evaluate(repo, "main", "HEAD", today=today)
             except CannotRun as exc:
-                print(f"  FAIL {arm or 'clean'}: the gate could not run: {exc}")
+                print(f"  FAIL {label}: the gate could not run: {exc}")
                 failures += 1
                 ran += 1
                 continue
@@ -769,21 +998,21 @@ def self_test() -> int:
             ids = [found[0] for found in got]
             if arm is None:
                 if ids:
-                    print(f"  FAIL clean: a clean run was refused: {ids}")
+                    print(f"  FAIL {label}: a run that must pass was refused: {ids}")
                     failures += 1
                 else:
-                    print("  ok   clean run passes")
+                    print(f"  ok   {label} passes")
                 continue
             if ids == [arm]:
-                print(f"  ok   {arm} fires ALONE")
+                print(f"  ok   {label} fires ALONE")
             elif arm in ids:
-                print(f"  FAIL {arm}: fired with others -- {ids}. A fixture must trip its own arm and no other")
+                print(f"  FAIL {label}: fired with others -- {ids}. A fixture must trip its own arm and no other")
                 failures += 1
             else:
-                print(f"  FAIL {arm}: did not fire. got {ids or '[]'}")
+                print(f"  FAIL {label}: did not fire. got {ids or '[]'}")
                 failures += 1
 
-    covered = {arm for arm, _ in cases if arm}
+    covered = {arm for arm, _, _ in cases if arm}
     unmeasured = [arm for arm in ARMS if arm not in covered]
     print(f"\n  arms: {len(ARMS)}  measured here: {len(covered)}  UNMEASURED: {unmeasured}")
     print("  UNMEASURED is not covered: docs-stale needs a cargo toolchain and the")
