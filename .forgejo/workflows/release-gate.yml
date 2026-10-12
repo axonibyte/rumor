@@ -92,11 +92,25 @@ jobs:
           test "$rc" -eq 0 || echo "no refs/pull head for ${GITHUB_REF_NAME:-0}; falling back to the event sha"
           # THESE TWO LINES ARE THE ONLY RECORD OF WHICH COMMITS THE GATE
           # JUDGED (ibis thread:r0.3/36), and they were interpolated command
-          # substitutions with nothing asserting them. There is no `set -e` here,
-          # so a failed rev-parse printed "PROOF clone head " and the run carried
-          # on -- a verdict with no subject, which is the one thing a gate's
-          # output must never be. The fetch above is allowed to fail and fall
-          # back, which is exactly the path that makes this reachable.
+          # substitutions with nothing asserting them, so a failed rev-parse
+          # printed "PROOF clone head " and the run carried on to judge something
+          # it could not name -- a verdict with no subject, which is the one
+          # thing a gate's output must never be. The fetch above is allowed to
+          # fail and fall back, which is exactly the path that makes this
+          # reachable.
+          #
+          # NO SHELL OPTION CATCHES THIS, and the first version of this comment
+          # said "there is no `set -e` here", which names a remedy that does not
+          # work and would have sent the next reader to add one. A substitution's
+          # status inside an ARGUMENT is discarded before the shell can act on
+          # it. Measured on this box, /bin/sh and bash alike (ibis
+          # thread:r0.3/40):
+          #
+          #     set -eo pipefail; echo "PROOF head $(false)"
+          #     -> prints "PROOF head ", rc 0, and the next line still runs
+          #
+          # So assign-assert-print is not a verbose substitute for a shell
+          # option. It is the only form that works.
           HEADSHA=$(timeout 30 git rev-parse HEAD) || HEADSHA=""
           test -n "$HEADSHA" || { echo "could not read the clone's HEAD, so this run cannot record WHICH commit it judged. A verdict without a subject is not a verdict."; exit 1; }
           MAINSHA=$(timeout 30 git rev-parse origin/main) || MAINSHA=""
