@@ -322,6 +322,19 @@ list.
 | `python3` | `release-gate.yml` runs `tools/release-gate.py`; `tools/check-workflows.py` is local-only | no version pin; the gate's probe step measures it and fails loudly when absent |
 | `sha256` or `sha256sum` | `tag-pipeline.yml`'s checksum step | either; the step measures which is present and refuses when neither is |
 | `gpg` | `tag-pipeline.yml`'s signature step | optional — a missing trust store is reported separately from a failed signature |
+| `git` | every workflow: the clone, the fetch, every rev-parse, merge-base and ls-tree the gate's arms rest on | no version pin; **not at `/usr/bin/git`** on these hosts — it is `/usr/local/bin/git`, so a runner image that provides only the base system lacks it |
+
+**Installed from the `axb` pkg repositories** (fable, thread:rumor/342 and /351).
+A second runner is provisioned from this table and that source, not from reading
+the YAML.
+
+**`git` was missing from the first version of this table** (ibis,
+thread:rumor/372), which is the table's own rule catching its author: anything a
+workflow needs and this list omits is a defect in the list. It is the most-used
+tool here after cargo, the gate chooses it deliberately over `actions/checkout`,
+and it is **not** in the base system on these hosts — so the omission would have
+produced a runner that could not clone, discovered at the first job rather than
+at provisioning time.
 
 **The gate's own probe is the enforcement, not this table.** `release-gate.yml`
 measures `python3` and fails the run when it is absent rather than skipping, so a
