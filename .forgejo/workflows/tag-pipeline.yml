@@ -143,6 +143,10 @@ jobs:
           TAGVER="${TAG#v}"
           # DERIVED, never a literal: a hardcoded version here would agree with
           # itself at one release and be wrong at every other.
+          # THE `|| true` HERE IS RE-ESTABLISHED ON THE NEXT LINE and is not the
+          # discarded-status shape: an empty read is caught by `test -n` with a
+          # better message than pipefail would give. Left as it is deliberately,
+          # so a reader comparing the three sites sees which one is which.
           MANVER=$(sed -n '/\[workspace.package\]/,$p' Cargo.toml | sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)
           test -n "$MANVER" || { echo "could not read the workspace version from Cargo.toml"; exit 1; }
           echo "tag            $TAGVER"
@@ -163,7 +167,16 @@ jobs:
           test "$rc" -eq 124 && { echo "HANG: the release build exceeded 1800s. rc 124 proves only that the time elapsed -- read build.log: 'Downloaded' lines mean the registry was reached and the box is slow, a stall at 'Updating index' means no byte moved. RUNNER finding either way."; exit 124; }
           test "$rc" -eq 0 || { echo "cargo build --release exited $rc"; exit "$rc"; }
           test -x target/release/rumor || { echo "no release binary produced"; exit 1; }
-          echo "PROOF built $(timeout 30 ./target/release/rumor 2>&1 | head -1 || true)"
+          # ASSERTED NON-EMPTY, for release-gate.yml's reason: a PROOF that
+          # the binary RAN cannot be backed by `test -x`, which only says it
+          # exists, and with `|| true` a binary that produced no output printed
+          # "PROOF built " and passed. The status is re-established rather than
+          # discarded.
+          timeout 30 ./target/release/rumor > ../ran.txt 2>&1 || true
+          RAN=""
+          read -r RAN < ../ran.txt || true
+          test -n "$RAN" || { echo "the release binary produced no output, so this step cannot show that it runs: test -x proves it exists, not that it executes"; exit 1; }
+          echo "PROOF built $RAN"
           # rustc -vV TO A FILE, then extract. A `| head -1` here closes the
           # pipe and SIGPIPEs rustc to 141, which under pipefail fails a step
           # that succeeded -- rook's check-workflows.py refused this file until

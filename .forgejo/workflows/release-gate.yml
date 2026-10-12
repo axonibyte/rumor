@@ -121,7 +121,25 @@ jobs:
           # for any N, including 0.
           grep -q '14 of 14 cases ok, 15 of 15 trailer checks ok, 0 failed' ../self.log \
             || { echo "the self-test did not report 14 of 14 cases and 15 of 15 trailer checks: a case did not run, or the gate's declared counts were changed without this literal"; exit 1; }
-          echo "PROOF $(grep -oE '[0-9]+ of [0-9]+ cases ok, [0-9]+ failed' ../self.log | head -1 || true)"
+          # THIS PROOF IS NOT A SECOND COPY OF THE ASSERTION ABOVE. The grep
+          # above pins the NUMBERS; this one pins the SHAPE and displays what
+          # actually ran, with a pattern deliberately not coupled to the
+          # literal. It earns its place only because it is asserted non-empty:
+          # with `|| true` and no test, a summary whose FORMAT changed matched
+          # nothing and the step printed a bare "PROOF " and stayed green.
+          # That is not hypothetical -- it happened here, when the summary grew
+          # the trailer-check tally and this pattern stopped matching. A check
+          # whose status is discarded is not a check (rook thread:r0.3/29).
+          #
+          # Extracted by redirect, not `| head`: an early-closing consumer
+          # SIGPIPEs the producer to 141, which under pipefail fails a step that
+          # succeeded. The scratch file lives outside the checkout.
+          grep -oE '[0-9]+ of [0-9]+ cases ok, [0-9]+ of [0-9]+ trailer checks ok, [0-9]+ failed' \
+            ../self.log > ../proof.txt || true
+          PROOF=""
+          read -r PROOF < ../proof.txt || true
+          test -n "$PROOF" || { echo "the self-test summary did not match the expected SHAPE, so this step cannot show what it ran: the gate's summary format and this pattern have diverged"; exit 1; }
+          echo "PROOF $PROOF"
 
       - name: gate this run against main
         run: |
