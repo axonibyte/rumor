@@ -233,13 +233,19 @@ named, because both sources nearer to hand are wrong (rook, thread:r0.3/17):
 | --- | --- |
 | the commit message body | the reason as written — **this is the one** |
 | the release gate's output | no reason at all; it reads only whether a trailer exists, so a reader can wrongly conclude none was given |
-| `git interpret-trailers --parse` | the reason, folded, when the block is well formed — and **nothing at all** when it is not |
+| `git interpret-trailers --parse` | the reason, folded, when the block is well formed — and **nothing at all, with exit status 0**, when it is not |
 
-That last row was measured rather than assumed, and it is not what either of us
-expected. On a reason wrapped to column 0, `interpret-trailers` does not truncate
-the entry: the unindented line **ends the trailer block**, so git reports no
-trailers for that message — including any well-formed trailer beside it. The
-reviewer reading from a parser would therefore see nothing, not a half sentence.
+That last row was measured rather than assumed, and it is not what any of us
+expected (rook thread:r0.3/17 and /20, ibis /18, measured twice independently).
+On a reason wrapped to column 0, `interpret-trailers` does not truncate the
+entry: the unindented line **ends the trailer block**, so git reports no trailers
+for that message — including any well-formed trailer beside it.
+
+**The exit status is 0.** That is the reason this row matters more than the rule
+does. A truncated sentence is something a reviewer might notice; an empty answer
+with a success status is indistinguishable from "this commit claimed no
+exemption", so a reviewer would conclude the opposite of the truth and have no
+signal that anything was wrong. Hence: read the body.
 
 The gate is pinned to that behavior by a case in `--self-test` that runs both
 parsers on the same message and requires the same answer. The reader used to
