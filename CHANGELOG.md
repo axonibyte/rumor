@@ -3,6 +3,46 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.3 — 2026-10-12
+
+A release gate that refuses, a tag pipeline that publishes nothing when it
+refuses, and twelve fixture branches that have each been seen to trip one arm.
+
+- `tools/release-gate.py`: the epic's nine Release gate bullets as twelve arms
+  with stable ids, because bullet 1 is a disjunction and bullet 4 has three
+  failure modes. It does **not** short-circuit: issue 4's test is that a fixture
+  shows "the refusal reason it names, and no other", and a gate that exits at
+  its first finding cannot answer the second half. Three exit statuses, and the
+  third is not a verdict — 0 clean, 1 findings, 2 could not run, which the
+  workflow treats as a failed run.
+- `--self-test` drives every arm and asserts each fires **alone**, plus a clean
+  run that must pass and a nine-shape battery over the `Docs-Unchanged` reader.
+  It found five arm/fixture defects before a branch existed, including two pairs
+  of arms that could not be told apart.
+- Driving the gate against the accepted `6c5583d..5e8a639` found two more that
+  no fixture could reach, because a fixture repo has no tags: `git rev-parse` on
+  an annotated tag returns the tag object, and the tag for the version being
+  gated counts as "the latest".
+- `.forgejo/workflows/release-gate.yml` measures `python3` and fails loudly when
+  it is absent rather than skipping, which is the standing argument against
+  python in CI answered rather than ignored. It runs the gate's own self-test
+  before the gate judges anything, and asserts the finding **set** from a file
+  the gate writes, not a grep of its prose.
+- `.forgejo/workflows/tag-pipeline.yml`: FreeBSD amd64 only, since an artifact
+  nobody ran is not a release artifact. Every check sits before the build, so a
+  refusal publishes nothing. A missing trust store is reported separately from a
+  failed signature — announcing the first as the second would accuse a correct
+  tag of forgery — and with no maintainer key on the runner the signature is a
+  named wait, not a silent skip.
+- Arm `docs-stale` reads the working tree, so it now verifies that the checkout
+  **is** the run being gated and reports UNMEASURED when it is not. It had taken
+  a ref and ignored it, which made it answer about whatever branch happened to be
+  out; the fixture verification could not see that, because it checked each
+  branch out first and so agreed by accident.
+- The `Docs-Unchanged` trailer folds like the git trailer it is. A reason wrapped
+  to column 0 does not exempt: git reads only the first line there, and
+  truncating it published a reversed sentence into the PR summary.
+
 ## 0.1.2 — 2026-10-12
 
 CI exists on the FreeBSD runner, and the licence gate has been seen to refuse.
