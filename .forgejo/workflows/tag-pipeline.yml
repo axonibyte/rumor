@@ -1,0 +1,227 @@
+# The tag pipeline -- R0.3, issue 4. Runs on a `v*` tag push.
+#
+# IT PUBLISHES NOTHING WHEN IT REFUSES, which is the epic's wording and the
+# reason every check sits BEFORE the build rather than after it. A pipeline that
+# builds first and verifies second has already spent the runner on an artifact
+# it is about to throw away, and on a single-concurrency runner that is a
+# quarter hour nobody else can use.
+#
+# WHAT IT REFUSES, from the epic's "Tag pipeline" list:
+#   - the tag is unsigned or lightweight
+#   - the tagged commit is not the head of `main`, or is not a bump commit
+#   - the tag version, the Cargo.toml version and the changelog heading disagree
+#
+# FREEBSD amd64 ONLY. fable ruled it at thread:rumor/332 on ibis's point: cal's
+# "no linux runner, just freebsd for now" stands, an artifact nobody ran is not
+# a release artifact, so no cross-build. SHA256SUMS covers what was built and
+# the release notes say what was not. Linux arrives by its own patch run the day
+# a Linux runner exists -- and NOT as a job here in the meantime, because a job
+# whose label no runner answers QUEUES rather than failing, which makes every
+# green in this file ambiguous (ibis, r0.3/3, carrying fable's rule from
+# ask-linux-runner/0).
+#
+# THE SIGNATURE IS A NAMED WAIT, NOT A SILENT SKIP. The epic says the pipeline
+# signs SHA256SUMS. Signing needs a private key, and no key of cal's is on this
+# runner; a pipeline that quietly shipped an unsigned checksum file would be the
+# "always-pass" shape of exactly the gate this issue exists to build. So the
+# step ATTEMPTS the signature and names its absence as a finding against
+# provisioning rather than treating it as done. QUILL has raised it with cal in
+# thread:r0.3 beside branch protection; until it is answered a tag run reports
+# SHA256SUMS written and UNSIGNED, loudly, and the release is incomplete by the
+# epic's own list rather than by this file's silence.
+
+name: tag-pipeline
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  freebsd:
+    runs-on: freebsd-15-jail
+    timeout-minutes: 45
+    steps:
+      - name: probe the runner (non-fatal; names what is absent)
+        run: |
+          set -o pipefail
+          echo "uname   $(uname -a)"
+          for t in git cargo rustc sha256 sha256sum gpg ssh-keygen; do
+            p=$(command -v "$t" 2>/dev/null) && echo "$t  FOUND  $p" || echo "$t  ABSENT"
+          done
+
+      - name: fetch the tree and its tags
+        run: |
+          set -o pipefail
+          rm -rf src-tree
+          rc=0
+          timeout 300 git clone --quiet \
+            https://forge.axonibyte.com/axonibyte/rumor.git src-tree || rc=$?
+          test "$rc" -eq 124 && { echo "HANG: git clone exceeded 300s. rc 124 proves only that the time elapsed. RUNNER finding."; exit 124; }
+          test "$rc" -eq 0 || { echo "git clone exited $rc"; exit "$rc"; }
+          cd src-tree
+          rc=0
+          timeout 120 git fetch --quiet --tags origin || rc=$?
+          test "$rc" -eq 124 && { echo "HANG: git fetch --tags exceeded 120s. RUNNER finding."; exit 124; }
+          test "$rc" -eq 0 || { echo "git fetch --tags exited $rc"; exit "$rc"; }
+          echo "PROOF origin/main $(timeout 30 git rev-parse origin/main)"
+
+      - name: the tag is ANNOTATED, not lightweight
+        run: |
+          set -o pipefail
+          cd src-tree
+          TAG="${GITHUB_REF_NAME:?the tag name is not in the environment}"
+          echo "tag under test: $TAG"
+          rc=0
+          timeout 30 git cat-file -t "$TAG" > ../tagtype.log 2>&1 || rc=$?
+          cat ../tagtype.log
+          test "$rc" -eq 0 || { echo "git cat-file could not read $TAG: exited $rc"; exit 1; }
+          # A LIGHTWEIGHT TAG IS A REF TO A COMMIT, so cat-file -t says `commit`;
+          # an annotated one is its own object and says `tag`. Checking the
+          # OBJECT TYPE rather than looking for a message: an annotated tag with
+          # an empty message is still annotated, and a lightweight one can never
+          # carry a signature at all.
+          grep -qx 'tag' ../tagtype.log \
+            || { echo "$TAG is LIGHTWEIGHT (object type $(cat ../tagtype.log)), and the epic requires an annotated, signed tag. Publishing nothing."; exit 1; }
+          echo "PROOF $TAG is an annotated tag object"
+
+      - name: the tag is SIGNED and verifies
+        run: |
+          set -o pipefail
+          cd src-tree
+          TAG="${GITHUB_REF_NAME:?the tag name is not in the environment}"
+          # TWO ORACLES, because "verify failed" and "no key to verify with" are
+          # different findings and only one of them is about the tag. First the
+          # object must CARRY a signature; then it must verify.
+          rc=0
+          timeout 30 git cat-file tag "$TAG" > ../tagobj.log 2>&1 || rc=$?
+          test "$rc" -eq 0 || { echo "git cat-file tag $TAG exited $rc"; exit 1; }
+          grep -qE 'BEGIN (PGP|SSH) SIGNATURE' ../tagobj.log \
+            || { echo "$TAG carries NO signature. The epic requires a signed tag; publishing nothing."; exit 1; }
+          echo "PROOF $TAG carries a signature block"
+          rc=0
+          timeout 60 git verify-tag "$TAG" > ../verify.log 2>&1 || rc=$?
+          cat ../verify.log
+          test "$rc" -eq 124 && { echo "HANG: git verify-tag exceeded 60s. RUNNER finding."; exit 124; }
+          test "$rc" -eq 0 && { echo "PROOF $TAG verifies against this runner's trust store"; exit 0; }
+          # A MISSING TRUST STORE IS NOT A BAD SIGNATURE. Both give a non-zero
+          # status, and reporting the first as the second would accuse cal's tag
+          # of being forged because a runner lacks a public key. The log's own
+          # words discriminate.
+          grep -qiE 'no public key|cannot find|no principal|unknown key|allowed_signers' ../verify.log \
+            && { echo "the signature is PRESENT and could NOT BE CHECKED on this runner: no trust material for the signer. That is a PROVISIONING finding, not a verdict on the tag, and it is NOT a pass -- the epic's requirement is unmet until a verifier exists here."; exit 1; }
+          echo "$TAG has a signature and it FAILED verification, which is a verdict on the tag"
+          exit 1
+
+      - name: the tagged commit is main's head AND a bump commit
+        run: |
+          set -o pipefail
+          cd src-tree
+          TAG="${GITHUB_REF_NAME:?the tag name is not in the environment}"
+          # PEEL THE TAG TO ITS COMMIT. `rev-parse <annotated tag>` gives the TAG
+          # OBJECT's sha, and comparing that to a commit sha never matches --
+          # a defect I found in the gate by driving it against a real annotated
+          # tag rather than a fixture.
+          TAGGED=$(timeout 30 git rev-parse "${TAG}^{commit}")
+          MAINHEAD=$(timeout 30 git rev-parse origin/main)
+          echo "tagged commit  $TAGGED"
+          echo "main head      $MAINHEAD"
+          test "$TAGGED" = "$MAINHEAD" \
+            || { echo "the tagged commit is not the head of main, so this tag does not name a landed release. Publishing nothing."; exit 1; }
+          SUBJECT=$(timeout 30 git log -1 --format=%s "$TAGGED")
+          echo "subject        $SUBJECT"
+          echo "$SUBJECT" | grep -qE '^release: v[0-9]+\.[0-9]+\.[0-9]+$' \
+            || { echo "the tagged commit is not a bump commit: its subject is not 'release: vX.Y.Z'. Publishing nothing."; exit 1; }
+          echo "PROOF the tagged commit is main's head and a bump commit"
+
+      - name: the tag, the manifest and the changelog agree
+        run: |
+          set -o pipefail
+          cd src-tree
+          TAG="${GITHUB_REF_NAME:?the tag name is not in the environment}"
+          TAGVER="${TAG#v}"
+          # DERIVED, never a literal: a hardcoded version here would agree with
+          # itself at one release and be wrong at every other.
+          MANVER=$(sed -n '/\[workspace.package\]/,$p' Cargo.toml | sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)
+          test -n "$MANVER" || { echo "could not read the workspace version from Cargo.toml"; exit 1; }
+          echo "tag            $TAGVER"
+          echo "Cargo.toml     $MANVER"
+          test "$TAGVER" = "$MANVER" \
+            || { echo "the tag says $TAGVER and Cargo.toml says $MANVER: they disagree. Publishing nothing."; exit 1; }
+          grep -qE "^## +${TAGVER} +(--|—|-) +[0-9]{4}-[0-9]{2}-[0-9]{2}" CHANGELOG.md \
+            || { echo "CHANGELOG.md has no dated section headed $TAGVER: the three must agree. Publishing nothing."; exit 1; }
+          echo "PROOF the tag, Cargo.toml and the changelog all say $TAGVER"
+
+      - name: build the FreeBSD amd64 release binary
+        run: |
+          set -o pipefail
+          cd src-tree
+          rc=0
+          timeout 1800 cargo build --locked --release > ../build.log 2>&1 || rc=$?
+          tail -20 ../build.log
+          test "$rc" -eq 124 && { echo "HANG: the release build exceeded 1800s. rc 124 proves only that the time elapsed -- read build.log: 'Downloaded' lines mean the registry was reached and the box is slow, a stall at 'Updating index' means no byte moved. RUNNER finding either way."; exit 124; }
+          test "$rc" -eq 0 || { echo "cargo build --release exited $rc"; exit "$rc"; }
+          test -x target/release/rumor || { echo "no release binary produced"; exit 1; }
+          echo "PROOF built $(timeout 30 ./target/release/rumor 2>&1 | head -1 || true)"
+          # rustc -vV TO A FILE, then extract. A `| head -1` here closes the
+          # pipe and SIGPIPEs rustc to 141, which under pipefail fails a step
+          # that succeeded -- rook's check-workflows.py refused this file until
+          # it was written this way, which is the gate doing its job on me.
+          rc=0
+          timeout 30 rustc -vV > ../rustc.log 2>&1 || rc=$?
+          test "$rc" -eq 0 || { cat ../rustc.log; echo "rustc -vV exited $rc"; exit "$rc"; }
+          echo "PROOF target triple $(sed -n 's/^host: //p' ../rustc.log)"
+
+      - name: write SHA256SUMS over what was actually built
+        run: |
+          set -o pipefail
+          cd src-tree
+          TAG="${GITHUB_REF_NAME:?the tag name is not in the environment}"
+          rm -rf ../dist && mkdir -p ../dist
+          rc=0
+          timeout 30 rustc -vV > ../rustc2.log 2>&1 || rc=$?
+          test "$rc" -eq 0 || { cat ../rustc2.log; echo "rustc -vV exited $rc"; exit "$rc"; }
+          TRIPLE=$(sed -n 's/^host: //p' ../rustc2.log)
+          test -n "$TRIPLE" || { echo "could not derive the host triple from rustc -vV"; exit 1; }
+          NAME="rumor-${TAG}-${TRIPLE}"
+          cp target/release/rumor "../dist/${NAME}"
+          cd ../dist
+          # sha256 on FreeBSD, sha256sum elsewhere: measured rather than assumed,
+          # and an absent digest tool is a named finding rather than an empty file.
+          rc=0
+          if command -v sha256 >/dev/null 2>&1; then
+            timeout 120 sha256 -r "${NAME}" > SHA256SUMS 2>../sums.err || rc=$?
+          elif command -v sha256sum >/dev/null 2>&1; then
+            timeout 120 sha256sum "${NAME}" > SHA256SUMS 2>../sums.err || rc=$?
+          else
+            echo "neither sha256 nor sha256sum is on this runner, so no checksum can be written"; exit 1
+          fi
+          test "$rc" -eq 0 || { cat ../sums.err; echo "the checksum tool exited $rc"; exit "$rc"; }
+          # A TRANSFORM LAUNDERS A FAILURE: sha256 of nothing is a valid-looking
+          # file, so the emptiness and the NAME are both asserted rather than the
+          # command's success alone.
+          test -s SHA256SUMS || { echo "SHA256SUMS is empty"; exit 1; }
+          grep -q "${NAME}" SHA256SUMS || { echo "SHA256SUMS does not name ${NAME}"; exit 1; }
+          cat SHA256SUMS
+          echo "PROOF SHA256SUMS covers ${NAME} and nothing else was built (FreeBSD amd64 only, fable thread:rumor/332)"
+
+      - name: sign SHA256SUMS, or name the absence
+        run: |
+          set -o pipefail
+          cd dist
+          # THE ABSENCE OF A KEY IS A FINDING, NOT A SKIP. See this file's header:
+          # shipping an unsigned checksum file quietly is the always-pass shape of
+          # the very gate this issue builds. The epic's requirement is unmet until
+          # a signer exists on this runner, and the run says so.
+          if command -v gpg >/dev/null 2>&1; then
+            rc=0
+            timeout 120 gpg --batch --yes --armor --detach-sign SHA256SUMS > ../sign.log 2>&1 || rc=$?
+            cat ../sign.log
+            test "$rc" -eq 0 && { test -s SHA256SUMS.asc || { echo "gpg exited 0 and wrote no signature"; exit 1; }; echo "PROOF SHA256SUMS.asc written, $(wc -c < SHA256SUMS.asc) bytes"; exit 0; }
+            echo "gpg could not sign (exited $rc). SHA256SUMS IS WRITTEN AND UNSIGNED."
+          else
+            echo "gpg is ABSENT on this runner. SHA256SUMS IS WRITTEN AND UNSIGNED."
+          fi
+          echo "NAMED WAIT, not a pass: the epic requires a signed SHA256SUMS and no signing key for the maintainer is present here. This is a provisioning item for cal, raised in thread:r0.3 beside branch protection on main. The artifact above is complete except for its signature and must not be published as a signed release."
+          exit 1

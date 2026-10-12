@@ -59,11 +59,132 @@ Not yet written.
 
 ## Release gate
 
-Not yet written.
+`.forgejo/workflows/release-gate.yml` runs on every pull request to `main` and
+calls `tools/release-gate.py`. The epic's list is the source of truth; this
+section is its canonical copy and the fixture-branch convention beside it.
+
+**Nine bullets, twelve arms.** Two bullets carry more than one failure, so each
+arm has a stable id and a fixture branch names exactly one:
+
+| arm | id | the refusal |
+|---|---|---|
+| 1 | `version-unchanged` | the bump commit does not change the workspace version |
+| 2 | `subject-mismatch` | the subject is not `release: vX.Y.Z` matching that version |
+| 3 | `commit-after-bump` | a commit follows the bump commit |
+| 4 | `version-not-greater` | the new version is not greater than the latest tag |
+| 5 | `changelog-section-absent` | no `CHANGELOG.md` section for the new version |
+| 6 | `changelog-section-empty` | the section is present and empty |
+| 7 | `changelog-date-wrong` | the section is the right version and not today's date |
+| 8 | `docs-stale` | `rumor docs --check` finds generated docs out of date |
+| 9 | `docs-unchanged-no-trailer` | a source path changed, a mapped doc did not, and no `Docs-Unchanged` trailer covers it |
+| 10 | `revision-entry-missing` | a contract or vocabulary version constant moved with no new entry under "Revisions" |
+| 11 | `doc-run-block-failed` | a doc command block marked `run` fails |
+| 12 | `not-rebased` | the branch is not rebased on `main` |
+
+Arms 1 and 2 are bullet 1's disjunction; arms 5, 6 and 7 are bullet 4's three
+failure modes. Every other bullet is one arm.
+
+### The gate does not short-circuit
+
+Every arm runs on every invocation, each finding prints with its id, and the
+exit status says only whether the set is empty. This is what makes the fixture
+test answerable: a branch must show **the reason it names and no other**, and a
+gate that stopped at its first finding could not tell a branch tripping three
+arms from one tripping its own.
+
+### Arm 4 presupposes a new version
+
+Bullet 4 says "the **new** version is not greater than the latest tag". When the
+version did not change there is no new version, so arm 4 has no subject and does
+not apply. Without this, every arm-1 fixture also fails arm 4 — an unchanged
+version equals the latest tag and so is not greater than it — and neither arm
+could ever show its own reason alone. The alternatives were worse: a
+short-circuit destroys the test for all twelve, and reading bullet 4 as "changed
+but not greater" amends the epic from a child issue.
+
+### Three exit statuses, and the third is not a verdict
+
+`0` clean, `1` one or more findings, `2` the gate could not reach a verdict —
+a bad invocation, an unreadable file, a git that refused. **A gate that cannot
+run is not a gate that passed**, so the workflow treats `2` as a failure of the
+run. This is the same separation `ci.yml` makes for `rc 124`: a tool that never
+answered is a statement about the runner, and collapsing it into either verdict
+is how a broken gate reads as a green one.
+
+### Why the gate is python, against the standing argument
+
+`tools/check-workflows.py` is deliberately local-only, because "adding a python
+dependency to CI would repeat the `actions/checkout` mistake of depending on an
+unmeasured interpreter". That reasoning holds, so the workflow **measures**
+`python3` in a probe and the gate step **fails loudly** when it is absent rather
+than skipping. Re-implementing twelve arms in `sh` would have given up the
+self-test that found five defects in them before a branch existed, and a `rumor`
+subcommand is a Rust change this issue does not ask for and could not be driven
+on a box with no toolchain. If a runner turns out to lack `python3`, the honest
+fix is the subcommand, not a quietly skipped gate.
+
+### The fixture-branch convention
+
+One branch per arm, named `r0.3-fix-<id>`, each cut from `main` and carrying the
+smallest change that trips its own arm. The branch's PR must show the gate red
+naming that arm and no other, which `tools/release-gate.py --expect <id>`
+asserts directly. Two further rules, both learned the hard way:
+
+- **A fixture must reach its arm.** A fixture that cannot produce the condition
+  is green for the wrong reason, and a green fixture proves nothing.
+- **Drive all twelve in one window**, bounded by `git ls-remote origin main`
+  before and after and asserted equal. If `main` advances while the twelve sit
+  as open PRs, all twelve also fail `not-rebased` and no fixture shows its own
+  reason — a confounder that has already bitten this repo once, when `r0.2-ci`
+  went three commits behind inside a day.
+
+### The positive control
+
+One further branch that the gate must **pass**: a source change whose mapped doc
+is unchanged, carrying `Docs-Unchanged: <doc> — <reason>`. It differs from arm
+9's fixture **only by the trailer** — same source path, same mapped doc, same
+edit. Two branches differing in two things would not show which one the gate
+read. Without a passing control, twelve refusals prove the gate is loud rather
+than discriminating: a gate that refuses everything satisfies all twelve.
 
 ## Tag pipeline
 
-Not yet written.
+`.forgejo/workflows/tag-pipeline.yml` runs on a `v*` tag push and **publishes
+nothing when it refuses**, which is why every check sits before the build rather
+than after it.
+
+It refuses, each with its own message:
+
+- the tag is **lightweight** — checked by object type, since a lightweight tag
+  is a ref to a commit and can never carry a signature
+- the tag **carries no signature**
+- the tag has a signature that **fails verification** — reported separately from
+  a runner with **no trust material**, because the second is a provisioning
+  finding and announcing it as the first would accuse a correct tag of forgery
+- the tagged commit is **not `main`'s head**, or is **not a bump commit**
+- the tag version, the `Cargo.toml` version and the changelog heading disagree
+
+On success it builds the release binary, writes `SHA256SUMS` over what was
+actually built, and signs it.
+
+### FreeBSD amd64 only
+
+One build, no cross-build. An artifact nobody ran is not a release artifact, and
+there is no Linux runner; `SHA256SUMS` covers what was built and the release
+notes say what was not. Linux arrives by its own patch run the day a runner
+exists — and **not** as a job added in advance, because a job whose label no
+runner answers queues rather than failing, which would make every green in the
+file ambiguous.
+
+### The signature is a named wait, not a silent skip
+
+Signing needs the maintainer's private key and none is on the runner. The step
+attempts the signature and names its absence as a **provisioning finding**
+rather than treating it as done: a pipeline that quietly shipped an unsigned
+checksum file would be the always-pass shape of the very gate this phase builds.
+Until a signer exists on the runner, a tag run reports `SHA256SUMS` written and
+UNSIGNED, and the release is incomplete by the epic's own list rather than by
+the file's silence.
 
 ## CI
 

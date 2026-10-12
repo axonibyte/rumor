@@ -1,0 +1,129 @@
+# The release gate -- R0.3, issue 4. Runs on every PR to `main`.
+#
+# WHAT IT REFUSES is the epic's "Release gate" list, nine bullets expanded to
+# twelve arms by tools/release-gate.py: bullet 1 is a disjunction (version, and
+# subject) and bullet 4 has three failure modes (section absent, present but
+# empty, right version wrong date). The arm ids are stable and each fixture
+# branch names one.
+#
+# THE GATE DOES NOT SHORT-CIRCUIT, which is the decision the fixtures depend on.
+# Issue 4's test is that a fixture shows "the refusal reason it names, AND NO
+# OTHER REASON", and a gate that exits at its first finding cannot answer the
+# second half -- a branch tripping three arms would look exactly like one
+# tripping its own. So every arm runs and every finding prints.
+#
+# PYTHON IS A DEPENDENCY I AM ADDING DELIBERATELY, AND ROOK ARGUED AGAINST IT.
+# tools/check-workflows.py is local-only on purpose: "adding a python dependency
+# to CI would repeat the actions/checkout mistake of depending on an unmeasured
+# interpreter" (rook, ci.yml:45-50). That reasoning is right and it is why the
+# probe below MEASURES python3 rather than assuming it, and why the gate step
+# FAILS LOUDLY when it is absent instead of skipping. The alternatives were
+# worse: re-implementing twelve arms in sh gives up the self-test that found
+# five defects in them before a branch was cut, and a `rumor` subcommand is a
+# Rust change issue 4 does not ask for and cannot be driven on a box with no
+# toolchain. If the probe shows python3 absent on this runner, the honest fix is
+# a `rumor` subcommand, not a quietly skipped gate -- and the run will say so.
+#
+# A GATE THAT CANNOT RUN IS NOT A GATE THAT PASSED. release-gate.py exits 2 for
+# "could not reach a verdict", distinct from 1 for "refused", and this file
+# treats 2 as a failure of the run rather than a pass. The same reasoning as
+# ci.yml's rc 124: a tool that never answered is a statement about the runner,
+# and collapsing it into either verdict is how a broken gate reads as a green
+# one.
+#
+# NO actions/checkout, for ci.yml's reason: it is a JavaScript action needing
+# node on the runner, and git is the narrower dependency. The gate needs BOTH
+# the PR head and `main`, so the clone is not shallow-single-branch -- a
+# --depth 1 clone of one ref cannot compute a merge-base and every arm depends
+# on one.
+
+name: release-gate
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  freebsd:
+    runs-on: freebsd-15-jail
+    # The backstop, above the sum of the per-step bounds so a step's own
+    # timeout fires first and names which step hung.
+    timeout-minutes: 30
+    steps:
+      - name: probe the runner (non-fatal; names what is absent)
+        run: |
+          # pipefail: without it a pipeline reports its LAST stage's status, so a
+          # failing gate piped to a formatter exits 0 and this step goes GREEN.
+          set -o pipefail
+          echo "uname   $(uname -a)"
+          echo "whoami  $(whoami)"
+          for t in git python3 python cargo; do
+            p=$(command -v "$t" 2>/dev/null) && echo "$t  FOUND  $p" || echo "$t  ABSENT"
+          done
+          timeout 20 python3 --version 2>/dev/null || echo "python3: none or did not answer in 20s"
+          timeout 20 git --version 2>/dev/null || echo "git: none or did not answer in 20s"
+
+      - name: fetch the tree and main, with git
+        run: |
+          set -o pipefail
+          rm -rf src-tree
+          rc=0
+          # NOT --depth 1 and NOT --single-branch: the gate computes a
+          # merge-base against main, and a shallow single-ref clone has no main
+          # to compute it against. Every arm rests on that merge-base.
+          timeout 300 git clone --quiet \
+            https://forge.axonibyte.com/axonibyte/rumor.git src-tree || rc=$?
+          test "$rc" -eq 124 && { echo "HANG: git clone exceeded 300s. rc 124 proves only that 300s elapsed -- a clone finishing at 301s gives this same status, so this is not a reachability diagnosis. RUNNER finding."; exit 124; }
+          test "$rc" -eq 0 || { echo "git clone exited $rc"; exit "$rc"; }
+          cd src-tree
+          rc=0
+          timeout 120 git fetch --quiet origin "+refs/pull/${GITHUB_REF_NAME:-0}/head:refs/pr-head" || rc=$?
+          test "$rc" -eq 0 || echo "no refs/pull head for ${GITHUB_REF_NAME:-0}; falling back to the event sha"
+          echo "PROOF clone head $(timeout 30 git rev-parse HEAD)"
+          echo "PROOF origin/main $(timeout 30 git rev-parse origin/main)"
+
+      - name: python3 is present, or the gate cannot run
+        run: |
+          set -o pipefail
+          rc=0
+          timeout 20 python3 --version > ../py.log 2>&1 || rc=$?
+          cat ../py.log
+          test "$rc" -eq 124 && { echo "HANG: python3 --version exceeded 20s. RUNNER finding."; exit 124; }
+          test "$rc" -eq 0 || { echo "python3 is ABSENT on this runner, so the release gate CANNOT RUN. This is NOT a pass: twelve refusal arms went unmeasured. The fix is a rumor subcommand, not a skipped step -- see this file's header."; exit 1; }
+          echo "PROOF python3 $(timeout 20 python3 --version 2>&1)"
+
+      - name: the gate's own self-test, before it judges anything
+        run: |
+          set -o pipefail
+          cd src-tree
+          # THE GATE IS CHECKED BEFORE IT IS TRUSTED, which is the half a run on
+          # the subject alone cannot give. Twelve cases, each asserting its arm
+          # fires ALONE; a gate whose arms have stopped discriminating would
+          # otherwise refuse or admit a PR with nobody the wiser.
+          rc=0
+          timeout 300 python3 tools/release-gate.py --self-test > ../self.log 2>&1 || rc=$?
+          cat ../self.log
+          test "$rc" -eq 124 && { echo "HANG: the gate's self-test exceeded 300s. RUNNER finding; the gate was NOT checked."; exit 124; }
+          test "$rc" -eq 0 || { echo "the gate's own self-test FAILED, so its verdict on this PR means nothing"; exit "$rc"; }
+          grep -q 'of 12 cases ok, 0 failed' ../self.log \
+            || { echo "the self-test did not report 12 of 12: it did not run to completion"; exit 1; }
+          echo "PROOF $(grep -oE '[0-9]+ of [0-9]+ cases ok, [0-9]+ failed' ../self.log | head -1 || true)"
+
+      - name: gate this run against main
+        run: |
+          set -o pipefail
+          cd src-tree
+          HEAD_SHA="${GITHUB_SHA:-HEAD}"
+          rc=0
+          timeout 600 python3 tools/release-gate.py \
+            --base origin/main --head "$HEAD_SHA" > ../gate.log 2>&1 || rc=$?
+          cat ../gate.log
+          test "$rc" -eq 124 && { echo "HANG: the release gate exceeded 600s. RUNNER finding; the gate did NOT reach a verdict and this is not a pass."; exit 124; }
+          test "$rc" -eq 2 && { echo "the gate CANNOT RUN on this input, which is neither a pass nor a refusal -- read the reason above"; exit 1; }
+          test "$rc" -eq 1 && { echo "the release gate REFUSED this run, naming each reason above"; exit 1; }
+          test "$rc" -eq 0 || { echo "the gate exited $rc, which is not one of its three statuses"; exit 1; }
+          grep -q 'PROOF the release gate found nothing' ../gate.log \
+            || { echo "the gate exited 0 without its own clean line: it did not run to completion"; exit 1; }
+          echo "PROOF the release gate admitted this run with every arm measured"
