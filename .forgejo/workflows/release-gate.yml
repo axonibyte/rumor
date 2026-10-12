@@ -121,8 +121,51 @@ jobs:
           test "$rc" -eq 0 || { echo "git clone exited $rc"; exit "$rc"; }
           cd src-tree
           rc=0
-          timeout 120 git fetch --quiet origin "+refs/pull/${GITHUB_REF_NAME:-0}/head:refs/pr-head" || rc=$?
-          test "$rc" -eq 0 || echo "no refs/pull head for ${GITHUB_REF_NAME:-0}; falling back to the event sha"
+          # THE PR NUMBER, INDEPENDENT OF HOW THE REF IS SPELLED (fable
+          # rumor/386). This forge spelled the same AGit PR three ways in one
+          # run: GITHUB_REF_NAME=8, GITHUB_HEAD_REF=refs/pull/8/head, and the PR
+          # page calls it #8. A branch PR spells them differently again. So the
+          # number is extracted as digits rather than assumed to be bare, which
+          # accepts "8", "refs/pull/8/head" and "#8" alike -- and is REFUSED when
+          # it comes out empty, because a pull_request run with no PR number has
+          # no head to fetch and must not quietly gate the default branch, which
+          # is the defect this whole commit is about.
+          PRREF="${GITHUB_REF:-${GITHUB_REF_NAME:-}}"
+          PRNUM=$(printf '%s' "$PRREF" | tr -dc '0-9')
+          test -n "$PRNUM" || { echo "could not derive a PR number from GITHUB_REF='${GITHUB_REF:-}' / GITHUB_REF_NAME='${GITHUB_REF_NAME:-}', so there is no PR head to fetch"; exit 1; }
+          echo "PROOF PR number $PRNUM from '$PRREF'"
+          timeout 120 git fetch --quiet origin "+refs/pull/${PRNUM}/head:refs/pr-head" || rc=$?
+          # AND THEN CHECK IT OUT, WHICH THIS STEP DID NOT DO. Measured on the
+          # first pull_request run this forge ever executed (PR 8, task 143): the
+          # fetch SUCCEEDED, refs/pr-head existed, and nothing checked it out --
+          # so HEAD stayed on the clone's default branch and the log read
+          #
+          #     PROOF clone head 5e8a6392c4c612b72fc2006b070a7e3513af3158
+          #     PROOF origin/main 5e8a6392c4c612b72fc2006b070a7e3513af3158
+          #
+          # identical shas, main against main. The gate then could not find
+          # tools/release-gate.py, because main does not carry it, and the job
+          # failed with "self-test FAILED" one second in. It was gating the WRONG
+          # TREE, and only the gate's absence from main made that visible: had
+          # the file been there, the run would have gated main against main and
+          # reported a clean PR. That is the always-pass shape, reached by
+          # omission rather than by a bad arm.
+          if [ "$rc" -eq 0 ]; then
+            timeout 60 git checkout -q --detach refs/pr-head \
+              || { echo "fetched refs/pull/${PRNUM}/head but could not check it out"; exit 1; }
+          else
+            echo "no refs/pull head for PR ${PRNUM}; falling back to the event sha"
+            test -n "${GITHUB_SHA:-}" \
+              || { echo "no refs/pull head AND no GITHUB_SHA: there is no tree to gate"; exit 1; }
+            timeout 60 git checkout -q --detach "$GITHUB_SHA" \
+              || { echo "could not check out GITHUB_SHA $GITHUB_SHA"; exit 1; }
+          fi
+          # THE GATE CANNOT JUDGE A TREE THAT DOES NOT CARRY IT. This is the
+          # assertion that would have caught the above in one line, so it is here
+          # rather than in a comment: if the checked-out tree has no
+          # tools/release-gate.py, the checkout is not the run.
+          test -f tools/release-gate.py \
+            || { echo "the checked-out tree has no tools/release-gate.py, so it is not the run this PR proposes -- refusing rather than gating the wrong tree"; exit 1; }
           # THESE TWO LINES ARE THE ONLY RECORD OF WHICH COMMITS THE GATE
           # JUDGED (ibis thread:r0.3/36), and they were interpolated command
           # substitutions with nothing asserting them, so a failed rev-parse
