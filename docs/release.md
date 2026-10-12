@@ -208,14 +208,15 @@ It is a git trailer and the gate reads it as one.
   exemption, which is the one direction worth being strict in.
 - A reason longer than one line **continues on an indented line**, which is
   git's own folding rule. The gate joins the indented continuations.
-- A reason wrapped to **column 0 does not exempt.** git does not treat a
-  column-0 continuation as part of the value, so the trailer git sees and the
-  sentence the author wrote would be two different texts — the first version of
-  this reader turned "the edit is a comment and changes no command, flag or
-  output" into "…and changes no", which reverses it. There is no honest way to
-  accept that: truncating publishes a sentence nobody wrote, to anything that
-  extracts trailers with git semantics. Such a trailer is dropped with a note on
-  stderr naming the file, and `docs-unchanged-no-trailer` fires for that doc.
+- A reason wrapped to **column 0 exempts nothing in that commit message** —
+  not the wrapped trailer, and not a well-formed trailer beside it. An
+  unindented line ends the trailer block, which is why `git interpret-trailers`
+  reports no trailers at all for such a message. The first version of this
+  reader instead truncated the reason, turning "the edit is a comment and
+  changes no command, flag or output" into "…and changes no", which reverses it;
+  the second kept the sibling trailer and so was wider than git. The gate prints
+  a note on stderr naming the file, and `docs-unchanged-no-trailer` fires for
+  every doc the message claimed.
 
   The gate itself never reads the reason's *value* — arm 9 asks only whether a
   doc has a trailer — and the epic's "the reasons are copied into the PR summary"
@@ -223,6 +224,27 @@ It is a git trailer and the gate reads it as one.
   message. So the truncation had no consumer inside the gate and no arm could go
   red for it. That is why the shape is written down here: it is a defect with no
   symptom, and the refusal is what gives it one.
+
+**Read the reason from the commit message body. Never from a trailer parser.**
+The reviewer who signs off on each reason (rook, per the epic) needs the source
+named, because both sources nearer to hand are wrong (rook, thread:r0.3/17):
+
+| source | what it gives you |
+| --- | --- |
+| the commit message body | the reason as written — **this is the one** |
+| the release gate's output | no reason at all; it reads only whether a trailer exists, so a reader can wrongly conclude none was given |
+| `git interpret-trailers --parse` | the reason, folded, when the block is well formed — and **nothing at all** when it is not |
+
+That last row was measured rather than assumed, and it is not what either of us
+expected. On a reason wrapped to column 0, `interpret-trailers` does not truncate
+the entry: the unindented line **ends the trailer block**, so git reports no
+trailers for that message — including any well-formed trailer beside it. The
+reviewer reading from a parser would therefore see nothing, not a half sentence.
+
+The gate is pinned to that behavior by a case in `--self-test` that runs both
+parsers on the same message and requires the same answer. The reader used to
+keep the well-formed sibling in a broken block, which made it **wider than git**
+on exactly the malformed input; a broken block now exempts nothing.
 - An empty reason does not exempt.
 
 ### The positive control

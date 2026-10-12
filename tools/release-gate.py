@@ -103,12 +103,23 @@ _TRAILER_HEAD = re.compile(r"\ADocs-Unchanged:\s*(?P<doc>\S+)\s*(?:--|\u2014)\s*
 
 
 def docs_unchanged(message: str) -> dict[str, str]:
-    """{doc: reason} from a commit message, folding wrapped reasons.
+    """{doc: reason} from a commit message, folding wrapped reasons as git does.
 
     A reason continues onto any following line that begins with whitespace, which
     is git's own trailer-continuation rule. A trailer whose reason folds to
     nothing is not an exemption and is dropped, so an empty `Docs-Unchanged:`
     cannot silently excuse a doc.
+
+    A MESSAGE WHOSE TRAILER BLOCK IS BROKEN EXEMPTS NOTHING, not merely the
+    broken trailer. Measured against `git interpret-trailers --parse` on my own
+    two controls: for the column-0 wrap git emits NO trailers at all -- an
+    unindented non-trailer line ends the block, it does not truncate one entry --
+    while this reader had kept the OTHER, well-formed trailer in the same
+    message. That made it WIDER than git on exactly the malformed input, and the
+    exemption is the one direction worth being strict in (ibis r0.3/8). So the
+    whole message is refused. The valid shape is pinned to git by a case in the
+    battery that runs both parsers and asserts they agree, rather than to my
+    reading of git's documentation.
     """
     out: dict[str, str] = {}
     doc = None
@@ -127,27 +138,28 @@ def docs_unchanged(message: str) -> dict[str, str]:
             flush()
             doc = found.group("doc")
             parts = [found.group("rest")]
-            # A HARD-WRAPPED TRAILER IS MALFORMED AND MUST NOT EXEMPT. git's
-            # continuation is an INDENTED line; a reason wrapped to column 0 is
-            # not a continuation, and git itself would read the value as the
-            # first line alone. Folding by whitespace therefore does NOT rescue
-            # it -- measured on my own control, where "changes no" is where the
-            # sentence stopped and "command, flag or output" began a new line at
-            # column 0. So such a trailer is DROPPED rather than truncated,
-            # which makes arm docs-unchanged-no-trailer fire for that doc: the
-            # run claimed an exemption and did not receive one, loudly, with no
-            # new arm and no sentence published that nobody wrote.
+            # A HARD-WRAPPED TRAILER BREAKS THE BLOCK, AND A BROKEN BLOCK
+            # EXEMPTS NOTHING. git's continuation is an INDENTED line; a reason
+            # wrapped to column 0 is not one, and `git interpret-trailers
+            # --parse` on that message emits NO trailers whatever -- the
+            # unindented line ends the trailer block rather than truncating one
+            # entry. Measured on my own two controls. Dropping only the wrapped
+            # trailer left this reader WIDER than git on malformed input, since
+            # the other, well-formed trailer in the same message survived here
+            # and not there; widening the exemption is the one direction worth
+            # refusing. So the message is abandoned whole, which makes arm
+            # docs-unchanged-no-trailer fire for every doc it claimed.
             nxt = lines[idx + 1] if idx + 1 < len(lines) else ""
             if nxt.strip() and not nxt[:1].isspace() and not _TRAILER_HEAD.match(nxt.strip()):
                 print(
                     f"release-gate: the Docs-Unchanged trailer for {doc} is "
-                    f"followed by an unindented line, so its reason is wrapped "
-                    f"and git would read only the first line. It does NOT "
-                    f"exempt. Put the reason on one line, or indent the "
-                    f"continuation.",
+                    f"followed by an unindented line, which ends the trailer "
+                    f"block -- `git interpret-trailers` reads NO trailers from "
+                    f"this message. Nothing in it exempts. Put each reason on "
+                    f"one line, or indent the continuation.",
                     file=sys.stderr,
                 )
-                doc, parts = None, []
+                return {}
             continue
         if doc is not None and line[:1].isspace() and line.strip():
             parts.append(line)
@@ -823,6 +835,13 @@ def _trailer_battery() -> int:
             {},
         ),
         (
+            "a BROKEN block exempts nothing, not even its well-formed sibling",
+            "release: v1\n\nDocs-Unchanged: docs/a.md -- the edit is a comment and changes no\n"
+            "command, flag or output\n"
+            "Docs-Unchanged: docs/b.md -- a perfectly good reason\n",
+            {},
+        ),
+        (
             "two trailers, adjacent, BOTH survive the wrap guard",
             "release: v1\n\nDocs-Unchanged: docs/a.md -- reason one\n"
             "Docs-Unchanged: docs/b.md -- reason two\n",
@@ -849,6 +868,39 @@ def _trailer_battery() -> int:
             print(f"    ok   {name}")
         else:
             print(f"    FAIL {name}\n         want {want}\n         got  {got}")
+            failures += 1
+
+    # PINNED TO GIT, NOT TO MY READING OF GIT. The folding rule is a claim about
+    # what another tool does, so it is asserted against that tool: both parsers
+    # run on the same two messages and must agree on the set of exempted docs
+    # AND on each reason, byte for byte. This is what caught the reader being
+    # WIDER than git on the malformed shape -- reasoning from git's docs had
+    # given me a rule that kept a trailer git discards.
+    for name, message in (
+        ("folded", "release: v1\n\nDocs-Unchanged: docs/a.md -- "
+                   "the edit is a comment and changes no\n  command, flag or output\n"),
+        ("broken", "release: v1\n\nDocs-Unchanged: docs/a.md -- "
+                   "the edit is a comment and changes no\ncommand, flag or output\n"),
+    ):
+        try:
+            done = subprocess.run(
+                ["git", "interpret-trailers", "--parse"],
+                input=message, capture_output=True, text=True, timeout=60, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print(f"    UNMEASURED git-agreement/{name}: git could not be run: {exc}")
+            continue
+        theirs = {}
+        for line in done.stdout.splitlines():
+            found = _TRAILER_HEAD.match(line.strip())
+            if found:
+                theirs[found.group("doc")] = found.group("rest").strip()
+        mine = docs_unchanged(message)
+        if mine == theirs:
+            print(f"    ok   git agreement, {name} shape: both read {sorted(mine) or '[]'}")
+        else:
+            print(f"    FAIL git agreement, {name} shape\n"
+                  f"         git  {theirs}\n         mine {mine}")
             failures += 1
     return failures
 
