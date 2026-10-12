@@ -208,13 +208,21 @@ It is a git trailer and the gate reads it as one.
   exemption, which is the one direction worth being strict in.
 - A reason longer than one line **continues on an indented line**, which is
   git's own folding rule. The gate joins the indented continuations.
-- A reason wrapped to **column 0 does not exempt.** git itself would read only
-  the first line, so there is no honest way to accept it: truncating publishes a
-  sentence nobody wrote — the first version of this reader turned "the edit is a
-  comment and changes no command, flag or output" into "…and changes no", which
-  reverses it, and the epic copies these reasons into the PR summary. Such a
-  trailer is dropped with a note on stderr naming the file, and
-  `docs-unchanged-no-trailer` fires for that doc.
+- A reason wrapped to **column 0 does not exempt.** git does not treat a
+  column-0 continuation as part of the value, so the trailer git sees and the
+  sentence the author wrote would be two different texts — the first version of
+  this reader turned "the edit is a comment and changes no command, flag or
+  output" into "…and changes no", which reverses it. There is no honest way to
+  accept that: truncating publishes a sentence nobody wrote, to anything that
+  extracts trailers with git semantics. Such a trailer is dropped with a note on
+  stderr naming the file, and `docs-unchanged-no-trailer` fires for that doc.
+
+  The gate itself never reads the reason's *value* — arm 9 asks only whether a
+  doc has a trailer — and the epic's "the reasons are copied into the PR summary"
+  and rook's sign-off on each reason are hand steps worked from the commit
+  message. So the truncation had no consumer inside the gate and no arm could go
+  red for it. That is why the shape is written down here: it is a defect with no
+  symptom, and the refusal is what gives it one.
 - An empty reason does not exempt.
 
 ### The positive control

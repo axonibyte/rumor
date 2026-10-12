@@ -72,12 +72,27 @@ _WS_VERSION = re.compile(r"^version\s*=\s*\"(?P<ver>[^\"]+)\"", re.M)
 # THE TRAILER IS A GIT TRAILER AND FOLDS LIKE ONE. `re.M` makes `$` end of
 # LINE, so a wrapped reason was captured only as far as the break -- ibis r0.3/13
 # measured it on my own control: "the edit is a comment and changes no" where the
-# sentence continues "command, flag or output". That REVERSES the meaning, and the
-# epic copies these reasons into the PR summary, so the exemption's audit trail
-# was corrupted exactly when a reason was long enough to wrap, which is when it is
-# worth reading. Silent truncation is the only option here that publishes a
-# sentence nobody wrote, so continuation lines are folded as git folds them: a
-# following line that begins with whitespace continues the reason.
+# sentence continues "command, flag or output", which REVERSES it. Continuation
+# lines are folded as git folds them: a following line that begins with
+# whitespace continues the reason.
+#
+# WHAT THE TRUNCATION REACHED, MEASURED RATHER THAN ASSUMED -- because my first
+# version of this comment asserted a consequence I had not checked. The only
+# consumer of this map in this file is arm 9's `doc not in trailers`, which reads
+# the KEYS; the gate never prints a reason, and nothing else in the repository
+# reads the trailer at all. So the corrupted value had no consumer here, and no
+# arm could have gone red for it -- which is exactly why twelve green arms said
+# nothing about it. The epic's "the reasons are copied into the PR summary" and
+# rook's sign-off on each reason are both hand steps, worked from the commit
+# message, where the whole sentence is present.
+#
+# IT IS STILL A DEFECT, FOR A REASON THAT NEEDS NO CONSUMER: git does not treat a
+# column-0 continuation as part of the value, so the trailer git sees and the
+# sentence the author wrote are two different texts. Anything extracting trailers
+# with git semantics -- `git interpret-trailers`, or a forge that renders them --
+# gets the truncation. Folding makes those two texts the same when the
+# continuation is indented; refusing makes the disagreement loud when it is not.
+# Truncating silently is the one option that publishes a sentence nobody wrote.
 #
 # A LONE HYPHEN IS STILL NOT A SEPARATOR (ibis r0.3/8): accepting `-` beside `--`
 # and the em dash widens the EXEMPTION, which is the one direction worth being
@@ -763,9 +778,11 @@ def _trailer_battery() -> int:
     This is a unit battery and not a repo case because the shapes are a property
     of one function and a repo case can only show one of them per run -- and
     because the defect ibis found at r0.3/13 was INVISIBLE at the arm level: a
-    truncated reason still exempts the doc, so the arm stayed green while the
-    sentence it published was reversed. What a repo case can measure is the pair
-    below: exempt and not-exempt on the same tree.
+    truncated reason still exempts the doc, and nothing in this file reads the
+    reason's value at all, so no arm could have gone red for it. What a repo case
+    CAN measure is the pair below: exempt and not-exempt on the same tree, which
+    is the refusal of a column-0 trailer -- the half of the fix that does change
+    a verdict.
 
     Both directions are here. A guard that refuses a wrapped trailer can also
     eat a legitimate one -- a trailer followed immediately by another trailer at
