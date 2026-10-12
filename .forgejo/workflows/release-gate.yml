@@ -107,13 +107,20 @@ jobs:
           cat ../self.log
           test "$rc" -eq 124 && { echo "HANG: the gate's self-test exceeded 300s. RUNNER finding; the gate was NOT checked."; exit 124; }
           test "$rc" -eq 0 || { echo "the gate's own self-test FAILED, so its verdict on this PR means nothing"; exit "$rc"; }
-          # THE COUNT IS PINNED ON PURPOSE. `0 failed` alone passes when a
-          # case silently stops being registered, which is how an arm quietly
-          # becomes unmeasured. Raise this number when a case is added -- 14 is
-          # 12 arm cases (docs-stale excepted, UNMEASURED by construction) plus
-          # the clean run plus the trailer pair's exempting half.
-          grep -q 'of 14 cases ok, 0 failed' ../self.log \
-            || { echo "the self-test did not report 14 of 14: a case did not run, or none ran"; exit 1; }
+          # BOTH COUNTS ARE PINNED, AND THIS IS THE SECOND VANTAGE RATHER THAN
+          # THE MECHANISM. The gate declares EXPECT_CASES and
+          # EXPECT_TRAILER_CHECKS and asserts its own counts against them in
+          # both directions, so a case that stops running fails there first
+          # (ibis thread:r0.3/25, rook /26). What that assertion CANNOT catch is
+          # an edit that removes a case and lowers the declaration to match: the
+          # gate then agrees with itself. This literal is in a different file,
+          # so that edit has to be made twice to pass, and the second edit is
+          # the one a reviewer sees.
+          #
+          # `0 failed` alone is not enough: it passes a self-consistent `N of N`
+          # for any N, including 0.
+          grep -q '14 of 14 cases ok, 15 of 15 trailer checks ok, 0 failed' ../self.log \
+            || { echo "the self-test did not report 14 of 14 cases and 15 of 15 trailer checks: a case did not run, or the gate's declared counts were changed without this literal"; exit 1; }
           echo "PROOF $(grep -oE '[0-9]+ of [0-9]+ cases ok, [0-9]+ failed' ../self.log | head -1 || true)"
 
       - name: gate this run against main

@@ -839,7 +839,31 @@ def _clean_run(repo: Path, today: str, ver: str = "0.2.1") -> None:
     _commit(repo, f"release: v{ver}")
 
 
-def _trailer_battery() -> int:
+# THE SELF-TEST ASSERTS ITS OWN SIZE, EXACTLY, IN BOTH DIRECTIONS.
+#
+# ibis r0.3/25: the summary line counted the REPO cases only, so a battery that
+# silently stopped running still printed "14 of 14 cases ok, 0 failed" and
+# satisfied the workflow's grep -- the uncounted-UNMEASURED hole from r0.3/22,
+# relocated one level out. Driven by stubbing the battery to a no-op: rc 0, grep
+# PASS.
+#
+# AN EXPECTED COUNT, NOT A FLOOR (rook r0.3/26, who runs EXPECT = 54 and
+# EXPECT = 102 in his own suites). A floor catches a deletion but accepts any
+# addition, which lets the constant go stale until it no longer describes
+# anything -- and a count is a two-sided quantity, so `>=` is the wrong guard
+# for it: too few means checks vanished, too many means checks were added
+# without the declaration being updated, and each is its own failure with its
+# own message. Any self-consistent `N of N` is satisfiable by shrinking N, which
+# is why the number is absolute and lives here rather than being a shape the
+# workflow's grep happens to match.
+#
+# Changing either number is a deliberate edit that has to say what it added or
+# removed.
+EXPECT_CASES = 14
+EXPECT_TRAILER_CHECKS = 15
+
+
+def _trailer_battery() -> tuple[int, int]:
     """Drive docs_unchanged() over every shape a trailer arrives in.
 
     This is a unit battery and not a repo case because the shapes are a property
@@ -916,9 +940,11 @@ def _trailer_battery() -> int:
         ),
     ]
     failures = 0
+    ran = 0
     print("  docs_unchanged() shapes:")
     for name, message, want in cases:
         got = docs_unchanged(message).exempt
+        ran += 1
         if got == want:
             print(f"    ok   {name}")
         else:
@@ -942,6 +968,7 @@ def _trailer_battery() -> int:
          []),
     ):
         got = docs_unchanged(message).malformed
+        ran += 1
         if got == want:
             print(f"    ok   {name}")
         else:
@@ -969,6 +996,7 @@ def _trailer_battery() -> int:
          "the edit is a comment and changes no\ncommand, flag or output\n"
          "Docs-Unchanged: docs/b.md -- a perfectly good reason\n"),
     ):
+        ran += 1
         try:
             done = subprocess.run(
                 ["git", "interpret-trailers", "--parse"],
@@ -998,7 +1026,8 @@ def _trailer_battery() -> int:
             print(f"    FAIL git agreement, {name} shape\n"
                   f"         git  {theirs}\n         mine {mine}")
             failures += 1
-    return failures
+
+    return failures, ran
 
 
 def self_test() -> int:
@@ -1144,7 +1173,8 @@ def self_test() -> int:
                 "Docs-Unchanged: docs/design.md -- the edit is a comment and changes no\n"
                 "command, flag or output\n")
 
-    failures = _trailer_battery()
+    battery_failures, trailer_checks = _trailer_battery()
+    failures = 0
     ran = 0
     for arm, label, build in cases:
         with tempfile.TemporaryDirectory() as raw:
@@ -1183,8 +1213,34 @@ def self_test() -> int:
     print("  UNMEASURED is not covered: docs-stale needs a cargo toolchain and the")
     print("  real `rumor docs --check`, so it is driven by the fixture branch on the")
     print("  runner, not here. _docs_check reports UNMEASURED rather than passing.")
-    print(f"\n  {ran - failures} of {ran} cases ok, {failures} failed")
-    return RC_FINDINGS if failures else RC_CLEAN
+    # THE SIZE ASSERTIONS, BEFORE THE SUMMARY, so a wrong count cannot be
+    # reported as a clean run. Each direction gets its own sentence: a count
+    # below the expectation means a case stopped running, above it means one was
+    # added without updating the declaration that makes the number load-bearing.
+    size_failures = 0
+    for label, got, want in (("case", ran, EXPECT_CASES),
+                             ("trailer check", trailer_checks, EXPECT_TRAILER_CHECKS)):
+        if got == want:
+            continue
+        how = "FEWER than" if got < want else "MORE than"
+        print(f"\n  FAIL {got} {label}(s) ran, {how} the declared "
+              f"{want}. "
+              + ("A case that stops running is invisible in a self-consistent "
+                 "count, so the number is declared and asserted."
+                 if got < want else
+                 "Raise the declared count in the same change that adds the "
+                 "case, or the number stops describing anything."))
+        size_failures += 1
+
+    # BOTH TALLIES ON ONE LINE AND KEPT SEPARATE. Folding battery failures into
+    # the case counter made a failed shape check report "13 of 14 cases ok" when
+    # all 14 cases passed -- a count that says something untrue, which is the
+    # defect this whole round is about.
+    total = failures + battery_failures + size_failures
+    print(f"\n  {ran - failures} of {ran} cases ok, "
+          f"{trailer_checks - battery_failures} of {trailer_checks} trailer "
+          f"checks ok, {total} failed")
+    return RC_FINDINGS if total else RC_CLEAN
 
 
 def main(argv: list[str]) -> int:
