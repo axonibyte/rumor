@@ -184,7 +184,23 @@ jobs:
           rc=0
           timeout 30 rustc -vV > ../rustc.log 2>&1 || rc=$?
           test "$rc" -eq 0 || { cat ../rustc.log; echo "rustc -vV exited $rc"; exit "$rc"; }
-          echo "PROOF target triple $(sed -n 's/^host: //p' ../rustc.log)"
+          # THE TRIPLE IS ASSERTED, NOT JUST PRINTED, and this was the worse half
+          # of rook thread:r0.3/33's 270 shape sitting in my own file: a PROOF
+          # that extracts a value by an unguarded pattern can print a value which
+          # CONTRADICTS the claim beside it. This pipeline builds exactly one
+          # target by decision (fable thread:rumor/332), so a host that is not
+          # that target means the wrong runner answered -- and `runs-on` is a
+          # LABEL, which is a proxy for the platform and not a measurement of it.
+          # Unasserted, this step would have printed
+          # "PROOF target triple x86_64-unknown-linux-gnu" and published a Linux
+          # binary out of a FreeBSD-amd64-only pipeline. An empty extraction
+          # would have printed a bare "PROOF target triple " and passed.
+          EXPECT_TRIPLE=x86_64-unknown-freebsd
+          TRIPLE=$(sed -n 's/^host: //p' ../rustc.log)
+          test -n "$TRIPLE" || { echo "could not derive the host triple from rustc -vV, so the platform is unmeasured. Publishing nothing."; exit 1; }
+          test "$TRIPLE" = "$EXPECT_TRIPLE" \
+            || { echo "this runner's host triple is $TRIPLE and this pipeline builds only $EXPECT_TRIPLE: the wrong runner answered the job. Publishing nothing."; exit 1; }
+          echo "PROOF target triple $TRIPLE, which is the only target this pipeline builds"
 
       - name: write SHA256SUMS over what was actually built
         run: |
@@ -195,8 +211,16 @@ jobs:
           rc=0
           timeout 30 rustc -vV > ../rustc2.log 2>&1 || rc=$?
           test "$rc" -eq 0 || { cat ../rustc2.log; echo "rustc -vV exited $rc"; exit "$rc"; }
+          # ASSERTED AGAIN HERE, because each step is its own shell and inherits
+          # nothing from the one that checked it. The artifact NAME embeds this
+          # value, so an unchecked triple would produce a correctly-named Linux
+          # artifact from a pipeline that promises only FreeBSD amd64 -- honest
+          # filename, broken contract.
+          EXPECT_TRIPLE=x86_64-unknown-freebsd
           TRIPLE=$(sed -n 's/^host: //p' ../rustc2.log)
           test -n "$TRIPLE" || { echo "could not derive the host triple from rustc -vV"; exit 1; }
+          test "$TRIPLE" = "$EXPECT_TRIPLE" \
+            || { echo "this runner's host triple is $TRIPLE and this pipeline builds only $EXPECT_TRIPLE: the wrong runner answered the job. Publishing nothing."; exit 1; }
           NAME="rumor-${TAG}-${TRIPLE}"
           cp target/release/rumor "../dist/${NAME}"
           cd ../dist
@@ -216,8 +240,16 @@ jobs:
           # command's success alone.
           test -s SHA256SUMS || { echo "SHA256SUMS is empty"; exit 1; }
           grep -q "${NAME}" SHA256SUMS || { echo "SHA256SUMS does not name ${NAME}"; exit 1; }
+          # "AND NOTHING ELSE" WAS AN UNASSERTED HALF OF THE CLAIM. Emptiness and
+          # the name were checked; the count was not, so the line said more than
+          # the step had measured -- the same defect as a docstring claiming a
+          # ref it never read. One line is what "nothing else" means for a
+          # checksum file, so the count is asserted and the number is printed.
+          SUMLINES=$(grep -c . SHA256SUMS)
+          test "$SUMLINES" -eq 1 \
+            || { cat SHA256SUMS; echo "SHA256SUMS has $SUMLINES entries and this pipeline builds exactly one artifact: something else was built, or the file was appended to. Publishing nothing."; exit 1; }
           cat SHA256SUMS
-          echo "PROOF SHA256SUMS covers ${NAME} and nothing else was built (FreeBSD amd64 only, fable thread:rumor/332)"
+          echo "PROOF SHA256SUMS has $SUMLINES entry and it names ${NAME} (FreeBSD amd64 only, fable thread:rumor/332)"
 
       - name: sign SHA256SUMS, or name the absence
         run: |
