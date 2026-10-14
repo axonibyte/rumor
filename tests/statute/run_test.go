@@ -362,10 +362,13 @@ func TestStatutesHaveNotDrifted(t *testing.T) {
 			t.Errorf("%s: %v", rel, err)
 			continue
 		}
-		h := sha1.New()
-		fmt.Fprintf(h, "blob %d\x00", len(body))
-		h.Write(body)
-		got := fmt.Sprintf("%x", h.Sum(nil))
+		// The git blob header, then the bytes. Built as ONE buffer and hashed
+		// in one call so there is no write error to discard: `fmt.Fprintf`
+		// into a hash returns an error that can never be non-nil, and errcheck
+		// is right to refuse the judgement call -- the lint is cheaper to
+		// satisfy than to argue with, and sha1.Sum is clearer anyway.
+		blob := append([]byte(fmt.Sprintf("blob %d\x00", len(body))), body...)
+		got := fmt.Sprintf("%x", sha1.Sum(blob))
 		if got != hash {
 			t.Errorf("%s has drifted from r1.2-examples: hash %s, carried %s", rel, got, hash)
 		}
