@@ -135,6 +135,18 @@ jobs:
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go, go126 or go125 on PATH: this jail has no Go toolchain, which is a PROVISIONING finding and not a code one"; exit 1; }
+          # GOTOOLCHAIN=local, AND IT IS A GATE NOT A PREFERENCE (ratchet
+          # go-port/6, reproduced here). Under the default `auto`, a go
+          # directive above the installed toolchain is SILENTLY SATISFIED by
+          # downloading another one: with a 1.26.8 directive, `go125 test`
+          # printed "downloading go1.26.8" and then ok. So naming the versioned
+          # binary does not pin what compiles the code, and a dependency can
+          # raise the directive underneath us -- OPA v1.21.2 declares go 1.26.0.
+          # With `local` the same command refuses, naming both versions. That
+          # turns a silent substitution into a loud finding, and it also keeps
+          # an unbounded toolchain download from being charged to a step's own
+          # timeout and then misread as a build hang.
+          export GOTOOLCHAIN=local
           echo "PROOF toolchain $(timeout 30 "$GO" version)"
           # NOT `go build | tail`: a pipeline's status is the LAST stage's, so
           # tail's success would mask a failing build -- the exact defect this
@@ -155,7 +167,19 @@ jobs:
           # a value only execution produces: the binary's own usage line, which
           # it writes to stderr and exits 2 for. `|| true` because exit 2 is the
           # correct answer here and would otherwise fail the step.
+          # THE PROOF IS THE BINARY'S OWN RECORDED TOOLCHAIN, not the version
+          # of whatever I invoked. `go version -m` reads what actually compiled
+          # it, which is the only form of this line that GOTOOLCHAIN cannot make
+          # lie -- and with `local` above it cannot diverge in the first place,
+          # so the two together are the claim and its cross-check.
+          built_with="$(timeout 30 "$GO" version -m ../rumor-bin 2>&1 | head -1)"
+          echo "PROOF compiled by: $built_with"
           echo "PROOF built binary says: $(timeout 30 ../rumor-bin 2>&1 | head -1 || true)"
+          invoked="$(timeout 30 "$GO" env GOVERSION)"
+          case "$built_with" in
+            *"$invoked"*) : ;;
+            *) echo "the binary records a different toolchain than the one invoked: $built_with against $invoked. GOTOOLCHAIN=local should have made this impossible, so read it as a finding about the runner rather than about this code"; exit 1 ;;
+          esac
 
       - name: test
         run: |
@@ -166,6 +190,8 @@ jobs:
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          # See the build step for why this is a gate and not a preference.
+          export GOTOOLCHAIN=local
           rc=0
           timeout 900 "$GO" test ./... > ../test.log 2>&1 || rc=$?
           tail -20 ../test.log
@@ -209,6 +235,8 @@ jobs:
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          # See the build step for why this is a gate and not a preference.
+          export GOTOOLCHAIN=local
           rc=0
           timeout 300 "$GO" vet ./... > ../vet.log 2>&1 || rc=$?
           tail -30 ../vet.log
@@ -225,6 +253,8 @@ jobs:
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          # See the build step for why this is a gate and not a preference.
+          export GOTOOLCHAIN=local
           rc=0
           timeout 300 "$GO" run ./cmd/rumor docs --check > ../docs.log 2>&1 || rc=$?
           cat ../docs.log
@@ -244,6 +274,8 @@ jobs:
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          # See the build step for why this is a gate and not a preference.
+          export GOTOOLCHAIN=local
           # PINNED, and the pin is MEASURED: v2.14.0 is what proxy.golang.org
           # reported as latest for github.com/golangci/golangci-lint/v2 on
           # 2026-10-14 (published 2026-09-24). An unpinned @latest is a gate
@@ -299,6 +331,8 @@ jobs:
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          # See the build step for why this is a gate and not a preference.
+          export GOTOOLCHAIN=local
           # PINNED AND MEASURED, same reasoning: golang.org/x/vuln v1.9.0 is what
           # the proxy reported as latest on 2026-10-14 (published 2026-10-11).
           # `go env` is local and instant, and bounded anyway: "it is instant in
@@ -344,6 +378,8 @@ jobs:
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          # See the build step for why this is a gate and not a preference.
+          export GOTOOLCHAIN=local
           # WHAT THIS ASSERTS, AND WHAT IT DOES NOT. deny.toml's allowlist gated
           # a Rust graph with real third-party crates in it. This module has NO
           # dependencies, so there is no licence surface to allow or deny, and a
