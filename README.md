@@ -12,15 +12,25 @@ asynchronous work, and optionally a browser UI.
 **Out:** component conformance, browser-vs-fake comparison, human evidence,
 compilers, embedded targets, and batch pipelines.
 
+## Language and engine
+
+Go, one static binary. Rules are Rego, evaluated by OPA embedded as a library.
+Decided 2026-10-14, replacing the epic's original line (Rust with embedded
+Regorus): the product's value is the explanation behind a finding, and the
+reference engine carries evaluation traces, coverage and a test runner that the
+Rust reimplementation does not. The Rust tree in this repository is the one
+being replaced; it stays until the Go port lands so that nothing on `main` is
+ever half of each.
+
 ## Install
 
-Not yet. The crate is `rumor-cli` and the binary is `rumor`; the bare `rumor`
-crate name on crates.io belongs to someone else and arrives by transfer or not
-at all. See `docs/prior-art.md` once R0.4 lands.
+Not yet. The module is `forge.axonibyte.com/axonibyte/rumor` and the binary is
+`rumor`. See `docs/prior-art.md` for the name.
 
 ## Quickstart
 
-Not yet: the toy system under test arrives in R5. Until then:
+Not yet: the toy system under test arrives in R5, and the Go port is in
+progress. Until the port lands the commands below are the Rust tree's:
 
     cargo build
     cargo run -- docs --check
