@@ -10,12 +10,19 @@
 // attempt would map a handle to an id from a previous run, and every finding
 // compared through it would be about a server state that no longer exists.
 //
-// THE COLLISION CASES ARE MINE AND I AM SAYING SO. Issue 43 asks for "the
-// collision case the vocabulary names", and v1 names none: it describes the
-// shape of a handle, the mapping, and the replay property, and nothing about
-// what happens when a binding conflicts. Rather than build to a collision I
-// invented and leave the choice implicit, both conflicts are refused here and
-// the decision is recorded at thread:r1.vocab/7 for v1 to adopt or overrule:
+// WHICH COLLISION IS v1's AND WHICH IS MINE, now that the draft answers.
+//
+// v1 NAMES THE BETWEEN-ATTEMPTS ONE (amended on r1.3-vocabulary-2 after I
+// raised its absence at thread:r1.vocab/7): "a retried attempt produces the
+// same handle with a different server id, and the table keeps the current
+// attempt's id only. A claim that names a handle absent from the current
+// attempt's table is refused at the ledger as a validation error (R4), never
+// judged as a finding." NextAttempt implements the first half; Require is the
+// seam for the second, and the refusal itself is the ledger's to make.
+//
+// THE TWO WITHIN-ATTEMPT CONFLICTS ARE STILL MINE, and v1's new line supports
+// them rather than stating them -- "a handle names at most one entity per run"
+// is why both are refused:
 //
 //   - the same handle bound twice to DIFFERENT ids. The handle is the
 //     identity; letting the second win would silently redirect every claim
@@ -103,6 +110,29 @@ func (t *Table) ID(handle string) (string, bool) {
 func (t *Table) Handle(id string) (string, bool) {
 	h, ok := t.byID[id]
 	return h, ok
+}
+
+// Require is ID for a caller that must not proceed without the id.
+//
+// IT EXISTS TO MAKE ONE MISTAKE HARD. v1: "A claim that names a handle absent
+// from the current attempt's table is refused at the ledger as a validation
+// error (R4), NEVER JUDGED AS A FINDING." A caller holding (string, bool) can
+// treat the false as a disagreement and emit `bug`, which would report a
+// bookkeeping gap as a defect in the system under test -- the worst available
+// failure, because it looks like the product working. The error says what it
+// is, and names the attempt, since "absent" is only meaningful against one.
+//
+// The REFUSAL is still the ledger's to make: this package does not know what
+// is being validated. What it owes is an answer a caller cannot mistake.
+func (t *Table) Require(handle string) (string, error) {
+	if !Valid(handle) {
+		return "", fmt.Errorf("handle: %q is not a run-local handle; v1's form is actor.type#n", handle)
+	}
+	id, ok := t.byHandle[handle]
+	if !ok {
+		return "", fmt.Errorf("handle: %s is absent from attempt %d's table, so nothing in this attempt names that entity. This is a VALIDATION refusal and never a finding (v1, Handles): a claim naming it is refused at the ledger", handle, t.attempt)
+	}
+	return id, nil
 }
 
 // Handles lists the bound handles, sorted, so a dump or a diff is stable.

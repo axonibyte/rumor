@@ -243,16 +243,26 @@ previous run, so `NextAttempt` returns an **empty** table rather than a copy,
 and a test asserts that the old id no longer resolves while the handle takes
 the new one.
 
-**Two collisions are refused, and the vocabulary names neither.** v1 describes
-the handle's shape, the mapping and the replay property, and says nothing about
-a conflicting binding, so this is recorded as a decision rather than left
-implicit (raised at `thread:r1.vocab`): a handle rebound to a *different* id is
-refused, because the handle is the identity and a second binding would redirect
-every claim already made about it; and two handles bound to the *same* id are
-refused, because that means the run created fewer entities than it believes and
-a comparison by handle would agree about different things. Rebinding to the
-**identical** id is permitted — a retried create that actually succeeded is not
-a conflict, and refusing it would make the table refuse its own idempotence.
+**Three collisions, and v1 names one of them.** The draft named none when this
+package was written, which was raised and amended: v1 now says the collision
+that matters is **between attempts** — a retried attempt produces the same
+handle with a different server id, the table keeps the current attempt's id
+only, and a claim naming a handle absent from it "is refused at the ledger as a
+validation error (R4), never judged as a finding". `NextAttempt` implements the
+first half and `Require` is the seam for the second: it returns an error rather
+than a bool, because a caller holding `(string, bool)` can read the false as a
+disagreement and emit `bug`, which reports bookkeeping as a defect in the system
+under test — a failure that looks like the product working.
+
+The other two are **within** an attempt and remain this package's decision,
+supported by v1's new line that a handle names at most one entity per run: a
+handle rebound to a *different* id is refused, because the handle is the
+identity and a second binding would redirect every claim already made about it;
+and two handles bound to the *same* id are refused, because the run then created
+fewer entities than it believes and a comparison by handle would agree about
+different things. Rebinding to the **identical** id is permitted — a retried
+create that actually succeeded is not a conflict, and refusing it would make the
+table refuse its own idempotence.
 
 ## The ledger is append-only
 

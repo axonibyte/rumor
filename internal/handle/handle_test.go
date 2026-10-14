@@ -213,3 +213,69 @@ func TestTheNextAttemptKeepsHandlesAndDropsIds(t *testing.T) {
 		t.Error("attempt 0 was accepted")
 	}
 }
+
+// REQUIRE IS THE SEAM FOR v1's VALIDATION RULE, and the rule is about the
+// between-attempts case: "A claim that names a handle absent from the current
+// attempt's table is refused at the ledger as a validation error (R4), never
+// judged as a finding." These cases pin the answer a caller gets, because the
+// mistake this prevents -- reading an absence as a disagreement and emitting
+// `bug` -- would report bookkeeping as a defect in the system under test.
+func TestRequireRefusesAnAbsentHandleAsValidationAndNotAFinding(t *testing.T) {
+	tab, err := New(1)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := tab.Bind("alice.user#1", "srv-7"); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+
+	// THE PERMITTED TWIN FIRST: a bound handle resolves with no error.
+	id, err := tab.Require("alice.user#1")
+	if err != nil {
+		t.Fatalf("Require on a bound handle: %v", err)
+	}
+	if id != "srv-7" {
+		t.Errorf("Require = %q", id)
+	}
+
+	// Absent in this attempt.
+	if _, err := tab.Require("alice.user#9"); err == nil {
+		t.Error("Require accepted a handle that is not in the table")
+	} else {
+		for _, want := range []string{"alice.user#9", "attempt 1", "VALIDATION", "never a finding"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("the refusal does not say %q: %v", want, err)
+			}
+		}
+	}
+
+	// Malformed is also a refusal, and a different one.
+	if _, err := tab.Require("not a handle"); err == nil {
+		t.Error("Require accepted a malformed handle")
+	}
+
+	// THE CASE v1 NAMES: the same handle across attempts. In attempt 2 the
+	// entity has not been re-created yet, so the handle is absent and a claim
+	// naming it is a validation refusal -- not a finding, and not the old id.
+	second, err := tab.NextAttempt()
+	if err != nil {
+		t.Fatalf("NextAttempt: %v", err)
+	}
+	gotID, err := second.Require("alice.user#1")
+	if err == nil {
+		t.Errorf("attempt 2 resolved alice.user#1 to %q: the table must keep the CURRENT attempt's id only", gotID)
+	}
+	if err != nil && !strings.Contains(err.Error(), "attempt 2") {
+		t.Errorf("the refusal does not name the attempt it is about: %v", err)
+	}
+	// And once re-created, it resolves to the new id.
+	if err := second.Bind("alice.user#1", "srv-99"); err != nil {
+		t.Fatalf("binding in attempt 2: %v", err)
+	}
+	if id, err := second.Require("alice.user#1"); err != nil || id != "srv-99" {
+		t.Errorf("after re-creation Require = %q, %v", id, err)
+	}
+	if !t.Failed() {
+		t.Logf("PROOF an absent handle refuses as validation in both attempts, and resolves to the new id once re-created")
+	}
+}
