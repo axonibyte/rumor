@@ -363,15 +363,68 @@ rather than the exit status. Three mutants were driven against it: restoring the
 old vocabulary, dropping the good-signature guard, and reversing the clause
 order. Each kills at least one case.
 
-### The signature on SHA256SUMS is a named wait, not a silent skip
+### Signing SHA256SUMS: a machine key, and the run verifies its own output
 
-Signing needs the maintainer's private key and none is on the runner. The step
-attempts the signature and names its absence as a **provisioning finding**
-rather than treating it as done: a pipeline that quietly shipped an unsigned
-checksum file would be the always-pass shape of the very gate this phase builds.
-Until a signer exists on the runner, a tag run reports `SHA256SUMS` written and
-UNSIGNED, and the release is incomplete by the epic's own list rather than by
-the file's silence.
+For three tags this was a named wait, on the premise that signing needs the
+maintainer's key and none belongs on a runner. **That premise is retired.** The
+release signer is a machine key — `anvil@forge-01.corp.axonibyte.com`,
+generated inside the ci jail by its own user, private half never leaving it
+(cal's amendment, rumor/435; provisioned under issue 25). Nothing of cal's is
+on the runner and nothing needs to be.
+
+    ssh-keygen -Y sign -n file -f /usr/local/etc/anvil/anvil_ed25519 SHA256SUMS
+
+**The run then verifies what it just produced**, with the verifier's tool and
+the principal list a consumer would use:
+
+    ssh-keygen -Y verify -f /usr/local/etc/anvil/allowed_signers \
+      -I anvil@forge-01.corp.axonibyte.com -n file -s SHA256SUMS.sig < SHA256SUMS
+
+Two oracles on one claim: "the signer exited 0" says a process ran, and only
+the verify says the signature checks out against the list. The step asserts the
+`Good "file" signature` line as well as the status, because a tool that prints
+nothing and exits 0 would otherwise pass.
+
+**A missing key is a refusal that names the file**, not a wait. The distinction
+used to be "signed or waiting on a decision"; the decision is made, so a key
+that is absent or unreadable is a provisioning defect in a jail that has been
+provisioned, and the run says which path it could not read.
+
+### What a release carries, and that it is read back
+
+The epic asks the pipeline to attach "the binaries, checksums, and changelog
+section to the release". For v0.1.0 through v0.1.5 it attached nothing —
+`GET /releases` was empty for every tag. `tools/forge-release.py` closes that:
+it creates the release for the tag, uses **the tag's own changelog section** as
+the body, and uploads three files.
+
+| file | what it is |
+| --- | --- |
+| `rumor-<tag>-freebsd-amd64` | the binary, built `-trimpath` out of tree |
+| `SHA256SUMS` | one line, over what was actually built |
+| `SHA256SUMS.sig` | the ssh signature, verified in the same run |
+
+Two details that are decisions rather than mechanics. **The artefact's name is
+read off `SHA256SUMS`**, not recomposed from the tag and the platform: the
+build step owns that naming rule and a step cannot see another step's
+variables, so recomposing it would be a second copy that drifts — and
+`SHA256SUMS` is the record of what was really built. And **the release is read
+back** after the uploads, with its asset list compared to what was sent,
+because a 201 from an upload and a release that carries the file are different
+claims.
+
+### Fixtures for the tag pipeline
+
+The gate has twelve fixture branches, one per refusal arm. The tag pipeline had
+none, because its trigger is `v*` and tags are the maintainer's by protection —
+so driving its refusals meant asking cal to push deliberately bad tags.
+
+The trigger now also matches **`fixture-v*`**, which any agent may push, and
+the publish step refuses to publish such a tag **by its shape**. So a fixture
+runs every check and creates no release, and a fixture that somehow passed
+every check still publishes nothing. The three refusals it exists to drive are
+an unsigned or lightweight tag, a tagged commit that is not `main`'s head or
+not a bump commit, and the three version sources disagreeing.
 
 ## Runner requirements
 
@@ -388,7 +441,8 @@ list.
 | `golangci-lint`, `govulncheck` | `ci.yml`'s lint and vulnerability steps | **2.14.0** and **v1.9.0**, installed by pinned `go install` when absent and the version then asserted rather than printed |
 | `python3` | `release-gate.yml` runs `tools/release-gate.py`; `tools/check-workflows.py` is local-only | no version pin; the gate's probe step measures it and fails loudly when absent |
 | `sha256` or `sha256sum` | `tag-pipeline.yml`'s checksum step | either; the step measures which is present and refuses when neither is |
-| `gpg` | `tag-pipeline.yml`'s signature step | optional — a missing trust store is reported separately from a failed signature |
+| `ssh-keygen` | `tag-pipeline.yml` signs `SHA256SUMS` and verifies it back | **required**, from `FreeBSD-ssh`; it replaced `gpg`, which the pipeline no longer calls. The release key and the allowed-signers file live at `/usr/local/etc/anvil/` (issue 25) |
+| `gpg` | nothing calls it; it stays in the probe census | **not required.** Signing is `ssh-keygen` and the tags are ssh-signed, so `git verify-tag` never reaches gpg. It is measured anyway because a PGP-signed tag would need it, and `tools/verify-tag-verdict.sh` still classifies gpg's "No public key" as provisioning rather than as a bad signature |
 | `git` | every workflow: the clone, the fetch, every rev-parse, merge-base and ls-tree the gate's arms rest on | no version pin; **not at `/usr/bin/git`** on these hosts — it is `/usr/local/bin/git`, so a runner image that provides only the base system lacks it |
 
 **The runner reaches the FreeBSD package mirror.** `probe-mirror-egress.yml`

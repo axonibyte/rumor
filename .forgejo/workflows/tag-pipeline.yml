@@ -20,22 +20,39 @@
 # green in this file ambiguous (ibis, r0.3/3, carrying fable's rule from
 # ask-linux-runner/0).
 #
-# THE SIGNATURE IS A NAMED WAIT, NOT A SILENT SKIP. The epic says the pipeline
-# signs SHA256SUMS. Signing needs a private key, and no key of cal's is on this
-# runner; a pipeline that quietly shipped an unsigned checksum file would be the
-# "always-pass" shape of exactly the gate this issue exists to build. So the
-# step ATTEMPTS the signature and names its absence as a finding against
-# provisioning rather than treating it as done. QUILL has raised it with cal in
-# thread:r0.3 beside branch protection; until it is answered a tag run reports
-# SHA256SUMS written and UNSIGNED, loudly, and the release is incomplete by the
-# epic's own list rather than by this file's silence.
+# THE SIGNATURE IS NO LONGER A WAIT (issue 27, v0.1.6). It was one for three
+# tags, on the premise that signing needs a key of cal's and none belongs on a
+# runner. The premise died on 2026-10-13: the release signer is a MACHINE key,
+# anvil@forge-01.corp.axonibyte.com, generated inside this jail by its own user
+# and never leaving it (cal's amendment at rumor/435, provisioned by ibis under
+# issue 25). So the pipeline signs, verifies its own signature back against the
+# committed principal list, and publishes. A missing key is now a refusal that
+# NAMES THE FILE, not a wait for a decision -- the decision was made.
+#
+# AND IT PUBLISHES, which the epic asked for and three tags did not do: the
+# release is created for the tag and carries the binary, SHA256SUMS and
+# SHA256SUMS.sig, with the tag's changelog section as its body. The upload is
+# read back and the asset list compared, because "the POST returned 201" and
+# "the release carries three files" are different claims.
+#
+# FIXTURE TAGS RUN EVERYTHING AND PUBLISH NOTHING. `fixture-v*` is in the
+# trigger so this pipeline's refusals can be driven by any agent instead of
+# waiting for cal to push deliberately bad `v*` tags (issue 27, item 1). The
+# publish step refuses a fixture by the tag's SHAPE, so a fixture that somehow
+# passed every check still creates no release.
 
 name: tag-pipeline
 
 on:
   push:
     tags:
+      # `fixture-v*` is here so the pipeline's REFUSALS have fixtures without
+      # cal pushing deliberately bad `v*` tags (issue 27, item 1: the second
+      # option, which keeps the maintainer out of the loop). Every check runs
+      # for a fixture; the publish step refuses to publish one, guarded on the
+      # tag's shape.
       - "v*"
+      - "fixture-v*"
   workflow_dispatch:
 
 jobs:
@@ -56,7 +73,7 @@ jobs:
           # also left alone: an empty one is itself information, and the step is
           # already exiting non-zero.
           echo "uname   $(uname -a)"
-          for t in git go go126 go125 gofmt sha256 sha256sum gpg ssh-keygen; do
+          for t in git go go126 go125 gofmt sha256 sha256sum ssh-keygen python3 gpg; do
             p=$(command -v "$t" 2>/dev/null) && echo "$t  FOUND  $p" || echo "$t  ABSENT"
           done
 
@@ -356,22 +373,113 @@ jobs:
           cat SHA256SUMS
           echo "PROOF SHA256SUMS has $SUMLINES entry and it names ${NAME} (FreeBSD amd64 only, fable thread:rumor/332)"
 
-      - name: sign SHA256SUMS, or name the absence
+      - name: sign SHA256SUMS with the release key
         run: |
           set -o pipefail
           cd dist
-          # THE ABSENCE OF A KEY IS A FINDING, NOT A SKIP. See this file's header:
-          # shipping an unsigned checksum file quietly is the always-pass shape of
-          # the very gate this issue builds. The epic's requirement is unmet until
-          # a signer exists on this runner, and the run says so.
-          if command -v gpg >/dev/null 2>&1; then
-            rc=0
-            timeout 120 gpg --batch --yes --armor --detach-sign SHA256SUMS > ../sign.log 2>&1 || rc=$?
-            cat ../sign.log
-            test "$rc" -eq 0 && { test -s SHA256SUMS.asc || { echo "gpg exited 0 and wrote no signature"; exit 1; }; echo "PROOF SHA256SUMS.asc written, $(wc -c < SHA256SUMS.asc) bytes"; exit 0; }
-            echo "gpg could not sign (exited $rc). SHA256SUMS IS WRITTEN AND UNSIGNED."
-          else
-            echo "gpg is ABSENT on this runner. SHA256SUMS IS WRITTEN AND UNSIGNED."
+          # THE SIGNER IS A MACHINE KEY, NOT THE MAINTAINER'S (issue 27, v0.1.6).
+          # This step used to look for gpg and, finding none, report a "NAMED
+          # WAIT" for a maintainer key to arrive on the runner. Both halves of
+          # that premise are dead: cal's amendment at rumor/435 decided SSH
+          # signing, and nothing of the maintainer's belongs on a runner. The
+          # key is anvil@forge-01.corp.axonibyte.com, generated inside this jail
+          # by its own user and never leaving it, provisioned under issue 25 and
+          # proven to sign as act_runner (ibis rumor/451).
+          #
+          # ABSENCE IS A REFUSAL BY NAME, not a wait. The distinction that
+          # matters is no longer "signed or waiting" but "signed or say exactly
+          # which file is missing", because a missing key is now a provisioning
+          # defect in a jail that has been provisioned, not a decision nobody
+          # has made.
+          KEY=/usr/local/etc/anvil/anvil_ed25519
+          SIGNERS=/usr/local/etc/anvil/allowed_signers
+          command -v ssh-keygen >/dev/null 2>&1 \
+            || { echo "ssh-keygen is ABSENT on this runner and it is the signer. FreeBSD-ssh is in docs/release.md's runner table; this is a PROVISIONING finding. Publishing nothing."; exit 1; }
+          test -r "$KEY" \
+            || { echo "the release key $KEY is absent or unreadable by this runner's user, so SHA256SUMS cannot be signed. ibis provisioned it root:act_runner 0640 under issue 25; a mode or ownership change is the likely cause. PROVISIONING finding, publishing nothing."; exit 1; }
+          rc=0
+          timeout 120 ssh-keygen -Y sign -n file -f "$KEY" SHA256SUMS > ../sign.log 2>&1 || rc=$?
+          cat ../sign.log
+          test "$rc" -eq 0 \
+            || { echo "ssh-keygen -Y sign exited $rc. SHA256SUMS IS WRITTEN AND UNSIGNED, and publishing nothing is the verdict."; exit 1; }
+          test -s SHA256SUMS.sig \
+            || { echo "ssh-keygen exited 0 and wrote no signature at SHA256SUMS.sig: a zero status with no artefact is the shape this pipeline refuses everywhere else."; exit 1; }
+          echo "PROOF SHA256SUMS.sig written, $(wc -c < SHA256SUMS.sig) bytes"
+
+      - name: verify the signature back, in this run
+        run: |
+          set -o pipefail
+          cd dist
+          # TWO ORACLES ON ONE CLAIM. "ssh-keygen exited 0" says the signer ran;
+          # it does not say the signature verifies against the list a consumer
+          # would use. So the run checks its own output with the VERIFIER's
+          # tool and the committed principal list, which is also the only thing
+          # here that would catch a signature made with a key nobody trusts.
+          SIGNERS=/usr/local/etc/anvil/allowed_signers
+          IDENTITY=anvil@forge-01.corp.axonibyte.com
+          test -r "$SIGNERS" \
+            || { echo "the allowed-signers file $SIGNERS is unreadable, so this run cannot verify its own signature. PROVISIONING finding, publishing nothing."; exit 1; }
+          rc=0
+          timeout 60 ssh-keygen -Y verify -f "$SIGNERS" -I "$IDENTITY" -n file \
+            -s SHA256SUMS.sig < SHA256SUMS > ../verify-sums.log 2>&1 || rc=$?
+          cat ../verify-sums.log
+          test "$rc" -eq 0 \
+            || { echo "the signature this run just made does NOT verify against $SIGNERS for $IDENTITY (exited $rc). Publishing nothing."; exit 1; }
+          # THE STATUS IS NOT THE WHOLE ANSWER: assert the verdict line, since
+          # a tool that prints nothing and exits 0 would otherwise pass.
+          grep -q 'Good "file" signature' ../verify-sums.log \
+            || { echo "ssh-keygen -Y verify exited 0 without printing a good-signature line, so what it checked is unclear. Publishing nothing."; exit 1; }
+          echo "PROOF SHA256SUMS.sig verifies as $IDENTITY against the committed principal list"
+
+      - name: create the release and attach the three files
+        env:
+          RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -o pipefail
+          TAG="${GITHUB_REF_NAME:?the tag name is not in the environment}"
+          # A FIXTURE TAG NEVER PUBLISHES. The fixture trigger exists so the
+          # pipeline's refusals can be driven without cal pushing deliberately
+          # bad `v*` tags (issue 27, item 1), and a fixture that reached this
+          # step would otherwise create a real release. The guard is on the TAG
+          # SHAPE rather than on a variable a step could forget to set.
+          case "$TAG" in
+            fixture-v*)
+              echo "PROOF $TAG is a fixture tag: every check above ran and nothing is published. That is the point of the fixture."
+              exit 0
+              ;;
+          esac
+          cd src-tree
+          command -v python3 >/dev/null 2>&1 \
+            || { echo "python3 is ABSENT and tools/forge-release.py needs it. It is in docs/release.md's runner table and release-gate.yml measures it too; PROVISIONING finding, publishing nothing."; exit 1; }
+          # THE ARTEFACT'S NAME IS READ OFF SHA256SUMS, not rebuilt from the tag
+          # and the platform. The build step composes that name and this step
+          # cannot see its variables, so re-deriving it here would be a second
+          # copy of the naming rule that drifts silently -- and SHA256SUMS is
+          # the record of what was ACTUALLY built, which is the stronger source.
+          BIN=$(awk 'NR==1 {print $NF}' ../dist/SHA256SUMS)
+          test -n "$BIN" \
+            || { echo "SHA256SUMS names no file on its first line, so this step cannot tell what to attach. Publishing nothing."; exit 1; }
+          test -s "../dist/$BIN" \
+            || { echo "SHA256SUMS names $BIN and ../dist/$BIN is missing or empty: the checksum file and the build disagree. Publishing nothing."; exit 1; }
+          echo "PROOF the artefact to attach is $BIN, named by SHA256SUMS itself"
+          rc=0
+          timeout 300 python3 tools/forge-release.py \
+            --tag "$TAG" --body-from CHANGELOG.md \
+            --asset "../dist/$BIN" \
+            --asset ../dist/SHA256SUMS \
+            --asset ../dist/SHA256SUMS.sig > ../release.log 2>&1 || rc=$?
+          cat ../release.log
+          # `if` RATHER THAN `test ... && { }`: this file documents that the
+          # bare-and form is a trap under `set -e`, and a guard that aborts the
+          # step it is guarding would turn a provisioning finding into a silent
+          # failure one line early.
+          if [ "$rc" -eq 2 ]; then
+            echo "the release could not be ATTEMPTED, which is a provisioning finding and not a verdict on the tag: see the line above. Publishing nothing."
+            exit 1
           fi
-          echo "NAMED WAIT, not a pass: the epic requires a signed SHA256SUMS and no signing key for the maintainer is present here. This is a provisioning item for cal, raised in thread:r0.3 beside branch protection on main. The artifact above is complete except for its signature and must not be published as a signed release."
-          exit 1
+          if [ "$rc" -eq 3 ]; then
+            echo "tools/forge-release.py was CALLED WRONGLY, which is a defect in this workflow rather than anything about the tag or the runner. Publishing nothing."
+            exit 1
+          fi
+          test "$rc" -eq 0 || { echo "creating or attaching the release failed (exited $rc). Publishing nothing."; exit 1; }
+          echo "PROOF $TAG is published with its binary, SHA256SUMS and SHA256SUMS.sig"

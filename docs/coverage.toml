@@ -112,3 +112,11 @@ docs = ["docs/release.md", "docs/testing-methodology.md"]
 path = "tools/verify-tag-verdict.sh"
 docs = ["docs/release.md", "docs/testing-methodology.md"]
 
+[[entry]]
+# The publisher: it creates the release for a tag and attaches the three files.
+# release.md owns what a release must carry; the testing methodology owns the
+# part worth saying about it, which is that its FORGE half cannot be driven
+# locally and its battery says so rather than implying coverage it lacks.
+path = "tools/forge-release.py"
+docs = ["docs/release.md", "docs/testing-methodology.md"]
+

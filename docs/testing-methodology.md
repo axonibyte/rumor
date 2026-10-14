@@ -116,6 +116,20 @@ name, rather than the exit status: three of the eight clauses refuse and two
 report provisioning, so a control reading only the status could not tell a
 discriminating classifier from one that always refuses.
 
+**Name the half you did not drive.** `tools/forge-release.py` publishes the
+release and attaches its three files, and its battery covers exactly two
+things: pulling the tag's section out of `CHANGELOG.md` — seven cases, both
+heading dialects, a section that is not the first, blank lines inside one, a
+missing version and an empty section — and the hand-assembled multipart body,
+asserted to open, name its file and close on its own boundary, because a
+dropped CRLF pair is the classic silent upload corruption.
+
+Nothing in that battery talks to the forge, and the tool's docstring says so in
+those words. The create-and-attach half is proven by a tag run and by nothing
+else, which is why the issue's done-when is a published tag rather than a green
+local suite. A battery that implied otherwise would be worse than none: it
+would read as coverage of the part that can actually fail in production.
+
 Firing *alone* is the property, not merely firing. Two arms that always fire
 together cannot be told apart by any fixture, and the first draft of this gate
 had two such pairs: an unchanged version also fails "not greater than the latest
