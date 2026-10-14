@@ -1,0 +1,47 @@
+{
+  "why": "The position bound. At position 1 only the first document is in the prefix. Dana the admin was told of both and observes one, which is all there is to see yet: `consistent`. The only case whose observation sits before a claim, so the only one that can kill the position mutant.",
+  "expect": {
+    "believed_visible": 1,
+    "visible_truth": 1,
+    "untold_visible": 0,
+    "finding": "consistent"
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "role": "admin",
+      "position": 1,
+      "of": "doc.created",
+      "query": "doc.count",
+      "source": "api",
+      "value": 1
+    },
+    "known": [
+      "alice.doc#1",
+      "alice.doc#2"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.created",
+        "position": 1,
+        "handle": "alice.doc#1",
+        "visible_to": [
+          "admin",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "alice.doc#2",
+        "actor": "alice",
+        "type": "doc.created",
+        "position": 2,
+        "handle": "alice.doc#2",
+        "visible_to": [
+          "admin"
+        ]
+      }
+    ]
+  }
+}

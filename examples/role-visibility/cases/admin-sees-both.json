@@ -1,0 +1,47 @@
+{
+  "why": "The same ledger and the same knowledge, read by an admin: both documents are visible to that role, so two is `consistent`. The pair with the case above is what shows the finding turns on the ROLE and not on the ledger or the telling, neither of which differs between them.",
+  "expect": {
+    "believed_visible": 2,
+    "visible_truth": 2,
+    "untold_visible": 0,
+    "finding": "consistent"
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "role": "admin",
+      "position": 4,
+      "of": "doc.created",
+      "query": "doc.count",
+      "source": "api",
+      "value": 2
+    },
+    "known": [
+      "alice.doc#1",
+      "alice.doc#2"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.created",
+        "position": 1,
+        "handle": "alice.doc#1",
+        "visible_to": [
+          "admin",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "alice.doc#2",
+        "actor": "alice",
+        "type": "doc.created",
+        "position": 2,
+        "handle": "alice.doc#2",
+        "visible_to": [
+          "admin"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "why": "THE LEAK, and it is the security-relevant direction. Dana the viewer observes TWO: the API handed her a document her role may not see. She may see one and the ledger agrees, so neither her knowledge nor the ledger accounts for the second. `bug`. vocabulary v1 names `trespass` for R18 without defining it and tells the examples to avoid the word, so this is reported as `bug`; when R18 lands this is the natural first trespass.",
+  "expect": {
+    "believed_visible": 1,
+    "visible_truth": 1,
+    "untold_visible": 0,
+    "finding": "bug"
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "role": "viewer",
+      "position": 4,
+      "of": "doc.created",
+      "query": "doc.count",
+      "source": "api",
+      "value": 2
+    },
+    "known": [
+      "alice.doc#1",
+      "alice.doc#2"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.created",
+        "position": 1,
+        "handle": "alice.doc#1",
+        "visible_to": [
+          "admin",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "alice.doc#2",
+        "actor": "alice",
+        "type": "doc.created",
+        "position": 2,
+        "handle": "alice.doc#2",
+        "visible_to": [
+          "admin"
+        ]
+      }
+    ]
+  }
+}

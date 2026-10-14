@@ -1,0 +1,38 @@
+{
+  "why": "QUILL r1.2/3's distinguishing case, and the reason `truth` is a rule of its own. Charlie observes THREE. That disagrees with his knowledge exactly as the explained case does, so knowledge alone cannot separate them; it also disagrees with the ledger, and no untold claim accounts for a third user. `bug`.",
+  "expect": {
+    "believed": 1,
+    "truth": 2,
+    "untold_accounts": 1,
+    "finding": "bug"
+  },
+  "input": {
+    "observation": {
+      "actor": "charlie",
+      "position": 4,
+      "of": "user.created",
+      "query": "user.count",
+      "source": "api",
+      "value": 3
+    },
+    "known": [
+      "alice.user#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handle": "alice.user#1"
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 2,
+        "handle": "bob.user#1"
+      }
+    ]
+  }
+}

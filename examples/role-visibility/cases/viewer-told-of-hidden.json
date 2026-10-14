@@ -1,0 +1,47 @@
+{
+  "why": "THE CASE THIS EXAMPLE EXISTS FOR. Dana is a viewer and was told of BOTH documents, so she knows two; only one is visible to viewers, and she observes one. Judged against what she KNOWS this is a disagreement; judged against what she may SEE it is exact. `consistent` -- a correctly hidden record is not a missing one, and a statute that conflates knowing with seeing reports it as a defect.",
+  "expect": {
+    "believed_visible": 1,
+    "visible_truth": 1,
+    "untold_visible": 0,
+    "finding": "consistent"
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "role": "viewer",
+      "position": 4,
+      "of": "doc.created",
+      "query": "doc.count",
+      "source": "api",
+      "value": 1
+    },
+    "known": [
+      "alice.doc#1",
+      "alice.doc#2"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.created",
+        "position": 1,
+        "handle": "alice.doc#1",
+        "visible_to": [
+          "admin",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "alice.doc#2",
+        "actor": "alice",
+        "type": "doc.created",
+        "position": 2,
+        "handle": "alice.doc#2",
+        "visible_to": [
+          "admin"
+        ]
+      }
+    ]
+  }
+}

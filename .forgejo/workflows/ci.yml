@@ -369,7 +369,7 @@ jobs:
           grep -qiE 'no vulnerabilities|vulnerabilit' ../vuln.log             || { echo "no govulncheck summary: the scan did not run"; exit 1; }
           echo "PROOF scan ran with $(timeout 60 "$BIN" -version 2>&1 | head -2 | tr '\n' ' ' || true)"
 
-      - name: licences (the module graph, asserted empty)
+      - name: licences (the built surface, against R0.2's allowlist)
         run: |
           set -o pipefail
           cd src-tree
@@ -380,40 +380,29 @@ jobs:
           test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
-          # WHAT THIS ASSERTS, AND WHAT IT DOES NOT. deny.toml's allowlist gated
-          # a Rust graph with real third-party crates in it. This module has NO
-          # dependencies, so there is no licence surface to allow or deny, and a
-          # port of the allowlist would be a gate with nothing to judge -- which
-          # reads green for the wrong reason.
+          # THIS STEP REPLACED A TRIPWIRE, AND THE TRIPWIRE DID ITS JOB. Until
+          # G3 this asserted the module graph held exactly ONE module, because a
+          # zero-dependency tree has no licence surface and a ported deny.toml
+          # would have read green with nothing to judge. OPA is the first real
+          # dependency and broke that assertion by design, which is what it was
+          # for (rook rumor/499).
           #
-          # So the assertion is the PRECONDITION instead: the module graph holds
-          # exactly one module, this one. The day a dependency arrives -- G2's
-          # OPA is the first -- this step fails naming it, and the person adding
-          # it has to replace this with a real allowlist rather than inherit a
-          # green. That failure is the point, not a gap.
+          # The gate is now tests/licences, a Go TEST rather than a tool: it is
+          # already inside `go test ./...`, so gating licences adds no new
+          # dependency to this file. It is run again by name here so the surface
+          # has its own row -- a verdict folded into another step's output is one
+          # nobody reads -- and because `go test ./...` would report it as a
+          # package name with no figure.
           #
-          # TWO DIFFERENT ORACLES, AND THE SPLIT IS DELIBERATE (measured on a
-          # one-dependency fixture, rook go-port/4; fable ruled it at /5).
-          #   `go list -m all`      what this TRIPWIRE uses. It sees a module
-          #                         required only by a _test.go, and it also
-          #                         over-counts -- it listed check.v1, which is
-          #                         yaml.v3's own test requirement and is never
-          #                         built. Over-counting is the right bias for a
-          #                         tripwire: it trips sooner, never later.
-          #   `go list -deps -test` what the ALLOWLIST must use: the packages
-          #                         actually built, tests included. Bare -deps is
-          #                         BLIND to a test-only import -- 0 against 1 on
-          #                         the fixture -- which on G2's tree would read a
-          #                         dependency-free graph and pass on an absence.
-          # Judging licences from `-m all` would flag code that never ships, and
-          # that noise is what someone later silences.
+          # The oracle is `go list -deps -test ./...`: what is actually built,
+          # tests included. Not the module graph, which over-counts, and not
+          # bare -deps, which is blind to a test-only import. go-port/4 and /5.
           rc=0
-          timeout 300 "$GO" list -m all > ../mods.log 2>&1 || rc=$?
-          cat ../mods.log
-          test "$rc" -eq 124 && { echo "HANG: go list -m exceeded 300s. RUNNER finding."; exit 124; }
-          test "$rc" -eq 0 || { echo "go list -m all exited $rc"; exit "$rc"; }
-          n=$(grep -c . ../mods.log)
-          test "$n" -eq 1 || { echo "the module graph holds $n modules, not 1. A dependency has arrived, so this step's assumption is spent. Replace it with a licence allowlist over the output of go list -deps -test, NOT over the module graph printed above -- the comment in this step says why."; exit 1; }
-          grep -qx 'forge.axonibyte.com/axonibyte/rumor' ../mods.log \
-            || { echo "the single module is not this one: $(cat ../mods.log)"; exit 1; }
-          echo "PROOF module graph is exactly 1 module, this one, so the third-party licence surface is empty"
+          timeout 600 "$GO" test ./tests/licences/ -v > ../lic.log 2>&1 || rc=$?
+          grep -E 'PROOF|FAIL|---' ../lic.log | tail -20
+          test "$rc" -eq 124 && { echo "HANG: the licence gate exceeded 600s. RUNNER finding."; exit 124; }
+          test "$rc" -eq 0 || { echo "the licence gate refused, named above"; exit "$rc"; }
+          # a count only the gate itself computes
+          grep -qE 'PROOF [0-9]+ of [0-9]+ built module\(s\) carry a licence inside' ../lic.log \
+            || { echo "no licence count: the gate did not reach a verdict over the surface"; exit 1; }
+          echo "PROOF $(grep -oE '[0-9]+ of [0-9]+ built module\(s\) carry a licence inside[^"]*' ../lic.log | head -1)"

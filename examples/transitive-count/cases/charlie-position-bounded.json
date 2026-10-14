@@ -1,0 +1,38 @@
+{
+  "why": "The position bound, and the only case whose observation sits BEFORE a claim. At position 1 Bob's claim is not yet in the prefix, so the truth is one, not two, and Charlie observing one is `consistent` rather than explained. This is what makes the position mutant killable -- it moves `truth` and `untold_accounts` even where it leaves the finding alone.",
+  "expect": {
+    "believed": 1,
+    "truth": 1,
+    "untold_accounts": 0,
+    "finding": "consistent"
+  },
+  "input": {
+    "observation": {
+      "actor": "charlie",
+      "position": 1,
+      "of": "user.created",
+      "query": "user.count",
+      "source": "api",
+      "value": 1
+    },
+    "known": [
+      "alice.user#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handle": "alice.user#1"
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 2,
+        "handle": "bob.user#1"
+      }
+    ]
+  }
+}

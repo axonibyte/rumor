@@ -403,6 +403,50 @@ So each step asserts **a value only execution could have produced**: a version
 string, a count the step computed, the toolchain recorded *inside* the built
 binary by `go version -m`. Never a duration, and never the absence of red.
 
+### The licence surface, after the port
+
+**The sections below describe the Rust gate.** `cargo deny` is not in `ci.yml`
+any more — the port replaced it — and they are kept because the reasoning is
+the methodology the Go check inherits, not because they describe a live step.
+The allowlist they settle is still the allowlist.
+
+The live gate is `tests/licences`, run by `go test ./...` and then again **by
+name** in its own CI step, so the surface has a row with a figure in it rather
+than a verdict folded into another step's output.
+
+Three things differ from `cargo deny`, and each is a reason:
+
+- **The oracle is what gets built**, `go list -deps -test ./...`, tests
+  included. Not the module graph, which over-counts: a module required for a
+  dependency's own tests is in the graph and not in the binary, and refusing a
+  licence the project never ships is a false refusal that teaches people to
+  widen allowlists.
+- **Multiplicity is refused, not resolved.** A licence file naming two families
+  is a refusal unless a human has read it and recorded the decision in the test,
+  because a first-match classifier admits a module under "MIT OR GPL-3.0" on
+  whichever marker it happened to check first. One module is recorded that way
+  today, with the reading written out.
+- **A forbidden family is named, not merely unmatched.** The classifier knows
+  the copyleft titles even though none of them is allowed, so a GPL dependency
+  refuses as "GPL-3.0 is outside R0.2's allowlist" rather than as
+  "unclassified", which would read like a gap in the classifier instead of a
+  licence the project cannot ship.
+
+It carries Test 3's lesson as its own negative control: seven synthetic
+modules driven through the same verdict function the real surface uses, five
+refused and two passed, each asserting **the clause that answered** rather than
+the boolean — four clauses refuse, and a control satisfied by any refusal would
+also be satisfied by a gate that refuses everything.
+
+### go.sum, and what it is for here
+
+`go.sum` is in the tree and is not a lockfile. It records the hash of every
+module version in the graph, so a changed upstream tarball fails verification
+rather than building; the *versions* are chosen by `go.mod` and the module
+graph. It is in the doc coverage map against this file because it changes
+whenever the dependency set does, and a dependency arriving with no document
+saying why is the thing the map exists to catch.
+
 ### The deny step, and its two exit codes
 
 `cargo deny check licenses` runs with **no `-D` flag**; use `-W` to surface

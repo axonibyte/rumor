@@ -1,0 +1,31 @@
+{
+  "why": "The honest-only set. The planted claim is REMOVED altogether, not untagged: docs/vocabulary.md's strip requires this half to be `consistent`. Alice made one user, believes one, observes one.",
+  "expect": {
+    "believed": 1,
+    "finding": "consistent",
+    "honest_total": 1,
+    "rests_on_planted": false
+  },
+  "input": {
+    "observation": {
+      "actor": "alice",
+      "position": 4,
+      "of": "user.created",
+      "query": "user.count",
+      "source": "api",
+      "value": 1
+    },
+    "known": [
+      "alice.user#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handle": "alice.user#1"
+      }
+    ]
+  }
+}

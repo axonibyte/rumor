@@ -40,8 +40,29 @@ here as the phases that own them land.
   improvement landed by a later patch run; nothing in the project depends on
   it. The binary is `rumor` either way, which is the name users type.
 
-- **The licence is BSD-2-Clause**, and `cargo deny check licenses` gates every
-  pull request against the allowlist in `deny.toml` (R0.2).
+- **The licence is BSD-2-Clause**, and the allowlist settled in R0.2 gates every
+  pull request. What *applies* that allowlist changed with the port: until the Go
+  module landed it was `cargo deny check licenses`; it is now `tests/licences`,
+  a Go test over the surface `go list -deps -test` reports. The allowlist itself
+  is unchanged and still lives in `deny.toml` until the Rust tree is removed,
+  with the test asserting that its own copy and `deny.toml`'s agree.
+
+- **The policy engine is OPA, pinned, and it is the project's first
+  dependency** (G3, issue 34).
+
+  The statutes are Rego, so the engine is whichever library evaluates Rego on
+  the chosen runtime. Under Rust that was `regorus`, pinned with `=` so a patch
+  release could not change a statute's verdict without a commit saying so; the
+  Go equivalent is `github.com/open-policy-agent/opa`, which is Rego's reference
+  implementation rather than a reimplementation of it. The same pinning
+  intention applies and Go's module graph plus `go.sum` is what carries it.
+
+  It also takes the `go` directive up from 1.25 to **1.26.0**, because OPA
+  declares 1.26.0 and a module cannot depend on one that requires a newer
+  language version than it declares. The lower bound was deliberately 1.25 at
+  the port — a newer toolchain builds an older module and not the reverse — so
+  raising it is a cost, paid here with the reason recorded: the runner measures
+  at go1.26.8, so no runner is stranded by the raise today.
 
 See `docs/prior-art.md` for the registry, GitHub and cross-language sweep
 behind the first entry, including the one collision that matters inside Rust:

@@ -1,0 +1,46 @@
+{
+  "why": "THE CASE THAT MAKES THE ACCOUNT CLAUSE LOAD-BEARING, found the same way: by the mutant that drops it surviving. Charlie was told nothing and holds only his own planted claim, so he believes one. The ledger holds two honest claims, both untold to him, and he observes two -- agreeing with the ledger and disagreeing with his belief. The weaker reading stops there and calls it `explained`. But the gap is one and the untold claims are two: the account does not BALANCE, because his belief rests on a falsehood rather than on a claim anyone made. An account that merely exists is not an account that adds up, so this is a `bug`.",
+  "expect": {
+    "believed": 1,
+    "truth": 2,
+    "untold_accounts": 2,
+    "finding": "bug"
+  },
+  "input": {
+    "observation": {
+      "actor": "charlie",
+      "position": 4,
+      "of": "user.created",
+      "query": "user.count",
+      "source": "api",
+      "value": 2
+    },
+    "known": [
+      "charlie.user#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handle": "alice.user#1"
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 2,
+        "handle": "bob.user#1"
+      },
+      {
+        "ref": "charlie.user#1",
+        "actor": "charlie",
+        "type": "user.created",
+        "position": 3,
+        "handle": "charlie.user#1",
+        "planted": true
+      }
+    ]
+  }
+}

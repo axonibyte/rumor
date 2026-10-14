@@ -770,8 +770,8 @@ def _docs_check(repo: Path, ref: str) -> str | None:
     THIS ARM READS THE CHECKOUT, SO IT VERIFIES THE CHECKOUT IS `ref`. Every
     other arm asks git about the range and so is independent of what is checked
     out; this one has to build and run `rumor`, and there is no way to ask a
-    cargo binary about a ref without putting that ref in a tree. `git worktree`
-    is not available as a route: `docs --check` fails inside one, because `.git`
+    compiled binary about a ref without putting that ref in a tree. `git
+    worktree` is not available as a route: `docs --check` fails inside one, because `.git`
     is a file there (rumor issue 6, filed and not started). So the arm states
     its premise and measures it, rather than taking `ref` and quietly ignoring
     it -- which is what it did until now.
@@ -1147,7 +1147,7 @@ def _trailer_battery() -> tuple[int, int]:
         except (OSError, subprocess.TimeoutExpired) as exc:
             # GIT ABSENT IS A FAILED SELF-TEST, NOT AN UNMEASURED ARM. Elsewhere
             # in this file "cannot run" is reported rather than counted, because
-            # a missing cargo must not refuse a release. Here the opposite holds:
+            # a missing toolchain must not refuse a release. Here the opposite holds:
             # every other arm asks git about the range, so a gate on a box
             # without git cannot reach any verdict at all. Letting this case
             # print UNMEASURED and pass would have let the workflow's
@@ -1288,9 +1288,10 @@ def self_test() -> int:
     # Arms with no in-repo fixture, and why -- stated rather than skipped
     # silently, since an unmeasured arm counted as covered is the defect this
     # whole file is about:
-    #   docs-stale            needs a cargo toolchain and the real `rumor`
-    #                         binary; UNMEASURED here by construction, and
-    #                         _docs_check reports UNMEASURED rather than passing
+    #   docs-stale            needs a Go toolchain AND a tree holding the
+    #                         module, which a synthetic repo is not; UNMEASURED
+    #                         here by construction, and _docs_check reports
+    #                         UNMEASURED rather than passing
     #   doc-run-block-failed  measured below in its own case, since a `run`
     #                         block needs only sh
     #   revision-entry-missing measured below
@@ -1384,9 +1385,9 @@ def self_test() -> int:
     covered = {arm for arm, _, _ in cases if arm}
     unmeasured = [arm for arm in ARMS if arm not in covered]
     print(f"\n  arms: {len(ARMS)}  measured here: {len(covered)}  UNMEASURED: {unmeasured}")
-    print("  UNMEASURED is not covered: docs-stale needs a cargo toolchain and the")
-    print("  real `rumor docs --check`, so it is driven by the fixture branch on the")
-    print("  runner, not here. _docs_check reports UNMEASURED rather than passing.")
+    print("  UNMEASURED is not covered: docs-stale needs a Go toolchain AND a tree")
+    print("  holding the module, which a synthetic fixture repo is not, so it is")
+    print("  driven by the fixture branch. _docs_check reports UNMEASURED, not pass.")
     # THE SIZE ASSERTIONS, BEFORE THE SUMMARY, so a wrong count cannot be
     # reported as a clean run. Each direction gets its own sentence: a count
     # below the expectation means a case stopped running, above it means one was

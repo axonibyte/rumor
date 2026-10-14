@@ -1,0 +1,39 @@
+{
+  "why": "The clean case. Dana was told of both claims, so she knows two, and observes two: no gap, nothing to account for.",
+  "expect": {
+    "believed": 2,
+    "truth": 2,
+    "untold_accounts": 0,
+    "finding": "consistent"
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "position": 4,
+      "of": "user.created",
+      "query": "user.count",
+      "source": "api",
+      "value": 2
+    },
+    "known": [
+      "alice.user#1",
+      "bob.user#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handle": "alice.user#1"
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 2,
+        "handle": "bob.user#1"
+      }
+    ]
+  }
+}

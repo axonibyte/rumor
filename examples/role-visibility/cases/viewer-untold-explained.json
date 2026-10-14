@@ -1,0 +1,44 @@
+{
+  "why": "The account, narrowed to the role. Dana the viewer was told of NEITHER document and observes one: she believes none, the ledger shows one visible to her, and that one untold-but-visible claim accounts for the gap exactly. `explained`, by fable r1.2/5's reading, with every term restricted to what her role may see.",
+  "expect": {
+    "believed_visible": 0,
+    "visible_truth": 1,
+    "untold_visible": 1,
+    "finding": "explained"
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "role": "viewer",
+      "position": 4,
+      "of": "doc.created",
+      "query": "doc.count",
+      "source": "api",
+      "value": 1
+    },
+    "known": [],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.created",
+        "position": 1,
+        "handle": "alice.doc#1",
+        "visible_to": [
+          "admin",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "alice.doc#2",
+        "actor": "alice",
+        "type": "doc.created",
+        "position": 2,
+        "handle": "alice.doc#2",
+        "visible_to": [
+          "admin"
+        ]
+      }
+    ]
+  }
+}

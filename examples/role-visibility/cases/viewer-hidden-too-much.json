@@ -1,0 +1,47 @@
+{
+  "why": "The inverse defect. Dana may see one document and observes NONE: the API hid a record her role is permitted to see. `bug`, and the one a visibility rule that fails CLOSED produces -- a statute that only checked for leaks would call this clean.",
+  "expect": {
+    "believed_visible": 1,
+    "visible_truth": 1,
+    "untold_visible": 0,
+    "finding": "bug"
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "role": "viewer",
+      "position": 4,
+      "of": "doc.created",
+      "query": "doc.count",
+      "source": "api",
+      "value": 0
+    },
+    "known": [
+      "alice.doc#1",
+      "alice.doc#2"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.created",
+        "position": 1,
+        "handle": "alice.doc#1",
+        "visible_to": [
+          "admin",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "alice.doc#2",
+        "actor": "alice",
+        "type": "doc.created",
+        "position": 2,
+        "handle": "alice.doc#2",
+        "visible_to": [
+          "admin"
+        ]
+      }
+    ]
+  }
+}

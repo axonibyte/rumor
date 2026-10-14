@@ -20,7 +20,49 @@ Not yet written.
 
 ## Mutation-check every new assertion
 
-Not yet written.
+An assertion never observed failing is an assertion whose value is unmeasured.
+The example packages under `examples/` are built to that rule and the harness
+enforces it rather than describing it.
+
+Each package holds a `statute.rego`, a `cases/` directory recording the verdict
+every named rule must produce for a given ledger, and a `mutants/` directory of
+statutes that differ from it by one clause. `tests/statute/run_test.go` walks
+them and requires three things:
+
+- **The clean case green.** Every case's recorded expectation is compared
+  against every rule the example owes, read from that package's `rules.json`
+  rather than inferred from the statute, so an example that stops defining one
+  fails instead of quietly narrowing.
+- **Every mutant red.** A mutant must make at least one case *disagree*. One
+  that changes no verdict is reported as a survivor naming the clause, because
+  the clause it cuts is then untested.
+- **A mutant that mutates nothing is refused.** A file identical to the statute
+  is rejected naming the cut, not the cases — an edit that stops applying is
+  otherwise indistinguishable from a guard nobody tested.
+
+Two properties of the walk matter as much as the assertions. The examples are
+**discovered, never listed**, because a listing is a second place to forget one;
+and an **empty walk is not a pass** — a missing directory fails loudly rather
+than reporting zero problems. The sizes are asserted too: three packages,
+seventeen cases, nineteen mutants, each as a number in the test, so a file that
+stops being examined cannot hide inside a clean total.
+
+**A mutant that cannot be killed is removed, with the gap recorded.** The
+planted-lie package is missing `m2-ignores-knowledge` on purpose: killing it
+needs a claim the observer was never told, and the finding for that case is the
+`explained` reading not yet settled. It belongs to the transitive-count example,
+whose subject is the untold claim, and its absence is written down in that
+package's `mutants/README.md` rather than left to be inferred from a shorter
+directory.
+
+Each case is also evaluated **with coverage and a trace**, and both are asserted
+non-empty against the rule under test. A verdict that agrees with its
+expectation while executing none of the statute is a tautology, and the coverage
+report is what tells the two apart.
+
+**ADR 0001's prohibition on `print()` inside a statute is enforced, not stated**,
+on every statute and every mutant — a mutant is a statute too. That check is the
+project's worked example of the next section's rule.
 
 ## Self-test the oracle
 
@@ -67,7 +109,35 @@ the arm, one in the fixture.
 
 ## Two oracles for any claim that matters
 
-Not yet written.
+The `print()` prohibition is the shape of it. Two checks run over the same
+modules and neither would do alone:
+
+- **Static**, over the parsed module: it finds a `print` on a path no case
+  reaches. The runtime hook cannot see those, and an unexercised `print` is
+  still a statute writing to a log.
+- **Runtime**, through the same evaluator the cases use, with a hook that
+  records every call: it proves the hook is wired and the evaluator is the one
+  the verdicts came from. The static scan cannot prove that.
+
+The runtime half carries a trap worth naming, because it is the `docs-stale`
+defect in another costume: **OPA erases `print` calls unless print statements
+are explicitly enabled**, so a hook installed without that flag reports zero
+prints for a statute full of them. The flag's necessity is therefore
+*measured* — the same printing module is evaluated with the flag off, and the
+test records that the hook came back empty. A precaution whose necessity is
+asserted rather than measured is a comment.
+
+Both halves are then driven against a statute that does print, and the walk
+itself was driven with a `print` planted in one of the carried mutants: it named
+the file and the line. The counts it examined — modules scanned, cases
+evaluated — are logged beside the verdict, because zero findings reads
+identically whether every module was clean or none was opened.
+
+The licence surface is checked the same way, from two sides. The module graph
+comes from the toolchain (`go list -deps -test`), never from a hand-written
+list, and each module's licence text is classified independently of it; the
+allowlist the classifier judges against is parsed from `deny.toml` and compared
+against the copy duplicated in the test, so the two readings have to agree.
 
 ## Name what a test does not prove
 

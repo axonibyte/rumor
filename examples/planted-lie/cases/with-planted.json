@@ -1,0 +1,40 @@
+{
+  "why": "The control passing. Alice's second claim is a lie about her own action -- she created nothing at position 2. She believes two because she made both claims; the server shows one. The bug IS the engine finding the lie, so rests_on_planted must be true.",
+  "expect": {
+    "believed": 2,
+    "finding": "bug",
+    "honest_total": 1,
+    "rests_on_planted": true
+  },
+  "input": {
+    "observation": {
+      "actor": "alice",
+      "position": 4,
+      "of": "user.created",
+      "query": "user.count",
+      "source": "api",
+      "value": 1
+    },
+    "known": [
+      "alice.user#1",
+      "alice.user#2"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handle": "alice.user#1"
+      },
+      {
+        "ref": "alice.user#2",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 2,
+        "handle": "alice.user#2",
+        "planted": true
+      }
+    ]
+  }
+}

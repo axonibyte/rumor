@@ -1,0 +1,47 @@
+{
+  "why": "THE CASE THAT SEPARATES TWO CLAUSES, found by a mutant surviving without it. Where every claim an observer holds is honest, `value == truth` and `value - believed == untold_accounts` say the same thing, because truth is exactly believed plus untold. They diverge only when the observer holds a claim the ledger does not count -- here Charlie's own planted one. He believes two (Alice's, and his own lie), the truth is two (Alice's and Bob's), and he observes three. The arithmetic gap matches the one untold claim, so the account clause alone would call this `explained`; the observation does not agree with the ledger, so it is a `bug`. Dropping the truth clause flips this case and nothing else.",
+  "expect": {
+    "believed": 2,
+    "truth": 2,
+    "untold_accounts": 1,
+    "finding": "bug"
+  },
+  "input": {
+    "observation": {
+      "actor": "charlie",
+      "position": 4,
+      "of": "user.created",
+      "query": "user.count",
+      "source": "api",
+      "value": 3
+    },
+    "known": [
+      "alice.user#1",
+      "charlie.user#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handle": "alice.user#1"
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 2,
+        "handle": "bob.user#1"
+      },
+      {
+        "ref": "charlie.user#1",
+        "actor": "charlie",
+        "type": "user.created",
+        "position": 3,
+        "handle": "charlie.user#1",
+        "planted": true
+      }
+    ]
+  }
+}

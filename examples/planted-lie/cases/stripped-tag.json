@@ -1,0 +1,39 @@
+{
+  "why": "The strip, docs/vocabulary.md `planted`: with the tag removed from every planted claim but the CLAIM still present, the same run must still produce the same `bug`. It does -- the finding is driven by what the observer believes, which the tag does not change. What the tag changes is rests_on_planted, which is now false: the finding is no longer attributable to a lie, so this is a bug the engine reports rather than a control passing.",
+  "expect": {
+    "believed": 2,
+    "finding": "bug",
+    "honest_total": 2,
+    "rests_on_planted": false
+  },
+  "input": {
+    "observation": {
+      "actor": "alice",
+      "position": 4,
+      "of": "user.created",
+      "query": "user.count",
+      "source": "api",
+      "value": 1
+    },
+    "known": [
+      "alice.user#1",
+      "alice.user#2"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handle": "alice.user#1"
+      },
+      {
+        "ref": "alice.user#2",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 2,
+        "handle": "alice.user#2"
+      }
+    ]
+  }
+}

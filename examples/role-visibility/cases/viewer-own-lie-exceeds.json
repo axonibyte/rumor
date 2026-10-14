@@ -1,0 +1,59 @@
+{
+  "why": "THE CASE THAT MAKES THE LEDGER CLAUSE LOAD-BEARING HERE, and the same shape transitive-count needed: where every held claim is honest, `value == visible_truth` and `value - believed_visible == untold_visible` say the same thing, so one of them is untested. They diverge when the observer holds a claim the ledger does not count. Dana the viewer believes two -- one real document and her own planted one -- the ledger holds two she may see, and she observes THREE. The arithmetic gap matches the single untold claim, so the account clause alone would call this `explained`; the observation exceeds what the ledger holds visible to her, so it is a `bug`.",
+  "expect": {
+    "believed_visible": 2,
+    "visible_truth": 2,
+    "untold_visible": 1,
+    "finding": "bug"
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "role": "viewer",
+      "position": 4,
+      "of": "doc.created",
+      "query": "doc.count",
+      "source": "api",
+      "value": 3
+    },
+    "known": [
+      "alice.doc#1",
+      "dana.doc#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.created",
+        "position": 1,
+        "handle": "alice.doc#1",
+        "visible_to": [
+          "admin",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "bob.doc#1",
+        "actor": "bob",
+        "type": "doc.created",
+        "position": 2,
+        "handle": "bob.doc#1",
+        "visible_to": [
+          "admin",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "dana.doc#1",
+        "actor": "dana",
+        "type": "doc.created",
+        "position": 3,
+        "handle": "dana.doc#1",
+        "visible_to": [
+          "viewer"
+        ],
+        "planted": true
+      }
+    ]
+  }
+}

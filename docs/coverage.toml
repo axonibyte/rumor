@@ -46,6 +46,33 @@ path = "docs/coverage.toml"
 docs = ["docs/release.md"]
 
 [[entry]]
+# The three worked examples: statutes, the cases that fix their verdicts, and
+# the mutants that prove each clause matters. Mapped to the testing methodology
+# because what they establish is a METHOD -- every mutant red, every case green
+# -- and to the vocabulary because the words they exercise (claim, told,
+# planted, the four findings) are defined there. Carried from r1.2-examples byte
+# for byte; this mapping is its own, unchanged.
+path = "examples/**"
+docs = ["docs/testing-methodology.md", "docs/vocabulary.md"]
+
+[[entry]]
+# The harness that walks examples/ and refuses a surviving mutant, and the
+# licence gate over the built dependency surface. Both are tests rather than
+# tools, which is why they answer for the methodology rather than the CLI.
+path = "tests/statute/*.go"
+docs = ["docs/testing-methodology.md"]
+
+[[entry]]
+path = "tests/licences/*.go"
+docs = ["docs/testing-methodology.md", "docs/release.md"]
+
+[[entry]]
+# The lock. It records which version of every module in the licence surface was
+# actually built, so release.md owns it the way it owned Cargo.lock.
+path = "go.sum"
+docs = ["docs/release.md"]
+
+[[entry]]
 # The committed version, and the only place it lives. go.mod has no version
 # field, so this file is the second of the three sources the release gate and
 # the tag pipeline make agree: the tag, this, and the CHANGELOG heading.

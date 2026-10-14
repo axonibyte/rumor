@@ -1,0 +1,39 @@
+{
+  "why": "The position bound. Alice holds both claims but observes at position 1, before the second was appended: a ledger is judged at the observation's position, so only the first is held. This is the only case whose observation sits before a claim, which makes it the only one that can kill the position mutant.",
+  "expect": {
+    "believed": 1,
+    "finding": "consistent",
+    "honest_total": 1,
+    "rests_on_planted": false
+  },
+  "input": {
+    "observation": {
+      "actor": "alice",
+      "position": 1,
+      "of": "user.created",
+      "query": "user.count",
+      "source": "api",
+      "value": 1
+    },
+    "known": [
+      "alice.user#1",
+      "alice.user#2"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handle": "alice.user#1"
+      },
+      {
+        "ref": "alice.user#2",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 2,
+        "handle": "alice.user#2"
+      }
+    ]
+  }
+}
