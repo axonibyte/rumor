@@ -85,7 +85,11 @@ here as the phases that own them land.
   release could not change a statute's verdict without a commit saying so; the
   Go equivalent is `github.com/open-policy-agent/opa`, which is Rego's reference
   implementation rather than a reimplementation of it. The same pinning
-  intention applies and Go's module graph plus `go.sum` is what carries it.
+  INTENTION applies, and the mechanism is different in a way worth stating
+  rather than glossing: Cargo's `=` refuses a raise, while a Go `require` is a
+  minimum that minimal version selection may raise. Nothing here raises it, and
+  `go.sum` pins the content; see "The engine" for what that does and does not
+  guarantee.
 
   It also takes the `go` directive up from 1.25 to **1.26.0**, because OPA
   declares 1.26.0 and a module cannot depend on one that requires a newer
@@ -100,10 +104,21 @@ in the Nostr protocol *rumor* is a defined term for an unsigned event.
 
 ## The engine
 
-Rules are Rego, evaluated by **OPA embedded as a library**, pinned at
-`github.com/open-policy-agent/opa v1.21.2`. The pin is exact so that a patch
-release cannot change a statute's verdict without a commit saying so; the same
-reasoning held for the engine this replaces.
+Rules are Rego, evaluated by **OPA embedded as a library**, at
+`github.com/open-policy-agent/opa v1.21.2`.
+
+**What that line does and does not guarantee** (wren, `thread:rumor` record
+537, sharpened at 542). A `go.mod` `require` is a **minimum**, not an exact
+pin: minimal version selection takes the highest version any module in the
+graph asks for, so a transitive requirement could raise the one that builds.
+Nothing in this tree does — OPA is the only direct dependency and nothing
+requires a newer OPA — so the selected version *is* v1.21.2, and `go.sum` pins
+the content of what is fetched, which is why the verdicts are reproducible. The
+previous engine was pinned with Cargo's `=`, which refuses the raise outright;
+Go has no such operator, and an earlier version of this paragraph described
+Cargo's guarantee in Go's syntax. The property to rely on is: one direct
+dependency, a `go.sum` over its content, and a release gate that refuses a run
+whose `go.mod` changed without the documents that describe it.
 
 The decision and what it rules out are recorded in
 `docs/adr/0001-engine.md`. This section is the inventory behind it: what the
