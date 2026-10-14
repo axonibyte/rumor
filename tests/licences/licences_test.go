@@ -299,41 +299,47 @@ func TestEveryBuiltModuleCarriesAnAllowedLicence(t *testing.T) {
 // TestTheAllowlistsAgree compares this file's list against deny.toml's while
 // the Rust tree still exists. G4 removes deny.toml, and this test then reports
 // itself retired rather than passing silently over a file that is gone.
+// TestTheAllowlistsAgree compares this file's list against THE DOCUMENT's.
+//
+// IT USED TO READ deny.toml AND THEN SKIP. G4 removed that file with the Rust
+// tree, leaving the list in one place -- here -- with nothing able to notice it
+// drifting from R0.2's decision. I recorded the loss and called it deliberate;
+// ratchet's review (thread:go-port/54) made the better point, that recording a
+// loss is not keeping the property, and the fix is a second source that cannot
+// be swept: the decision's home is docs/design.md.
+//
+// SO THIS ARM IS LIVE AGAIN RATHER THAN SKIPPED, and that matters for the CI
+// step too: asserting the SKIP by name -- which is what the review first asked
+// for -- would now assert something that cannot happen. The step asserts the
+// agreement instead, and refuses any skip at all.
 func TestTheAllowlistsAgree(t *testing.T) {
-	body, err := os.ReadFile("../../deny.toml")
+	body, err := os.ReadFile("../../docs/design.md")
 	if err != nil {
-		t.Skip("deny.toml is gone, which is G4's doing: this file's list is now the only source and there is nothing left to compare it against")
+		t.Fatalf("docs/design.md is the allowlist's home and it is unreadable: %v. This is a FAILURE and not a skip -- a comparison that cannot run proves nothing, and the last version of this test skipped in exactly that situation", err)
 	}
-	// The `allow = [ ... ]` block, read as quoted ids. Comments after an id on
-	// the same line are ignored, which deny.toml has on two entries.
-	inBlock := false
+	const begin, end = "ALLOWLIST BEGIN", "ALLOWLIST END"
+	text := string(body)
+	i := strings.Index(text, begin)
+	j := strings.Index(text, end)
+	if i < 0 || j < 0 || j < i {
+		t.Fatalf("docs/design.md carries no %q..%q block, so the second source is gone again", begin, end)
+	}
 	var theirs []string
-	quoted := regexp.MustCompile(`"([^"]+)"`)
-	for _, line := range strings.Split(string(body), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "allow") && strings.Contains(trimmed, "[") {
-			inBlock = true
-			continue
-		}
-		if inBlock {
-			if strings.HasPrefix(trimmed, "]") {
-				break
-			}
-			if m := quoted.FindStringSubmatch(trimmed); m != nil {
-				theirs = append(theirs, m[1])
-			}
+	for _, line := range strings.Split(text[i+len(begin):j], "\n") {
+		if id := strings.TrimSpace(line); id != "" {
+			theirs = append(theirs, id)
 		}
 	}
 	if len(theirs) == 0 {
-		t.Fatal("found no allow list in deny.toml, so this comparison proved nothing -- which is worse than a mismatch because it reads as agreement")
+		t.Fatal("the allowlist block in docs/design.md is empty, so this comparison proved nothing -- which is worse than a mismatch because it reads as agreement")
 	}
 	sort.Strings(theirs)
 	mine := append([]string(nil), allowed...)
 	sort.Strings(mine)
 	if strings.Join(theirs, ",") != strings.Join(mine, ",") {
-		t.Fatalf("the two allowlists disagree, so one of them is not this project's policy:\n  deny.toml: %v\n  this file: %v", theirs, mine)
+		t.Fatalf("the document and this file disagree about R0.2's allowlist, so one of them is not the project's policy:\n  docs/design.md: %v\n  this file:      %v", theirs, mine)
 	}
-	t.Logf("PROOF both allowlists name the same %d licence(s)", len(mine))
+	t.Logf("PROOF the document and this file name the same %d licence(s)", len(mine))
 }
 
 // TestClassifyTellsTheFamiliesApart drives classify directly, because the

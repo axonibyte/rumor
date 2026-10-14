@@ -406,3 +406,25 @@ jobs:
           grep -qE 'PROOF [0-9]+ of [0-9]+ built module\(s\) carry a licence inside' ../lic.log \
             || { echo "no licence count: the gate did not reach a verdict over the surface"; exit 1; }
           echo "PROOF $(grep -oE '[0-9]+ of [0-9]+ built module\(s\) carry a licence inside[^"]*' ../lic.log | head -1)"
+          # THE ALLOWLIST PAIR IS ASSERTED, NOT MERELY PRINTED (ratchet,
+          # thread:go-port/54). The -v above makes a SKIP visible in this log,
+          # and visible is not asserted: the only assertion here was the count,
+          # so TestTheAllowlistsAgree silently becoming a pass -- or a skip --
+          # changed the log and failed nothing.
+          #
+          # THE REVIEW ASKED FOR THE SKIP TO BE ASSERTED BY NAME. That is now
+          # the wrong assertion: with R0.2's ids enumerated in docs/design.md
+          # the arm reads the document and no longer skips at all, so asserting
+          # a skip would pin a state this repository can no longer reach. The
+          # agreement is asserted instead, and ANY skip in this suite is a
+          # finding -- a test that stops running is the thing both versions of
+          # this check were worried about.
+          grep -q 'PROOF the document and this file name the same 8 licence(s)' ../lic.log \
+            || { echo "the allowlist pair did not agree, or TestTheAllowlistsAgree did not run: R0.2's ids live in docs/design.md and this suite carries its own copy, and the two must match"; exit 1; }
+          echo "PROOF the allowlist pair agreed on 8 ids, document against test"
+          if grep -q '^--- SKIP:' ../lic.log; then
+            grep '^--- SKIP:' ../lic.log
+            echo "a test in the licence suite SKIPPED. Every arm here is meant to run on every tree; a skip is a gap this step will not pass over."
+            exit 1
+          fi
+          echo "PROOF no arm of the licence suite skipped"

@@ -6,9 +6,12 @@
 # vocabulary requires both outcomes from one example: the honest-only set is
 # `consistent` and the set carrying the planted claim is `bug`.
 #
-# NO print() ANYWHERE, per ADR 0001 (adr-regorus-tracing/1): a statute carries
-# no diagnostic scaffolding. The harness enforces it rather than trusting it --
-# `set_gather_prints(true)` and then `take_prints()` must come back empty.
+# NO print() ANYWHERE, per ADR 0001 (docs/adr/0001-engine.md): a statute
+# carries no diagnostic scaffolding. The harness enforces it rather than
+# trusting it, with two oracles: a static scan of the parsed module, which
+# sees a print on a path no case reaches, and a hook on the real evaluator
+# under rego.EnablePrintStatements -- without that flag OPA erases print
+# calls and a hook alone reports zero for a statute full of them.
 #
 # SUB-RULES ARE NAMED so the platform can evaluate each alone: `held_claims`,
 # `believed`, `honest_total` and `rests_on_planted` are each a rule the engine
@@ -21,7 +24,7 @@ package rumor.statute
 
 # The claims the observer holds at the observation's position: the ones it made
 # and the ones it was told, flattened by the engine and handed in as `known`
-# (R2 does the flattening in Rust; rules never follow tells).
+# (R2 does the flattening in Go, internal/flatten; rules never follow tells).
 held_claims contains c if {
 	some c in input.claims
 	c.ref in input.known

@@ -1,11 +1,17 @@
 // Package statute_test is the harness that walks examples/ and refuses a
 // surviving mutant.
 //
-// G3, issue 34. It replaces the Rust harness at crates/rumor-cli/tests/, and
-// the three packages under examples/ are carried from r1.2-examples BYTE FOR
-// BYTE -- the tree object is the same on both sides, and TestStatutesHaveNotDrifted
-// below pins each statute and rules file by content hash so a later edit cannot
-// pass unnoticed.
+// G3, issue 34. It replaces the Rust harness at crates/rumor-cli/tests/. The
+// three packages under examples/ were carried from r1.2-examples BYTE FOR BYTE
+// -- the tree object was the same on both sides at the port -- and
+// TestStatutesHaveNotDrifted below pins each statute and rules file by content
+// hash so a later edit cannot pass unnoticed.
+//
+// ONE OF THOSE PINS HAS SINCE MOVED, deliberately: planted-lie/statute.rego
+// carried three sentences that had gone false, and v0.1.8 corrected them and
+// re-pinned the hash in the same commit. So the pins are THIS PROJECT's record
+// of its own statutes, not a claim of identity with a swept branch. The
+// identity at the port is recorded in CHANGELOG.md 0.1.4, where it belongs.
 //
 // WHAT "RED" MEANS HERE, because it is the whole point of the mutants: a mutant
 // is red when at least one case's observed rule values DISAGREE with that case's
@@ -340,16 +346,27 @@ func firstLines(s string, n int) string {
 
 // TestStatutesHaveNotDrifted pins the carried files by content hash.
 //
-// The hashes are git blob ids, measured at r1.2-examples 9d58c61 whose
-// examples/ tree is byte-identical to f031c05 -- the commit quill and I both
-// grepped for wren's criterion A. Computing the hash HERE rather than asking
-// git keeps the check independent of the repository's own view, and pinning it
-// as a test rather than reporting it once means a later edit to a statute
-// cannot pass as carried-over.
+// The hashes are git blob ids. Five were measured at r1.2-examples 9d58c61,
+// whose examples/ tree was byte-identical to f031c05 -- the commit quill and I
+// both grepped for wren's criterion A. The sixth, planted-lie/statute.rego,
+// was re-pinned in v0.1.8 and is this project's own. Computing the hash HERE
+// rather than asking git keeps the check independent of the repository's own
+// view, and pinning it as a test rather than reporting it once means an edit
+// to a statute cannot pass UNNOTICED -- which is the property, not that no
+// edit may ever happen.
 func TestStatutesHaveNotDrifted(t *testing.T) {
+	// RE-PINNED FOR planted-lie/statute.rego, DELIBERATELY AND IN THE SAME
+	// COMMIT AS THE EDIT (fable, thread:go-port/61). The carried statute
+	// carried three sentences that had gone false: ADR 0001 named by its old
+	// thread, a harness described in Regorus's API, and R2's flattening said
+	// to be in Rust. Byte-identity with r1.2-examples was built to prove the
+	// PORT changed no statute; it did, that branch is swept, and three false
+	// sentences in a live fixture cost more than a property whose subject is
+	// gone. This test still does its job -- it catches an UNNOTICED edit, and
+	// it fired on this one before the hash was moved.
 	want := map[string]string{
 		"planted-lie/rules.json":        "15b99687cd84307297dbc5b6a8e8e1e806421d3d",
-		"planted-lie/statute.rego":      "61150d7ab3c2346704263237e87085f88c9bbbe3",
+		"planted-lie/statute.rego":      "ed76c3023950a9cbf350f7d0280c1560bf6fc030",
 		"role-visibility/rules.json":    "30fd254c10dd7704c1bc1d9f80b63dcc1bf740c4",
 		"role-visibility/statute.rego":  "3414a549dc1accebdda42b5a691398a4ffa3980e",
 		"transitive-count/rules.json":   "36a71c9896065fb64e390c89c807331d5eb83e02",
@@ -377,7 +394,7 @@ func TestStatutesHaveNotDrifted(t *testing.T) {
 	if checked != len(want) {
 		t.Fatalf("checked %d of %d pinned files; a file this test cannot read is not a file it verified", checked, len(want))
 	}
-	t.Logf("PROOF %d carried file(s) match their r1.2-examples blob ids", checked)
+	t.Logf("PROOF %d statute and rules file(s) match their pinned blob ids", checked)
 }
 
 // ---------------------------------------------------------------------------

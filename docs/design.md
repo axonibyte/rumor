@@ -43,8 +43,31 @@ here as the phases that own them land.
 - **The licence is BSD-2-Clause**, and the allowlist settled in R0.2 gates every
   pull request. What *applies* that allowlist changed with the port: until the Go
   module landed it was `cargo deny check licenses`; it is now `tests/licences`,
-  a Go test over the surface `go list -deps -test` reports. The eight ids are
-  unchanged.
+  a Go test over the surface `go list -deps -test` reports.
+
+  **The eight ids, enumerated here because this document is their home.**
+  `deny.toml` held them and was the second reader the test compared itself
+  against; G4 removed it with the Rust tree, which left the list in exactly one
+  place — `tests/licences` — and nothing able to notice it drifting from R0.2's
+  decision (ratchet, thread:go-port/54). A decision's home is a document, not a
+  tool's config, so:
+
+      ALLOWLIST BEGIN
+      Apache-2.0
+      BSD-2-Clause
+      BSD-3-Clause
+      ISC
+      MIT
+      MPL-2.0
+      UPL-1.0
+      Unicode-3.0
+      ALLOWLIST END
+
+  The test parses that block and compares it against its own list, so the two
+  have to agree — the project's rule about testing against the source rather
+  than a re-export, applied to itself. The markers are deliberate: a reader
+  needs the list and a parser needs an unambiguous edge, and a heading would
+  give it neither.
 
   **The allowlist now has one home, which is a deliberate loss.** It lived in
   `deny.toml` and was duplicated in the test so the two had to agree, and that
