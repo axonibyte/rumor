@@ -3,6 +3,40 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.9 — 2026-10-14
+
+R2.2: what an actor knows, and the handle table. Plus the pin sentence wren
+found.
+
+- **`internal/flatten` computes `known(actor, claim_ref)`** from an actor's own
+  claims and the one-hop `told` facts at or before a position, with an
+  **ancestry extension point** that is an interface a test supplies — including
+  a cyclic provider, since a walk without a visited set would hang rather than
+  fail. The module doc says why this logic is outside Rego: a rule that followed
+  tells would be a different statute, the fixtures pinned the output shape
+  before the package existed, and an extension point needs somewhere to live.
+- **The untold claim is the first test and it reads the real fixture.** The
+  package produces the `known` arrays `examples/` already carries, so the
+  fixture is the oracle: Charlie, told only by Alice, knows one ref, and Bob's
+  claim is absent — the gap that makes that case `explained` rather than `bug`.
+- **A mutation found a hole the first suite walked past.** A tell carries a
+  *reference*, not the teller's knowledge, and that distinction is invisible in
+  a one-claim ledger. Alice holding two claims and telling Bob one must leave
+  Bob knowing exactly one; the case was added and the mutant now dies.
+- **`internal/handle` keeps the run-local table for one attempt.** The handle is
+  the stable name and the server id the disposable one, so `NextAttempt` returns
+  an empty table rather than a copy. Three collisions: the between-attempts one
+  v1 names, answered by `Require` returning an error rather than a bool — a
+  caller holding `(string, bool)` can read the false as a disagreement and emit
+  `bug`, reporting bookkeeping as a defect in the system under test — and two
+  within-attempt conflicts that remain this project's decision, with the reasons
+  recorded.
+- **A `go.mod` `require` is a minimum, and `docs/design.md` said it was exact.**
+  Cargo's `=` refuses a raise; minimal version selection may take a higher
+  version if anything in the graph asks for one. Nothing here does — one direct
+  require, 27 indirect, `go.sum` over the content — so the fact held while the
+  explanation did not.
+
 ## 0.1.8 — 2026-10-14
 
 ratchet's review of the port, acted on. Three findings, one of which changed
