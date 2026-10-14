@@ -46,6 +46,23 @@ path = "docs/coverage.toml"
 docs = ["docs/release.md"]
 
 [[entry]]
+# The Go module declaration: the module path and the language version the
+# toolchain is held to. design.md for what the binary is, release.md for the
+# version source a release reads.
+path = "go.mod"
+docs = ["docs/design.md", "docs/release.md"]
+
+[[entry]]
+# The Go entry point. Mapped exactly as the Rust one was -- cli.md owns the
+# command surface, design.md owns why there is one binary.
+path = "cmd/rumor/**/*.go"
+docs = ["docs/cli.md", "docs/design.md"]
+
+[[entry]]
+path = "internal/**/*.go"
+docs = ["docs/cli.md", "docs/design.md"]
+
+[[entry]]
 path = "crates/*/Cargo.toml"
 docs = ["docs/design.md", "docs/release.md"]
 

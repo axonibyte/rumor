@@ -7,3 +7,10 @@
 # It caught exactly that, after a `git add -A` swept one into a commit.
 __pycache__/
 *.pyc
+
+# The Go binary from a bare `go build ./cmd/rumor`, which writes ./rumor into
+# the repo root. Same reason as the block above, and measured rather than
+# assumed: with it present `docs --check` reports "rumor matches no entry in
+# docs/coverage.toml" and committed_tree_is_fully_mapped goes red. The release
+# build writes out-of-tree with -o, so nothing needs this path.
+/rumor
