@@ -264,10 +264,25 @@ jobs:
           # the trailer-check tally and this pattern stopped matching. A check
           # whose status is discarded is not a check (rook thread:r0.3/29).
           #
+          # IT HAS NOW HAPPENED TWICE, which is why this pattern no longer
+          # ENUMERATES the counters. G1 added a third tally, the docs-verdict
+          # battery, and this line broke exactly as the paragraph above records
+          # it breaking for the second one -- PR 37's check, task 181. A pattern
+          # that lists the counters by name has to be edited every time one is
+          # added, and the edit is invisible until a run fails.
+          #
+          # So the shape is now "cases, then ONE OR MORE `N of N <name> checks
+          # ok` tallies, then `N failed`". That is the actual invariant of the
+          # summary line. It does not weaken the step: the NUMBERS are pinned by
+          # the literal above, in another file, and what this one owes is proof
+          # that the summary still has the shape it is read with -- plus the
+          # display of what ran. A fourth tally will now be shown rather than
+          # silently dropping this to a bare "PROOF ".
+          #
           # Extracted by redirect, not `| head`: an early-closing consumer
           # SIGPIPEs the producer to 141, which under pipefail fails a step that
           # succeeded. The scratch file lives outside the checkout.
-          grep -oE '[0-9]+ of [0-9]+ cases ok, [0-9]+ of [0-9]+ trailer checks ok, [0-9]+ failed' \
+          grep -oE '[0-9]+ of [0-9]+ cases ok,( [0-9]+ of [0-9]+ [a-z-]+ checks ok,)+ [0-9]+ failed' \
             ../self.log > ../proof.txt || true
           PROOF=""
           read -r PROOF < ../proof.txt || true
