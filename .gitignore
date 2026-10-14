@@ -9,8 +9,14 @@ __pycache__/
 *.pyc
 
 # The Go binary from a bare `go build ./cmd/rumor`, which writes ./rumor into
-# the repo root. Same reason as the block above, and measured rather than
-# assumed: with it present `docs --check` reports "rumor matches no entry in
-# docs/coverage.toml" and committed_tree_is_fully_mapped goes red. The release
-# build writes out-of-tree with -o, so nothing needs this path.
+# the repo root.
+#
+# WHAT THIS ENTRY DOES AND DOES NOT DO, corrected after run 142 proved the
+# difference: it stops the artefact being COMMITTED. It does NOT stop
+# `docs --check` failing on it, because the walk in internal/coverage never
+# reads .gitignore -- it skips .git and target and nothing else. So a build into
+# the tree still turns committed_tree_is_fully_mapped red whatever is listed
+# here, which is exactly how run 142 went red on `rumor-bin`. The protection
+# against that is building out-of-tree with -o, which ci.yml and the release
+# both now do; this entry is hygiene, not the gate.
 /rumor

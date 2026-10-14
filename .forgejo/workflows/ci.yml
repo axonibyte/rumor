@@ -139,16 +139,23 @@ jobs:
           # NOT `go build | tail`: a pipeline's status is the LAST stage's, so
           # tail's success would mask a failing build -- the exact defect this
           # gate exists to catch. Redirect, then read the status, then format.
+          # -o ../rumor-bin, OUTSIDE the clone, and that is load-bearing rather
+          # than tidiness. Writing it into src-tree made `go test` red on run
+          # 142: TestCommittedTreeIsFullyMapped walks the tree and reported
+          # "rumor-bin matches no entry in docs/coverage.toml". .gitignore does
+          # NOT help here -- the walk never reads it, which is why the /rumor
+          # entry added for `go build`'s default name stops a commit and not a
+          # red suite. The only fix is to keep artefacts out of the tree.
           rc=0
-          timeout 900 "$GO" build -o rumor-bin ./cmd/rumor > ../build.log 2>&1 || rc=$?
+          timeout 900 "$GO" build -o ../rumor-bin ./cmd/rumor > ../build.log 2>&1 || rc=$?
           tail -20 ../build.log
           test "$rc" -eq 124 && { echo "HANG: go build exceeded 900s. rc 124 proves only that the time elapsed, so read build.log rather than this line: a stall with no output at all is route or DNS to the module proxy, though this module has no dependencies to fetch. RUNNER finding either way."; exit 124; }
           test "$rc" -eq 0 || { echo "go build exited $rc"; exit "$rc"; }
-          test -x rumor-bin || { echo "no binary produced"; exit 1; }
+          test -x ../rumor-bin || { echo "no binary produced"; exit 1; }
           # a value only execution produces: the binary's own usage line, which
           # it writes to stderr and exits 2 for. `|| true` because exit 2 is the
           # correct answer here and would otherwise fail the step.
-          echo "PROOF built binary says: $(timeout 30 ./rumor-bin 2>&1 | head -1 || true)"
+          echo "PROOF built binary says: $(timeout 30 ../rumor-bin 2>&1 | head -1 || true)"
 
       - name: test
         run: |
