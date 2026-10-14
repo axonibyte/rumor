@@ -241,8 +241,19 @@ jobs:
           #
           # `0 failed` alone is not enough: it passes a self-consistent `N of N`
           # for any N, including 0.
-          grep -q '14 of 14 cases ok, 15 of 15 trailer checks ok, 0 failed' ../self.log \
-            || { echo "the self-test did not report 14 of 14 cases and 15 of 15 trailer checks: a case did not run, or the gate's declared counts were changed without this literal"; exit 1; }
+          #
+          # WHY 14 WAS WRONG, not merely what 16 is: G1 added two self-test
+          # cases driving the VERSION gate -- a malformed version file, and a
+          # mapped version file that is still exempt -- taking the declaration
+          # from 14 to 16, and this literal was not raised with them. It also
+          # gained a third counter, the seven-shape docs-verdict battery, which
+          # prints BETWEEN the trailer checks and `0 failed`, so the old string
+          # could not match even with the right numbers. The line did exactly
+          # what its comment promises: a declared count moved and the literal in
+          # the other file refused. The defect was mine for moving one and not
+          # the other, and it surfaced as PR 36's required check (task 179).
+          grep -q '16 of 16 cases ok, 15 of 15 trailer checks ok, 7 of 7 docs-verdict checks ok, 0 failed' ../self.log \
+            || { echo "the self-test did not report 16 of 16 cases, 15 of 15 trailer checks and 7 of 7 docs-verdict checks: a case did not run, or the gate's declared counts were changed without this literal"; exit 1; }
           # THIS PROOF IS NOT A SECOND COPY OF THE ASSERTION ABOVE. The grep
           # above pins the NUMBERS; this one pins the SHAPE and displays what
           # actually ran, with a pattern deliberately not coupled to the
