@@ -1,38 +1,40 @@
-# CI for the rumor workspace -- R0.2, issue 3.
+# CI for the rumor workspace -- G1, issue 32, ported from the Rust ci.yml at
+# 20675b3 for cal's pivot to Go with embedded OPA.
+#
+# WHAT CARRIES OVER UNCHANGED, because none of it was about Rust: one FreeBSD
+# job; no actions/checkout; a timeout(1) on every external call plus a
+# timeout-minutes backstop; rc 124 reported separately from a failure; `set -o
+# pipefail` in every step; redirect-then-read-status-then-format rather than a
+# pipe; a non-fatal probe first; and every step emitting a value only execution
+# could have produced. The paragraphs below are the reasons, kept because the
+# defects they record are not language-specific.
 #
 # ONE JOB, FREEBSD ONLY. cal ruled 2026-10-10: "no linux runner, just freebsd
-# for now." Linux is R0.2b and returns when a host exists. A second job whose
-# label no runner answers would QUEUE FOREVER, and a queued job is not red --
-# it reads as "no failure" rather than "never ran", which makes every green in
-# this file ambiguous. One job that can run beats two where one cannot.
+# for now." A second job whose label no runner answers would QUEUE FOREVER, and
+# a queued job is not red -- it reads as "no failure" rather than "never ran",
+# which makes every green in this file ambiguous.
 #
 # `runs-on` binds to the runner's LABEL, not its name. cal renamed the runner
 # forge-01_jail on 2026-10-10 (was forge-01-ci-jail) and ibis measured the label
-# unchanged across the rename (r0.runners run #6, an 8 s probe reporting 8 s).
-# Change this only if a registration changes the label.
+# unchanged across the rename (r0.runners run #6).
 #
-# EVERY STEP PROVES IT RAN, which is the design decision in this file rather
-# than the step list. A zero-elapsed success is what a FAST run and a PHANTOM
-# run both look like (ibis, r0.runners/4, after it cost two pushes), so elapsed
-# time cannot settle execution in either direction. Each step therefore emits a
-# value only execution could have produced -- a version string, a count it
-# computed, a name resolved out of Cargo.lock -- never a duration and never the
-# absence of red. fable ruled that form at rumor/96.
+# EVERY STEP PROVES IT RAN. A zero-elapsed success is what a FAST run and a
+# PHANTOM run both look like (ibis, r0.runners/4, after it cost two pushes), so
+# elapsed time cannot settle execution in either direction. Each step therefore
+# emits a value only execution could have produced -- a version string, a count
+# it computed, a name resolved out of the module graph -- never a duration and
+# never the absence of red. fable ruled that form at rumor/96.
 #
-# EVERY EXTERNAL CALL IS BOUNDED, AND A HANG IS A NAMED FINDING. Added after my
-# own probe-pkg drove three unbounded `pkg` calls and ran 17+ minutes on
-# 2026-10-10; this runner is SINGLE-CONCURRENCY, so that one hang head-of-line
-# blocked three queued runs and every push anyone else would have made. The
-# epic's rule -- "any task that drives an external process carries a timeout and
-# writes a hang report; a hang is recorded as a finding, never waited out" --
-# was already written and I had broken it in the probe AND here, in the file
-# that actually matters. Two mechanisms, deliberately:
+# EVERY EXTERNAL CALL IS BOUNDED, AND A HANG IS A NAMED FINDING. Added after a
+# probe drove three unbounded `pkg` calls and ran 17+ minutes on 2026-10-10;
+# this runner is SINGLE-CONCURRENCY, so that one hang head-of-line blocked three
+# queued runs and every push anyone else would have made. Two mechanisms,
+# deliberately:
 #
 #   timeout-minutes      bounds the JOB whatever hangs, including something this
 #                        file does not anticipate. It is a RUNNER feature and
-#                        nobody here has observed act_runner honouring it (run
-#                        logs are 404 to us), so it is the backstop, not the
-#                        guarantee.
+#                        nobody here has observed act_runner honouring it, so it
+#                        is the backstop, not the guarantee.
 #   timeout(1) per call  plain POSIX, works whatever the runner implements, and
 #                        is what the per-step bounds below actually rely on.
 #
@@ -42,31 +44,43 @@
 # the answer was no, which is a statement about the CODE. Collapsing them is how
 # a wedged runner gets filed as a broken build.
 #
-# `tools/check-workflow-bounds.py --self-test` refuses this file if any job or
-# invocation loses its bound. It is python and LOCAL-ONLY on purpose: the runner
-# cannot compile anything (probe-rustc fails on one file with no manifest), so a
-# Rust gate could not run there, and adding a python dependency to CI would
-# repeat the actions/checkout mistake of depending on an unmeasured interpreter.
-# It becomes a `rumor` subcommand beside `docs --check` once that jail builds.
+# `tools/check-workflows.py --self-test` refuses this file if any job or
+# invocation loses its bound; its own 21 arms are green. It is python and
+# LOCAL-ONLY on purpose: adding a python dependency to CI would depend on an
+# unmeasured interpreter. (The Rust header called it check-workflow-bounds.py,
+# which is not a file that exists -- corrected here.)
 #
-# STEP 1 IS A PROBE AND IS DELIBERATELY NON-FATAL. Nobody had measured what this
-# runner carries; ibis's smoke test proved execution and left the toolchain to
-# R0.2 "with its own evidence". If a later step dies for want of a tool, step 1
-# has already named which. A red probe would tell us less than a green one that
-# lists what is absent.
+# STEP 1 IS A PROBE AND IS DELIBERATELY NON-FATAL. If a later step dies for want
+# of a tool, step 1 has already named which. A red probe would tell us less than
+# a green one that lists what is absent.
 #
 # NO actions/checkout. It is a JavaScript action and needs node ON THE RUNNER
-# (ibis, r0.runners-smoke). If node is absent there, checkout fails for a reason
-# that has nothing to do with the code under test. git is the narrower
-# dependency and the repo is public, so an anonymous clone needs no credential
-# on the runner -- no secret reaches CI from this file.
+# (ibis, r0.runners-smoke). git is the narrower dependency and the repo is
+# public, so an anonymous clone needs no credential on the runner -- no secret
+# reaches CI from this file.
+#
+# THE GO BINARY IS RESOLVED, NOT NAMED. rook's jail carries go1.25.14 and
+# go1.26.8 as `go125` and `go126` with NO bare `go` on PATH, which is the
+# FreeBSD ports convention; forge-01_jail's Go is not yet provisioned, so its
+# naming is unknown. Each step therefore resolves the first of go, go126, go125
+# that exists and FAILS NAMING ALL THREE if none does. The resolver is repeated
+# per step rather than exported once, because carrying it between steps would
+# need $GITHUB_ENV, a runner feature nobody here has measured -- the same
+# reasoning that makes timeout-minutes the backstop rather than the guarantee.
+#
+# THE TRIGGER IS EVERY BRANCH, and that is this file's own doing rather than a
+# repo setting: the Rust version fired only on push to r0.2-ci, so rows 160-164
+# all came from workflow_dispatch and a pushed branch produced no run at all
+# (rook rumor/475). A workflow's trigger is read from the file ON THE PUSHED
+# BRANCH (fable rumor/497), so widening it here is what gives a Go branch its
+# row -- nothing on main has to change first.
 
 name: ci
 
 on:
   push:
     branches:
-      - r0.2-ci
+      - '**'
   workflow_dispatch:
 
 jobs:
@@ -87,114 +101,125 @@ jobs:
           echo "uname   $(uname -a)"
           echo "whoami  $(whoami)"
           echo "cwd     $(pwd)"
-          for t in git cargo rustc node curl; do
+          for t in git go go126 go125 gofmt gofmt126 gofmt125 node curl; do
             p=$(command -v "$t" 2>/dev/null) && echo "$t  FOUND  $p" || echo "$t  ABSENT"
           done
-          # bounded even here. A `--version` that cannot answer in 20 s is
-          # itself the finding, and "it is instant in practice" is the exact
-          # reasoning that produced the 17-minute run.
-          timeout 20 cargo --version 2>/dev/null || echo "cargo: none or did not answer in 20s"
-          timeout 20 rustc --version 2>/dev/null || echo "rustc: none or did not answer in 20s"
-          timeout 20 git   --version 2>/dev/null || echo "git: none or did not answer in 20s"
+          # bounded even here. A `version` that cannot answer in 20 s is itself
+          # the finding, and "it is instant in practice" is the exact reasoning
+          # that produced the 17-minute run.
+          for c in go go126 go125; do
+            command -v "$c" >/dev/null 2>&1 \
+              && { timeout 20 "$c" version 2>/dev/null || echo "$c: did not answer in 20s"; }
+          done
+          timeout 20 git --version 2>/dev/null || echo "git: none or did not answer in 20s"
 
       - name: fetch the tree with git, not a JS action
         run: |
-          # pipefail: without it a pipeline reports its LAST stage's status, so a
-          # failing gate piped to a formatter exits 0 and this step goes GREEN.
-          # ratchet r0.2/12; driven locally -- a gate exiting 4 piped to `tail -5`
-          # continues and exits 0, and exits 4 with this line present.
           set -o pipefail
           rm -rf src-tree
           rc=0
-          timeout 180 git clone --quiet --depth 1 --branch "${GITHUB_REF_NAME:-r0.2-ci}" \
+          timeout 180 git clone --quiet --depth 1 --branch "${GITHUB_REF_NAME:-main}" \
             https://forge.axonibyte.com/axonibyte/rumor.git src-tree || rc=$?
           test "$rc" -eq 124 && { echo "HANG: git clone exceeded 180s. rc 124 proves only that 180s elapsed -- a clone that would have finished at 181s gives this same status, so 'could not reach the forge' is not something this bound can tell you. RUNNER finding; read the step output above for whether any object transfer started."; exit 124; }
           test "$rc" -eq 0 || { echo "git clone exited $rc"; exit "$rc"; }
           cd src-tree
           echo "HEAD $(timeout 30 git rev-parse HEAD)"
-          test -f Cargo.toml || { echo "no Cargo.toml: wrong tree"; exit 1; }
+          test -f go.mod || { echo "no go.mod: wrong tree"; exit 1; }
 
       - name: build
         run: |
-          # pipefail: without it a pipeline reports its LAST stage's status, so a
-          # failing gate piped to a formatter exits 0 and this step goes GREEN.
-          # ratchet r0.2/12; driven locally -- a gate exiting 4 piped to `tail -5`
-          # continues and exits 0, and exits 4 with this line present.
           set -o pipefail
           cd src-tree
-          # NOT `cargo build | tail`: a pipeline's status is the LAST stage's, so
+          GO=""
+          for c in go go126 go125; do
+            command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+          done
+          test -n "$GO" || { echo "no go, go126 or go125 on PATH: this jail has no Go toolchain, which is a PROVISIONING finding and not a code one"; exit 1; }
+          echo "PROOF toolchain $(timeout 30 "$GO" version)"
+          # NOT `go build | tail`: a pipeline's status is the LAST stage's, so
           # tail's success would mask a failing build -- the exact defect this
-          # gate exists to catch, and the sixth instance of it in this room.
-          # Redirect, then read the status, then format.
+          # gate exists to catch. Redirect, then read the status, then format.
           rc=0
-          timeout 900 cargo build --locked --all-targets > ../build.log 2>&1 || rc=$?
+          timeout 900 "$GO" build -o rumor-bin ./cmd/rumor > ../build.log 2>&1 || rc=$?
           tail -20 ../build.log
-          test "$rc" -eq 124 && { echo "HANG: cargo build exceeded 900s. rc 124 proves only that the time elapsed, so read build.log rather than this line: 'Downloaded' lines mean the registry WAS reached and the box is slow; a stall at 'Updating index' means no byte moved, which is route or DNS. RUNNER finding either way."; exit 124; }
-          test "$rc" -eq 0 || { echo "cargo build exited $rc"; exit "$rc"; }
-          test -x target/debug/rumor || { echo "no binary produced"; exit 1; }
-          echo "PROOF built binary: $(timeout 30 ./target/debug/rumor 2>&1 | head -1 || true)"
+          test "$rc" -eq 124 && { echo "HANG: go build exceeded 900s. rc 124 proves only that the time elapsed, so read build.log rather than this line: a stall with no output at all is route or DNS to the module proxy, though this module has no dependencies to fetch. RUNNER finding either way."; exit 124; }
+          test "$rc" -eq 0 || { echo "go build exited $rc"; exit "$rc"; }
+          test -x rumor-bin || { echo "no binary produced"; exit 1; }
+          # a value only execution produces: the binary's own usage line, which
+          # it writes to stderr and exits 2 for. `|| true` because exit 2 is the
+          # correct answer here and would otherwise fail the step.
+          echo "PROOF built binary says: $(timeout 30 ./rumor-bin 2>&1 | head -1 || true)"
 
       - name: test
         run: |
-          # pipefail: without it a pipeline reports its LAST stage's status, so a
-          # failing gate piped to a formatter exits 0 and this step goes GREEN.
-          # ratchet r0.2/12; driven locally -- a gate exiting 4 piped to `tail -5`
-          # continues and exits 0, and exits 4 with this line present.
           set -o pipefail
           cd src-tree
-          # same reason as the build step: `| tee | tail` returns tail's status.
+          GO=""
+          for c in go go126 go125; do
+            command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+          done
+          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
           rc=0
-          timeout 900 cargo test --locked > ../test.log 2>&1 || rc=$?
+          timeout 900 "$GO" test ./... > ../test.log 2>&1 || rc=$?
           tail -20 ../test.log
-          test "$rc" -eq 124 && { echo "HANG: cargo test exceeded 900s. The CONSEQUENCE holds either way -- this is a finding against the test, not a red build -- but the premise does not: rc 124 proves only that 900s elapsed, and a test taking 901s terminates. Read test.log for which test started last."; exit 124; }
-          test "$rc" -eq 0 || { echo "cargo test exited $rc"; exit "$rc"; }
-          # and a value only execution produces: the harness's own pass count
-          grep -E 'test result: ok\. [0-9]+ passed' ../test.log \
-            || { echo "no test-result line: the harness did not run"; exit 1; }
-          echo "PROOF $(grep -oE 'test result: ok\. [0-9]+ passed' ../test.log | head -1 || true)"
+          test "$rc" -eq 124 && { echo "HANG: go test exceeded 900s. The CONSEQUENCE holds either way -- this is a finding against the test, not a red build -- but the premise does not: rc 124 proves only that 900s elapsed, and a test taking 901s terminates. Read test.log for which package started last."; exit 124; }
+          test "$rc" -eq 0 || { echo "go test exited $rc"; exit "$rc"; }
+          # and a value only execution produces: the harness's own per-package
+          # verdict. `go test` prints `ok <pkg> <elapsed>` for each package that
+          # ran, so its absence means no package ran at all -- which is what a
+          # build-only success looks like.
+          grep -E '^ok[[:space:]]+forge\.axonibyte\.com/' ../test.log \
+            || { echo "no ok-package line: the harness did not run any package"; exit 1; }
+          echo "PROOF $(grep -cE '^ok[[:space:]]+forge\.axonibyte\.com/' ../test.log) package(s) reported ok"
 
       - name: fmt
         run: |
-          # pipefail: without it a pipeline reports its LAST stage's status, so a
-          # failing gate piped to a formatter exits 0 and this step goes GREEN.
-          # ratchet r0.2/12; driven locally -- a gate exiting 4 piped to `tail -5`
-          # continues and exits 0, and exits 4 with this line present.
           set -o pipefail
           cd src-tree
-          timeout 60 cargo fmt --version
+          FMT=""
+          for c in gofmt gofmt126 gofmt125; do
+            command -v "$c" >/dev/null 2>&1 && { FMT="$c"; break; }
+          done
+          test -n "$FMT" || { echo "no gofmt, gofmt126 or gofmt125 on PATH: PROVISIONING finding"; exit 1; }
+          # gofmt -l LISTS unformatted files and exits 0 either way, so the
+          # status cannot be the gate -- the output is. This is the one step
+          # whose verdict is a count rather than an rc, and that is why it is
+          # written out instead of trusting `test "$rc" -eq 0`.
           rc=0
-          timeout 120 cargo fmt --all --check > ../fmt.log 2>&1 || rc=$?
+          timeout 120 "$FMT" -l . > ../fmt.log 2>&1 || rc=$?
           cat ../fmt.log
-          test "$rc" -eq 124 && { echo "HANG: cargo fmt exceeded 120s. RUNNER finding."; exit 124; }
-          test "$rc" -eq 0 || { echo "cargo fmt --check exited $rc: the tree is not formatted, diff above"; exit "$rc"; }
-          echo "PROOF fmt checked with $(timeout 60 cargo fmt --version)"
+          test "$rc" -eq 124 && { echo "HANG: gofmt exceeded 120s. RUNNER finding."; exit 124; }
+          test "$rc" -eq 0 || { echo "gofmt exited $rc, which is a tool failure and not an unformatted tree"; exit "$rc"; }
+          test ! -s ../fmt.log || { echo "gofmt lists the files above as unformatted"; exit 1; }
+          echo "PROOF fmt checked with $(timeout 60 "$FMT" --help 2>&1 | head -1 || true); zero files listed"
 
-      - name: clippy
+      - name: vet
         run: |
-          # pipefail: without it a pipeline reports its LAST stage's status, so a
-          # failing gate piped to a formatter exits 0 and this step goes GREEN.
-          # ratchet r0.2/12; driven locally -- a gate exiting 4 piped to `tail -5`
-          # continues and exits 0, and exits 4 with this line present.
           set -o pipefail
           cd src-tree
-          timeout 60 cargo clippy --version
+          GO=""
+          for c in go go126 go125; do
+            command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+          done
+          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
           rc=0
-          timeout 900 cargo clippy --locked --all-targets -- -D warnings > ../clippy.log 2>&1 || rc=$?
-          tail -30 ../clippy.log
-          test "$rc" -eq 124 && { echo "HANG: cargo clippy exceeded 900s. RUNNER finding."; exit 124; }
-          test "$rc" -eq 0 || { echo "cargo clippy exited $rc: a lint fired, named above"; exit "$rc"; }
-          echo "PROOF clippy ran with $(timeout 60 cargo clippy --version)"
+          timeout 300 "$GO" vet ./... > ../vet.log 2>&1 || rc=$?
+          tail -30 ../vet.log
+          test "$rc" -eq 124 && { echo "HANG: go vet exceeded 300s. RUNNER finding."; exit 124; }
+          test "$rc" -eq 0 || { echo "go vet exited $rc: a check fired, named above"; exit "$rc"; }
+          echo "PROOF vet ran under $(timeout 30 "$GO" version)"
 
       - name: docs coverage
         run: |
-          # pipefail: without it a pipeline reports its LAST stage's status, so a
-          # failing gate piped to a formatter exits 0 and this step goes GREEN.
-          # ratchet r0.2/12; driven locally -- a gate exiting 4 piped to `tail -5`
-          # continues and exits 0, and exits 4 with this line present.
           set -o pipefail
           cd src-tree
+          GO=""
+          for c in go go126 go125; do
+            command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+          done
+          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
           rc=0
-          timeout 300 cargo run --locked -q -- docs --check > ../docs.log 2>&1 || rc=$?
+          timeout 300 "$GO" run ./cmd/rumor docs --check > ../docs.log 2>&1 || rc=$?
           cat ../docs.log
           test "$rc" -eq 124 && { echo "HANG: docs --check exceeded 300s. RUNNER finding."; exit 124; }
           test "$rc" -eq 0 || { echo "docs --check exited $rc: an unmapped path, named above"; exit "$rc"; }
@@ -203,139 +228,133 @@ jobs:
             || { echo "no coverage count: the check did not run"; exit 1; }
           echo "PROOF $(grep -oE '[0-9]+ path\(s\), every one mapped' ../docs.log | head -1 || true)"
 
-      - name: deny (licences)
+      - name: golangci-lint
         run: |
-          # pipefail: without it a pipeline reports its LAST stage's status, so a
-          # failing gate piped to a formatter exits 0 and this step goes GREEN.
-          # ratchet r0.2/12; driven locally -- a gate exiting 4 piped to `tail -5`
-          # continues and exits 0, and exits 4 with this line present.
           set -o pipefail
           cd src-tree
-          # pinned: an unpinned gate tool means the verdict can change with no commit.
-          # No FreeBSD binary release exists, so absent a provisioned copy it builds.
-          #
-          # THE 900 s IS MEASURED AND ON THE WRONG MACHINE, which is the honest
-          # statement of it. ratchet r0.2/18 timed a genuinely cold build -- empty
-          # CARGO_HOME, empty --root, verified by the artefact rather than the
-          # wrapper's exit code -- at 274 s including the index update and the
-          # downloads. So 900 s is 3.28x cold with 626 s of margin. Their earlier
-          # "5m08s warm" was in fact a CONTENDED COLD build, which is why cold came
-          # out faster than their warm. But that is their jail's CPU and network,
-          # not this runner's, so the bound still wants one validating run here,
-          # read from the step's own elapsed output. No bigger bound: at 900 s a
-          # genuine hang already costs a single-concurrency runner a quarter hour,
-          # and that cost is the harm this file exists to bound, not the fix.
-          #
-          # IF THE JAIL PROVISIONS cargo-deny, `command -v` finds it and this
-          # install never runs -- which is the better answer (fable rumor/105 asked
-          # for 0.20.2 in the toolchain act) and needs no change here. A provisioned
-          # copy at the WRONG version then fails loudly at the assertion below
-          # rather than being silently overwritten by an install: a provisioning
-          # mismatch is a finding, and quietly installing over it would hide which
-          # of the two is wrong.
-          command -v cargo-deny >/dev/null 2>&1 \
-            || { # THE PRE-CHECK TAKES THE CAUSAL CLAIM OUT OF THE TIMEOUT (ibis r0.2/36).
-                 # This step read rc 124 on a 900 s wrapper and announced "almost certainly
-                 # no route to the registry". rc 124 proves only that 900 s elapsed. A 60 s
-                 # index touch fails in its OWN words when there is no route, so by the time
-                 # the wrapper can fire, no-route is excluded and "too slow" is the only
-                 # reading left. INSIDE this branch, so a provisioned cargo-deny costs no
-                 # network call at all.
+          GO=""
+          for c in go go126 go125; do
+            command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+          done
+          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          # PINNED, and the pin is MEASURED: v2.14.0 is what proxy.golang.org
+          # reported as latest for github.com/golangci/golangci-lint/v2 on
+          # 2026-10-14 (published 2026-09-24). An unpinned @latest is a gate
+          # whose verdict can change with no commit here saying so -- ratchet
+          # r0.2/4's drift guard, which the Rust file learned the hard way.
+          # `go env` is local and instant, and bounded anyway: "it is instant in
+          # practice" is the exact reasoning this file records as the cause of a
+          # 17-minute run, and the bounds checker now reads a $VAR command as an
+          # invocation, so an unbounded one here is a finding rather than a habit.
+          GOBIN_DIR="$(timeout 30 "$GO" env GOPATH)/bin"
+          BIN="$GOBIN_DIR/golangci-lint"
+          command -v golangci-lint >/dev/null 2>&1 && BIN="$(command -v golangci-lint)"
+          test -x "$BIN" || {
+                 # THE PRE-CHECK TAKES THE CAUSAL CLAIM OUT OF THE TIMEOUT (ibis
+                 # r0.2/36). A bounded install that returns 124 proves only that
+                 # the bound elapsed; a 60 s module lookup fails in its OWN words
+                 # when there is no route, so by the time the wrapper can fire,
+                 # no-route is excluded and "too slow" is the only reading left.
                  rc=0
-                 timeout 60 cargo search --limit 1 cargo-deny > ../index.log 2>&1 || rc=$?
-                 tail -3 ../index.log
-                 test "$rc" -eq 124 && { echo "the registry index did not answer in 60s. That is the bound, not a diagnosis: an index answering at 61s gives this same status. The install was never attempted either way"; exit 1; }
-                 test "$rc" -eq 0 || { echo "cargo search exited $rc: the registry index is unreachable or refused, and the install was never attempted"; exit 1; }
-                 echo "PROOF the registry index answered in under 60s, so a 900s install can only mean slow"
+                 timeout 60 "$GO" list -m github.com/golangci/golangci-lint/v2@v2.14.0 > ../lintidx.log 2>&1 || rc=$?
+                 tail -3 ../lintidx.log
+                 test "$rc" -eq 124 && { echo "the module proxy did not answer in 60s. That is the bound, not a diagnosis. The install was never attempted"; exit 1; }
+                 test "$rc" -eq 0 || { echo "go list -m exited $rc: the proxy is unreachable or refused the pin, and the install was never attempted"; exit 1; }
+                 echo "PROOF the proxy answered for the pin in under 60s, so a slow install can only mean slow"
                  rc=0
-                 timeout 900 cargo install cargo-deny --locked --version 0.20.2 > ../install.log 2>&1 || rc=$?
-                 tail -20 ../install.log
-                 test "$rc" -eq 124 && { echo "HANG: cargo install cargo-deny exceeded 900s. The index answered above, so this is NOT no-route: read install.log -- 'Downloaded' lines mean bytes moved and the box is slow. RUNNER finding, and it blocks the licence gate rather than failing it."; exit 124; }
-                 test "$rc" -eq 0 || { echo "cargo install cargo-deny exited $rc"; exit "$rc"; } }
-          # ASSERT the pinned version, do not merely print it. ratchet r0.2/4's
-          # drift guard: a gate tool whose version can move is a gate whose
-          # verdict can change with no commit, and I shipped this as a bare
-          # `--version` that printed whatever was there and checked nothing.
-          # The literal 0.20.2 is duplicated from the install line ON PURPOSE --
-          # reading it out of a variable the install also used would make the
-          # check agree with itself no matter what. The duplication IS the check:
-          # move the pin without moving this and the step fails.
+                 timeout 900 "$GO" install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 > ../lintinst.log 2>&1 || rc=$?
+                 tail -20 ../lintinst.log
+                 test "$rc" -eq 124 && { echo "HANG: go install golangci-lint exceeded 900s. The proxy answered above, so this is NOT no-route. RUNNER finding, and it blocks the lint gate rather than failing it."; exit 124; }
+                 test "$rc" -eq 0 || { echo "go install golangci-lint exited $rc"; exit "$rc"; } }
+          test -x "$BIN" || { echo "golangci-lint still absent at $BIN after install"; exit 1; }
+          # ASSERT the version, do not merely print it. The literal is duplicated
+          # from the install line ON PURPOSE: reading it out of a shared variable
+          # would make this agree with itself whatever got installed.
+          v="$(timeout 60 "$BIN" --version 2>&1 | head -1)"
+          echo "$v"
+          case "$v" in
+            *2.14.0*) : ;;
+            *) echo "golangci-lint is not the pinned 2.14.0: $v. A provisioned copy at the wrong version is a provisioning finding, not something to install over"; exit 1 ;;
+          esac
           rc=0
-          timeout 60 cargo deny --version > ../denyver.log 2>&1 || rc=$?
-          cat ../denyver.log
-          test "$rc" -eq 124 && { echo "HANG: cargo deny --version exceeded 60s. A hung --version wedges the runner exactly as a hung install does (ratchet r0.2/10)."; exit 124; }
-          test "$rc" -eq 0 || { echo "cargo deny --version exited $rc"; exit "$rc"; }
-          grep -q '0\.20\.2' ../denyver.log \
-            || { echo "cargo-deny is not the pinned 0.20.2: the licence verdict could change with no commit"; exit 1; }
-          echo "PROOF cargo-deny $(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' ../denyver.log | head -1 || true) matches the pin"
-          # TEST 3, THE NEGATIVE CONTROL, AND IT RUNS BEFORE THE CLEAN CHECK.
-          # ibis read task 139's log (thread:rumor/303): the gate was green and
-          # VACUOUS. All seven unused allowances raised license-not-encountered and
-          # `deny` resolved rumor-cli@0.1.0 alone, so it passed having examined no
-          # dependency licence at all. A gate that encounters none of its own
-          # allowances cannot fail, and one never seen to fail is not a gate.
+          timeout 900 "$BIN" run ./... > ../lint.log 2>&1 || rc=$?
+          tail -30 ../lint.log
+          test "$rc" -eq 124 && { echo "HANG: golangci-lint exceeded 900s. RUNNER finding."; exit 124; }
+          test "$rc" -eq 0 || { echo "golangci-lint exited $rc: a linter fired, named above"; exit "$rc"; }
+          echo "PROOF lint ran with $v"
+
+      - name: govulncheck
+        run: |
+          set -o pipefail
+          cd src-tree
+          GO=""
+          for c in go go126 go125; do
+            command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+          done
+          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          # PINNED AND MEASURED, same reasoning: golang.org/x/vuln v1.9.0 is what
+          # the proxy reported as latest on 2026-10-14 (published 2026-10-11).
+          # `go env` is local and instant, and bounded anyway: "it is instant in
+          # practice" is the exact reasoning this file records as the cause of a
+          # 17-minute run, and the bounds checker now reads a $VAR command as an
+          # invocation, so an unbounded one here is a finding rather than a habit.
+          GOBIN_DIR="$(timeout 30 "$GO" env GOPATH)/bin"
+          BIN="$GOBIN_DIR/govulncheck"
+          command -v govulncheck >/dev/null 2>&1 && BIN="$(command -v govulncheck)"
+          test -x "$BIN" || {
+                 rc=0
+                 timeout 60 "$GO" list -m golang.org/x/vuln@v1.9.0 > ../vulnidx.log 2>&1 || rc=$?
+                 tail -3 ../vulnidx.log
+                 test "$rc" -eq 124 && { echo "the module proxy did not answer in 60s. That is the bound, not a diagnosis. The install was never attempted"; exit 1; }
+                 test "$rc" -eq 0 || { echo "go list -m exited $rc: the proxy is unreachable or refused the pin, and the install was never attempted"; exit 1; }
+                 echo "PROOF the proxy answered for the pin in under 60s"
+                 rc=0
+                 timeout 900 "$GO" install golang.org/x/vuln/cmd/govulncheck@v1.9.0 > ../vulninst.log 2>&1 || rc=$?
+                 tail -20 ../vulninst.log
+                 test "$rc" -eq 124 && { echo "HANG: go install govulncheck exceeded 900s. The proxy answered above, so NOT no-route. RUNNER finding."; exit 124; }
+                 test "$rc" -eq 0 || { echo "go install govulncheck exited $rc"; exit "$rc"; } }
+          test -x "$BIN" || { echo "govulncheck still absent at $BIN after install"; exit 1; }
+          # govulncheck READS A DATABASE OVER THE NETWORK, which makes it the one
+          # gate here whose verdict depends on a third party being up. That is why
+          # its failure is read apart from the others: an unreachable vuln.go.dev
+          # is a RUNNER/route finding, not a vulnerable tree.
+          rc=0
+          timeout 900 "$BIN" ./... > ../vuln.log 2>&1 || rc=$?
+          tail -30 ../vuln.log
+          test "$rc" -eq 124 && { echo "HANG: govulncheck exceeded 900s. RUNNER finding; it blocks the vulnerability gate rather than failing it."; exit 124; }
+          test "$rc" -eq 3 && { echo "govulncheck exited 3: it could not load the vulnerability database. Route finding, not a vulnerable tree"; exit 3; }
+          test "$rc" -eq 0 || { echo "govulncheck exited $rc: a vulnerability is named above"; exit "$rc"; }
+          # a value only execution produces: its own summary line
+          grep -qiE 'no vulnerabilities|vulnerabilit' ../vuln.log             || { echo "no govulncheck summary: the scan did not run"; exit 1; }
+          echo "PROOF scan ran with $(timeout 60 "$BIN" -version 2>&1 | head -2 | tr '\n' ' ' || true)"
+
+      - name: licences (the module graph, asserted empty)
+        run: |
+          set -o pipefail
+          cd src-tree
+          GO=""
+          for c in go go126 go125; do
+            command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+          done
+          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          # WHAT THIS ASSERTS, AND WHAT IT DOES NOT. deny.toml's allowlist gated
+          # a Rust graph with real third-party crates in it. This module has NO
+          # dependencies, so there is no licence surface to allow or deny, and a
+          # port of the allowlist would be a gate with nothing to judge -- which
+          # reads green for the wrong reason.
           #
-          # THE CONFIG IS THE REAL deny.toml, not a copy: a control derived from a
-          # copy of the thing it checks agrees with itself whatever the real file
-          # says. The fixture is a separate workspace, EXCLUDED by the root
-          # manifest, so the GPL crate reaches this check and never the shipped
-          # graph -- and the clean check below is what proves that exclusion held.
-          #
-          # TWO ORACLES, because rc 4 alone does not say WHICH licence was refused:
-          # the status, and then the log naming both GPL-3.0-only and gpl-fixture.
-          # Driven locally against cargo-deny 0.20.2 before this step existed:
-          # rc 4, "rejected: license is not explicitly allowed", both names present.
+          # So the assertion is the PRECONDITION instead: the module graph holds
+          # exactly one module, this one. The day a dependency arrives -- G2's
+          # OPA is the first -- this step fails naming it, and the person adding
+          # it has to replace this with a real allowlist rather than inherit a
+          # green. That failure is the point, not a gap.
           rc=0
-          timeout 300 cargo deny --manifest-path tests/fixtures/deny-gpl/Cargo.toml \
-            --config deny.toml check licenses > ../deny-gpl.log 2>&1 || rc=$?
-          cat ../deny-gpl.log
-          test "$rc" -eq 124 && { echo "HANG: the GPL control exceeded 300s. RUNNER finding; the control did NOT run."; exit 124; }
-          test "$rc" -eq 1 && { echo "the GPL control exited 1: deny.toml did not deserialize, so the control never ran"; exit 1; }
-          test "$rc" -eq 0 && { echo "CONTROL FAILED: deny PASSED a GPL-3.0-only dependency. The licence gate does not gate, and the clean verdict below would mean nothing."; exit 1; }
-          # PIN THE STATUS, not merely "nonzero". ibis rumor/316: this ladder tested 124,
-          # then 1, then 0, then the two names -- so ANY other nonzero passed, and a panic
-          # at 101 whose output happened to print both strings would have PROOF-passed as a
-          # licence refusal. Two oracles are not two while one of them admits any mechanism.
-          # cargo-deny returns 4 for a licence outside the allowlist, so 4 is the assertion.
-          test "$rc" -eq 4 || { echo "the GPL control exited $rc, not 4. cargo-deny returns 4 for a licence outside the allowlist; any other nonzero is a different failure wearing a refusal's clothes"; exit 1; }
-          grep -q 'GPL-3.0-only' ../deny-gpl.log \
-            || { echo "the GPL control exited $rc without naming GPL-3.0-only: something else refused, so this does not show the licence gate working"; exit 1; }
-          grep -q 'gpl-fixture' ../deny-gpl.log \
-            || { echo "the GPL control exited $rc without naming gpl-fixture: the refusal is not about the fixture crate"; exit 1; }
-          echo "PROOF the licence gate REFUSED gpl-fixture GPL-3.0-only, rc $rc"
-          # NO -D. Default is green on an unused allowlist entry; under -D a
-          # cosmetic warning and a real licence violation both return 4 and are
-          # indistinguishable by exit status. 7 warnings are EXPECTED while the
-          # workspace has no dependencies (ratchet, r0.2/0) and are not silenced.
-          # redirect then read the status: exit 4 (a licence outside the allowlist)
-          # and exit 1 (the config did not deserialize, so the gate never ran) are
-          # opposite problems and a pipe would hide both behind tee's success.
-          rc=0
-          timeout 300 cargo deny check licenses > ../deny.log 2>&1 || rc=$?
-          cat ../deny.log
-          test "$rc" -eq 124 && { echo "HANG: cargo deny check exceeded 300s. RUNNER finding; the gate did NOT run."; exit 124; }
-          test "$rc" -eq 1 && { echo "deny exited 1: deny.toml did not deserialize, the gate did NOT run"; exit 1; }
-          test "$rc" -eq 0 || { echo "deny exited $rc: a licence is outside the allowlist, named above"; exit "$rc"; }
-          grep -q 'licenses ok' ../deny.log \
-            || { echo "no 'licenses ok' line: the gate did not run"; exit 1; }
-          # the crate name AND its version DERIVED from the manifest, never a
-          # literal: ratchet's example string carried 0.1.3 from their own branch
-          # and would fail here at 0.1.0 and again at every bump.
-          rc=0
-          timeout 120 cargo metadata --no-deps --format-version 1 > ../meta.json 2>&1 || rc=$?
-          test "$rc" -eq 124 && { echo "HANG: cargo metadata exceeded 120s. RUNNER finding."; exit 124; }
-          test "$rc" -eq 0 || { tail -5 ../meta.json; echo "cargo metadata exited $rc"; exit "$rc"; }
-          # LOCAL text extraction, not an external call, and deliberately
-          # separated from it: `head -1` closing the pipe can SIGPIPE sed to 141,
-          # and under pipefail that would abort a step that had in fact
-          # succeeded. The pipeline is guarded and the real oracle is the
-          # emptiness test below.
-          VER=$(sed -n 's/.*"name":"rumor-cli","version":"\([^"]*\)".*/\1/p' ../meta.json | head -1 || true)
-          test -n "$VER" || { echo "could not derive the crate version from cargo metadata"; exit 1; }
-          rc=0
-          timeout 120 cargo deny list > ../denylist.log 2>&1 || rc=$?
-          test "$rc" -eq 124 && { echo "HANG: cargo deny list exceeded 120s. RUNNER finding."; exit 124; }
-          test "$rc" -eq 0 || { cat ../denylist.log; echo "deny list exited $rc"; exit "$rc"; }
-          grep -q "rumor-cli@${VER}" ../denylist.log \
-            || { echo "deny list did not name rumor-cli@${VER}"; exit 1; }
-          echo "PROOF deny resolved rumor-cli@${VER} from Cargo.lock"
+          timeout 300 "$GO" list -m all > ../mods.log 2>&1 || rc=$?
+          cat ../mods.log
+          test "$rc" -eq 124 && { echo "HANG: go list -m exceeded 300s. RUNNER finding."; exit 124; }
+          test "$rc" -eq 0 || { echo "go list -m all exited $rc"; exit "$rc"; }
+          n=$(grep -c . ../mods.log)
+          test "$n" -eq 1 || { echo "the module graph holds $n modules, not 1. A dependency has arrived, so this step's assumption is spent: replace it with a licence allowlist over the graph above before this gate can mean anything again."; exit 1; }
+          grep -qx 'forge.axonibyte.com/axonibyte/rumor' ../mods.log \
+            || { echo "the single module is not this one: $(cat ../mods.log)"; exit 1; }
+          echo "PROOF module graph is exactly 1 module, this one, so the third-party licence surface is empty"

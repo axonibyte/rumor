@@ -105,7 +105,26 @@ BOUNDED_TOOLS = {
     "curl", "wget", "fetch", "git", "cargo", "rustc", "rustup",
     "pkg", "pkgin", "ssh", "scp", "rsync", "npm", "pnpm", "yarn",
     "pip", "pip3", "make", "docker", "cargo-deny",
+    # The Go toolchain, added with G1's port. FreeBSD ports installs versioned
+    # binaries, so the numbered spellings are listed beside the bare ones --
+    # `go126` is as much a compiler as `go` is, and the jail that has one may
+    # not have the other.
+    "go", "go125", "go126", "gofmt", "gofmt125", "gofmt126",
+    "golangci-lint", "govulncheck",
 }
+
+# A COMMAND RESOLVED AT RUNTIME IS STILL AN INVOCATION, and this is the hole
+# that made the Go port's bounds unchecked. BOUNDED_TOOLS is an allowlist, so a
+# command spelled `"$GO"` matched nothing and the whole invocation vanished:
+# planting an unbounded `"$GO" vet ./...` in ci.yml left this checker reporting
+# "every job and invocation bounded". Measured, not reasoned about.
+#
+# The fix cannot be "add $GO to the allowlist", because the point of the
+# variable is that its value is not known here. So any command-position token
+# that is a variable expansion is treated as bounded-class on sight. That is
+# deliberately broader than the allowlist: an unknown name might be harmless,
+# but a name this file cannot read is one it must not wave through.
+VAR_COMMAND = re.compile(r"^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$")
 
 # Where one shell command ends and the next begins. A tool name is only an
 # invocation if it is the FIRST word after one of these -- which is what keeps
@@ -202,7 +221,7 @@ def invocations(line: str):
                         and ("v" in bare or "V" in bare)):
                     lookup_only = True
                 continue
-            if name in BOUNDED_TOOLS and not lookup_only:
+            if (name in BOUNDED_TOOLS or VAR_COMMAND.match(bare)) and not lookup_only:
                 found.append((i, name, toks))
             cmd_pos = False
             saw_command = lookup_only = False
@@ -679,6 +698,46 @@ jobs:
 """
 
 
+# A COMMAND THE FILE CANNOT READ, which is the hole the Go port opened. The
+# resolver pattern `GO=go126; "$GO" vet ./...` spells its command as a variable,
+# so an allowlist of literal tool names matched nothing and the invocation
+# vanished -- rook planted an unbounded `"$GO" vet` in ci.yml and this checker
+# reported "every job and invocation bounded". Both arms matter: the unbounded
+# one must be flagged, and the bounded one must NOT be, or the fix would be to
+# stop using the resolver rather than to bound it.
+VAR_COMMAND_UNBOUNDED = """
+name: ci
+on: [push]
+jobs:
+  j:
+    runs-on: freebsd-15-jail
+    timeout-minutes: 45
+    steps:
+      - name: vet
+        run: |
+          set -o pipefail
+          GO=go126
+          rc=0
+          "$GO" vet ./... > ../vet.log 2>&1 || rc=$?
+"""
+
+VAR_COMMAND_BOUNDED = """
+name: ci
+on: [push]
+jobs:
+  j:
+    runs-on: freebsd-15-jail
+    timeout-minutes: 45
+    steps:
+      - name: vet
+        run: |
+          set -o pipefail
+          GO=go126
+          rc=0
+          timeout 300 "$GO" vet ./... > ../vet.log 2>&1 || rc=$?
+"""
+
+
 def self_test() -> int:
     import tempfile
     cases = [
@@ -692,6 +751,14 @@ def self_test() -> int:
          CONNECT_TIMEOUT_IS_NOT_A_BOUND, ["`curl` runs unbounded"], []),
         ("a tool inside $( ) is still an invocation",
          SUBSTITUTION_STILL_RUNS, ["`git` runs unbounded"], []),
+        # Added with G1's Go port, after the mutant SURVIVED: see the fixture's
+        # own comment. The pair is the point -- flagging `"$GO"` is worthless if
+        # it also flags the bounded form, because then the only way to a green
+        # file is to abandon the resolver the three Go spellings require.
+        ("a $VAR in command position is an invocation",
+         VAR_COMMAND_UNBOUNDED, ["`$GO` runs unbounded"], []),
+        ("the same $VAR with a timeout is not flagged",
+         VAR_COMMAND_BOUNDED, [], ["unbounded"]),
         ("a backslash continuation is one bounded command",
          CONTINUATION_IS_ONE_COMMAND, [], ["unbounded"]),
         ("a bounded command does not excuse an unbounded job",
