@@ -47,6 +47,23 @@ than reporting zero problems. The sizes are asserted too: three packages,
 seventeen cases, nineteen mutants, each as a number in the test, so a file that
 stops being examined cannot hide inside a clean total.
 
+**A pinned hash catches an unnoticed edit; it does not forbid a deliberate
+one.** Each statute and rules file is pinned by git blob id, computed in the
+test rather than asked of git. Five of the six pins were measured at the branch
+the examples were carried from; the sixth moved in v0.1.8, when three sentences
+in `planted-lie/statute.rego` were found to have gone false — an ADR named by
+its retired thread, a harness described in the previous engine's API, and a
+phase said to be implemented in the previous language. The test **fired on that
+edit before the pin was moved**, which is the property working: the edit was
+deliberate, recorded in the same commit, and the alternative was leaving three
+false sentences in a live fixture to preserve identity with a branch that has
+since been swept.
+
+Moving a pin made three neighbouring claims false — a package comment, a test
+comment and a proof line all said the files matched the branch they came from.
+They were corrected in the same pass. A changed fact has siblings in the prose
+around it, and the prose is where the next reader looks first.
+
 **A mutant that cannot be killed is removed, with the gap recorded.** The
 planted-lie package is missing `m2-ignores-knowledge` on purpose: killing it
 needs a claim the observer was never told, and the finding for that case is the

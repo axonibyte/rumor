@@ -575,6 +575,22 @@ refused and two passed, each asserting **the clause that answered** rather than
 the boolean — four clauses refuse, and a control satisfied by any refusal would
 also be satisfied by a gate that refuses everything.
 
+**The allowlist has two readers, and the second is this documentation.** R0.2's
+eight ids are enumerated in `docs/design.md` between `ALLOWLIST BEGIN` and
+`ALLOWLIST END`; the test parses that block and compares it against its own
+copy, so neither can drift alone. `deny.toml` was the second reader until the
+Rust tree went, which left the list in one place — and a single source is
+exactly what the pair existed to prevent.
+
+**The CI step asserts the agreement, and refuses a skip.** Two things were
+printed and unasserted: the suite's `-v` output showed a SKIP and the only
+assertion was the module count, so an arm that stopped running changed the log
+and failed nothing. The step now greps the agreement proof by name, and treats
+**any** `--- SKIP:` in the licence suite as a finding. Asserting the skip itself
+— which is what the review first asked for — would now pin a state the
+repository cannot reach, because the arm reads the document rather than a
+deleted file.
+
 ### go.sum, and what it is for here
 
 `go.sum` is in the tree and is not a lockfile. It records the hash of every
