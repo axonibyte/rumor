@@ -85,8 +85,30 @@ path = "cmd/rumor/**/*.go"
 docs = ["docs/cli.md", "docs/design.md"]
 
 [[entry]]
-path = "internal/**/*.go"
+# `internal/coverage` IS the `docs --check` command, so cli.md describes it and
+# design.md says why the check exists. The other internal packages are NOT
+# mapped here, and that is the correction: a single `internal/**/*.go` entry
+# pointed every library at the CLI document, so the release gate demanded a
+# cli.md edit for a package that adds no command (rook, v0.1.9). A mapping that
+# names the wrong document is worse than a missing one -- it gets satisfied by
+# writing something untrue in the file it names.
+path = "internal/coverage/*.go"
 docs = ["docs/cli.md", "docs/design.md"]
+
+[[entry]]
+# Flattening: design.md owns why `known(actor, claim_ref)` is computed outside
+# Rego, and the testing methodology owns the part about driving it -- the untold
+# claim read off the real fixture, and the mutation that found the hole where a
+# tell carried the teller's knowledge. No CLI surface, so no cli.md.
+path = "internal/flatten/*.go"
+docs = ["docs/design.md", "docs/testing-methodology.md"]
+
+[[entry]]
+# The handle table: design.md owns why it is per attempt and which collision
+# v1 names, and the vocabulary owns the handle's form, which this package's
+# shape duplicates deliberately so the two must agree.
+path = "internal/handle/*.go"
+docs = ["docs/design.md", "docs/vocabulary.md"]
 
 [[entry]]
 path = ".forgejo/workflows/*.yml"
