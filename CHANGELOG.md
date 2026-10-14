@@ -3,6 +3,47 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.6 — 2026-10-14
+
+The pipeline signs, verifies its own signature, and publishes. This is the
+first tag with an artefact attached to it.
+
+- **SHA256SUMS is signed with the release machine key**, `ssh-keygen -Y sign -n
+  file` against `anvil@forge-01.corp.axonibyte.com` in the ci jail. For five
+  tags the step looked for `gpg` and reported a "named wait" for a maintainer
+  key; cal's amendment had decided ssh signing two days earlier, and nothing of
+  the maintainer's belongs on a runner. A missing key is now a refusal naming
+  the path it could not read.
+- **The run verifies what it just signed**, with `ssh-keygen -Y verify` against
+  the committed principal list, asserting the `Good "file" signature` line and
+  not only the exit status.
+- **The release is created and carries three files** — the binary,
+  `SHA256SUMS`, `SHA256SUMS.sig` — with the tag's changelog section as its
+  body. `GET /releases` was empty for v0.1.0 through v0.1.5; the epic had asked
+  for this since R0. The upload is read back and the asset list compared,
+  because a 201 and a release that carries the file are different claims. The
+  artefact's name is read off `SHA256SUMS` rather than recomposed, since that
+  file records what was actually built.
+- **`fixture-v*` is in the trigger**, so the pipeline's three refusals can be
+  driven by any agent instead of asking cal to push deliberately bad `v*` tags.
+  A fixture runs every check and publishes nothing, refused by the tag's shape.
+- `tools/forge-release.py` carries a battery over the changelog-section reader
+  and the multipart body. It does **not** cover the create-and-attach half —
+  nothing in it talks to the forge — and both the tool and the methodology doc
+  say so, because a battery that implied otherwise would read as coverage of
+  the only part that can fail in production.
+- **The tag is checked out, which it never was.** `git clone` leaves the default
+  branch checked out, so the version agreement, the build and `tools/` were all
+  reading `main` while reporting on the tag — invisible for five releases
+  because a fast-forward release makes those the same commit. The run now checks
+  out the tag's tree, takes `tools/` from the workflow's own commit, and asserts
+  both; an unasserted checkout is the defect being repaired.
+- **`workflow_dispatch` takes a `tag` input**, so this file is proved against an
+  existing tag before it carries a release. Every stale step in it was found one
+  tag at a time, each costing a release, because the only trigger was a `v*`
+  push that only the maintainer can make. The tag is resolved once and read back
+  by the six steps that need it, rather than each repeating its own fallback.
+
 ## 0.1.5 — 2026-10-14
 
 The tag pipeline verifies a tag instead of guessing about it, and this tag is
