@@ -3,6 +3,32 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.8 — 2026-10-14
+
+ratchet's review of the port, acted on. Three findings, one of which changed
+shape when it met the second.
+
+- **The licence allowlist has two sources again.** R0.2's eight ids are
+  enumerated in `docs/design.md` and `tests/licences` reads them from there,
+  comparing against its own copy. `deny.toml` was the second reader until G4
+  removed it with the Rust tree, which left the list in one place with nothing
+  able to notice it drifting from the decision. A decision's home is a document,
+  not a tool's config, so the pair is restored somewhere a sweep cannot take it.
+- **`ci.yml` asserts the allowlist agreement and refuses any skip.** The review
+  asked for the SKIP to be asserted by name, since it was printed and
+  unasserted; with the arm reading the document it no longer skips, so that
+  assertion would pin an unreachable state. The agreement is asserted instead,
+  and a skip anywhere in the licence suite is now a finding — which is what both
+  versions were protecting.
+- **Three sentences in `examples/planted-lie/statute.rego` had gone false** and
+  are corrected, with the drift hash re-pinned in the same commit: ADR 0001
+  named by its retired thread, a harness described in Regorus's API, and R2's
+  flattening said to happen in Rust. The drift test fired on the edit before the
+  pin moved, which is the property — it catches an unnoticed edit and does not
+  forbid a deliberate one. Byte-identity with `r1.2-examples` was built to prove
+  the port changed no statute; it did, that branch is swept, and the identity is
+  recorded in 0.1.4's section where it belongs.
+
 ## 0.1.7 — 2026-10-14
 
 The vocabulary v1 as reviewed, and the engine docs brought current.
