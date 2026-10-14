@@ -195,6 +195,65 @@ does not pin the toolchain that builds the code; the `go` directive does.
 
 Not yet written.
 
+## Knowledge is flattened outside Rego
+
+`known(actor, claim_ref)` — what an actor should believe at a position — is
+computed by `internal/flatten` and handed to a statute as data. It is not
+derived inside Rego, for three reasons in the order that decides them.
+
+**A rule that followed tells would be a different statute.** The vocabulary is
+explicit that rules never follow tells. If each statute derived knowledge, each
+would carry that derivation, and one that got it subtly wrong would produce a
+finding that reads as a verdict about the system under test while actually
+being a verdict about its own bookkeeping.
+
+**It is data to the question, not part of it.** Every case under `examples/`
+already hands the statute a `known` array. This package produces those arrays
+from a ledger, so its output shape was pinned by fixtures that existed before
+it did — the epic's "the examples are the acceptance fixtures and they exist
+before the engine does", read literally.
+
+**The extension point needs somewhere to live.** Ancestry facts will let
+knowledge travel along a derivation chain rather than only along a tell. That
+changes how knowledge is computed and nothing about what a statute means, so it
+belongs where it can be swapped without touching a statute or re-pinning a
+fixture hash. It is an interface, and a test supplies one — including a cyclic
+provider, because a walk without a visited set would hang rather than fail.
+
+**One hop means one hop.** A tell moves a *reference* from one actor to one
+other actor and nothing is inferred from it. If Alice tells Bob and Bob tells
+Charlie, Charlie knows the claim because of Bob's tell, which is its own fact —
+not because knowledge was chased through Bob. The property that pins this is
+that a teller who knows more than it told must not leak the rest: Alice holding
+two claims and telling Bob one leaves Bob knowing exactly one. That case was
+missing from the first suite and a mutation found it; a one-claim ledger cannot
+tell the two behaviours apart.
+
+## The handle table is per attempt
+
+`internal/handle` maps `actor.type#n` to the id the server returned, for **one
+attempt**. The handle is the stable name and the id is the disposable one,
+which is the opposite of the usual arrangement and the reason raw server ids
+never enter the ledger's logical content, a statute, or any comparison: a
+replay re-creates the entities, the server hands back new ids, and the findings
+still compare.
+
+A table that outlived its attempt would resolve a handle to an id from a
+previous run, so `NextAttempt` returns an **empty** table rather than a copy,
+and a test asserts that the old id no longer resolves while the handle takes
+the new one.
+
+**Two collisions are refused, and the vocabulary names neither.** v1 describes
+the handle's shape, the mapping and the replay property, and says nothing about
+a conflicting binding, so this is recorded as a decision rather than left
+implicit (raised at `thread:r1.vocab`): a handle rebound to a *different* id is
+refused, because the handle is the identity and a second binding would redirect
+every claim already made about it; and two handles bound to the *same* id are
+refused, because that means the run created fewer entities than it believes and
+a comparison by handle would agree about different things. Rebinding to the
+**identical** id is permitted — a retried create that actually succeeded is not
+a conflict, and refusing it would make the table refuse its own idempotence.
+
 ## The ledger is append-only
 
 Not yet written.
