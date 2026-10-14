@@ -47,6 +47,31 @@ than reporting zero problems. The sizes are asserted too: three packages,
 seventeen cases, nineteen mutants, each as a number in the test, so a file that
 stops being examined cannot hide inside a clean total.
 
+**A mutant that cannot apply is not a surviving mutant.** Driving the
+flattening module, the first attempt at a transitivity mutant never fired: it
+read a map that was still empty at the point it was inserted, so the suite
+stayed green and the report said SURVIVED. A dead mutant counted as a survivor
+is a reporting error, not a result, and it sends the next hour at the wrong
+question. The second attempt — the recipient learning everything the teller
+knows — applied, and *that* one survived for real.
+
+**And what it found is the shape worth generalising: the property a module
+exists for can be the one its tests cannot see.** `internal/flatten`'s whole
+job is that a tell carries a *reference* and not the teller's knowledge, and
+every test written for it passed against a flattening that handed the recipient
+both. The distinction is invisible in a one-claim ledger, which is what the
+obvious tests use, and invisible to a transitive closure over tell *edges*,
+because every tell names a ref. It shows only when a teller knows more than it
+told. The case now exists, states the leak as an absence with the leaked
+reference named, and the mutant dies on it.
+
+**Where a fixture is the oracle, read the fixture.** That module produces the
+`known` arrays the example cases already carry, so its first test loads
+`examples/transitive-count/cases/charlie-explained.json` and compares against
+the array in the file rather than against a ledger written to match the
+implementation. The fixture also asserts its own shape — two claims, one known
+— so a corpus change is seen rather than absorbed.
+
 **A pinned hash catches an unnoticed edit; it does not forbid a deliberate
 one.** Each statute and rules file is pinned by git blob id, computed in the
 test rather than asked of git. Five of the six pins were measured at the branch
