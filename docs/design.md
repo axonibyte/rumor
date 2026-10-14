@@ -121,7 +121,13 @@ has a `trace()` builtin that returns its argument and no retrieval API at all.
 In-policy `print()` also reaches the host, carrying `file:line`
 (`policy/pr.rego:4: seen`) via `rego.EnablePrintStatements` and
 `rego.PrintHook`. Statutes do not use it — ADR 0001 keeps `print()` out of a
-statute — but it remains available to diagnostics.
+statute — and what makes that sentence true is `tests/statute`, which checks
+every statute and every mutant two ways: a static scan of the parsed module,
+and a hook on the real evaluator. Both are needed, because OPA **erases**
+`print()` calls unless `rego.EnablePrintStatements(true)` is passed: measured
+with the flag off, a `PrintHook` alone captured nothing from a statute full of
+them, so a reader who installs only the hook gets a silence that reads like
+compliance. `print()` remains available to diagnostics outside statutes.
 
 ### Coverage is range-based, and that is the useful part
 
@@ -146,12 +152,13 @@ behind a finding is built from the trace and not from coverage.
 
 ### The language version the engine forces
 
-OPA v1.21.2 declares `go 1.26.0`. This module declares a lower version
-deliberately (see `go.mod`), under a comment permitting a raise once the
-runner's version is known and something here needs the newer language. Both
-conditions now hold: the CI jail was measured at go1.26.8, and the engine is the
-thing that needs it. The raise lands with the run that first takes OPA as a real
-dependency, not with this inventory.
+OPA v1.21.2 declares `go 1.26.0`. At the port this module declared a lower
+version deliberately, under a comment permitting a raise once the runner's
+version was known and something here needed the newer language. Both
+conditions held by G3, which first took OPA as a real dependency: the CI jail
+had been measured at go1.26.8, and the engine was the thing that needed it. The
+raise landed with that run, in v0.1.4, and `go.mod` has declared `go 1.26.0`
+since; this paragraph keeps the reasoning as a record of why the bound moved.
 
 One trap, because it defeats a version assertion rather than failing it: with
 the default `GOTOOLCHAIN=auto`, invoking an older toolchain against a module

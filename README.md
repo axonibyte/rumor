@@ -64,6 +64,13 @@ versioned binary would not pin what compiles the code.
   re-cut, a retired gate's fixtures, a pivot). What a branch proved lives in
   the issue, the thread and the workflow run that cite it, never in the branch.
   Standing rule from cal, 2026-10-14.
+- **A workflow change is proved on its own event before it carries a
+  release.** The pull-request path is proved by a probe pull request from a
+  scratch branch; the tag path by dispatching `tag-pipeline.yml` on the branch
+  with its `tag` input naming an existing tag. The required check on a real
+  landing is then confirmation, not the first run. Three of 2026-10-14's four
+  red runs were a workflow's own assertions meeting their first event; this
+  rule is their cost written down.
 
 ## On the name
 

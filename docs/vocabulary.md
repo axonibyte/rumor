@@ -4,7 +4,7 @@ This document is the versioned vocabulary of `rumor`: the words the ledger,
 the statute, the findings and the bindings share. It is **v1**, written in
 R1.3 from the epic's Decided list, and every later phase that changes a term
 here bumps the version and adds a Revisions entry. The vocabulary version
-constant lands in the crate with R4's contract; until then the Revisions
+constant lands in the module with R4's contract; until then the Revisions
 section at the end of this file is the version.
 
 Code identifiers use the plain names below (`claim`, `told`, `planted`).
@@ -19,8 +19,8 @@ writes a fact without both.
 
 | kind | written by | says |
 |---|---|---|
-| `claim` | an actor, after one of its own actions | "I did this, so the world should now contain that": the claim type from the bindings (`event.created`), the handles it names, and the actor's expectation of what a later observation should show |
-| `observed` | an actor, or the engine for `direct` | what was seen at a position: a named query, its source (see Observation sources), and the value returned |
+| `claim` | an actor, after one of its own actions | "I did this, so the world should now contain that": the claim type from the bindings (`event.created`), its **ref** (the identifier a `told` points at; in v1 a claim's ref is its handle, see Handles), the handles it names, and optionally `visible_to`, the roles the server should show the object to (see Findings on visibility). A claim **may** carry the actor's expectation of what a later observation should show; when it does not, the statute derives the expectation from the claims, which is what the three examples do |
+| `observed` | an actor, or the engine for `direct` | what was seen at a position: a named query, its source (see Observation sources), the value returned, **`of`**, the claim type the observation tests, and the **`role`** the observing principal acted as, when the project has roles |
 | `told` | the engine, on an actor's behalf | one actor passed a **reference to a claim** to another actor at a position; the receiver now knows that claim |
 | `clock` | the run, when it controls time | the run's time at a position (see Time) |
 
@@ -33,8 +33,12 @@ duration or until-quiesce, inside which disagreement is `pending` rather than
 A **tell** (`told`) is one hop and never reaches the system under test: it
 moves knowledge between actors, not state into the server. Rules never
 follow tells; the engine's flattening module computes `known(actor,
-claim_ref)` from the one-hop `told` facts in Rust, with an extension point
-for ancestry facts, and hands the result to Rego as data (R2). Whether a tell
+claim_ref)` from the one-hop `told` facts in Go, outside Rego, with an
+extension point for ancestry facts, and hands the result to Rego as data
+(R2). The example cases therefore carry `known` pre-flattened, which is this
+architecture and not a shortcut; `told` and `clock` facts appear in the
+examples' ledger files (R2.1), and no example exercises `clock` until R2.3
+drives one, which is a named gap, not an oversight. Whether a tell
 carries the claim's reference or its payload is an epic Open item leaning
 reference; v1 adopts the reference form and the ADR that decides it revises
 this entry if it decides otherwise.
@@ -68,16 +72,35 @@ not count, which is why both are stated and both are tested.
 A finding names the rule that produced it, and the engine retains the
 evaluation trace behind every finding for `rumor explain` (R2, R10).
 
+**Visibility.** Every v1 finding is a verdict on value agreement. Where a
+project has roles, an observer's expectation is what it knows restricted to
+what its `role` may see (`visible_to` on the claim), so a correctly hidden
+record is not a missing one: Dana, told of both documents and permitted one,
+observes one and the finding is `consistent`. A leak is a `bug` only when it
+moves the observed value; a leak that preserves the value is invisible to v1
+and is the `trespass` of R18, not a finding here.
+
+**`pending` has no example yet.** It needs an `eventual` claim type with a
+bound declared in the bindings, and the bindings artefact arrives with R4; no
+example exercises `pending` until then, which is a named gap.
+
 Later phases add **kinds** under `bug` and one finding beside these four,
 each by its own Revisions entry: `stale` (a `pending` past its bound, R6), a
 quiesce timeout (R6), `ui_timeout` (R9), and `trespass` (R18: an action the
 statute forbids that succeeds). v1 names them here so the examples can avoid
-the words; it does not define them.
+the words; it does not define them. Avoiding a word means no statute rule,
+finding value or case expectation uses it; prose and comments may name one
+to say it is deliberately unused, and the R1 gate reads the criterion that
+way. `docs/world.md` reserves `trespass` under a heading of its own for the
+same reason and defines nothing there either.
 
 **The control.** There is no trust model. A `bug` whose derivation rests on a
 `planted` claim is the control passing, not a defect: the engine found the
 lie. In the planted-lie example the honest-only set is `consistent` and the
-set with the planted claim is `bug`, and both outcomes are required.
+set with the planted claim is `bug`, and both outcomes are required. "The
+same `bug` findings" compares findings alone: the attribution beside a
+finding (`rests_on_planted`) flips by construction when the tag is stripped,
+and that flip is the strip working, not a difference.
 
 ## Positions
 
@@ -104,6 +127,15 @@ attempt (R2). Claims, tells, rules and findings speak handles; raw server ids
 never enter the ledger's logical content, the statute, or any comparison.
 A replay re-creates the entities, the server hands back new ids, the handles
 stay the same, and the findings are compared by handle.
+
+A handle names at most one entity per run, and in v1 a claim's **ref** is
+its handle, so a `told` points at the claim by the handle it created; the
+examples carry both fields with the same value, which v1 makes a rule
+rather than a coincidence. The collision that matters is between attempts:
+a retried attempt produces the same handle with a different server id, and
+the table keeps the current attempt's id only. A claim that names a handle
+absent from the current attempt's table is refused at the ledger as a
+validation error (R4), never judged as a finding.
 
 ## `planted`
 
@@ -151,4 +183,4 @@ to no actor (R9).
 
 | version | date | run | change |
 |---|---|---|---|
-| v1 | 2026-10-13 | R1.3 | first definitions: four fact kinds, four findings and the control, positions and sealing, run-local handles, `planted`, `clock` facts, the three observation sources. Named for later phases without defining them: `stale`, the quiesce timeout, `ui_timeout`, `trespass`; the `told` payload-or-reference and the `direct` verb shape are Open items, adopted here in their leaning form |
+| v1 | 2026-10-13, amended 2026-10-14 | R1.3 | first definitions: four fact kinds, four findings and the control, positions and sealing, run-local handles, `planted`, `clock` facts, the three observation sources. Named for later phases without defining them: `stale`, the quiesce timeout, `ui_timeout`, `trespass`; the `told` payload-or-reference and the `direct` verb shape are Open items, adopted here in their leaning form. Amended 2026-10-14 from the review against the three packages: `explained`/`bug` clauses corrected and the two inputs stated; `of`, `role` and `visible_to` named; ref = handle in v1 and the between-attempts collision; the expectation on a claim optional; `pending` and `clock` named as gaps with their examples' arrival; reserved words may appear in prose; "the same `bug` findings" compares findings alone; Go, not Rust |

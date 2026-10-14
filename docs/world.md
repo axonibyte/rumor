@@ -28,4 +28,8 @@ Not yet written.
 
 ## Trespass
 
-Not yet written.
+Reserved, not defined. `trespass` is the finding R18 adds for an action the
+statute forbids that succeeds; `docs/vocabulary.md` names it among the words
+the examples avoid and defines nothing, and this heading does the same so the
+word is reserved in one place and pointed at from the other. Its definition
+arrives with R18 and a vocabulary Revisions entry.
