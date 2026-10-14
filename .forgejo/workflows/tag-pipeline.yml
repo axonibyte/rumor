@@ -114,19 +114,44 @@ jobs:
           grep -qE 'BEGIN (PGP|SSH) SIGNATURE' ../tagobj.log \
             || { echo "$TAG carries NO signature. The epic requires a signed tag; publishing nothing."; exit 1; }
           echo "PROOF $TAG carries a signature block"
+          # POINT GIT AT THE TRUST STORE, WHICH IS WHY v0.1.4 FAILED (issue 39).
+          # Without this, `git verify-tag` on an ssh-signed tag does not check
+          # the signature at all: it errors with "gpg.ssh.allowedSignersFile
+          # needs to be configured and exist", which run 162 reported as a
+          # failed verification -- accusing a correctly signed tag.
+          #
+          # The path is the file ibis provisioned in this jail (issue 25,
+          # comment 123): root:act_runner 0644, cal's two keys under
+          # namespaces="git" and anvil's under namespaces="file". It is a
+          # LITERAL here on purpose; deriving it from whatever the runner
+          # happens to have would make this step agree with any store at all.
+          SIGNERS=/usr/local/etc/anvil/allowed_signers
+          test -r "$SIGNERS" || { echo "the allowed-signers file $SIGNERS is absent or unreadable by this runner's user, so no signature can be checked here. That is a PROVISIONING finding, not a verdict on $TAG, and it is NOT a pass. See issue 25."; exit 1; }
+          echo "PROOF trust store $SIGNERS readable, $(grep -c . "$SIGNERS") principal line(s)"
+          timeout 30 git config gpg.ssh.allowedSignersFile "$SIGNERS"
+          CONFIGURED=$(timeout 30 git config --get gpg.ssh.allowedSignersFile) || CONFIGURED=""
+          test "$CONFIGURED" = "$SIGNERS" || { echo "git config gpg.ssh.allowedSignersFile did not take: it reads '$CONFIGURED'. Publishing nothing."; exit 1; }
+          echo "PROOF git reads gpg.ssh.allowedSignersFile as $CONFIGURED"
           rc=0
           timeout 60 git verify-tag "$TAG" > ../verify.log 2>&1 || rc=$?
           cat ../verify.log
           test "$rc" -eq 124 && { echo "HANG: git verify-tag exceeded 60s. RUNNER finding."; exit 124; }
-          test "$rc" -eq 0 && { echo "PROOF $TAG verifies against this runner's trust store"; exit 0; }
-          # A MISSING TRUST STORE IS NOT A BAD SIGNATURE. Both give a non-zero
-          # status, and reporting the first as the second would accuse cal's tag
-          # of being forged because a runner lacks a public key. The log's own
-          # words discriminate.
-          grep -qiE 'no public key|cannot find|no principal|unknown key|allowed_signers' ../verify.log \
-            && { echo "the signature is PRESENT and could NOT BE CHECKED on this runner: no trust material for the signer. That is a PROVISIONING finding, not a verdict on the tag, and it is NOT a pass -- the epic's requirement is unmet until a verifier exists here."; exit 1; }
-          echo "$TAG has a signature and it FAILED verification, which is a verdict on the tag"
-          exit 1
+          # THE THREE ANSWERS COME FROM tools/verify-tag-verdict.sh, one
+          # implementation with a battery over the strings this project has
+          # really seen -- including run 162's. The classification used to be
+          # inline here and was wrong in two directions at once: it missed
+          # git's own words for an unconfigured store, and it read "no
+          # principal" beside a GOOD signature as provisioning, which grants
+          # an untrusted signer what it should refuse (quill, rumor/448). A
+          # step is only exercised by pushing a tag, so the logic lives where
+          # it can be driven.
+          vrc=0
+          sh tools/verify-tag-verdict.sh ../verify.log "$rc" || vrc=$?
+          case "$vrc" in
+            0) echo "PROOF $TAG verifies against this runner's trust store"; exit 0 ;;
+            2) echo "PROVISIONING: $TAG could not be checked here, and that is not a verdict on the tag"; exit 1 ;;
+            *) echo "REFUSED: $TAG does not verify, and publishing nothing is the verdict"; exit 1 ;;
+          esac
 
       - name: the tagged commit is main's head AND a bump commit
         run: |

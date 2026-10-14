@@ -100,6 +100,22 @@ real strings — both refusals, the real success line, three broken-tool outputs
 and the empty string — so the filter is itself an oracle under test. Restoring
 the historical filter fails exactly the two real-refusal cases.
 
+**A workflow step is the hardest thing here to drive, so the logic comes out of
+it.** `tag-pipeline.yml`'s verdict on `git verify-tag` was four inline lines of
+shell, exercised only by pushing a tag, and it was wrong in two directions at
+once for as long as it existed: it missed git's own words for an unconfigured
+trust store, so a correctly signed tag read as forged (v0.1.4, run 162); and it
+read "no principal" beside a *good* signature as a provisioning gap, which
+grants an untrusted signer what it should refuse. That second one was invisible
+because the first kept verification from ever happening — fixing one made the
+other reachable, which is why both had to land together.
+
+It now lives in `tools/verify-tag-verdict.sh` with eight cases over strings this
+project has really seen, and each case asserts **the clause that answered**, by
+name, rather than the exit status: three of the eight clauses refuse and two
+report provisioning, so a control reading only the status could not tell a
+discriminating classifier from one that always refuses.
+
 Firing *alone* is the property, not merely firing. Two arms that always fire
 together cannot be told apart by any fixture, and the first draft of this gate
 had two such pairs: an unchanged version also fails "not greater than the latest

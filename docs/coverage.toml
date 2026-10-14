@@ -104,3 +104,11 @@ docs = ["docs/release.md"]
 path = "tools/release-gate.py"
 docs = ["docs/release.md", "docs/testing-methodology.md"]
 
+[[entry]]
+# The tag pipeline's verdict on `git verify-tag`. Mapped to release.md because
+# what it decides is whether a tag publishes, and to the testing methodology
+# because its whole reason for being a file rather than four lines of YAML is
+# that a workflow step cannot be driven without pushing a tag.
+path = "tools/verify-tag-verdict.sh"
+docs = ["docs/release.md", "docs/testing-methodology.md"]
+

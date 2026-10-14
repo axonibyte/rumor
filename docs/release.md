@@ -329,7 +329,41 @@ exists — and **not** as a job added in advance, because a job whose label no
 runner answers queues rather than failing, which would make every green in the
 file ambiguous.
 
-### The signature is a named wait, not a silent skip
+### Verifying the tag: three answers, not two
+
+`git verify-tag` exits non-zero for two unrelated reasons, and only one of them
+is about the tag. So the step reads the log through
+`tools/verify-tag-verdict.sh`, which answers one of three ways: **verified**
+(publish), **refused** (a verdict on the tag, publish nothing), or
+**provisioning** (the signature could not be checked here — not a verdict, and
+not a pass either).
+
+**The runner must be pointed at a trust store, and v0.1.4 is what happens when
+it is not.** An ssh-signed tag needs `gpg.ssh.allowedSignersFile`; without it
+git does not check the signature at all, it errors with *"needs to be
+configured and exist"*. Run 162 reported that as a failed verification and so
+accused a correctly signed tag. The step now sets the config to the file
+provisioned in the ci jail, `/usr/local/etc/anvil/allowed_signers` (issue 25),
+asserts git reads the value back, and refuses as **provisioning** when the file
+is unreadable.
+
+**A good signature by an untrusted signer is a verdict, not a gap.** When the
+store is configured and the signer is not on the list, git prints a `Good ...
+signature` line *and* `No principal matched.` The old inline test matched "no
+principal" and called that provisioning — granting what it should refuse, which
+is the one direction a release gate must never fail in (quill, rumor/448). The
+`Good ... signature` line is the discriminator: trust material was read.
+
+The classification lives in a script rather than in the YAML because **a
+workflow step is only exercised by pushing a tag**. `verify-tag-verdict.sh
+--self-test` drives eight cases over strings this project has really seen —
+run 162's error, ibis's wrong-key output, gpg's "No public key", an empty log,
+a missing log — and each case asserts the **clause that answered**, by name,
+rather than the exit status. Three mutants were driven against it: restoring the
+old vocabulary, dropping the good-signature guard, and reversing the clause
+order. Each kills at least one case.
+
+### The signature on SHA256SUMS is a named wait, not a silent skip
 
 Signing needs the maintainer's private key and none is on the runner. The step
 attempts the signature and names its absence as a **provisioning finding**
