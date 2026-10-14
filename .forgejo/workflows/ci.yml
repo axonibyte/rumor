@@ -355,13 +355,29 @@ jobs:
           # OPA is the first -- this step fails naming it, and the person adding
           # it has to replace this with a real allowlist rather than inherit a
           # green. That failure is the point, not a gap.
+          #
+          # TWO DIFFERENT ORACLES, AND THE SPLIT IS DELIBERATE (measured on a
+          # one-dependency fixture, rook go-port/4; fable ruled it at /5).
+          #   `go list -m all`      what this TRIPWIRE uses. It sees a module
+          #                         required only by a _test.go, and it also
+          #                         over-counts -- it listed check.v1, which is
+          #                         yaml.v3's own test requirement and is never
+          #                         built. Over-counting is the right bias for a
+          #                         tripwire: it trips sooner, never later.
+          #   `go list -deps -test` what the ALLOWLIST must use: the packages
+          #                         actually built, tests included. Bare -deps is
+          #                         BLIND to a test-only import -- 0 against 1 on
+          #                         the fixture -- which on G2's tree would read a
+          #                         dependency-free graph and pass on an absence.
+          # Judging licences from `-m all` would flag code that never ships, and
+          # that noise is what someone later silences.
           rc=0
           timeout 300 "$GO" list -m all > ../mods.log 2>&1 || rc=$?
           cat ../mods.log
           test "$rc" -eq 124 && { echo "HANG: go list -m exceeded 300s. RUNNER finding."; exit 124; }
           test "$rc" -eq 0 || { echo "go list -m all exited $rc"; exit "$rc"; }
           n=$(grep -c . ../mods.log)
-          test "$n" -eq 1 || { echo "the module graph holds $n modules, not 1. A dependency has arrived, so this step's assumption is spent: replace it with a licence allowlist over the graph above before this gate can mean anything again."; exit 1; }
+          test "$n" -eq 1 || { echo "the module graph holds $n modules, not 1. A dependency has arrived, so this step's assumption is spent. Replace it with a licence allowlist over the output of go list -deps -test, NOT over the module graph printed above -- the comment in this step says why."; exit 1; }
           grep -qx 'forge.axonibyte.com/axonibyte/rumor' ../mods.log \
             || { echo "the single module is not this one: $(cat ../mods.log)"; exit 1; }
           echo "PROOF module graph is exactly 1 module, this one, so the third-party licence surface is empty"
