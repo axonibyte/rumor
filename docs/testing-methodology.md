@@ -25,11 +25,38 @@ Not yet written.
 ## Self-test the oracle
 
 An oracle is checked before it is trusted, in the same run that trusts it.
-`tools/release-gate.py --self-test` drives twelve cases — one per refusal arm
-plus a clean run — and asserts that **each arm fires alone**. The release-gate
-workflow runs that self-test before the gate judges a pull request, because a
-gate whose arms have stopped discriminating would otherwise refuse or admit a
-run with nobody the wiser.
+`tools/release-gate.py --self-test` drives sixteen cases, fifteen trailer checks
+and seven docs-verdict checks, and asserts that **each arm fires alone**. Each
+count is declared as a constant and asserted in both directions, because a case
+that silently stops running is invisible in a self-consistent total. The
+release-gate workflow runs that self-test before the gate judges a pull request,
+because a gate whose arms have stopped discriminating would otherwise refuse or
+admit a run with nobody the wiser.
+
+**It is not one case per arm, and the gap is where a broken arm hid.** This
+section used to say "twelve cases — one per refusal arm plus a clean run", and
+that was never true of `docs-stale`: that arm runs the real `rumor docs --check`
+against a checked-out ref, which the self-test's synthetic repos cannot provide,
+so it reports UNMEASURED there by construction. Eleven arms were driven and the
+twelfth was described as if it were.
+
+The arm was also broken for the whole of that time. Its filter — which decides
+whether a non-zero exit is *a finding* or *a tool that failed to run* — matched
+`not mapped|out of date|unmapped|stale`, and `rumor docs --check` emits none of
+those words; its refusals say "matches no entry" and "matches no path". So a real
+refusal read as a broken tool and the arm reported UNMEASURED for any tree at
+all. Nothing caught it because nothing ran it, and **UNMEASURED reads exactly
+like a pass to anyone totalling arms** — which is why this file's own rule is
+that the count of unmeasured things is reported out loud rather than folded into
+a clean total.
+
+The repair has three parts, and the third is the one that matters here: the
+filter widened to the tool's real vocabulary; the vocabulary **duplicated by
+hand** rather than imported, because a predicate that read its words from the
+thing it judges would agree with it whatever either said; and a battery of seven
+real strings — both refusals, the real success line, three broken-tool outputs
+and the empty string — so the filter is itself an oracle under test. Restoring
+the historical filter fails exactly the two real-refusal cases.
 
 Firing *alone* is the property, not merely firing. Two arms that always fire
 together cannot be told apart by any fixture, and the first draft of this gate

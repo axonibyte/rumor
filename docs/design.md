@@ -18,14 +18,22 @@ here as the phases that own them land.
 
 ### Names, settled in R0.4
 
-- **The crate is `rumor-cli`. The binary is `rumor`.**
+- **The module is `forge.axonibyte.com/axonibyte/rumor`. The binary is
+  `rumor`.**
 
-  The bare `rumor` crate name on crates.io is not available. It is held, with
-  `rumor-client` and `rumor-server`, by one owner as a reservation published
-  2023-11-20 and never updated — its own description reads `reserved; library
-  for rumor file synchronization protocol`. `rumor-cli` was the epic's decided
-  fallback and was free, so it ships from v0.1.0 rather than waiting on an ask
-  that may never be answered.
+  > **The crates.io problem does not survive the pivot to Go**, and this entry
+  > is rewritten rather than annotated because its premise is gone. A Go module
+  > path is a URL the project controls, not a name allocated from a shared
+  > registry, so there is nothing to be squatted and no fallback name to settle
+  > on. The decision this entry used to record — ship as `rumor-cli` because the
+  > bare `rumor` crate name is held — asked a question Go does not pose.
+
+  Until v0.1.3 the crate was `rumor-cli`, because the bare `rumor` name on
+  crates.io is held, with `rumor-client` and `rumor-server`, by one owner as a
+  reservation published 2023-11-20 and never updated — its own description reads
+  `reserved; library for rumor file synchronization protocol`. That constraint
+  shaped the published name for four tags and is kept here as the record of why,
+  not as a live decision.
 
   A transfer has been asked for and the ask's status is recorded in
   `docs/prior-art.md`. If it is ever granted, publishing under `rumor` is an
