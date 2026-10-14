@@ -3,6 +3,103 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.4 — 2026-10-14
+
+The pivot to Go with embedded OPA, landed whole: the module, the CLI, the
+engine decision, the statute suite, the licence surface, and the removal of the
+Rust tree. `main` goes from Rust to Go in one fast-forward, because a release
+that carried half of each is the thing the README's own line forbids.
+
+- `go.mod`, `cmd/rumor` and `internal/coverage`: the 412-line coverage module
+  carried over behaviour for behaviour, including every message a test asserts
+  on, and all seven of its arms with it. The three exit codes are unchanged, 0
+  clean, 1 failed check, 2 usage, because the workflows and `tools/` read them.
+  `cmd/rumor` gained its first tests: four, including one that drives a writer
+  which refuses every write and asserts the exit code is **not** 0 — a check
+  whose result never arrived must not report success.
+- **The `go` directive is 1.26.0, and it did not start there.** The port chose
+  1.25 deliberately, since a newer toolchain builds an older module and not the
+  reverse, so the lower bound is the one that cannot strand a runner. OPA
+  declares 1.26.0, and a module cannot require less than what it depends on, so
+  the statute suite raised it. The runner measures at go1.26.8, which is what
+  makes the raise safe rather than merely necessary.
+- `GOTOOLCHAIN=local` in every step that resolves a Go binary. Under the default
+  `auto`, a `go` directive above the installed toolchain is satisfied by
+  silently downloading another, so naming a versioned binary never pinned what
+  compiles the code; the build's proof now reads the toolchain recorded
+  **inside** the binary.
+- A root `VERSION` file is the committed version source. `go.mod` has no
+  version field, so the manifest cannot be the second of the three sources the
+  gate makes agree, and dropping to two is weaker than three. Both readers are
+  strict, and their strictness was driven against each other over 17 inputs
+  after they disagreed about a trailing space and a CRLF.
+- **The engine is OPA, pinned at `v1.21.2`, with the decision recorded in
+  `docs/adr/0001-engine.md`** and the inventory behind it in `docs/design.md`:
+  six capabilities measured in both directions, four of them reproducing ibis's
+  Regorus figures exactly, and two — a test runner and retrievable evaluation
+  traces — where the reference engine answers and the reimplementation does not.
+  The pin is exact so a patch release cannot change a statute's verdict without
+  a commit saying so.
+- **The three R1.2 example packages carry over byte for byte**, proven by tree
+  object and by each file's blob id pinned in a test, with a Go harness over
+  them: 3 packages, 17 cases, 19 mutants, every case green and every mutant red
+  with its killing case named, coverage and a trace asserted per case. A mutant
+  that cannot be killed is removed with the gap written down rather than left to
+  survive. ADR 0001's prohibition on `print()` inside a statute is enforced by
+  two oracles — a static scan for calls no case reaches, and a hook on the real
+  evaluator — because OPA **erases** print calls unless they are enabled, so a
+  hook alone reports zero for a statute full of them. That flag's necessity is
+  measured with it switched off, not asserted.
+- **The licence gate is `tests/licences`**, over the surface `go list -deps
+  -test` reports rather than the module graph, which over-counts: 24 built
+  modules, all inside R0.2's allowlist. Multiplicity is refused rather than
+  resolved, since a first-match classifier admits a module under "MIT OR
+  GPL-3.0" on whichever marker it checked first; BSD-3-Clause's text contains
+  BSD-2-Clause's, so the containment is encoded instead of being right by
+  ordering. It has a negative control, which is the one thing the Rust gate
+  taught at cost: seven synthetic modules through the same verdict function,
+  five refused and two passed, each asserting the clause that answered. Adding
+  it exposed that "outside the allowlist" had been **unreachable** — every id
+  the classifier could produce was allowed, so a GPL dependency would have
+  refused as "unclassified".
+- `ci.yml` is Go: build, test, gofmt, vet, `golangci-lint` 2.14.0 and
+  `govulncheck` v1.9.0 on measured pins with the version **asserted** rather
+  than printed, `docs --check`, and the licence suite run by name so the surface
+  has its own row. The trigger is every branch: a workflow's trigger is read
+  from the file on the pushed branch, which is why every row until the port came
+  from a manual dispatch and a pushed branch produced nothing at all.
+- `tag-pipeline.yml` builds with `go build -trimpath` out of tree, and asserts
+  the platform from **two** sources — `uname` for the host, `go env` for the
+  target — because one read cannot tell a wrong runner from a cross-compile. The
+  artefact suffix changes with it: `freebsd-amd64` rather than the LLVM triple
+  `x86_64-unknown-freebsd`, which no longer describes how the binary is built.
+- `tools/check-workflows.py` was blind to every Go invocation: it matched an
+  allowlist of literal tool names, so a command spelled `"$GO"` vanished
+  entirely and an unbounded one reported as bounded. Any `$VAR` in command
+  position is now bounded-class, with two arms, and the suite is 23.
+- `docs-stale` could never fire. Its filter decided "a finding" against "a tool
+  that failed to run" with words `rumor docs --check` does not emit, so a real
+  refusal read as a broken tool — for any tree, in the Rust tree too. It was
+  invisible because the arm had never been measured: no toolchain on the runner,
+  and no project in the self-test's synthetic repos. Fixed, with a battery of
+  seven real strings, and then driven by a fixture branch that tripped it and
+  nothing else.
+- **THE RUST TREE IS REMOVED.** `Cargo.toml`, `Cargo.lock`, `crates/`,
+  `deny.toml` and `tests/fixtures/deny-gpl/` are gone, with the cargo-deny-era
+  `probe-mirror-egress.yml` whose own header said it comes out in the commit
+  that reads it — it had been read, green on runs 100, 113 and 118, and that
+  answer is now in `docs/release.md` instead of the instrument. **Its record
+  lives at the tags v0.1.0, v0.1.1, v0.1.2 and v0.1.3**, which are where that
+  tree, its gate and the GPL fixture still exist; `docs/release.md` points at
+  them wherever a section describes something only those tags carry.
+- Two losses from the removal, stated rather than quietly taken. The licence
+  allowlist had two homes, `deny.toml` and the test, which had to agree; it now
+  has one, and the test reports that comparison SKIPPED naming the cause instead
+  of passing. And the justification for keeping the workflow checker in python —
+  that the runner could compile nothing — is retired, because the runner builds
+  and tests Go at 1.26.8; what stands in the way of porting it is the self-test
+  that would have to be re-earned, which is a cost rather than an obstacle.
+
 ## 0.1.3 — 2026-10-12
 
 A release gate that refuses, a tag pipeline that publishes nothing when it
