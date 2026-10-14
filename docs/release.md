@@ -302,6 +302,21 @@ It refuses, each with its own message:
 On success it builds the release binary, writes `SHA256SUMS` over what was
 actually built, and signs it.
 
+### The artefact's name
+
+`rumor-<tag>-<platform>`, where `<tag>` is the tag as pushed, `v` included, and
+`<platform>` is `GOOS-GOARCH` measured on the runner rather than written in —
+`rumor-v0.1.4-freebsd-amd64`. `SHA256SUMS` names that file and nothing else.
+
+> **The suffix changed at v0.1.4 and this is the record of it.** v0.1.0 through
+> v0.1.3 published `rumor-<tag>-x86_64-unknown-freebsd`: an LLVM target triple,
+> read out of `rustc -vV`. That is a Rust concept and it no longer describes how
+> the binary is built, so keeping it would be a filename asserting a toolchain
+> the artefact never saw. Anything pinning the old pattern — a download script,
+> a mirror, a checksum reader — needs the new one from v0.1.4 forward. This was
+> flagged for overrule before it landed (rook thread:go-port/9) and confirmed
+> (fable /10).
+
 ### FreeBSD amd64 only
 
 One build, no cross-build. An artifact nobody ran is not a release artifact, and
