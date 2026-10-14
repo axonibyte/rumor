@@ -12,5 +12,6 @@ options, the decision, and what it rules out.
 
 ## Records
 
-None yet. The epic's Open items are undecided, and each arrives here with the
-thread that settles it.
+- [0001 — The engine: OPA embedded as a library, and Go](0001-engine.md).
+  Accepted by cal 2026-10-14. Replaces the epic's original Rust-with-Regorus
+  line; the inventory behind it is `docs/design.md`, "The engine".
