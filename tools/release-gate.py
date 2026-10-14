@@ -41,6 +41,7 @@ import argparse
 import datetime as _dt
 import os
 import re
+import shutil
 import subprocess
 import sys
 import typing
@@ -718,11 +719,18 @@ def _revisions(doc: str) -> list[str]:
 def _docs_check(repo: Path, ref: str) -> str | None:
     """`rumor docs --check` for the run at `ref`, or None when it cannot answer.
 
-    CANNOT RUN IS NOT A FINDING. If cargo is absent -- which was true of this
-    runner until 2026-10-11 and is true of any box without a toolchain -- the
-    arm reports nothing rather than refusing, and says so on stderr. A gate
-    that refuses because its own tool is missing is the "always-refuse" mutant
-    that makes every other arm meaningless.
+    CANNOT RUN IS NOT A FINDING. If no Go toolchain is present -- true of any
+    box without one -- the arm reports nothing rather than refusing, and says so
+    on stderr. A gate that refuses because its own tool is missing is the
+    "always-refuse" mutant that makes every other arm meaningless.
+
+    THE TOOLCHAIN IS RESOLVED, NOT NAMED (G1, issue 32). FreeBSD ports installs
+    versioned binaries, so this jail has go126 and go125 and NO bare `go`, while
+    forge-01_jail has the bare one. The candidate list is the same order ci.yml
+    uses, and GOTOOLCHAIN=local goes with it for the reason recorded there: with
+    the default `auto`, a go directive above the installed toolchain is
+    satisfied by silently downloading another, so a gate could measure a tree
+    with a compiler nobody chose.
 
     THIS ARM READS THE CHECKOUT, SO IT VERIFIES THE CHECKOUT IS `ref`. Every
     other arm asks git about the range and so is independent of what is checked
@@ -784,14 +792,28 @@ def _docs_check(repo: Path, ref: str) -> str | None:
             file=sys.stderr,
         )
         return None
+    go = None
+    for candidate in ("go", "go126", "go125"):
+        if shutil.which(candidate):
+            go = candidate
+            break
+    if go is None:
+        print(
+            "release-gate: no go, go126 or go125 on PATH; arm docs-stale "
+            "UNMEASURED, not passed",
+            file=sys.stderr,
+        )
+        return None
+    env = dict(os.environ, GOTOOLCHAIN="local")
     try:
         done = subprocess.run(
-            ["cargo", "run", "--locked", "-q", "--", "docs", "--check"],
+            [go, "run", "./cmd/rumor", "docs", "--check"],
             cwd=str(repo),
             capture_output=True,
             text=True,
             timeout=300,
             check=False,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         print(
@@ -801,7 +823,8 @@ def _docs_check(repo: Path, ref: str) -> str | None:
         return None
     except OSError:
         print(
-            "release-gate: cargo is absent; arm docs-stale UNMEASURED, not passed",
+            f"release-gate: {go} could not be executed; arm docs-stale "
+            "UNMEASURED, not passed",
             file=sys.stderr,
         )
         return None
@@ -810,10 +833,10 @@ def _docs_check(repo: Path, ref: str) -> str | None:
     out = (done.stdout or "") + (done.stderr or "")
     tail = out.strip().splitlines()
     # A NON-ZERO STATUS IS NOT YET A FINDING, and this is the arm where that
-    # distinction is easiest to lose. `cargo run` exits non-zero when there is
-    # no such binary, no lockfile, or no toolchain -- none of which is "a
-    # generated doc is out of date". The gate's own self-test found this: a
-    # fixture repo with a Cargo.toml but no project made docs-stale fire on
+    # distinction is easiest to lose. `go run` exits non-zero when the package
+    # does not exist, the module is broken, or the toolchain refuses -- none of
+    # which is "a generated doc is out of date". The gate's own self-test found
+    # this: a fixture repo with a manifest but no project made docs-stale fire on
     # EVERY case including the clean one, which would have made the other
     # eleven arms unmeasurable. So the arm fires only on the check's OWN
     # language, and anything else is UNMEASURED and says so.
