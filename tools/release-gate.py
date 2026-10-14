@@ -883,7 +883,17 @@ def _docs_check(repo: Path, ref: str) -> str | None:
             file=sys.stderr,
         )
         return None
-    return f"`rumor docs --check` exited {done.returncode}: {tail[-1] if tail else 'no output'}"
+    # THE LINE THAT ANSWERED, NOT THE LAST LINE. `go run` appends its own
+    # "exit status 1" after the binary's output, so tail[-1] named go run's
+    # status and nothing about the tree -- measured on the first fixture run:
+    # "REFUSED [docs-stale] `rumor docs --check` exited 1: exit status 1", a
+    # finding nobody can act on without re-running it by hand. Report the line
+    # the verdict predicate matched, which is the one carrying the path.
+    reason = next(
+        (line.strip() for line in tail if _docs_check_reached_a_verdict(line)),
+        tail[-1] if tail else "no output",
+    )
+    return f"`rumor docs --check` exited {done.returncode}: {reason}"
 
 
 # --------------------------------------------------------------------------
