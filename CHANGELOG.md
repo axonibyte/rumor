@@ -3,6 +3,33 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.5 — 2026-10-14
+
+The tag pipeline verifies a tag instead of guessing about it, and this tag is
+the first the pipeline runs green end to end.
+
+- **`gpg.ssh.allowedSignersFile` is configured before `git verify-tag`.**
+  Without it git does not check an ssh signature at all — it errors with "needs
+  to be configured and exist" — and v0.1.4's run reported that as a failed
+  verification, accusing a correctly signed tag. The path is the file
+  provisioned in the ci jail (issue 25); the step asserts git reads the value
+  back, and an unreadable file is a provisioning finding rather than a verdict.
+- **The verdict logic moved out of the YAML** into
+  `tools/verify-tag-verdict.sh`, because a workflow step is only exercised by
+  pushing a tag and two defects had been sitting in four lines nothing could
+  drive. It answers verified, refused or provisioning, and names the clause
+  that answered; `--self-test` drives eight real strings and asserts the clause
+  rather than the exit status, with three mutants each killing a case.
+- **A good signature by an untrusted signer is now a refusal.** With the store
+  configured, git prints a `Good ... signature` line *and* `No principal
+  matched.`; the old test matched "no principal" and called it provisioning,
+  granting what it should refuse. The finding is quill's (rumor/448), and it
+  was unreachable until the first defect was fixed — which is why both land in
+  one run.
+- The v0.1.4 artefact was never published, since its pipeline refused before
+  the build. This tag's run is the first with a `freebsd-amd64` artefact
+  attached.
+
 ## 0.1.4 — 2026-10-14
 
 The pivot to Go with embedded OPA, landed whole: the module, the CLI, the
