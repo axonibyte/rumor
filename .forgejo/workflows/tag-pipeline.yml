@@ -53,12 +53,38 @@ on:
       # tag's shape.
       - "v*"
       - "fixture-v*"
+  # DISPATCH, SO THIS FILE CAN BE PROVED BEFORE IT CARRIES A RELEASE (fable
+  # go-port/40). Every stale step in here has been found one tag at a time,
+  # each costing a release, because the only way to run it was a `v*` push that
+  # only cal can make. With a `tag` input the pipeline runs against an EXISTING
+  # tag from any ref.
+  #
+  # A DISPATCH RUNS THE WORKFLOW FILE AT THE REF IT IS DISPATCHED ON (fable
+  # go-port/41), so dispatching on a tag would run that tag's old pipeline and
+  # prove nothing. The shape is: dispatch on the BRANCH, name the tag in the
+  # input. The run then proves the NEW file against an OLD tag -- and creating
+  # that older tag's release, with its artefact, is a real side effect rather
+  # than a dry run.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "the existing tag to verify, build and publish"
+        required: false
 
 jobs:
   freebsd:
     runs-on: freebsd-15-jail
     timeout-minutes: 45
+    # THE THREE REFS A RUN HAS, named once at the job rather than resolved per
+    # step. `inputs.tag` is empty on a push; `github.ref_name` is the pushed
+    # tag on a push and the BRANCH on a dispatch; `github.sha` is the commit
+    # the workflow file itself came from. The fallback is done in shell, not in
+    # an expression, so this does not rest on the forge's expression engine
+    # supporting `||`.
+    env:
+      DISPATCH_TAG: ${{ inputs.tag }}
+      REF_NAME: ${{ github.ref_name }}
+      WORKFLOW_SHA: ${{ github.sha }}
     steps:
       - name: probe the runner (non-fatal; names what is absent)
         run: |
@@ -98,11 +124,64 @@ jobs:
           test -n "$MAINSHA" || { echo "could not read origin/main, and every check below compares the tag against it. Publishing nothing."; exit 1; }
           echo "PROOF origin/main $MAINSHA"
 
+      - name: resolve the tag under test, and check the tree out AT it
+        run: |
+          set -o pipefail
+          # THE AUDIT FINDING THIS STEP EXISTS FOR (issue 27, second pass).
+          # Nothing in this pipeline checked out the tag. `git clone` leaves the
+          # DEFAULT BRANCH checked out, so every step that read a file -- the
+          # VERSION/changelog agreement, the build, and `tools/` itself -- was
+          # reading main and calling it the tag. On a fast-forward release the
+          # two coincide, which is why five tag runs never showed it; a dispatch
+          # against an older tag separates them immediately, and so would a tag
+          # pushed for anything but main's head.
+          #
+          # TWO TREES, DELIBERATELY. The RELEASE is the tag's tree: that is what
+          # gets built, checksummed and published. The INFRASTRUCTURE is this
+          # workflow's own commit: the file running is from WORKFLOW_SHA, so the
+          # tools it calls must be too, or a dispatch proving a new pipeline
+          # would run the old pipeline's tools. On a `v*` push the two are the
+          # same commit and the second checkout is a no-op.
+          TAG="${DISPATCH_TAG:-$REF_NAME}"
+          test -n "$TAG" || { echo "neither the dispatch input nor the ref names a tag, so there is nothing to release. Publishing nothing."; exit 1; }
+          cd src-tree
+          timeout 30 git rev-parse -q --verify "refs/tags/${TAG}" > ../tagsha.txt 2>&1 \
+            || { echo "$TAG is not a tag in this repository. On a dispatch, name an EXISTING tag in the input; the input was '${DISPATCH_TAG}' and the ref is '${REF_NAME}'. Publishing nothing."; exit 1; }
+          TAGSHA=""; read -r TAGSHA < ../tagsha.txt || true
+          test -n "$TAGSHA" || { echo "could not read the object id for $TAG. Publishing nothing."; exit 1; }
+          TAGCOMMIT=$(timeout 30 git rev-parse "${TAG}^{commit}") || TAGCOMMIT=""
+          test -n "$TAGCOMMIT" || { echo "could not peel $TAG to a commit. Publishing nothing."; exit 1; }
+          rc=0
+          timeout 60 git checkout -q --detach "$TAGCOMMIT" > ../checkout.log 2>&1 || rc=$?
+          cat ../checkout.log
+          test "$rc" -eq 0 || { echo "could not check out $TAG at $TAGCOMMIT (exited $rc). Publishing nothing."; exit 1; }
+          # ASSERTED, NOT ASSUMED: this is the whole point of the step, and an
+          # unasserted checkout is exactly the defect being fixed.
+          HEADSHA=$(timeout 30 git rev-parse HEAD) || HEADSHA=""
+          test "$HEADSHA" = "$TAGCOMMIT" \
+            || { echo "asked for $TAGCOMMIT and HEAD reads '$HEADSHA': the checkout did not take, so every file read below would be the wrong tree. Publishing nothing."; exit 1; }
+          echo "PROOF the tree is checked out at $TAG, commit $TAGCOMMIT"
+          # tools/ FROM THE WORKFLOW'S OWN COMMIT, for the reason above.
+          test -n "$WORKFLOW_SHA" || { echo "github.sha is empty, so this run cannot tell which commit its own workflow came from. Publishing nothing."; exit 1; }
+          rc=0
+          timeout 60 git checkout -q "$WORKFLOW_SHA" -- tools/ > ../tools.log 2>&1 || rc=$?
+          cat ../tools.log
+          test "$rc" -eq 0 || { echo "could not take tools/ from $WORKFLOW_SHA (exited $rc): the clone may not carry that commit. Publishing nothing."; exit 1; }
+          timeout 30 git diff --quiet "$WORKFLOW_SHA" -- tools/ \
+            || { echo "tools/ does not match $WORKFLOW_SHA after checking it out from there, so what runs below is not this workflow's tooling. Publishing nothing."; exit 1; }
+          echo "PROOF tools/ is taken from this workflow's own commit $WORKFLOW_SHA"
+          printf '%s\n' "$TAG" > ../tag-under-test
+          echo "PROOF the tag under test is $TAG, from $(test -n "$DISPATCH_TAG" && echo "the dispatch input" || echo "the pushed ref")"
+
       - name: the tag is ANNOTATED, not lightweight
         run: |
           set -o pipefail
           cd src-tree
-          TAG="${GITHUB_REF_NAME:?the tag name is not in the environment}"
+          # ONE RESOLUTION, read back: the fallback between the dispatch input
+          # and the pushed ref is done once, in the resolve step, so six steps
+          # cannot drift about which tag this run is for.
+          TAG=""; read -r TAG < ../tag-under-test || true
+          test -n "$TAG" || { echo "../tag-under-test is empty or missing: the resolve step did not run, so this step does not know which tag it is checking. Publishing nothing."; exit 1; }
           echo "tag under test: $TAG"
           rc=0
           timeout 30 git cat-file -t "$TAG" > ../tagtype.log 2>&1 || rc=$?
@@ -121,7 +200,11 @@ jobs:
         run: |
           set -o pipefail
           cd src-tree
-          TAG="${GITHUB_REF_NAME:?the tag name is not in the environment}"
+          # ONE RESOLUTION, read back: the fallback between the dispatch input
+          # and the pushed ref is done once, in the resolve step, so six steps
+          # cannot drift about which tag this run is for.
+          TAG=""; read -r TAG < ../tag-under-test || true
+          test -n "$TAG" || { echo "../tag-under-test is empty or missing: the resolve step did not run, so this step does not know which tag it is checking. Publishing nothing."; exit 1; }
           # TWO ORACLES, because "verify failed" and "no key to verify with" are
           # different findings and only one of them is about the tag. First the
           # object must CARRY a signature; then it must verify.
@@ -174,7 +257,11 @@ jobs:
         run: |
           set -o pipefail
           cd src-tree
-          TAG="${GITHUB_REF_NAME:?the tag name is not in the environment}"
+          # ONE RESOLUTION, read back: the fallback between the dispatch input
+          # and the pushed ref is done once, in the resolve step, so six steps
+          # cannot drift about which tag this run is for.
+          TAG=""; read -r TAG < ../tag-under-test || true
+          test -n "$TAG" || { echo "../tag-under-test is empty or missing: the resolve step did not run, so this step does not know which tag it is checking. Publishing nothing."; exit 1; }
           # PEEL THE TAG TO ITS COMMIT. `rev-parse <annotated tag>` gives the TAG
           # OBJECT's sha, and comparing that to a commit sha never matches --
           # a defect I found in the gate by driving it against a real annotated
@@ -195,7 +282,11 @@ jobs:
         run: |
           set -o pipefail
           cd src-tree
-          TAG="${GITHUB_REF_NAME:?the tag name is not in the environment}"
+          # ONE RESOLUTION, read back: the fallback between the dispatch input
+          # and the pushed ref is done once, in the resolve step, so six steps
+          # cannot drift about which tag this run is for.
+          TAG=""; read -r TAG < ../tag-under-test || true
+          test -n "$TAG" || { echo "../tag-under-test is empty or missing: the resolve step did not run, so this step does not know which tag it is checking. Publishing nothing."; exit 1; }
           TAGVER="${TAG#v}"
           # DERIVED, never a literal: a hardcoded version here would agree with
           # itself at one release and be wrong at every other.
@@ -306,7 +397,11 @@ jobs:
         run: |
           set -o pipefail
           cd src-tree
-          TAG="${GITHUB_REF_NAME:?the tag name is not in the environment}"
+          # ONE RESOLUTION, read back: the fallback between the dispatch input
+          # and the pushed ref is done once, in the resolve step, so six steps
+          # cannot drift about which tag this run is for.
+          TAG=""; read -r TAG < ../tag-under-test || true
+          test -n "$TAG" || { echo "../tag-under-test is empty or missing: the resolve step did not run, so this step does not know which tag it is checking. Publishing nothing."; exit 1; }
           rm -rf ../dist && mkdir -p ../dist
           # ASSERTED AGAIN HERE, because each step is its own shell and inherits
           # nothing from the one that checked it. The artefact NAME embeds this
@@ -436,7 +531,17 @@ jobs:
           RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -o pipefail
-          TAG="${GITHUB_REF_NAME:?the tag name is not in the environment}"
+          # `cd` FIRST, because the resolved tag is read as ../tag-under-test
+          # and every other step reads it from inside src-tree. Before the cd
+          # that path points ABOVE the workspace: the file would be missing and
+          # this step would refuse with the resolve step's message, naming the
+          # wrong cause.
+          cd src-tree
+          # ONE RESOLUTION, read back: the fallback between the dispatch input
+          # and the pushed ref is done once, in the resolve step, so six steps
+          # cannot drift about which tag this run is for.
+          TAG=""; read -r TAG < ../tag-under-test || true
+          test -n "$TAG" || { echo "../tag-under-test is empty or missing: the resolve step did not run, so this step does not know which tag it is checking. Publishing nothing."; exit 1; }
           # A FIXTURE TAG NEVER PUBLISHES. The fixture trigger exists so the
           # pipeline's refusals can be driven without cal pushing deliberately
           # bad `v*` tags (issue 27, item 1), and a fixture that reached this
@@ -448,7 +553,6 @@ jobs:
               exit 0
               ;;
           esac
-          cd src-tree
           command -v python3 >/dev/null 2>&1 \
             || { echo "python3 is ABSENT and tools/forge-release.py needs it. It is in docs/release.md's runner table and release-gate.yml measures it too; PROVISIONING finding, publishing nothing."; exit 1; }
           # THE ARTEFACT'S NAME IS READ OFF SHA256SUMS, not rebuilt from the tag

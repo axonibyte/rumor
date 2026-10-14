@@ -413,6 +413,47 @@ back** after the uploads, with its asset list compared to what was sent,
 because a 201 from an upload and a release that carries the file are different
 claims.
 
+### Proving the pipeline before it carries a release
+
+**A workflow change is proved on its own event before it carries a release.**
+Every stale step in `tag-pipeline.yml` was found one tag at a time — the
+verifier at v0.1.4, the signer at v0.1.5 — because the only way to run the file
+was a `v*` push, and those are the maintainer's. Each discovery cost a release.
+
+So the pipeline takes a `workflow_dispatch` input, `tag`, naming an **existing**
+tag to verify, build and publish. A dispatch runs the workflow file **at the ref
+it is dispatched on**, so the shape is: dispatch on the branch, name an older
+tag in the input. The run proves the new file against that tag — and creates
+that tag's release, with its artefact, as a real side effect rather than a dry
+run.
+
+### Two trees, and the checkout that was missing
+
+Until this was audited, **nothing in the pipeline checked out the tag.**
+`git clone` leaves the default branch checked out, so the step that compares the
+tag against `VERSION` and `CHANGELOG.md`, the build, and `tools/` itself were
+all reading `main` while reporting on the tag. On a fast-forward release the two
+are the same commit, which is why five tag runs never showed it; a dispatch
+against an older tag separates them at once, and so would a tag pushed for
+anything but `main`'s head.
+
+The run now checks out two things on purpose:
+
+| what | from | why |
+| --- | --- | --- |
+| the tree to release | the tag's commit | it is what gets built, checksummed and published |
+| `tools/` | the workflow's own commit (`github.sha`) | the file running is from that commit, so the tools it calls must be, or a dispatch proving a new pipeline would run the old pipeline's tools |
+
+Both are asserted after the fact — `HEAD` against the tag's commit, and
+`git diff --quiet` for `tools/` — because an unasserted checkout is the defect
+being fixed. On a `v*` push the two commits are the same and the second
+checkout is a no-op.
+
+The tag itself is resolved **once**, in that step, and written to a file the
+later steps read. Six steps had each done their own `${GITHUB_REF_NAME}`
+fallback; with a dispatch input in play that is six places to disagree about
+which tag the run is for.
+
 ### Fixtures for the tag pipeline
 
 The gate has twelve fixture branches, one per refusal arm. The tag pipeline had
