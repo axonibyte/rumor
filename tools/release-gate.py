@@ -716,6 +716,41 @@ def _revisions(doc: str) -> list[str]:
     ]
 
 
+# THE CHECK'S OWN REFUSAL LANGUAGE, AND IT WAS WRONG UNTIL A FIXTURE RAN.
+#
+# This predicate was `not mapped|out of date|unmapped|stale`, and `rumor docs
+# --check` emits NONE of those words. Its two refusals are:
+#
+#   "<path> matches no entry in docs/coverage.toml; add one naming the doc ..."
+#   "coverage entry `<glob>` matches no path in the workspace; it is dead ..."
+#
+# so the arm could never fire on real output -- in the Rust tree either, since
+# the message is the same there. It was invisible because docs-stale had never
+# been measured: no toolchain on the runner, and the self-test's synthetic repos
+# have no project to run. A filter that cannot match its own tool's words is the
+# "always UNMEASURED" shape, which reads exactly like "always passes".
+#
+# The phrases below are DUPLICATED FROM THE BINARY DELIBERATELY rather than
+# imported or derived: a predicate that read its vocabulary from the thing it
+# judges would agree with it whatever either said. The duplication is the check,
+# and the battery pins it against both real messages and against the
+# broken-tool output it must NOT accept.
+_DOCS_VERDICT = re.compile(
+    r"matches no entry|matches no path|not mapped|unmapped|out of date|stale",
+    re.I,
+)
+
+
+def _docs_check_reached_a_verdict(out: str) -> bool:
+    """Did `docs --check` refuse, as opposed to failing to run?
+
+    A non-zero status alone does not say: `go run` exits non-zero when the
+    package is missing or the module is broken, and none of that is a finding
+    about documentation.
+    """
+    return bool(_DOCS_VERDICT.search(out))
+
+
 def _docs_check(repo: Path, ref: str) -> str | None:
     """`rumor docs --check` for the run at `ref`, or None when it cannot answer.
 
@@ -840,7 +875,7 @@ def _docs_check(repo: Path, ref: str) -> str | None:
     # EVERY case including the clean one, which would have made the other
     # eleven arms unmeasurable. So the arm fires only on the check's OWN
     # language, and anything else is UNMEASURED and says so.
-    if not re.search(r"not mapped|out of date|unmapped|stale", out, re.I):
+    if not _docs_check_reached_a_verdict(out):
         print(
             "release-gate: docs --check exited "
             f"{done.returncode} without naming an unmapped or stale path, so it "
@@ -923,6 +958,39 @@ def _clean_run(repo: Path, today: str, ver: str = "0.2.1") -> None:
 # project_version's strictness, and a_mapped_version_file_is_still_exempt, which
 # drives the MECHANICS exemption. Both were added because a mutant survived
 # without them, so the count moves by exactly two and names them.
+# THE DOCS-VERDICT BATTERY. Real strings, copied from `rumor docs --check` by
+# hand, against the broken-tool output the predicate must refuse. This is the
+# arm that would have caught the filter matching none of its tool's words.
+DOCS_VERDICT_CASES = (
+    ("stowaway.txt matches no entry in docs/coverage.toml; add one naming the "
+     "doc that describes it", True),
+    ("coverage entry `docs/*.tml` matches no path in the workspace; it is dead, "
+     "and a dead entry hides a typo", True),
+    ("docs --check: 42 path(s), every one mapped in docs/coverage.toml", False),
+    ("no required module provides package ./cmd/rumor", False),
+    ("go: cannot find main module", False),
+    ("build failed", False),
+    ("", False),
+)
+
+
+def _docs_verdict_battery() -> tuple[int, int]:
+    """Drive _docs_check_reached_a_verdict over real strings. (failures, ran)"""
+    failures = 0
+    for out, want in DOCS_VERDICT_CASES:
+        got = _docs_check_reached_a_verdict(out)
+        if got is not want:
+            failures += 1
+            print(f"\n  FAIL docs-verdict: {out[:60]!r} read as "
+                  f"{'a verdict' if got else 'not a verdict'}, wanted "
+                  f"{'a verdict' if want else 'not a verdict'}")
+    return failures, len(DOCS_VERDICT_CASES)
+
+
+# 7, and it moves only with DOCS_VERDICT_CASES: two real refusals, the real
+# success line, three broken-tool outputs and the empty string.
+EXPECT_DOCS_VERDICT_CHECKS = 7
+
 EXPECT_CASES = 16
 EXPECT_TRAILER_CHECKS = 15
 
@@ -1269,6 +1337,7 @@ def self_test() -> int:
                 "command, flag or output\n")
 
     battery_failures, trailer_checks = _trailer_battery()
+    docs_failures, docs_checks = _docs_verdict_battery()
     failures = 0
     ran = 0
     for arm, label, build in cases:
@@ -1314,7 +1383,9 @@ def self_test() -> int:
     # added without updating the declaration that makes the number load-bearing.
     size_failures = 0
     for label, got, want in (("case", ran, EXPECT_CASES),
-                             ("trailer check", trailer_checks, EXPECT_TRAILER_CHECKS)):
+                             ("trailer check", trailer_checks, EXPECT_TRAILER_CHECKS),
+                             ("docs-verdict check", docs_checks,
+                              EXPECT_DOCS_VERDICT_CHECKS)):
         if got == want:
             continue
         how = "FEWER than" if got < want else "MORE than"
@@ -1331,10 +1402,11 @@ def self_test() -> int:
     # the case counter made a failed shape check report "13 of 14 cases ok" when
     # all 14 cases passed -- a count that says something untrue, which is the
     # defect this whole round is about.
-    total = failures + battery_failures + size_failures
+    total = failures + battery_failures + docs_failures + size_failures
     print(f"\n  {ran - failures} of {ran} cases ok, "
           f"{trailer_checks - battery_failures} of {trailer_checks} trailer "
-          f"checks ok, {total} failed")
+          f"checks ok, {docs_checks - docs_failures} of {docs_checks} "
+          f"docs-verdict checks ok, {total} failed")
     return RC_FINDINGS if total else RC_CLEAN
 
 
