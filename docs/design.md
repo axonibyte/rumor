@@ -43,9 +43,16 @@ here as the phases that own them land.
 - **The licence is BSD-2-Clause**, and the allowlist settled in R0.2 gates every
   pull request. What *applies* that allowlist changed with the port: until the Go
   module landed it was `cargo deny check licenses`; it is now `tests/licences`,
-  a Go test over the surface `go list -deps -test` reports. The allowlist itself
-  is unchanged and still lives in `deny.toml` until the Rust tree is removed,
-  with the test asserting that its own copy and `deny.toml`'s agree.
+  a Go test over the surface `go list -deps -test` reports. The eight ids are
+  unchanged.
+
+  **The allowlist now has one home, which is a deliberate loss.** It lived in
+  `deny.toml` and was duplicated in the test so the two had to agree, and that
+  cross-check is gone with the Rust tree: `deny.toml` had no other consumer, and
+  keeping a file no tool reads to preserve a comparison would be keeping an
+  oracle that cannot disagree about anything a reader would act on. The test
+  reports the comparison as SKIPPED naming this change, rather than passing
+  silently, so the weakening is visible in the run and not only here.
 
 - **The policy engine is OPA, pinned, and it is the project's first
   dependency** (G3, issue 34).
@@ -153,10 +160,6 @@ newer toolchain silently**. Measured: `go125` ran a suite under go1.26.8 and
 reported `ok`, while the same command under `GOTOOLCHAIN=local` refused with
 `running go 1.25.14; GOTOOLCHAIN=local`. Naming a versioned binary therefore
 does not pin the toolchain that builds the code; the `go` directive does.
-
-## Why Rust and one binary
-
-Not yet written.
 
 ## The engine owns the seed
 

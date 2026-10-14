@@ -628,13 +628,13 @@ def evaluate(repo: Path, base: str, head: str, today: str | None = None) -> list
     # and only when the BUMP is the sole commit that touched them -- a run that
     # edits one of them in its body still answers for its mapped docs.
     #
-    # VERSION IS ADDED FOR EXACTLY ONE REASON (G1, issue 32): it is now the
-    # file a bump must change, so it inherits the whole of the argument above
-    # and nothing more. Cargo.toml and Cargo.lock stay only while the Rust
-    # tree does -- G4 removes that tree and should remove them from this tuple
-    # in the same commit, because an exemption for a file that cannot change
-    # is an exemption nobody can audit.
-    MECHANICS = ("VERSION", "Cargo.toml", "Cargo.lock")
+    # VERSION IS THE ONLY ENTRY (G1 added it, G4 narrowed to it): it is the file
+    # a bump must change, so it inherits the whole of the argument above and
+    # nothing more. Cargo.toml and Cargo.lock were here while the Rust tree was,
+    # and went out with it in the same commit -- an exemption for a file that
+    # cannot change is an exemption nobody can audit, and a reader would have to
+    # go to git to learn whether it still covered anything.
+    MECHANICS = ("VERSION",)
     body_changed = set()
     if bump_idx is not None and bump_idx > 0:
         prior = revs[bump_idx - 1]

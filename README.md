@@ -18,9 +18,9 @@ Go, one static binary. Rules are Rego, evaluated by OPA embedded as a library.
 Decided 2026-10-14, replacing the epic's original line (Rust with embedded
 Regorus): the product's value is the explanation behind a finding, and the
 reference engine carries evaluation traces, coverage and a test runner that the
-Rust reimplementation does not. The Rust tree in this repository is the one
-being replaced; it stays until the Go port lands so that nothing on `main` is
-ever half of each.
+Rust reimplementation does not. The Rust tree it replaced is gone from this
+repository as of the port's last run; the tags v0.1.0 to v0.1.3 are where it
+still exists, and `CHANGELOG.md` says what was removed.
 
 ## Install
 
@@ -29,11 +29,23 @@ Not yet. The module is `forge.axonibyte.com/axonibyte/rumor` and the binary is
 
 ## Quickstart
 
-Not yet: the toy system under test arrives in R5, and the Go port is in
-progress. Until the port lands the commands below are the Rust tree's:
+Not yet: the toy system under test arrives in R5. What the tree does carry is
+the CLI's one subcommand and its own gates:
 
-    cargo build
-    cargo run -- docs --check
+    go build -o ../rumor-bin ./cmd/rumor
+    go run ./cmd/rumor docs --check
+    go test ./...
+
+**The build goes outside the tree, and that is not a style choice.** A plain
+`go build ./cmd/rumor` drops a 2.6 MB binary named `rumor` in the working
+directory, and `docs --check` then refuses it as a path no coverage entry
+describes -- measured, by writing this quickstart and running it. `.gitignore`
+does not help: the walk reads the tree, not git's index.
+
+A versioned Go binary is fine in place of `go`, and `GOTOOLCHAIN=local` goes
+with it: under the default `auto` a `go` directive above the installed
+toolchain is satisfied by silently downloading another one, so naming a
+versioned binary would not pin what compiles the code.
 
 ## Working on rumor
 

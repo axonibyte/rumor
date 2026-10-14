@@ -1,8 +1,0 @@
-# The licence violation itself. GPL-3.0-only is a valid SPDX id and is absent
-# from deny.toml's `allow`, which is what must make the gate refuse.
-[package]
-name = "gpl-fixture"
-version = "0.0.0"
-edition = "2021"
-license = "GPL-3.0-only"
-publish = false

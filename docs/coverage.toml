@@ -14,14 +14,6 @@ path = ".gitignore"
 docs = ["docs/release.md"]
 
 [[entry]]
-path = "Cargo.toml"
-docs = ["docs/design.md", "docs/release.md"]
-
-[[entry]]
-path = "Cargo.lock"
-docs = ["docs/release.md"]
-
-[[entry]]
 path = "LICENSE"
 docs = ["README.md"]
 
@@ -97,19 +89,7 @@ path = "internal/**/*.go"
 docs = ["docs/cli.md", "docs/design.md"]
 
 [[entry]]
-path = "crates/*/Cargo.toml"
-docs = ["docs/design.md", "docs/release.md"]
-
-[[entry]]
-path = "crates/rumor-cli/src/**/*.rs"
-docs = ["docs/cli.md", "docs/design.md"]
-
-[[entry]]
 path = ".forgejo/workflows/*.yml"
-docs = ["docs/release.md"]
-
-[[entry]]
-path = "deny.toml"
 docs = ["docs/release.md"]
 
 [[entry]]
@@ -124,9 +104,3 @@ docs = ["docs/release.md"]
 path = "tools/release-gate.py"
 docs = ["docs/release.md", "docs/testing-methodology.md"]
 
-[[entry]]
-# Test 3's negative control for the licence gate: a GPL-licensed fixture crate
-# that must make `cargo deny check licenses` refuse. Described in release.md
-# under "Test 3: the licence gate's negative control".
-path = "tests/fixtures/deny-gpl/**"
-docs = ["docs/release.md"]

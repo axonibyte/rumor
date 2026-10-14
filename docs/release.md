@@ -132,9 +132,12 @@ unmeasured interpreter". That reasoning holds, so the workflow **measures**
 `python3` in a probe and the gate step **fails loudly** when it is absent rather
 than skipping. Re-implementing twelve arms in `sh` would have given up the
 self-test that found five defects in them before a branch existed, and a `rumor`
-subcommand is a Rust change this issue does not ask for and could not be driven
-on a box with no toolchain. If a runner turns out to lack `python3`, the honest
-fix is the subcommand, not a quietly skipped gate.
+subcommand is a change this issue does not ask for. **The reason it could not
+be written has since expired**: the argument was that the runner compiles
+nothing, and the runner now builds and tests Go at 1.26.8, so the subcommand is
+available as a route and is a decision rather than an impossibility. If a runner
+turns out to lack `python3`, the honest fix is the subcommand, not a quietly
+skipped gate.
 
 ### The fixture-branch convention
 
@@ -349,11 +352,17 @@ list.
 | `go` | every build, test and lint step; the release build | not version-pinned, but the `go` directive in `go.mod` is the floor and `GOTOOLCHAIN=local` makes a raise refuse rather than download. **Resolved, not named**: FreeBSD ports installs versioned binaries, so a box may have `go126`/`go125` and no bare `go`; every recipe tries `go`, `go126`, `go125` in that order and fails naming all three |
 | `gofmt` | `ci.yml`'s fmt step | same resolution, `gofmt`/`gofmt126`/`gofmt125` |
 | `golangci-lint`, `govulncheck` | `ci.yml`'s lint and vulnerability steps | **2.14.0** and **v1.9.0**, installed by pinned `go install` when absent and the version then asserted rather than printed |
-| `cargo-deny` | `ci.yml`'s licence gate | **0.20.2**, asserted against the install line so moving one without the other fails the step |
 | `python3` | `release-gate.yml` runs `tools/release-gate.py`; `tools/check-workflows.py` is local-only | no version pin; the gate's probe step measures it and fails loudly when absent |
 | `sha256` or `sha256sum` | `tag-pipeline.yml`'s checksum step | either; the step measures which is present and refuses when neither is |
 | `gpg` | `tag-pipeline.yml`'s signature step | optional — a missing trust store is reported separately from a failed signature |
 | `git` | every workflow: the clone, the fetch, every rev-parse, merge-base and ls-tree the gate's arms rest on | no version pin; **not at `/usr/bin/git`** on these hosts — it is `/usr/local/bin/git`, so a runner image that provides only the base system lacks it |
+
+**The runner reaches the FreeBSD package mirror.** `probe-mirror-egress.yml`
+asked that question — ratchet's design, r0.2/7 — and answered it green on runs
+100, 113 and 118. The instrument said it would come out in the commit that read
+it, and it did; the answer is recorded here because the fork it settled is
+closed either way. `pkg` itself still refuses on this runner for want of
+privilege, which is a refusal rather than a hang and is a separate matter.
 
 **Installed from the `axb` pkg repositories** (fable, thread:rumor/342 and /351).
 A second runner is provisioned from this table and that source, not from reading
@@ -405,10 +414,9 @@ binary by `go version -m`. Never a duration, and never the absence of red.
 
 ### The licence surface, after the port
 
-**The sections below describe the Rust gate.** `cargo deny` is not in `ci.yml`
-any more — the port replaced it — and they are kept because the reasoning is
-the methodology the Go check inherits, not because they describe a live step.
-The allowlist they settle is still the allowlist.
+`cargo deny` is gone, with the tree it judged. What survives it is the
+allowlist settled in R0.2 and the reasoning in the sections below, which the Go
+check inherits; the tool's own mechanics are at the tags v0.1.2 and v0.1.3.
 
 The live gate is `tests/licences`, run by `go test ./...` and then again **by
 name** in its own CI step, so the surface has a row with a figure in it rather
@@ -447,39 +455,17 @@ graph. It is in the doc coverage map against this file because it changes
 whenever the dependency set does, and a dependency arriving with no document
 saying why is the thing the map exists to catch.
 
-### The deny step, and its two exit codes
-
-`cargo deny check licenses` runs with **no `-D` flag**; use `-W` to surface
-warnings. This matters more than it looks:
-
-| exit | meaning | fix |
-|------|---------|-----|
-| 0 | the graph's licences are all on the allowlist | — |
-| 4 | a crate's licence is outside the allowlist, named in the output | decide: allow it, or drop the dependency |
-| 1 | **the config failed to deserialize and the gate never ran** | fix `deny.toml` |
-
-Exit 1 and exit 4 are opposite problems and the step's message must distinguish
-them: 4 is the gate working, 1 is the gate absent. Under `-D` the distinction
-collapses further — an unused allowlist entry and a real licence violation both
-return 4, so a cosmetic warning becomes indistinguishable from a violation by
-exit status alone.
-
-An allowlist entry that matches nothing warns on **every** run. That warning is
-the cost of having decided the list in advance, and the fix is never to trim the
-Decided list to quiet it.
-
-The tool is pinned: `cargo install cargo-deny --locked --version 0.20.2`. There
-is no FreeBSD binary release, so the job builds it (~5 min). An unpinned gate
-tool means the gate's verdict can change with no commit.
-
 ### Licence id spellings, and why they are not the Decided words
 
-- `Unicode-3.0`, where the Decided line says "Unicode", which is not an SPDX id.
-- `Apache-2.0 WITH LLVM-exception` is **absent** on purpose: the crates needing
-  it declare a disjunction, so plain `Apache-2.0` satisfies them. Proved with a
-  control rather than assumed — allowing only `BSD-2-Clause` plus the exception
-  returns 4, so the passing case means something.
-- `Unicode-DFS-2016` is absent: nothing in the dependency set carries it.
+`Unicode-3.0`, where the Decided line says "Unicode", which is not an SPDX id.
+The allowlist is SPDX ids because that is what a classifier can compare; the
+Decided list is prose, and the two are deliberately not the same strings.
+
+The rest of this section went out with `cargo deny`: an exit-code table for a
+tool no longer installed, and two entries about crate-level licence
+disjunctions (`Apache-2.0 WITH LLVM-exception`, `Unicode-DFS-2016`) that
+described a dependency set this repository no longer has. The record is at the
+tags v0.1.2 and v0.1.3, where that tool and those crates exist.
 
 ### Every external call is bounded, and a hang is a named finding
 
@@ -521,13 +507,14 @@ One bug was replaced by another with the same symptom.
 
 ### Why one version is a literal and the other is derived
 
-The deny step holds two versions and treats them oppositely, which looks
-inconsistent until you ask what each one is *for* (ratchet, r0.2/16):
+A step that holds two versions may have to treat them oppositely, which looks
+inconsistent until you ask what each one is *for* (ratchet, r0.2/16). The live
+pair is in `ci.yml`'s lint and vulnerability steps:
 
 | value | treatment | because |
 | --- | --- | --- |
-| `cargo-deny` 0.20.2 | hard-coded literal, asserted by `grep` | the pin is the **subject** of the check. Deriving it would make the check agree with whatever is installed, which is the drift it exists to refuse. |
-| `rumor-cli@<version>` | derived from `cargo metadata` | the crate version is an **input** to the check. A literal here carries the author's context — the first draft of this assertion said `0.1.3`, which was the author's branch, and would have failed on `0.1.0` and again at every bump. |
+| `golangci-lint` 2.14.0, `govulncheck` v1.9.0 | hard-coded literals, asserted against the install line | the pin is the **subject** of the check. Deriving it would make the check agree with whatever is installed, which is the drift it exists to refuse. |
+| the project's own version | read from `VERSION` | the version is an **input** to the check. A literal here carries the author's context — the first draft of the cargo-era assertion said `0.1.3`, which was the author's branch, and would have failed on `0.1.0` and again at every bump. |
 
 So: *derived pin, no guard; derived version, no brittleness.* The test is whether
 the value is what the check is about or merely something the check needs. Do not
@@ -535,38 +522,24 @@ the value is what the check is about or merely something the check needs. Do not
 between the install line and the assertion is deliberate, and is itself the
 check.
 
-### Test 3: the licence gate's negative control
+### The licence gate's negative control
 
-`cargo deny check licenses` passed from the first run, and that proved nothing.
-ibis read task 139's job log and found why: all seven unused allowances raised
-`license-not-encountered`, and `deny` resolved `rumor-cli@0.1.0` alone, so the
-gate passed having examined **no dependency licence at all**. A gate that
-encounters none of its own allowances cannot fail, and a gate never seen to fail
-is indistinguishable from one that is not wired up.
+**Where the control now lives: `tests/licences`,** under "The licence surface,
+after the port" above. `tests/fixtures/deny-gpl/` was the Rust control -- a
+separate workspace holding one `GPL-3.0-only` crate under a `BSD-2-Clause` root,
+driven with the real `deny.toml` so that a control derived from a copy could not
+agree with itself -- and it went out with the tree it was built against. The
+tags v0.1.2 and v0.1.3 carry it.
 
-`tests/fixtures/deny-gpl/` is the control. It is a separate workspace holding one
-crate licensed `GPL-3.0-only` -- a valid SPDX id, absent from `deny.toml`'s
-`allow` -- depended on by a `BSD-2-Clause` root, so the only violation in that
-graph is the GPL crate and a refusal cannot be about anything else. The root
-manifest `exclude`s the path, so the fixture reaches the control and never the
-shipped graph.
-
-The CI step drives it with the **real** `deny.toml` (`--config deny.toml`), never
-a copy: a control derived from a copy of the thing it checks agrees with itself
-whatever the real file says. It then reads two oracles, because an exit status
-alone does not say which licence was refused:
-
-| oracle | failure it catches |
-| --- | --- |
-| `rc` is not 0 | the gate passed a GPL dependency, so it does not gate |
-| `rc` is not 1 | `deny.toml` did not deserialize, so the control never ran |
-| log names `GPL-3.0-only` | something else refused, so this shows nothing |
-| log names `gpl-fixture` | the refusal is not about the fixture crate |
-
-Driven locally against cargo-deny 0.20.2 before the step was written: rc 4,
-`rejected: license is not explicitly allowed`, both names present; and the real
-workspace still rc 0 with the same seven warnings, which is what proves the
-exclusion held.
+THE FINDING THAT PUT IT THERE IS NOT HISTORICAL, which is why this heading stays
+rather than being deleted. `cargo deny check licenses` passed from its first run
+having examined **no dependency licence at all**: all seven unused allowances
+raised `license-not-encountered` and `deny` resolved the one local crate. A gate
+that encounters none of its own allowances cannot fail, and a gate never seen to
+fail is indistinguishable from one that is not wired up. The Go gate was
+reviewed against exactly that and had the same hole -- "24 of 24 allowed" is
+what a gate that always says yes also prints -- so it now drives seven synthetic
+modules through its own verdict function and asserts the clause that answered.
 
 ### tools/check-workflows.py
 
@@ -591,8 +564,12 @@ Two bounds on it, stated here rather than only in its header:
   script the workflow writes and then runs, or `eval`. Its silence is not proof
   that nothing can hang.
 - **It is local-only, and that is a limitation rather than a design.** It is
-  Python because the runner cannot compile anything, so a Rust gate could not run
-  there; and adding a Python dependency to CI would repeat the `actions/checkout`
-  mistake of depending on an unmeasured interpreter on the runner. It should
-  become a `rumor` subcommand beside `docs --check` once that jail has a working
-  toolchain. Until then nothing *enforces* it — a reviewer has to run it.
+  Python because adding a Python dependency to CI would repeat the
+  `actions/checkout` mistake of depending on an unmeasured interpreter on the
+  runner. The older half of that reason — that the runner could compile nothing,
+  so a gate in the project's own language could not run there — **is retired**:
+  the runner builds and tests Go at 1.26.8. So it should become a `rumor`
+  subcommand beside `docs --check`, and what stands in the way now is that
+  rewriting twelve arms costs the self-test that found five defects in them,
+  not the toolchain. Until then nothing *enforces* it — a reviewer has to run
+  it.

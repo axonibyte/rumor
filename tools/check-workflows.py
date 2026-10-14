@@ -87,11 +87,16 @@ reasoning that produced the 17-minute run. A uniform rule needs no judgment at
 the call site.
 
 WHERE THIS SHOULD LIVE EVENTUALLY: as a `rumor` subcommand beside `docs
---check`, in Rust, needing no interpreter on the runner. It is python today for
-one reason -- the runner cannot compile anything (probe-rustc fails on a single
-file with no manifest), so a Rust gate could not run there, while this can run
-locally the moment anyone edits a workflow. Revisit when that jail has a
-toolchain.
+--check`, in Go, needing no interpreter on the runner.
+
+THE REASON IT IS STILL PYTHON HAS CHANGED, and the old one is retired rather
+than left standing: it used to be that the runner could compile nothing
+(probe-rustc failed on a single file with no manifest), so a gate in the
+project's own language could not run there at all. The runner builds and tests
+Go at 1.26.8 -- measured by every run since the port -- so that obstacle is
+gone and this is now a cost question: porting the arms means re-earning the
+self-test that found five defects in them. Worth doing, not urgent, and not
+blocked.
 """
 
 import re
