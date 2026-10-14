@@ -3,6 +3,28 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.7 — 2026-10-14
+
+The vocabulary v1 as reviewed, and the engine docs brought current.
+
+- `docs/vocabulary.md` carried onto the Go tree and amended from ratchet's
+  review against the three example packages and rook's findings from building
+  R2.2 against it: observations carry `of` and `role`, claims may carry
+  `visible_to`, a claim's ref is its handle in v1, the between-attempts handle
+  collision is named, the expectation on a claim is optional, `pending` and
+  `clock` are named as gaps with the runs that exercise them, reserved words
+  may appear in prose, "the same `bug` findings" compares findings alone, and
+  the last Rust nouns are gone. R1.3 is this section.
+- `docs/design.md`: the language-version paragraph in the past tense, since
+  `go.mod` has declared 1.26.0 since v0.1.4; the print paragraph says what
+  makes "statutes do not use it" true and records that OPA erases `print()`
+  calls without `rego.EnablePrintStatements(true)`.
+- `docs/adr/README.md`: a record is dated and frozen at acceptance.
+- `docs/world.md`: the Trespass heading reserves the word and points at the
+  vocabulary; it defines nothing.
+- `README.md`: a workflow change is proved on its own event before it carries
+  a release.
+
 ## 0.1.6 — 2026-10-14
 
 The pipeline signs, verifies its own signature, and publishes. This is the
