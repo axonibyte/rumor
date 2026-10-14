@@ -56,7 +56,7 @@ jobs:
           # also left alone: an empty one is itself information, and the step is
           # already exiting non-zero.
           echo "uname   $(uname -a)"
-          for t in git cargo rustc sha256 sha256sum gpg ssh-keygen; do
+          for t in git go go126 go125 gofmt sha256 sha256sum gpg ssh-keygen; do
             p=$(command -v "$t" 2>/dev/null) && echo "$t  FOUND  $p" || echo "$t  ABSENT"
           done
 
@@ -193,46 +193,72 @@ jobs:
         run: |
           set -o pipefail
           cd src-tree
+          GO=""
+          for c in go go126 go125; do
+            command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+          done
+          test -n "$GO" || { echo "no go, go126 or go125 on PATH: this jail has no Go toolchain, which is a PROVISIONING finding and not a code one. Publishing nothing."; exit 1; }
+          # See ci.yml for why this is a gate: under the default `auto` a go
+          # directive above the installed toolchain is satisfied by silently
+          # downloading another, and a release built by a compiler nobody chose
+          # is the one artefact that must never happen quietly.
+          export GOTOOLCHAIN=local
           rc=0
-          timeout 1800 cargo build --locked --release > ../build.log 2>&1 || rc=$?
+          # -o ../rumor-release, OUTSIDE the clone: ci.yml run 142 went red
+          # because a binary built into src-tree was walked by `docs --check`
+          # and reported unmapped. -trimpath so the artefact carries no build
+          # path from this runner.
+          timeout 1800 "$GO" build -trimpath -o ../rumor-release ./cmd/rumor > ../build.log 2>&1 || rc=$?
           tail -20 ../build.log
-          test "$rc" -eq 124 && { echo "HANG: the release build exceeded 1800s. rc 124 proves only that the time elapsed -- read build.log: 'Downloaded' lines mean the registry was reached and the box is slow, a stall at 'Updating index' means no byte moved. RUNNER finding either way."; exit 124; }
-          test "$rc" -eq 0 || { echo "cargo build --release exited $rc"; exit "$rc"; }
-          test -x target/release/rumor || { echo "no release binary produced"; exit 1; }
+          test "$rc" -eq 124 && { echo "HANG: the release build exceeded 1800s. rc 124 proves only that the time elapsed -- read build.log: a stall with no output is route or DNS to the module proxy, though this module has no dependencies to fetch. RUNNER finding either way."; exit 124; }
+          test "$rc" -eq 0 || { echo "go build exited $rc"; exit "$rc"; }
+          test -x ../rumor-release || { echo "no release binary produced"; exit 1; }
+          echo "PROOF compiled by: $(timeout 30 "$GO" version -m ../rumor-release 2>&1 | head -1)"
           # ASSERTED NON-EMPTY, for release-gate.yml's reason: a PROOF that
           # the binary RAN cannot be backed by `test -x`, which only says it
           # exists, and with `|| true` a binary that produced no output printed
           # "PROOF built " and passed. The status is re-established rather than
           # discarded.
-          timeout 30 ./target/release/rumor > ../ran.txt 2>&1 || true
+          timeout 30 ../rumor-release > ../ran.txt 2>&1 || true
           RAN=""
           read -r RAN < ../ran.txt || true
           test -n "$RAN" || { echo "the release binary produced no output, so this step cannot show that it runs: test -x proves it exists, not that it executes"; exit 1; }
           echo "PROOF built $RAN"
-          # rustc -vV TO A FILE, then extract. A `| head -1` here closes the
-          # pipe and SIGPIPEs rustc to 141, which under pipefail fails a step
-          # that succeeded -- rook's check-workflows.py refused this file until
-          # it was written this way, which is the gate doing its job on me.
+          # THE PLATFORM IS ASSERTED FROM TWO SOURCES, NOT ONE, and that is a
+          # sharpening of the rustc -vV check this replaces rather than a
+          # translation of it. `rustc -vV` reported a HOST triple, so one read
+          # answered both "which machine" and "which target". Go splits them:
+          # `go env GOOS GOARCH` reports what the toolchain will BUILD FOR, which
+          # an environment variable can set, so it is a target measurement and
+          # not a host one. Asserting only that would let a cross-compile pass;
+          # asserting only uname would let a cross-compiled artefact ship from
+          # the right machine. Both, so either mistake refuses.
+          #
+          # The reason the original gave still holds and is why this is asserted
+          # at all: this pipeline builds exactly one target by decision (fable
+          # thread:rumor/332), and `runs-on` is a LABEL -- a proxy for the
+          # platform, never a measurement of it. Unasserted, this step would
+          # print a PROOF line naming a platform that contradicts the artefact
+          # beside it, which is rook thread:r0.3/33's shape.
           rc=0
-          timeout 30 rustc -vV > ../rustc.log 2>&1 || rc=$?
-          test "$rc" -eq 0 || { cat ../rustc.log; echo "rustc -vV exited $rc"; exit "$rc"; }
-          # THE TRIPLE IS ASSERTED, NOT JUST PRINTED, and this was the worse half
-          # of rook thread:r0.3/33's 270 shape sitting in my own file: a PROOF
-          # that extracts a value by an unguarded pattern can print a value which
-          # CONTRADICTS the claim beside it. This pipeline builds exactly one
-          # target by decision (fable thread:rumor/332), so a host that is not
-          # that target means the wrong runner answered -- and `runs-on` is a
-          # LABEL, which is a proxy for the platform and not a measurement of it.
-          # Unasserted, this step would have printed
-          # "PROOF target triple x86_64-unknown-linux-gnu" and published a Linux
-          # binary out of a FreeBSD-amd64-only pipeline. An empty extraction
-          # would have printed a bare "PROOF target triple " and passed.
-          EXPECT_TRIPLE=x86_64-unknown-freebsd
-          TRIPLE=$(sed -n 's/^host: //p' ../rustc.log)
-          test -n "$TRIPLE" || { echo "could not derive the host triple from rustc -vV, so the platform is unmeasured. Publishing nothing."; exit 1; }
-          test "$TRIPLE" = "$EXPECT_TRIPLE" \
-            || { echo "this runner's host triple is $TRIPLE and this pipeline builds only $EXPECT_TRIPLE: the wrong runner answered the job. Publishing nothing."; exit 1; }
-          echo "PROOF target triple $TRIPLE, which is the only target this pipeline builds"
+          timeout 30 uname -s > ../host-os.txt 2>&1 || rc=$?
+          test "$rc" -eq 0 || { cat ../host-os.txt; echo "uname -s exited $rc, so the host is unmeasured. Publishing nothing."; exit 1; }
+          rc=0
+          timeout 30 uname -m > ../host-arch.txt 2>&1 || rc=$?
+          test "$rc" -eq 0 || { cat ../host-arch.txt; echo "uname -m exited $rc, so the host is unmeasured. Publishing nothing."; exit 1; }
+          HOST_OS=""; read -r HOST_OS < ../host-os.txt || true
+          HOST_ARCH=""; read -r HOST_ARCH < ../host-arch.txt || true
+          test "$HOST_OS" = "FreeBSD" || { echo "the host reports $HOST_OS and this pipeline publishes only from FreeBSD: the wrong runner answered the job. Publishing nothing."; exit 1; }
+          test "$HOST_ARCH" = "amd64" || { echo "the host reports $HOST_ARCH and this pipeline publishes only amd64. Publishing nothing."; exit 1; }
+          rc=0
+          timeout 30 "$GO" env GOOS GOARCH > ../target.txt 2>&1 || rc=$?
+          test "$rc" -eq 0 || { cat ../target.txt; echo "go env exited $rc, so the target is unmeasured. Publishing nothing."; exit 1; }
+          TGT_OS=""; TGT_ARCH=""
+          { read -r TGT_OS; read -r TGT_ARCH; } < ../target.txt || true
+          test "$TGT_OS" = "freebsd" || { echo "the toolchain targets $TGT_OS, not freebsd: this would publish a cross-compiled artefact. Publishing nothing."; exit 1; }
+          test "$TGT_ARCH" = "amd64" || { echo "the toolchain targets $TGT_ARCH, not amd64. Publishing nothing."; exit 1; }
+          PLATFORM="${TGT_OS}-${TGT_ARCH}"
+          echo "PROOF host $HOST_OS/$HOST_ARCH and target $PLATFORM agree, and that pair is the only one this pipeline builds"
 
       - name: write SHA256SUMS over what was actually built
         run: |
@@ -240,21 +266,43 @@ jobs:
           cd src-tree
           TAG="${GITHUB_REF_NAME:?the tag name is not in the environment}"
           rm -rf ../dist && mkdir -p ../dist
-          rc=0
-          timeout 30 rustc -vV > ../rustc2.log 2>&1 || rc=$?
-          test "$rc" -eq 0 || { cat ../rustc2.log; echo "rustc -vV exited $rc"; exit "$rc"; }
           # ASSERTED AGAIN HERE, because each step is its own shell and inherits
-          # nothing from the one that checked it. The artifact NAME embeds this
-          # value, so an unchecked triple would produce a correctly-named Linux
-          # artifact from a pipeline that promises only FreeBSD amd64 -- honest
+          # nothing from the one that checked it. The artefact NAME embeds this
+          # value, so an unchecked platform would produce a correctly-named Linux
+          # artefact from a pipeline that promises only FreeBSD amd64 -- honest
           # filename, broken contract.
-          EXPECT_TRIPLE=x86_64-unknown-freebsd
-          TRIPLE=$(sed -n 's/^host: //p' ../rustc2.log)
-          test -n "$TRIPLE" || { echo "could not derive the host triple from rustc -vV"; exit 1; }
-          test "$TRIPLE" = "$EXPECT_TRIPLE" \
-            || { echo "this runner's host triple is $TRIPLE and this pipeline builds only $EXPECT_TRIPLE: the wrong runner answered the job. Publishing nothing."; exit 1; }
-          NAME="rumor-${TAG}-${TRIPLE}"
-          cp target/release/rumor "../dist/${NAME}"
+          GO=""
+          for c in go go126 go125; do
+            command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+          done
+          test -n "$GO" || { echo "no go, go126 or go125 on PATH. Publishing nothing."; exit 1; }
+          export GOTOOLCHAIN=local
+          rc=0
+          timeout 30 uname -s > ../host-os2.txt 2>&1 || rc=$?
+          test "$rc" -eq 0 || { echo "uname -s exited $rc"; exit 1; }
+          rc=0
+          timeout 30 uname -m > ../host-arch2.txt 2>&1 || rc=$?
+          test "$rc" -eq 0 || { echo "uname -m exited $rc"; exit 1; }
+          HOST_OS=""; read -r HOST_OS < ../host-os2.txt || true
+          HOST_ARCH=""; read -r HOST_ARCH < ../host-arch2.txt || true
+          test "$HOST_OS" = "FreeBSD" || { echo "the host reports $HOST_OS, not FreeBSD. Publishing nothing."; exit 1; }
+          test "$HOST_ARCH" = "amd64" || { echo "the host reports $HOST_ARCH, not amd64. Publishing nothing."; exit 1; }
+          rc=0
+          timeout 30 "$GO" env GOOS GOARCH > ../target2.txt 2>&1 || rc=$?
+          test "$rc" -eq 0 || { echo "go env exited $rc"; exit 1; }
+          TGT_OS=""; TGT_ARCH=""
+          { read -r TGT_OS; read -r TGT_ARCH; } < ../target2.txt || true
+          test "$TGT_OS" = "freebsd" || { echo "the toolchain targets $TGT_OS, not freebsd. Publishing nothing."; exit 1; }
+          test "$TGT_ARCH" = "amd64" || { echo "the toolchain targets $TGT_ARCH, not amd64. Publishing nothing."; exit 1; }
+          PLATFORM="${TGT_OS}-${TGT_ARCH}"
+          # THE ARTEFACT NAME CHANGES WITH THE LANGUAGE, and this is user-visible.
+          # v0.1.0 to v0.1.3 published `rumor-<tag>-x86_64-unknown-freebsd`: an
+          # LLVM target triple, which is a Rust concept and no longer describes
+          # how this binary is built. Keeping it would be a filename that lies
+          # about its provenance. From v0.1.4 the suffix is Go's own GOOS-GOARCH,
+          # `freebsd-amd64`, measured above rather than written in.
+          NAME="rumor-${TAG}-${PLATFORM}"
+          cp ../rumor-release "../dist/${NAME}"
           cd ../dist
           # sha256 on FreeBSD, sha256sum elsewhere: measured rather than assumed,
           # and an absent digest tool is a named finding rather than an empty file.

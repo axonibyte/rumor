@@ -18,10 +18,23 @@ changed command, flag, or output contract. Everything else is a **patch**.
 `v0.1.0` is a minor because it introduced the CLI surface; the children that
 followed it are patches.
 
-`main` is **fast-forward only**, and every bump commit sets the workspace
-version in `Cargo.toml`. Those two together mean the version on `main` can never
-go backwards, which is the property the release gate relies on rather than
-checking separately.
+`main` is **fast-forward only**, and every bump commit sets the version in the
+root `VERSION` file. Those two together mean the version on `main` can never go
+backwards, which is the property the release gate relies on rather than checking
+separately.
+
+> **The version lives in a file because Go has nowhere else to put it.** Until
+> v0.1.3 it was `Cargo.toml`'s `[workspace.package] version`. `go.mod` has no
+> version field — a Go module takes its version from the tag — so the manifest
+> cannot be the second of the three sources the gate makes agree. Dropping to a
+> two-way tag-against-changelog check was the alternative and it is weaker: the
+> refusal is about three sources disagreeing, and two cannot express it. So
+> `VERSION` holds one line of dot-separated digits and nothing else writes it.
+> Both readers are strict and their strictness is duplicated — `project_version`
+> in the gate, three shell tests in `tag-pipeline.yml` — because two readers for
+> one fact can disagree about what is well-formed and then one publishes what the
+> other refused. They were driven against each other over 17 inputs; see the
+> commit that moved them.
 
 **A version number is not a reservation.** The next tag is the next patch number
 *at the time its bump lands*, in landing order — not a number assigned to a
@@ -143,9 +156,10 @@ asserts directly. Two further rules, both learned the hard way:
   comments, so the tree did not compile: the arm fired correctly, `docs --check`
   could not build, arm `docs-stale` went UNMEASURED, and `ci.yml` would have
   been red for E0753 — a second reason the fixture does not name. Run
-  `cargo test --locked`, `cargo fmt --all --check` and
-  `cargo clippy --locked --all-targets -- -D warnings` on each fixture before
-  opening its PR.
+  `go test ./...`, `gofmt -l .` (which must print nothing) and `go vet ./...`
+  on each fixture before opening its PR. Name the versioned binary if the box
+  has no bare `go`, and export `GOTOOLCHAIN=local` so a directive raise refuses
+  instead of downloading a toolchain nobody chose.
 - **Verify each fixture with its own tree checked out.** Arm `docs-stale` runs
   `rumor docs --check`, which reads the working tree, so it is the one arm whose
   answer depends on the checkout. The gate reports UNMEASURED when the checkout
@@ -283,7 +297,7 @@ It refuses, each with its own message:
   a runner with **no trust material**, because the second is a provisioning
   finding and announcing it as the first would accuse a correct tag of forgery
 - the tagged commit is **not `main`'s head**, or is **not a bump commit**
-- the tag version, the `Cargo.toml` version and the changelog heading disagree
+- the tag version, the `VERSION` file and the changelog heading disagree
 
 On success it builds the release binary, writes `SHA256SUMS` over what was
 actually built, and signs it.
@@ -317,7 +331,9 @@ list.
 
 | tool | used by | pinned? |
 | --- | --- | --- |
-| `rustc`, `cargo` | every build, test and lint step; the release build | by the repository's toolchain file |
+| `go` | every build, test and lint step; the release build | not version-pinned, but the `go` directive in `go.mod` is the floor and `GOTOOLCHAIN=local` makes a raise refuse rather than download. **Resolved, not named**: FreeBSD ports installs versioned binaries, so a box may have `go126`/`go125` and no bare `go`; every recipe tries `go`, `go126`, `go125` in that order and fails naming all three |
+| `gofmt` | `ci.yml`'s fmt step | same resolution, `gofmt`/`gofmt126`/`gofmt125` |
+| `golangci-lint`, `govulncheck` | `ci.yml`'s lint and vulnerability steps | **2.14.0** and **v1.9.0**, installed by pinned `go install` when absent and the version then asserted rather than printed |
 | `cargo-deny` | `ci.yml`'s licence gate | **0.20.2**, asserted against the install line so moving one without the other fails the step |
 | `python3` | `release-gate.yml` runs `tools/release-gate.py`; `tools/check-workflows.py` is local-only | no version pin; the gate's probe step measures it and fails loudly when absent |
 | `sha256` or `sha256sum` | `tag-pipeline.yml`'s checksum step | either; the step measures which is present and refuses when neither is |
@@ -331,7 +347,8 @@ the YAML.
 **`git` was missing from the first version of this table** (ibis,
 thread:rumor/372), which is the table's own rule catching its author: anything a
 workflow needs and this list omits is a defect in the list. It is the most-used
-tool here after cargo, the gate chooses it deliberately over `actions/checkout`,
+tool here after the Go toolchain, the gate chooses it deliberately over
+`actions/checkout`,
 and it is **not** in the base system on these hosts — so the omission would have
 produced a runner that could not clone, discovered at the first job rather than
 at provisioning time.
@@ -343,8 +360,15 @@ exists so the failure is anticipated rather than diagnosed.
 
 **`runs-on` binds to a LABEL, not to a platform.** The label says which runner
 answers; it does not measure what that runner has. `tag-pipeline.yml` therefore
-asserts its host triple against `x86_64-unknown-freebsd` from `rustc -vV` rather
-than trusting the label, and refuses to publish from any other host.
+asserts the platform from **two** sources rather than trusting the label, and
+refuses to publish when either disagrees: `uname -s`/`uname -m` for the host,
+and `go env GOOS GOARCH` for the target. One read is not enough here, and that
+is a change from the Rust pipeline rather than a translation of it — `rustc -vV`
+reported a *host* triple, so a single read answered both questions, whereas
+`go env` reports what the toolchain will *build for* and an environment variable
+can set it. Asserting only the target would let a cross-compile publish;
+asserting only the host would let a cross-compiled artefact ship from the right
+machine.
 
 ## CI
 
@@ -361,8 +385,8 @@ also what a *fast* run looks like, so elapsed time cannot settle it either
 direction.
 
 So each step asserts **a value only execution could have produced**: a version
-string, a count the step computed, a name resolved out of `Cargo.lock`. Never a
-duration, and never the absence of red.
+string, a count the step computed, the toolchain recorded *inside* the built
+binary by `go version -m`. Never a duration, and never the absence of red.
 
 ### The deny step, and its two exit codes
 
