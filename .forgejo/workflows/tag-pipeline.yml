@@ -9,7 +9,7 @@
 # WHAT IT REFUSES, from the epic's "Tag pipeline" list:
 #   - the tag is unsigned or lightweight
 #   - the tagged commit is not the head of `main`, or is not a bump commit
-#   - the tag version, the Cargo.toml version and the changelog heading disagree
+#   - the tag version, the VERSION file and the changelog heading disagree
 #
 # FREEBSD amd64 ONLY. fable ruled it at thread:rumor/332 on ibis's point: cal's
 # "no linux runner, just freebsd for now" stands, an artifact nobody ran is not
@@ -149,7 +149,7 @@ jobs:
             || { echo "the tagged commit is not a bump commit: its subject is not 'release: vX.Y.Z'. Publishing nothing."; exit 1; }
           echo "PROOF the tagged commit is main's head and a bump commit"
 
-      - name: the tag, the manifest and the changelog agree
+      - name: the tag, the version file and the changelog agree
         run: |
           set -o pipefail
           cd src-tree
@@ -161,15 +161,33 @@ jobs:
           # discarded-status shape: an empty read is caught by `test -n` with a
           # better message than pipefail would give. Left as it is deliberately,
           # so a reader comparing the three sites sees which one is which.
-          MANVER=$(sed -n '/\[workspace.package\]/,$p' Cargo.toml | sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)
-          test -n "$MANVER" || { echo "could not read the workspace version from Cargo.toml"; exit 1; }
+          # THE VERSION FILE, NOT THE MANIFEST, since G1: go.mod has no version
+          # field, so a Go module's committed version lives in VERSION. See
+          # tools/release-gate.py's project_version for the same decision and
+          # the reason a two-way tag-against-changelog check would be weaker.
+          #
+          # STRICTNESS IS DUPLICATED HERE ON PURPOSE AND MUST MATCH THAT READER.
+          # Two readers for one fact can disagree about what is well-formed, and
+          # then one publishes what the other refuses. The python side accepts a
+          # single line of dot-separated digits and nothing else; these three
+          # tests are that rule written out -- exactly one non-blank line, no
+          # stray whitespace, digits and dots only. If either side is loosened,
+          # loosen both in the same commit or the pair stops being a pair.
+          test -f VERSION || { echo "no VERSION file: nothing to compare the tag against. Publishing nothing."; exit 1; }
+          LINES=$(grep -c . VERSION || true)
+          test "$LINES" = "1" || { echo "VERSION holds $LINES non-blank lines, not 1: a version file that is not one line is not readable as a version. Publishing nothing."; exit 1; }
+          MANVER=$(head -1 VERSION || true)
+          test -n "$MANVER" || { echo "could not read the project version from VERSION"; exit 1; }
+          case "$MANVER" in
+            *[!0-9.]*|""|.*|*.) echo "VERSION reads '$MANVER', which is not dot-separated digits -- a tag-shaped 'v1.2.3' or a trailing space would otherwise agree with a tag by accident. Publishing nothing."; exit 1 ;;
+          esac
           echo "tag            $TAGVER"
-          echo "Cargo.toml     $MANVER"
+          echo "VERSION        $MANVER"
           test "$TAGVER" = "$MANVER" \
-            || { echo "the tag says $TAGVER and Cargo.toml says $MANVER: they disagree. Publishing nothing."; exit 1; }
+            || { echo "the tag says $TAGVER and VERSION says $MANVER: they disagree. Publishing nothing."; exit 1; }
           grep -qE "^## +${TAGVER} +(--|—|-) +[0-9]{4}-[0-9]{2}-[0-9]{2}" CHANGELOG.md \
             || { echo "CHANGELOG.md has no dated section headed $TAGVER: the three must agree. Publishing nothing."; exit 1; }
-          echo "PROOF the tag, Cargo.toml and the changelog all say $TAGVER"
+          echo "PROOF the tag, VERSION and the changelog all say $TAGVER"
 
       - name: build the FreeBSD amd64 release binary
         run: |

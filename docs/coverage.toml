@@ -46,6 +46,13 @@ path = "docs/coverage.toml"
 docs = ["docs/release.md"]
 
 [[entry]]
+# The committed version, and the only place it lives. go.mod has no version
+# field, so this file is the second of the three sources the release gate and
+# the tag pipeline make agree: the tag, this, and the CHANGELOG heading.
+path = "VERSION"
+docs = ["docs/release.md"]
+
+[[entry]]
 # The Go module declaration: the module path and the language version the
 # toolchain is held to. design.md for what the binary is, release.md for the
 # version source a release reads.

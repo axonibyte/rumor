@@ -252,20 +252,46 @@ def show(repo: Path, ref: str, path: str) -> str | None:
         return None
 
 
-def workspace_version(text: str | None) -> str | None:
-    """The [workspace.package] version. None when it cannot be read.
+_VERSION_LINE = re.compile(r"^(?P<ver>[0-9]+(?:\.[0-9]+)*)$")
 
-    Keyed on the FIRST `version = "..."` after the [workspace.package] header
-    rather than the first in the file: the root manifest's own [package] block
-    would otherwise answer, and in this workspace it does not carry one at all.
+
+def project_version(text: str | None) -> str | None:
+    """The version from the VERSION file. None when it cannot be read.
+
+    WHY A FILE AND NOT THE MANIFEST, now that the project is Go (G1, issue 32).
+    go.mod has no version field -- a Go module takes its version from the tag --
+    so the manifest cannot be the second source. Dropping to a two-way tag
+    against changelog check was the other option and it WEAKENS the gate: the
+    epic's bullet refuses a run where "the tag version, the manifest version and
+    the changelog heading disagree", which is a three-way agreement, and two of
+    three cannot express it. So the version lives in one committed file that
+    nothing else writes.
+
+    STRICT ON PURPOSE, and the strictness is the point rather than tidiness: a
+    lenient reader turning "0.1.4 " or "v0.1.4" or two lines into a version
+    would let a malformed bump agree with a tag by accident. Anything but a
+    single line of dot-separated digits reads as unreadable, which trips the
+    version-unchanged arm by name instead of passing quietly.
     """
     if not text:
         return None
-    head = text.split("[workspace.package]", 1)
-    if len(head) != 2:
-        found = _WS_VERSION.search(text)
-        return found.group("ver") if found else None
-    found = _WS_VERSION.search(head[1])
+    # NO .strip() ON EITHER LINE, and that is the fix rather than an oversight.
+    # Both were there and the pair test found what they cost: the tag pipeline's
+    # shell reader REFUSED "0.1.4 " while this one ACCEPTED it, so a release
+    # could clear this gate and then fail at the tag -- late, and for a reason
+    # the gate had already seen and swallowed. `if line` rather than
+    # `if line.strip()` for the same reason: `grep -c .` on the other side
+    # counts a whitespace-only line, so filtering it here would make the two
+    # disagree about how many lines the file has.
+    # split("\n"), NOT splitlines(): splitlines treats a lone \r as a line
+    # terminator and would read "0.1.4\r\n" as clean, while the tag pipeline's
+    # `head -1` keeps the \r and refuses it. A CRLF version file is malformed
+    # on this project either way; the point is that both readers must say so,
+    # and the pair test found this one too.
+    lines = [line for line in text.split("\n") if line]
+    if len(lines) != 1:
+        return None
+    found = _VERSION_LINE.match(lines[0])
     return found.group("ver") if found else None
 
 
@@ -467,14 +493,14 @@ def evaluate(repo: Path, base: str, head: str, today: str | None = None) -> list
     # cannot fire independently, which issue 4's test forbids. Found by this
     # file's own self-test before a branch was cut.
     bump_rev = revs[bump_idx] if bump_idx is not None else head_rev
-    head_version = workspace_version(show(repo, bump_rev, "Cargo.toml"))
-    base_version = workspace_version(show(repo, merge_base, "Cargo.toml"))
+    head_version = project_version(show(repo, bump_rev, "VERSION"))
+    base_version = project_version(show(repo, merge_base, "VERSION"))
 
     # --- arm 1: the bump does not change the workspace version ------------
     if head_version is None:
         add(
             "version-unchanged",
-            "the workspace version could not be read from Cargo.toml at the "
+            "the project version could not be read from VERSION at the "
             "head of the run, so no bump can be shown",
         )
     elif head_version == base_version:
@@ -495,7 +521,7 @@ def evaluate(repo: Path, base: str, head: str, today: str | None = None) -> list
     elif head_version is not None and found.group("ver") != head_version:
         add(
             "subject-mismatch",
-            f"the subject says v{found.group('ver')} and Cargo.toml says "
+            f"the subject says v{found.group('ver')} and VERSION says "
             f"{head_version}: the two must agree",
         )
 
@@ -592,15 +618,22 @@ def evaluate(repo: Path, base: str, head: str, today: str | None = None) -> list
         trailers.update(read.exempt)
         malformed_trailers.extend(read.malformed)
     # THE BUMP'S OWN MECHANICS ARE NOT A SOURCE CHANGE, and this narrowing is
-    # exactly as wide as its reason. A bump commit must change Cargo.toml (and
-    # with it Cargo.lock); if that counted as "a source path changed", EVERY
-    # well-formed release run would need a `Docs-Unchanged` trailer for whatever
-    # Cargo.toml maps to, and the gate would refuse the thing it exists to
-    # admit. Driving it against the accepted v0.1.2 run is what showed this.
-    # The exemption is narrow in two ways: only these two paths, and only when
-    # the BUMP is the sole commit that touched them -- a run that edits
-    # Cargo.toml in its body still answers for its mapped docs.
-    MECHANICS = ("Cargo.toml", "Cargo.lock")
+    # exactly as wide as its reason. A bump commit must change the version file
+    # (and under Cargo, the lock with it); if that counted as "a source path
+    # changed", EVERY well-formed release run would need a `Docs-Unchanged`
+    # trailer for whatever that file maps to, and the gate would refuse the
+    # thing it exists to admit. Driving it against the accepted v0.1.2 run is
+    # what showed this. The exemption is narrow in two ways: only these paths,
+    # and only when the BUMP is the sole commit that touched them -- a run that
+    # edits one of them in its body still answers for its mapped docs.
+    #
+    # VERSION IS ADDED FOR EXACTLY ONE REASON (G1, issue 32): it is now the
+    # file a bump must change, so it inherits the whole of the argument above
+    # and nothing more. Cargo.toml and Cargo.lock stay only while the Rust
+    # tree does -- G4 removes that tree and should remove them from this tuple
+    # in the same commit, because an exemption for a file that cannot change
+    # is an exemption nobody can audit.
+    MECHANICS = ("VERSION", "Cargo.toml", "Cargo.lock")
     body_changed = set()
     if bump_idx is not None and bump_idx > 0:
         prior = revs[bump_idx - 1]
@@ -716,7 +749,11 @@ def _docs_check(repo: Path, ref: str) -> str | None:
     committed_tree_is_fully_mapped test read different sets -- and is filed
     rather than worked around here.
     """
-    if not (Path(repo) / "Cargo.toml").exists():
+    # go.mod, not Cargo.toml: this arm runs the real `rumor docs --check`, and
+    # since G1 that binary is built from the Go module. A synthetic fixture with
+    # neither is not a project and the arm reports UNMEASURED rather than
+    # passing on it.
+    if not (Path(repo) / "go.mod").exists():
         return None
     try:
         checked_out = git(repo, "rev-parse", "HEAD").strip()
@@ -820,7 +857,7 @@ def _world(tmp: Path, today: str) -> Path:
     repo = tmp / "r"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
-    _mk(repo, "Cargo.toml", '[workspace]\n\n[workspace.package]\nversion = "0.2.0"\n')
+    _mk(repo, "VERSION", '0.2.0\n')
     _mk(repo, "CHANGELOG.md", f"# Changelog\n\n## 0.2.0 -- {today}\n\nfirst.\n")
     _mk(repo, "docs/coverage.toml", '[[entry]]\npath = "src/**"\ndocs = ["docs/design.md"]\n')
     _mk(repo, "docs/design.md", "design\n")
@@ -833,7 +870,7 @@ def _world(tmp: Path, today: str) -> Path:
 
 
 def _clean_run(repo: Path, today: str, ver: str = "0.2.1") -> None:
-    _mk(repo, "Cargo.toml", f'[workspace]\n\n[workspace.package]\nversion = "{ver}"\n')
+    _mk(repo, "VERSION", f"{ver}\n")
     text = (repo / "CHANGELOG.md").read_text()
     _mk(repo, "CHANGELOG.md", text.replace("# Changelog\n", f"# Changelog\n\n## {ver} -- {today}\n\na line.\n", 1))
     _commit(repo, f"release: v{ver}")
@@ -859,7 +896,11 @@ def _clean_run(repo: Path, today: str, ver: str = "0.2.1") -> None:
 #
 # Changing either number is a deliberate edit that has to say what it added or
 # removed.
-EXPECT_CASES = 14
+# 14 -> 16 with G1's two VERSION arms: version_file_is_malformed, which drives
+# project_version's strictness, and a_mapped_version_file_is_still_exempt, which
+# drives the MECHANICS exemption. Both were added because a mutant survived
+# without them, so the count moves by exactly two and names them.
+EXPECT_CASES = 16
 EXPECT_TRAILER_CHECKS = 15
 
 
@@ -1059,6 +1100,37 @@ def self_test() -> int:
         _mk(repo, "docs/design.md", "design, touched\n")
         _commit(repo, "release: v0.2.0")
 
+    # ADDED WITH G1's MOVE TO A VERSION FILE, and both exist because the
+    # mutants SURVIVED without them. Making project_version accept any first
+    # line, and dropping VERSION from MECHANICS, both left this suite at 14 of
+    # 14 -- two paths written and justified in this file with nothing reaching
+    # them. rook, go-port.
+    @case("version-unchanged")
+    def version_file_is_malformed(repo):
+        # The strictness project_version's docstring claims. `v0.2.1` is the
+        # shape that matters: it is what a tag looks like, so a lenient reader
+        # would make the tag agree with the version file by accident -- the one
+        # disagreement this gate exists to catch.
+        _mk(repo, "VERSION", "v0.2.1\n")
+        text = (repo / "CHANGELOG.md").read_text()
+        _mk(repo, "CHANGELOG.md",
+            text.replace("# Changelog\n", f"# Changelog\n\n## 0.2.1 -- {today}\n\na line.\n", 1))
+        _commit(repo, "release: v0.2.1")
+
+    @case(None)
+    def a_mapped_version_file_is_still_exempt(repo):
+        # The MECHANICS exemption, which the stock fixture cannot reach: its
+        # coverage map names only src/**, so VERSION answers for no docs and the
+        # arm has nothing to demand. Mapped, a bump touching VERSION would
+        # otherwise need a Docs-Unchanged trailer for docs/release.md -- which is
+        # the gate refusing the thing it exists to admit. Drop VERSION from
+        # MECHANICS and this case goes red; that is the whole point of it.
+        _mk(repo, "docs/coverage.toml",
+            '[[entry]]\npath = "src/**"\ndocs = ["docs/design.md"]\n'
+            '\n[[entry]]\npath = "VERSION"\ndocs = ["docs/release.md"]\n')
+        _commit(repo, "docs: map the version file")
+        _clean_run(repo, today)
+
     @case("subject-mismatch")
     def subject_mismatch(repo):
         _clean_run(repo, today)
@@ -1078,19 +1150,19 @@ def self_test() -> int:
 
     @case("changelog-section-absent")
     def changelog_absent(repo):
-        _mk(repo, "Cargo.toml", '[workspace]\n\n[workspace.package]\nversion = "0.2.1"\n')
+        _mk(repo, "VERSION", '0.2.1\n')
         _commit(repo, "release: v0.2.1")
 
     @case("changelog-section-empty")
     def changelog_empty(repo):
-        _mk(repo, "Cargo.toml", '[workspace]\n\n[workspace.package]\nversion = "0.2.1"\n')
+        _mk(repo, "VERSION", '0.2.1\n')
         text = (repo / "CHANGELOG.md").read_text()
         _mk(repo, "CHANGELOG.md", text.replace("# Changelog\n", f"# Changelog\n\n## 0.2.1 -- {today}\n\n", 1))
         _commit(repo, "release: v0.2.1")
 
     @case("changelog-date-wrong")
     def changelog_date(repo):
-        _mk(repo, "Cargo.toml", '[workspace]\n\n[workspace.package]\nversion = "0.2.1"\n')
+        _mk(repo, "VERSION", '0.2.1\n')
         text = (repo / "CHANGELOG.md").read_text()
         _mk(repo, "CHANGELOG.md", text.replace("# Changelog\n", "# Changelog\n\n## 0.2.1 -- 1999-12-31\n\na line.\n", 1))
         _commit(repo, "release: v0.2.1")
@@ -1154,7 +1226,7 @@ def self_test() -> int:
     @case(None, "a folded trailer EXEMPTS")
     def trailer_exempts(repo):
         _mk(repo, "src/lib.rs", "// three\n")
-        _mk(repo, "Cargo.toml", '[workspace]\n\n[workspace.package]\nversion = "0.2.1"\n')
+        _mk(repo, "VERSION", '0.2.1\n')
         text = (repo / "CHANGELOG.md").read_text()
         _mk(repo, "CHANGELOG.md",
             text.replace("# Changelog\n", f"# Changelog\n\n## 0.2.1 -- {today}\n\na line.\n", 1))
@@ -1165,7 +1237,7 @@ def self_test() -> int:
     @case("docs-unchanged-no-trailer", "a trailer wrapped at column 0 does NOT exempt")
     def trailer_wrapped(repo):
         _mk(repo, "src/lib.rs", "// three\n")
-        _mk(repo, "Cargo.toml", '[workspace]\n\n[workspace.package]\nversion = "0.2.1"\n')
+        _mk(repo, "VERSION", '0.2.1\n')
         text = (repo / "CHANGELOG.md").read_text()
         _mk(repo, "CHANGELOG.md",
             text.replace("# Changelog\n", f"# Changelog\n\n## 0.2.1 -- {today}\n\na line.\n", 1))
