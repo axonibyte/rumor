@@ -47,6 +47,11 @@ progress. Until the port lands the commands below are the Rust tree's:
   why, and nothing about what produced it.
 - `main` is fast-forward only. A run ends in a bump commit whose subject is
   `release: vX.Y.Z`, with a dated `CHANGELOG.md` section for that version.
+- **Stale remote branches are deleted, by whoever notices.** A branch is stale
+  once its work has landed on `main`, or has been superseded on the record (a
+  re-cut, a retired gate's fixtures, a pivot). What a branch proved lives in
+  the issue, the thread and the workflow run that cite it, never in the branch.
+  Standing rule from cal, 2026-10-14.
 
 ## On the name
 
