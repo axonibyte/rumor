@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/cover"
@@ -137,17 +138,12 @@ func Input(l *ledger.Ledger, c Check) (map[string]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("engine: flattening %s's knowledge at the seal: %w", c.Actor, err)
 	}
-	if known == nil {
-		// AN OBSERVER WHO KNOWS NOTHING GETS [], NOT null. The reason is not
-		// Rego semantics: both were measured through this statute set and
-		// `not c.ref in input.known` holds either way, so the finding does not
-		// move. The reason is the COMPARISON -- the committed cases carry
-		// `"known": []`, and tests/engine asserts the engine's input against
-		// the case's field by field, which a null would fail. An earlier
-		// version of this comment claimed `in` was undefined against null;
-		// that was wrong and this is the measurement.
-		known = []string{}
-	}
+	// AN OBSERVER WHO KNOWS NOTHING ARRIVES AS [] AND NOT null, which the
+	// cases carry and tests/engine compares against. Nothing normalises it
+	// here because nothing needs to: flatten.Known builds its result with
+	// make(), so an empty knowledge set is already a constructed empty slice.
+	// A guard for nil was written here first and no mutation could kill it --
+	// it was unreachable, not merely unexercised.
 
 	obs := map[string]any{
 		"actor":    c.Actor,
@@ -186,6 +182,18 @@ func Evaluate(ctx context.Context, statute string, rules []string, l *ledger.Led
 	module, err := ast.ParseModule(moduleName, statute)
 	if err != nil {
 		return out, fmt.Errorf("engine: the statute does not parse: %w", err)
+	}
+	// ADR 0001 AT THE LAYER THAT RUNS STATUTES. tests/statute enforces the ban
+	// over every committed statute and mutant with two oracles; what it cannot
+	// answer is whether the ENGINE lets one through, and it would: Evaluate
+	// does not pass rego.EnablePrintStatements, so OPA erases print calls and a
+	// statute full of them evaluates clean and silent. That is a check whose
+	// silence means nothing, so the engine refuses the module instead of
+	// running it quietly.
+	if hits := printCalls(module); len(hits) > 0 {
+		return out, fmt.Errorf("engine: the statute calls print() at %s: ADR 0001 forbids "+
+			"diagnostic scaffolding in a statute, and this evaluator would erase the call rather "+
+			"than report it", strings.Join(hits, ", "))
 	}
 
 	out.Rules = map[string]any{}
@@ -322,4 +330,43 @@ func prefixFacts(l *ledger.Ledger) (flatten.Ledger, []map[string]any) {
 		}
 	}
 	return fl, claims
+}
+
+// printCalls lists the print() calls in a parsed statute, by row.
+//
+// The builtin's name comes from the library rather than from a literal here:
+// ast.Print is the declaration the evaluator dispatches on, so reading its name
+// cannot disagree with the evaluator about what a print call is. tests/statute
+// asserts that the name is still the expected word.
+func printCalls(mod *ast.Module) []string {
+	var hits []string
+	ast.WalkExprs(mod, func(e *ast.Expr) bool {
+		if e.IsCall() {
+			if op := e.Operator(); op != nil && op.String() == ast.Print.Name {
+				row := 0
+				if e.Location != nil {
+					row = e.Location.Row
+				}
+				hits = append(hits, fmt.Sprintf("%s:%d", moduleName, row))
+			}
+		}
+		return false
+	})
+	return hits
+}
+
+// Accepts reports whether Evaluate would run this statute at all, with the
+// reason when it would not. It parses and applies the ADR 0001 check and
+// nothing else, so a caller -- or a harness counting what it examined -- can
+// ask the question without supplying a ledger and a check.
+func Accepts(statute string) error {
+	mod, err := ast.ParseModule(moduleName, statute)
+	if err != nil {
+		return fmt.Errorf("engine: the statute does not parse: %w", err)
+	}
+	if hits := printCalls(mod); len(hits) > 0 {
+		return fmt.Errorf("engine: the statute calls print() at %s: ADR 0001 forbids "+
+			"diagnostic scaffolding in a statute", strings.Join(hits, ", "))
+	}
+	return nil
 }

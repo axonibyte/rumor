@@ -63,6 +63,17 @@ path = "tests/ledger/*.go"
 docs = ["docs/design.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# The harness that drives the three packages THROUGH the engine from R2.1's
+# ledger files and requires the result to equal the bare statute tests' --
+# including which case kills each mutant. Mapped to the testing methodology
+# because what it establishes is a METHOD (two paths, no shared evaluator, and
+# the three mutants that go equivalent once the bound is structural) and to the
+# vocabulary because the words it exercises -- the four findings, the sealed
+# prefix, `planted` -- are defined there.
+path = "tests/engine/*.go"
+docs = ["docs/testing-methodology.md", "docs/vocabulary.md"]
+
+[[entry]]
 path = "tests/licences/*.go"
 docs = ["docs/testing-methodology.md", "docs/release.md"]
 

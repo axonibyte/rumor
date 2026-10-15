@@ -453,3 +453,65 @@ func TestNothingHandedToTheFlattenerSitsPastTheSeal(t *testing.T) {
 	}
 	t.Logf("PROOF 17 fixture(s) examined, %d of them holding facts past the seal, 0 leaked to the flattener", beyond)
 }
+
+// THE ENGINE REFUSES A STATUTE THAT CALLS print(), and the control inverts:
+// the same statute with the call removed is accepted. Without the twin, a
+// refusal could be any other defect in the module.
+//
+// WHY THIS IS NOT A COPY OF tests/statute's CHECK. That one asks whether the
+// committed statutes and mutants call print, with a static scan and a runtime
+// hook. This one asks a question it cannot: whether the evaluator that runs
+// statutes in production lets one through. It would -- Evaluate passes no
+// rego.EnablePrintStatements, so OPA erases the call and the statute evaluates
+// clean. Measured below, which is why the refusal is static and not a hook.
+func TestTheEngineRefusesAStatuteThatPrints(t *testing.T) {
+	l, s, _ := fixture(t, "planted-lie", "honest-only")
+	chk := Check{Actor: s.Observer, Query: "user.count", Of: "user.created",
+		Source: ledger.SourceAPI, Value: 1}
+
+	const withPrint = `package rumor.statute
+
+finding := "consistent" if {
+	print("the observer knows", input.known)
+	input.observation.value == 1
+}
+`
+	const withoutPrint = `package rumor.statute
+
+finding := "consistent" if input.observation.value == 1
+`
+	_, err := Evaluate(context.Background(), withPrint, []string{FindingRule}, l, chk)
+	if err == nil {
+		t.Fatal("a statute calling print() was evaluated: ADR 0001 forbids it and this evaluator would erase the call")
+	}
+	if !strings.Contains(err.Error(), "print()") {
+		t.Fatalf("refused, but not by the ADR 0001 clause: %v", err)
+	}
+	if err := Accepts(withPrint); err == nil {
+		t.Error("Accepts admitted a statute that calls print()")
+	}
+
+	f, err := Evaluate(context.Background(), withoutPrint, []string{FindingRule}, l, chk)
+	if err != nil {
+		t.Fatalf("the same statute without the call was refused: %v", err)
+	}
+	if f.Value != "consistent" {
+		t.Fatalf("the permitted twin yielded %v", f.Value)
+	}
+	if err := Accepts(withoutPrint); err != nil {
+		t.Errorf("Accepts refused a statute with no print: %v", err)
+	}
+
+	// AND THE MEASUREMENT THAT MAKES THE REFUSAL NECESSARY rather than
+	// decorative: with the refusal bypassed, the printing statute evaluates to
+	// the same finding and says nothing, which is exactly the silence ADR 0001
+	// exists to prevent.
+	v, defined, err := evalOne(context.Background(), withPrint, FindingRule, f.Input)
+	if err != nil {
+		t.Fatalf("evaluating the printing statute directly: %v", err)
+	}
+	if !defined || v != "consistent" {
+		t.Fatalf("expected the printing statute to evaluate clean and silent, got %v (defined %v)", v, defined)
+	}
+	t.Logf("PROOF bypassing the refusal, the printing statute yields %v with no diagnostic at all", v)
+}
