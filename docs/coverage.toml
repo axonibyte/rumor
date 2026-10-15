@@ -55,6 +55,14 @@ path = "tests/statute/*.go"
 docs = ["docs/testing-methodology.md"]
 
 [[entry]]
+# The ledger fixtures' check: design.md owns why the example cases become
+# ledgers with RE-ASSIGNED positions, and the methodology owns why this test
+# reads the committed file against the case instead of rebuilding it -- a
+# validator that reconstructs its subject agrees with itself.
+path = "tests/ledger/*.go"
+docs = ["docs/design.md", "docs/testing-methodology.md"]
+
+[[entry]]
 path = "tests/licences/*.go"
 docs = ["docs/testing-methodology.md", "docs/release.md"]
 
@@ -102,6 +110,15 @@ docs = ["docs/cli.md", "docs/design.md"]
 # tell carried the teller's knowledge. No CLI surface, so no cli.md.
 path = "internal/flatten/*.go"
 docs = ["docs/design.md", "docs/testing-methodology.md"]
+
+[[entry]]
+# The ledger store: design.md owns why positions are assigned by the store and
+# what sealing buys, and the vocabulary owns the four fact kinds and the
+# position rule, which this package's Validate duplicates DELIBERATELY so the
+# two have to agree -- the same reasoning as internal/handle below. No CLI
+# surface yet, so no cli.md.
+path = "internal/ledger/*.go"
+docs = ["docs/design.md", "docs/vocabulary.md"]
 
 [[entry]]
 # The handle table: design.md owns why it is per attempt and which collision

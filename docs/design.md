@@ -281,4 +281,56 @@ table refuse its own idempotence.
 
 ## The ledger is append-only
 
-Not yet written.
+`internal/ledger` holds the four fact kinds `docs/vocabulary.md` allows and
+nothing else, with a position and an actor on every fact. Nothing is ever
+rewritten or removed: a claim that something is gone is a claim like any other.
+
+**Positions are assigned by the store, not passed in.** The vocabulary calls a
+position "a logical, monotone integer assigned to every fact as it is
+appended". If callers chose positions, monotonicity would be the caller's
+invariant and this package could not promise it, so `Append` assigns and
+returns. `AppendAt` exists for `Load`, which has to reproduce positions it is
+handed, and it is therefore the only door the seal has to guard.
+
+**Sealing is what makes a check reproducible.** A ledger is sealed at a
+position before any check runs, and writing at or before a sealed position is
+an error, never a reorder. `SealedPrefix` returns nothing for an unsealed
+ledger, deliberately: a check reading an unsealed ledger is a sequencing
+error, and returning everything would hide it behind a plausible answer.
+
+**The dump is deterministic and diffable, which are two properties and both are
+tested.** One field order, ascending positions and no map iteration anywhere,
+so the same logical content gives byte-identical output and re-dumping a loaded
+ledger does not churn a committed fixture. One fact per line, asserted by
+changing a single fact and requiring exactly one line to move -- a format that
+reflowed would pass a round-trip test and fail that one. `Load` goes through
+the same guards as `Append` and rejects unknown fields, so a dump no writer
+could have produced is refused on the way in rather than trusted because it
+came from a file.
+
+### The example cases are not ledgers, and their positions do not carry over
+
+The three packages' cases were authored as flattened input: each carries a
+`known` list and a claim set, with positions chosen to express a bound. A
+ledger needs the knowledge to arrive as `told` facts, and a `told` fact needs a
+position of its own. Measured across all 17 cases, only two leave room for it;
+the rest would need a position that is already taken, and the three
+`position-bounded` cases put the observation at the same position as a claim,
+which this store refuses as non-monotone.
+
+So the ledger files under `examples/<name>/ledger/` **re-assign positions**.
+They preserve the case's order and its bound, not its integers, which is what
+the vocabulary allows when it says positions "are not shared across runs, and a
+replay assigns its own", and that replay "compares findings, never positions or
+raw ids, so two runs with different positions can agree". The equivalence that
+matters is therefore asserted rather than assumed: for every case, the claims
+inside the sealed prefix must match the case's expected `truth`, and the
+prefix's `told` facts must flatten to exactly the case's `known` list.
+
+One reading had to be chosen and is recorded here rather than left to inference:
+**the observation is the check's input, not a fact in the sealed prefix.** v1
+gives an observation a position and also says the check reads the sealed
+prefix, which leaves open whether the observation sits inside that prefix; R2.3
+takes "a sealed ledger and flattened facts as data, one check as input", and
+these files follow it. If the vocabulary settles it the other way, the ledger
+files change and the cases do not.

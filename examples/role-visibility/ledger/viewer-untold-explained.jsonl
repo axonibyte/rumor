@@ -1,0 +1,2 @@
+{"kind":"claim","position":1,"actor":"alice","type":"doc.created","ref":"alice.doc#1","handles":["alice.doc#1"],"visible_to":["admin","viewer"]}
+{"kind":"claim","position":2,"actor":"alice","type":"doc.created","ref":"alice.doc#2","handles":["alice.doc#2"],"visible_to":["admin"]}

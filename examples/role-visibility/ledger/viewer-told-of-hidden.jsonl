@@ -1,0 +1,4 @@
+{"kind":"claim","position":1,"actor":"alice","type":"doc.created","ref":"alice.doc#1","handles":["alice.doc#1"],"visible_to":["admin","viewer"]}
+{"kind":"told","position":2,"actor":"alice","to":"dana","claim_ref":"alice.doc#1"}
+{"kind":"claim","position":3,"actor":"alice","type":"doc.created","ref":"alice.doc#2","handles":["alice.doc#2"],"visible_to":["admin"]}
+{"kind":"told","position":4,"actor":"alice","to":"dana","claim_ref":"alice.doc#2"}

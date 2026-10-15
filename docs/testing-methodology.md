@@ -106,6 +106,26 @@ report is what tells the two apart.
 on every statute and every mutant — a mutant is a statute too. That check is the
 project's worked example of the next section's rule.
 
+### A validator must not rebuild its subject
+
+`tests/ledger` checks the ledger files under `examples/<name>/ledger/` against
+the cases they were derived from. The tempting shape is to rebuild each ledger
+the way the generator did and compare -- and it is worthless, because it agrees
+with itself whatever the generator did. So every arm reads the **committed
+file** and checks it against the **case**, which was authored independently and
+before the ledger form existed: the file must load through the store's own
+guards, the sealed prefix's claims must equal the case's claims inside its
+bound, the prefix's tells must flatten to exactly the knowledge that bound
+allows, and the committed bytes must be what the store re-dumps so no file has
+drifted. Two arms exist only to stop the others passing vacuously: the cases and
+the ledgers must be in bijection, so a dropped case cannot go unnoticed, and the
+arm about bounds refuses if no case is found whose bound actually excludes
+something.
+
+Mutation-checked rather than asserted: changing a claim reference, falsifying a
+seal file's recorded bound, reordering a ledger's lines, deleting one ledger
+file, and emptying the recorded knowledge each turn the suite red.
+
 ## Self-test the oracle
 
 An oracle is checked before it is trusted, in the same run that trusts it.

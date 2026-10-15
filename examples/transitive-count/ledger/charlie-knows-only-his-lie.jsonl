@@ -1,0 +1,3 @@
+{"kind":"claim","position":1,"actor":"alice","type":"user.created","ref":"alice.user#1","handles":["alice.user#1"]}
+{"kind":"claim","position":2,"actor":"bob","type":"user.created","ref":"bob.user#1","handles":["bob.user#1"]}
+{"kind":"claim","position":3,"actor":"charlie","type":"user.created","ref":"charlie.user#1","handles":["charlie.user#1"],"planted":true}

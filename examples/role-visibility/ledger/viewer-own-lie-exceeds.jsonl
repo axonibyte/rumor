@@ -1,0 +1,4 @@
+{"kind":"claim","position":1,"actor":"alice","type":"doc.created","ref":"alice.doc#1","handles":["alice.doc#1"],"visible_to":["admin","viewer"]}
+{"kind":"told","position":2,"actor":"alice","to":"dana","claim_ref":"alice.doc#1"}
+{"kind":"claim","position":3,"actor":"bob","type":"doc.created","ref":"bob.doc#1","handles":["bob.doc#1"],"visible_to":["admin","viewer"]}
+{"kind":"claim","position":4,"actor":"dana","type":"doc.created","ref":"dana.doc#1","handles":["dana.doc#1"],"planted":true,"visible_to":["viewer"]}

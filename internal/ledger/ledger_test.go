@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -285,13 +286,16 @@ func TestRoundTripPreservesEveryFact(t *testing.T) {
 	}
 }
 
+// dumpOne marshals ONE fact directly. It used to build a one-fact ledger, which
+// stopped working when tells gained referential integrity -- a lone tell cannot
+// enter a ledger, and that is correct. The comparison never needed a ledger.
 func dumpOne(t *testing.T, f Fact) string {
 	t.Helper()
-	l := New(true)
-	if err := l.AppendAt(f); err != nil {
+	b, err := json.Marshal(f)
+	if err != nil {
 		t.Fatalf("dumpOne: %v", err)
 	}
-	return dumpOf(t, l)
+	return string(b)
 }
 
 // LOAD MUST NOT TRUST THE FILE. Each of these is a dump a writer could never
@@ -333,5 +337,29 @@ func TestLoadRefusesAClockFactWithoutClockControl(t *testing.T) {
 	}
 	if _, err := Load(strings.NewReader(body), true); err != nil {
 		t.Errorf("the same fact was refused WITH clock control: %v", err)
+	}
+}
+
+// A TELL CANNOT PASS A CLAIM THAT DOES NOT EXIST YET, and the permitted twin is
+// the same tell once its claim is in the ledger.
+func TestATellMustReferenceAClaimAlreadyHeld(t *testing.T) {
+	l := New(false)
+	tell := Fact{Kind: KindTold, Actor: "alice", To: "charlie", ClaimRef: "alice.user#1"}
+	if _, err := l.Append(tell); err == nil {
+		t.Error("a tell referencing no held claim was accepted")
+	} else if !strings.Contains(err.Error(), "has not been made") {
+		t.Errorf("refused for the wrong reason: %v", err)
+	}
+	if _, err := l.Append(claim("alice", "alice.user#1")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Append(tell); err != nil {
+		t.Errorf("the same tell was refused after its claim landed: %v", err)
+	}
+	// And a tell of a DIFFERENT claim still refuses, so the check reads the ref
+	// rather than merely counting claims.
+	other := Fact{Kind: KindTold, Actor: "bob", To: "charlie", ClaimRef: "bob.user#1"}
+	if _, err := l.Append(other); err == nil {
+		t.Error("a tell of an unheld ref was accepted once any claim existed")
 	}
 }

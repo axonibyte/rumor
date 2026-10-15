@@ -133,6 +133,17 @@ func (l *Ledger) AppendAt(f Fact) error {
 		return fmt.Errorf("ledger: position %d is not after the highest held position %d: "+
 			"positions are monotone", f.Position, l.highest())
 	}
+	// REFERENTIAL INTEGRITY IS ABOUT THE LEDGER'S STATE, NOT THE FACT'S SHAPE,
+	// which is why it lives here and not in Validate: a tell passes a REFERENCE
+	// to a claim, and v1's "the receiver now knows that claim" cannot hold for a
+	// claim nobody has made. v1 does not state this as a rule and it follows
+	// from the entry; recorded as a reading rather than left to inference. It is
+	// also what makes the position bound STRUCTURAL in the example ledgers
+	// instead of something each statute has to re-apply.
+	if f.Kind == KindTold && !l.hasClaimBefore(f.ClaimRef, f.Position) {
+		return fmt.Errorf("ledger: tell at position %d references claim %q, which no earlier "+
+			"position holds: a tell cannot pass a claim that has not been made", f.Position, f.ClaimRef)
+	}
 	l.facts = append(l.facts, f)
 	return nil
 }
@@ -148,6 +159,16 @@ func (l *Ledger) SealAt(p int) error {
 	}
 	l.seal = p
 	return nil
+}
+
+// hasClaimBefore reports whether a claim with this ref sits at an earlier position.
+func (l *Ledger) hasClaimBefore(ref string, before int) bool {
+	for _, f := range l.facts {
+		if f.Kind == KindClaim && f.Ref == ref && f.Position < before {
+			return true
+		}
+	}
+	return false
 }
 
 // Validate applies every refusal docs/vocabulary.md v1 states.
