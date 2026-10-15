@@ -22,7 +22,7 @@ writes a fact without both.
 | `claim` | an actor, after one of its own actions | "I did this, so the world should now contain that": the claim type from the bindings (`event.created`), its **ref** (the identifier a `told` points at; in v1 a claim's ref is its handle, see Handles), the handles it names, and optionally `visible_to`, the roles the server should show the object to (see Findings on visibility). A claim **may** carry the actor's expectation of what a later observation should show; when it does not, the statute derives the expectation from the claims, which is what the three examples do |
 | `observed` | an actor, or the engine for `direct` | what was seen at a position: a named query, its source (see Observation sources), the value returned, **`of`**, the claim type the observation tests, and the **`role`** the observing principal acted as, when the project has roles |
 | `told` | the engine, on an actor's behalf | one actor passed a **reference to a claim** to another actor at a position; the receiver now knows that claim |
-| `clock` | the run, when it controls time | the run's time at a position (see Time) |
+| `clock` | the run; a clock fact belongs to no actor, and reconciliation walks actors, never facts | the run's time at a position (see Time) |
 
 A **claim** carries exactly one of two tags: none (an honest claim) or
 `planted` (see `planted`). A claim type is declared **`immediate`** or
@@ -34,11 +34,13 @@ A **tell** (`told`) is one hop and never reaches the system under test: it
 moves knowledge between actors, not state into the server. Rules never
 follow tells; the engine's flattening module computes `known(actor,
 claim_ref)` from the one-hop `told` facts in Go, outside Rego, with an
-extension point for ancestry facts, and hands the result to Rego as data
-(R2). The example cases therefore carry `known` pre-flattened, which is this
-architecture and not a shortcut; `told` and `clock` facts appear in the
-examples' ledger files (R2.1), and no example exercises `clock` until R2.3
-drives one, which is a named gap, not an oversight. Whether a tell
+extension point for ancestry facts, and hands the result to Rego as data (as
+fields of the check's input document, which is where R2.3's engine puts the
+sealed prefix and the flattened facts; OPA's own `data` namespace is not used
+in v1) (R2). The example cases therefore carry `known` pre-flattened, which is this
+architecture and not a shortcut; `told` facts appear in the examples'
+ledger files (R2.1, eleven of seventeen); no example carries a `clock` fact
+until R2.3 drives one, which is a named gap, not an oversight. Whether a tell
 carries the claim's reference or its payload is an epic Open item leaning
 reference; v1 adopts the reference form and the ADR that decides it revises
 this entry if it decides otherwise.
@@ -183,4 +185,4 @@ to no actor (R9).
 
 | version | date | run | change |
 |---|---|---|---|
-| v1 | 2026-10-13, amended 2026-10-14 and 2026-10-15 | R1.3 | first definitions: four fact kinds, four findings and the control, positions and sealing, run-local handles, `planted`, `clock` facts, the three observation sources. Named for later phases without defining them: `stale`, the quiesce timeout, `ui_timeout`, `trespass`; the `told` payload-or-reference and the `direct` verb shape are Open items, adopted here in their leaning form. Amended 2026-10-14 from the review against the three packages: `explained`/`bug` clauses corrected and the two inputs stated; `of`, `role` and `visible_to` named; ref = handle in v1 and the between-attempts collision; the expectation on a claim optional; `pending` and `clock` named as gaps with their examples' arrival; reserved words may appear in prose; "the same `bug` findings" compares findings alone; Go, not Rust. Amended 2026-10-15 from R2.1 and R2.3, two readings v1 left open now RATIFIED as its meaning rather than changed (ratchet breakout-r2/12, fable breakout-r2/13): a `told` fact cannot pass a claim no earlier position holds, which follows from "the receiver now knows that claim" without v1 stating it as a rule, and the store refuses it at append because referential integrity is about the ledger's state and not the fact's shape; and the observation is the check's INPUT while the sealed prefix is the DATA, so "judged against the knowledge the observer holds at p" and "the check reads the sealed prefix" say the same thing once the observation is not counted as part of the prefix. Neither adds or removes a definition above |
+| v1 | 2026-10-13, amended 2026-10-14 and 2026-10-15 | R1.3 | first definitions: four fact kinds, four findings and the control, positions and sealing, run-local handles, `planted`, `clock` facts, the three observation sources. Named for later phases without defining them: `stale`, the quiesce timeout, `ui_timeout`, `trespass`; the `told` payload-or-reference and the `direct` verb shape are Open items, adopted here in their leaning form. Amended 2026-10-14 from the review against the three packages: `explained`/`bug` clauses corrected and the two inputs stated; `of`, `role` and `visible_to` named; ref = handle in v1 and the between-attempts collision; the expectation on a claim optional; `pending` and `clock` named as gaps with their examples' arrival; reserved words may appear in prose; "the same `bug` findings" compares findings alone; Go, not Rust. Amended 2026-10-15 from R2.1 and R2.3, two readings v1 left open now RATIFIED as its meaning rather than changed (ratchet breakout-r2/12, fable breakout-r2/13): a `told` fact cannot pass a claim no earlier position holds, which follows from "the receiver now knows that claim" without v1 stating it as a rule, and the store refuses it at append because referential integrity is about the ledger's state and not the fact's shape; and the observation is the check's INPUT while the sealed prefix is the DATA, so "judged against the knowledge the observer holds at p" and "the check reads the sealed prefix" say the same thing once the observation is not counted as part of the prefix. Neither adds or removes a definition above. Three wordings amended in the same pass, fable's to word and rook's to carry (breakout-r2/19): "hands the result to Rego as data" now says which document those fields are in, since the epic's "data" and "input" named the two things and not OPA's two namespaces; the `clock` row's "written by" now reads "the run; a clock fact belongs to no actor, and reconciliation walks actors, never facts", which is what an engine that reconciled against an actor called "run" found the hard way; and the Fact kinds note now counts what is actually there -- `told` facts in eleven of the seventeen ledger files, and no `clock` fact in any of them until R2.3 drives one |
