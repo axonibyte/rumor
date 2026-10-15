@@ -3,8 +3,12 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/examples"
 )
 
 // failWriter refuses every write. It is the whole reason run() takes io.Writer
@@ -93,6 +97,105 @@ func TestUsageErrorExitsTwo(t *testing.T) {
 		}
 		if !strings.Contains(errb.String(), usage) {
 			t.Errorf("args %q must print the usage line to stderr; got %q", args, errb.String())
+		}
+	}
+}
+
+// `rumor check` (R2.3). The seam is examplesCheck, for the same reason
+// coverageCheck is one: the argument surface, the three exit codes and the
+// failed-write path are driven here without a tree of examples on disk, and the
+// walk itself is tested in internal/examples against the real one.
+func TestCheckReportsTheTallyAndExitsZero(t *testing.T) {
+	saved := examplesCheck
+	defer func() { examplesCheck = saved }()
+	var gotDir string
+	examplesCheck = func(dir string, out io.Writer) (examples.Result, error) {
+		gotDir = dir
+		_, _ = fmt.Fprintln(out, "planted-lie  honest-only  consistent  agrees")
+		return examples.Result{Packages: 3, Cases: 17, Agreed: 17}, nil
+	}
+	var stdout, stderr bytes.Buffer
+	if rc := run([]string{"check"}, &stdout, &stderr); rc != 0 {
+		t.Fatalf("exit %d, wanted 0; stderr %q", rc, stderr.String())
+	}
+	if gotDir != defaultExamplesDir {
+		t.Errorf("walked %q, wanted the default %q", gotDir, defaultExamplesDir)
+	}
+	if !strings.Contains(stdout.String(), "17 case(s) over 3 package(s) from ledger files, 17 agreed, 0 disagreed") {
+		t.Errorf("the tally is not on stdout: %q", stdout.String())
+	}
+	// --examples replaces the directory, which is what lets this command be
+	// pointed at another tree.
+	gotDir = ""
+	stdout.Reset()
+	if rc := run([]string{"check", "--examples", "/elsewhere"}, &stdout, &stderr); rc != 0 {
+		t.Fatalf("exit %d with --examples", rc)
+	}
+	if gotDir != "/elsewhere" {
+		t.Errorf("walked %q, wanted /elsewhere", gotDir)
+	}
+}
+
+// A DISAGREEMENT IS EXIT 1, AND SO IS EXAMINING NOTHING. Zero disagreements
+// over zero cases is not a pass: it reads identically to agreement everywhere,
+// which is the defect ibis main/352 named.
+func TestCheckExitsOneOnADisagreementAndOnAnEmptyWalk(t *testing.T) {
+	saved := examplesCheck
+	defer func() { examplesCheck = saved }()
+	for _, tc := range []struct {
+		name string
+		res  examples.Result
+		err  error
+		want int
+	}{
+		{"a case disagrees", examples.Result{Packages: 3, Cases: 17, Agreed: 16, Disagreed: 1}, nil, 1},
+		{"nothing examined", examples.Result{}, nil, 1},
+		{"the tree cannot be read", examples.Result{}, errors.New("no such tree"), 1},
+		{"everything agrees", examples.Result{Packages: 3, Cases: 17, Agreed: 17}, nil, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			examplesCheck = func(string, io.Writer) (examples.Result, error) { return tc.res, tc.err }
+			var stdout, stderr bytes.Buffer
+			if rc := run([]string{"check"}, &stdout, &stderr); rc != tc.want {
+				t.Fatalf("exit %d, wanted %d; stdout %q stderr %q", rc, tc.want, stdout.String(), stderr.String())
+			}
+			if tc.err != nil && !strings.Contains(stderr.String(), "no such tree") {
+				t.Errorf("the failure is not named on stderr: %q", stderr.String())
+			}
+		})
+	}
+}
+
+// The same arm as run 143's, for this subcommand: a tally that never arrived
+// must not be reported as a pass.
+func TestCheckDoesNotReportSuccessWhenItsTallyCannotBeWritten(t *testing.T) {
+	saved := examplesCheck
+	defer func() { examplesCheck = saved }()
+	examplesCheck = func(string, io.Writer) (examples.Result, error) {
+		return examples.Result{Packages: 3, Cases: 17, Agreed: 17}, nil
+	}
+	var stderr bytes.Buffer
+	if rc := run([]string{"check"}, &failWriter{}, &stderr); rc != 1 {
+		t.Fatalf("exit %d, wanted 1 when the tally could not be written", rc)
+	}
+	if !strings.Contains(stderr.String(), "could not be written") {
+		t.Errorf("stderr does not say the result was lost: %q", stderr.String())
+	}
+}
+
+func TestCheckRefusesAnUnknownFlag(t *testing.T) {
+	for _, args := range [][]string{
+		{"check", "--examples"},
+		{"check", "--nonsense", "x"},
+		{"check", "examples"},
+		{"check", "--examples", "a", "b"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if rc := run(args, &stdout, &stderr); rc != 2 {
+			t.Errorf("%v: exit %d, wanted 2 for a usage error", args, rc)
+		}
+		if !strings.Contains(stderr.String(), "rumor check") {
+			t.Errorf("%v: the usage line does not mention check: %q", args, stderr.String())
 		}
 	}
 }

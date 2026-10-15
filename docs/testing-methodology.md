@@ -264,3 +264,87 @@ surfaced the moment it ran against a real accepted release:
 Neither is reachable by building a better fixture. The rule is to drive a real
 artifact that is already known-good, and to treat a refusal of it as a finding
 about the gate until the gate's own reasoning says otherwise.
+
+## A structural bound can make a mutant equivalent
+
+R2.3 drives the three example packages twice: once from the flattened cases,
+once from R2.1's ledger files through `internal/engine`. Sixteen of the
+nineteen mutants die on both paths and to the *same* cases. The three
+`*-ignores-position` mutants die only on the case path, and that is not a
+weaker harness — it is what the structural bound means.
+
+Those mutants remove `c.position <= input.observation.position`. A case carries
+claims its own bound excludes, so dropping the guard admits them and the counts
+move. A **sealed prefix** holds in-bound facts only, because the bound *is* the
+seal: there is nothing left for the guard to exclude, so the mutant computes
+exactly what the clean statute computes. A statute's position guard is dead in
+production, and the mutant that exists to prove it matters cannot die there.
+
+The rule this gives, which generalises past Rego: **when a defect is designed
+out of the data, the mutant for the check against it goes equivalent, and
+equivalence has to be proven rather than assumed.** `tests/engine` requires,
+for each declared mutant, identical values for every rule on every case against
+the clean statute *on the same path*, and requires the other path to still kill
+it — so the clause is shown to matter and the bound, not the harness, is shown
+to be what put it out of reach. A mutant neither killed nor provably equivalent
+fails; one declared equivalent that starts dying fails; and the declared set
+must equal the measured set in both directions, so a fourth going equivalent is
+a finding and a stale declaration cannot hide one.
+
+## A mutant that did not compile is not a kill
+
+Disabling a guard by replacing its condition with `false` can leave the
+variable it bound unused, and Go then refuses to build. A mutation harness that
+reads "the suite did not report ok" as a kill counts that as a dead mutant,
+which is the same error as treating a red build as a caught defect. R2.3's
+mutation runs check the build separately and report `DID NOT COMPILE, so it
+proves nothing`, then re-express the mutant so it compiles — `false && cond`
+rather than `false`.
+
+## A refusal that can never be the clause that answered is not a check
+
+Two refusals in R2.3's `pending` path looked independent: no clock fact at the
+seal, and no clock fact at or before the eventual type's last claim. Disabling
+the first killed no test. The reason is structural rather than a missing case:
+the clock that supplies the claim's time sits at or before the claim, the claim
+is inside the prefix, so the seal sees that clock too. The first refusal could
+fire first but could never be the only answer, and the test could not tell them
+apart because both messages contained the same words.
+
+So they became **one clause naming both facts** — `present=true/false` for each
+— with the test reaching both halves: no clock at all, and a clock sitting only
+*after* the claim. The lesson is the cron's rule stated from the other side:
+read a control's verdict off the clause that answered, and when two clauses can
+never answer separately, they are one clause and should say so.
+
+## An unreachable guard is not a cautious one
+
+`internal/engine` carried `if known == nil { known = []string{} }` with a
+comment explaining why an empty knowledge list must not reach a statute as
+`null`. No mutation could kill it: `flatten.Known` builds its result with
+`make()`, so the empty case already arrives as `[]`. The guard was unreachable,
+not merely unexercised, and deleting it is the honest outcome — a guard nothing
+can reach is a claim about the code that the code does not support. The
+property it was protecting is asserted where it can be: the harness compares
+the engine's input against the case's field by field.
+
+The same pass kept a redundancy that is *not* dead: the seal is still passed to
+`flatten.Known` even though the prefix handed to it is already bounded by the
+seal. Raising that argument kills nothing, so the mutant is equivalent. Rather
+than leave that to a passing suite, the premise it rests on — that nothing
+handed to the flattener sits past the seal — is asserted directly over all 17
+fixtures, and the arm fails if none of them holds a fact past its seal.
+
+## Where a fixture is the oracle, read the fixture first
+
+R2.3's first attempt asserted that the engine's flattened knowledge equalled
+the case's `known` list outright. It does not, for two of the three
+`position-bounded` cases: a case deliberately carries knowledge its own bound
+excludes, because the statute narrows it with a position guard, where a ledger
+narrows it structurally. Asserting the unfiltered equality was asserting that
+the bound does not work.
+
+The comparison is now against the case's own claims filtered to the case's
+bound — computed from the case, not read from the `.seal.json`, which records
+the same relation and would make the arm agree with a file instead of with a
+case.

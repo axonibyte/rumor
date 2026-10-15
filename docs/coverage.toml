@@ -115,6 +115,14 @@ path = "internal/coverage/*.go"
 docs = ["docs/cli.md", "docs/design.md"]
 
 [[entry]]
+# The example walk behind `rumor check`: cli.md owns the command surface it
+# answers for -- which is why this package, unlike the other libraries, does
+# name cli.md -- and design.md owns why the claim is runnable from the binary
+# rather than only from the suite.
+path = "internal/examples/*.go"
+docs = ["docs/cli.md", "docs/design.md"]
+
+[[entry]]
 # Flattening: design.md owns why `known(actor, claim_ref)` is computed outside
 # Rego, and the testing methodology owns the part about driving it -- the untold
 # claim read off the real fixture, and the mutation that found the hole where a

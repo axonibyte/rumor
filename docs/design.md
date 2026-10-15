@@ -334,3 +334,87 @@ prefix, which leaves open whether the observation sits inside that prefix; R2.3
 takes "a sealed ledger and flattened facts as data, one check as input", and
 these files follow it. If the vocabulary settles it the other way, the ledger
 files change and the cases do not.
+
+## Evaluation: a finding, its rule and its trace
+
+`internal/engine` is the seam between the store, the flattening and a statute
+(R2.3, issue 44). `Input` reads a **sealed** ledger and one check and produces
+the statute's input; `Evaluate` returns the finding with the rule definition
+that produced it, every named sub-rule, and the OPA trace retained whole for
+`rumor explain` (R10). `rumor check` is the same walk over the three worked
+examples, so the claim can be re-run by anyone holding the binary.
+
+**The bound is the seal, and the observation sits at `seal+1`.** The statutes
+bound their claim sets with `c.position <= input.observation.position`. Every
+fact in a sealed prefix is at or before the seal, so `seal+1` admits exactly
+the prefix and nothing else — the structural bound the ledger files were built
+around, carried into the evaluation rather than restated by each statute.
+
+A consequence worth stating, because it changes what the mutants prove: once
+the bound is structural, **a statute's own position guard is dead in
+production**. The three `*-ignores-position` mutants die against the flattened
+cases and cannot die against the ledgers, since the prefix holds nothing for
+the guard to exclude. `tests/engine` requires each of them to be *provably*
+equivalent — identical values for every rule on every case — and requires the
+case path to still kill it, so the clause is shown to matter and the bound, not
+the harness, is what put it out of reach.
+
+**A finding names a definition, not a rule name.**
+`data.rumor.statute.finding` is the same string for every finding in every
+case, which is a constant dressed as evidence. The engine reports the module
+and row of the definition whose body succeeded, read off the trace's `Exit`
+events — the statute's own account of itself — and marks the `default` as such.
+
+**Why the facts arrive in `input` and not in OPA's `data`.** Issue 44 words the
+architecture as "data = sealed ledger + flattened facts; input = one check", and
+OPA has two namespaces of those names. The three v1 statutes read
+`input.claims` and `input.known`; they are the R1 examples, pinned by content
+hash, and R1 closed gated over them. Moving the facts to `data` would edit all
+three. So the engine assembles one input document and the sentence is honoured
+in the sense that matters: every fact in it comes from the sealed prefix and
+nothing else, and the check is the only thing supplied from outside. The
+namespace split belongs to whichever phase next edits the statutes.
+
+**ADR 0001 is enforced at the layer that runs statutes.** `Evaluate` passes no
+`rego.EnablePrintStatements`, so OPA *erases* print calls: a statute full of
+them evaluates clean and silent. That is measured, and it is why the engine
+refuses such a module statically instead of running it. `tests/statute` still
+asks the other question — whether the committed statutes and mutants call
+`print` — with two oracles.
+
+## `pending` is an overlay, and the clock is a ledger fact
+
+`pending` needs two things no v1 statute has: the bound declared for an
+`eventual` claim type, which lives in the bindings artefact (R4), and the run's
+time, which is a `clock` fact. So the engine applies it **over** the statute's
+finding and says so: the statute's own verdict is kept beside it with the
+definition that produced it, and the overlay names `engine.pending` with the
+time the bound expires. If a later phase hands the bound to statutes, this
+overlay is the single thing that goes.
+
+Four ways it declines, each a decision: agreement has nothing to hold open; an
+undeclared type is not eventual; no claim of the type means nothing is late;
+and **past the bound the statute's finding stands**, because v1 reserves
+`stale` for R6 and defines nothing, so the engine does not invent a verdict it
+has not been given. It *refuses* when the bound cannot be measured — an
+eventual type with no clock fact at or before its last claim — rather than
+reading missing data as expired, which would turn a `pending` into a defect.
+
+**The re-check is keyed on the pair.** v1 re-checks a `pending` "at the actor's
+next observation of the same query and at every full reconciliation", so
+another query from the same actor does not clear it, and a re-check clears the
+old pending whatever the new verdict is: clearing only on agreement would leave
+one that had become a defect sitting in the register as though it were merely
+late.
+
+**A reconciliation that is not full is refused.** It observes every actor the
+sealed prefix names and needs a value for each; a pass that skipped one would be
+indistinguishable from a full one. Two readings are recorded rather than
+inferred. First, "all honest actors" is read as *every* actor, because v1 tags
+claims and not actors and says outright that there is no trust model — the
+`with-planted` fixture is one actor holding an honest claim and a planted one,
+and excluding her would observe nobody in the very example the done-when names;
+which actors hold a planted claim is reported instead. Second, **the run is not
+an actor**: v1 gives a `clock` fact's actor as "the run", which controls time
+rather than holding beliefs, so clock facts contribute no one to reconcile
+against.
