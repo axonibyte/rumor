@@ -718,3 +718,58 @@ Two bounds on it, stated here rather than only in its header:
   rewriting twelve arms costs the self-test that found five defects in them,
   not the toolchain. Until then nothing *enforces* it — a reviewer has to run
   it.
+
+## govulncheck's exit 3 is a verdict, not a route problem
+
+`ci.yml`'s vulnerability step classified `govulncheck`'s exit codes inline, and
+it had the most important one backwards. The tool's own source — `golang.org/x/vuln`
+v1.9.0, `internal/scan/errors.go` — says:
+
+```go
+errVulnerabilitiesFound = &exitCodeError{message: "vulnerabilities found", code: 3}
+```
+
+and `cmd/govulncheck/doc.go` repeats it in prose. The step read 3 as "it could
+not load the vulnerability database. Route finding, not a vulnerable tree".
+
+Run 192 is where that cost something. Its log carries both lines, four apart:
+
+```
+Your code is affected by 9 vulnerabilities from the Go standard library.
+govulncheck exited 3: it could not load the vulnerability database. Route finding, not a vulnerable tree
+```
+
+The job failed either way, so the defect was the **diagnosis** and not the
+verdict — which is the worse kind, because the reason is what gets acted on,
+and this one sent a reader to the network instead of to nine CVEs. It is the
+same shape as the `docs-stale` arm's filter that did not match its own tool's
+words, and as `verify-tag-verdict.sh`'s two defects before issue 39.
+
+The classification now lives in `tools/govulncheck-verdict.sh`, for the reason
+that script's sibling exists: **a workflow step cannot be driven without
+pushing.** Its clauses, each named on stdout so a control can read which one
+answered:
+
+| clause | exit | meaning |
+|---|---|---|
+| `clean` | 0 | the scan ran and its own summary says nothing is reached |
+| `clean-without-a-summary` | 1 | exit 0 with no summary: nothing proves a scan happened |
+| `vulnerabilities-found` | 3 | a verdict **on the tree**; the headings are printed |
+| `vulnerable-without-a-heading` | 1 | exit 3 with no `Vulnerability #` in the log: the two contradict and neither can be acted on |
+| `step-usage-error` | 2 | the tool refused this step's invocation, not a finding about the tree |
+| `database-unreachable` | 1 | the output names `vuln.go.dev` or the route to it: **blocked**, and silent about the tree |
+| `tool-failed` | 1 | a failure naming no database or route, over a tree never scanned |
+| `timed-out` | 1 | the bound elapsed; it blocks the gate rather than failing it |
+| `no-log` | 1 | nothing was written, so no verdict exists |
+
+Ten cases over nine clauses — two reach `vulnerabilities-found`, one for a
+standard-library entry and one for a module entry. `ci.yml` runs the battery on
+the runner and pins that count, because a clause removed along with its case
+would otherwise leave the step green.
+
+**Both verdict scripts' batteries now run in CI.** A battery that never runs
+there is one that can rot. The step asserts `govulncheck-verdict.sh`'s declared
+count and only the zero exit of `verify-tag-verdict.sh`, and that asymmetry is
+deliberate: that script belongs to the tag pipeline, so pinning its case count
+in `ci.yml` would make this file fail on a deliberate change to it in a run
+that never touches this file.

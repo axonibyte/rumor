@@ -322,6 +322,39 @@ jobs:
           test "$rc" -eq 0 || { echo "golangci-lint exited $rc: a linter fired, named above"; exit "$rc"; }
           echo "PROOF lint ran with $v"
 
+      - name: the verdict scripts' own batteries
+        run: |
+          set -o pipefail
+          cd src-tree
+          # A BATTERY THAT NEVER RUNS IN CI IS A BATTERY THAT CAN ROT. Two
+          # steps in this project delegate a classification to a script
+          # precisely because a workflow step cannot be driven without pushing;
+          # the scripts carry their own cases, and this is where those cases are
+          # exercised on the runner rather than only on an author's machine.
+          rc=0
+          timeout 120 sh tools/govulncheck-verdict.sh --self-test > ../gv-self.log 2>&1 || rc=$?
+          cat ../gv-self.log
+          test "$rc" -eq 124 && { echo "HANG: the govulncheck verdict's self-test exceeded 120s. RUNNER finding; the verdict was NOT checked."; exit 124; }
+          test "$rc" -eq 0 || { echo "the govulncheck verdict's own self-test FAILED, so its reading of any scan below means nothing"; exit "$rc"; }
+          # THE DECLARED COUNT, not just a zero exit: a clause removed along
+          # with its case would leave this green. 9 clauses over 10 cases --
+          # two cases reach `vulnerabilities-found`, one for a standard-library
+          # entry and one for a module entry.
+          grep -qE 'all 9 clauses answered as expected over 10 case\(s\)' ../gv-self.log \
+            || { echo "the self-test did not report all 9 clauses over 10 cases: a clause stopped being reached, or the script's clauses changed without this literal"; exit 1; }
+          rc=0
+          timeout 120 sh tools/verify-tag-verdict.sh --self-test > ../vt-self.log 2>&1 || rc=$?
+          cat ../vt-self.log
+          test "$rc" -eq 124 && { echo "HANG: the tag verdict's self-test exceeded 120s. RUNNER finding."; exit 124; }
+          test "$rc" -eq 0 || { echo "the tag verdict's own self-test FAILED, so the tag pipeline's reading of git verify-tag means nothing"; exit "$rc"; }
+          # NO DECLARED COUNT FOR THIS ONE, and the reason is stated rather
+          # than left as an inconsistency: tools/verify-tag-verdict.sh belongs
+          # to the tag pipeline (issue 39), and pinning its case count here
+          # would make this file fail on a deliberate change to that script in
+          # a run that does not touch this file. Its own PROOF line carries the
+          # count, and it is printed above.
+          echo "PROOF both verdict scripts' batteries ran on this runner"
+
       - name: govulncheck
         run: |
           set -o pipefail
@@ -359,14 +392,37 @@ jobs:
           # gate here whose verdict depends on a third party being up. That is why
           # its failure is read apart from the others: an unreachable vuln.go.dev
           # is a RUNNER/route finding, not a vulnerable tree.
+          #
+          # THE VERDICT COMES FROM tools/govulncheck-verdict.sh, one
+          # implementation with a battery over the strings this project has
+          # really seen -- including run 192's. The classification used to be
+          # inline here and said the OPPOSITE of what rc 3 means: govulncheck's
+          # own source sets errVulnerabilitiesFound to code 3 (x/vuln v1.9.0,
+          # internal/scan/errors.go) and its doc.go says so in prose, while this
+          # step announced "it could not load the vulnerability database. Route
+          # finding, not a vulnerable tree". Run 192's log carries both lines
+          # four apart: "Your code is affected by 9 vulnerabilities from the Go
+          # standard library", then the route claim. The job failed either way,
+          # so the defect was the DIAGNOSIS, which is the worse kind -- the
+          # reason is what gets acted on, and this one sent a reader to the
+          # network instead of to nine CVEs. A step is only exercised by
+          # pushing, so the logic lives where it can be driven.
           rc=0
           timeout 900 "$BIN" ./... > ../vuln.log 2>&1 || rc=$?
           tail -30 ../vuln.log
           test "$rc" -eq 124 && { echo "HANG: govulncheck exceeded 900s. RUNNER finding; it blocks the vulnerability gate rather than failing it."; exit 124; }
-          test "$rc" -eq 3 && { echo "govulncheck exited 3: it could not load the vulnerability database. Route finding, not a vulnerable tree"; exit 3; }
-          test "$rc" -eq 0 || { echo "govulncheck exited $rc: a vulnerability is named above"; exit "$rc"; }
-          # a value only execution produces: its own summary line
-          grep -qiE 'no vulnerabilities|vulnerabilit' ../vuln.log             || { echo "no govulncheck summary: the scan did not run"; exit 1; }
+          vrc=0
+          timeout 60 sh tools/govulncheck-verdict.sh ../vuln.log "$rc" || vrc=$?
+          case "$vrc" in
+            0) echo "PROOF the scan ran and this tree's code reaches nothing the database knows about" ;;
+            3) echo "REFUSED: a vulnerability this tree's own code reaches, named above. A Standard library entry is the runner's toolchain and a Module entry is a bump"; exit 3 ;;
+            2) echo "STEP DEFECT: govulncheck refused this step's invocation, which is not a finding about the tree"; exit 2 ;;
+            *) echo "BLOCKED: the vulnerability gate did not reach a verdict, for the clause named above. Not a pass"; exit 1 ;;
+          esac
+          # The summary-line check that used to sit here is now the verdict
+          # script's `clean` clause, which refuses rc 0 with no summary of its
+          # own: one rule in one place, since two implementations of it are how
+          # they drift apart.
           echo "PROOF scan ran with $(timeout 60 "$BIN" -version 2>&1 | head -2 | tr '\n' ' ' || true)"
 
       - name: licences (the built surface, against R0.2's allowlist)

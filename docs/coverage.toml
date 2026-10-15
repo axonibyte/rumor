@@ -181,6 +181,15 @@ path = "tools/verify-tag-verdict.sh"
 docs = ["docs/release.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# govulncheck's verdict. Mapped to release.md because what it decides is
+# whether the vulnerability gate passes, blocks or refuses, and to the testing
+# methodology because its whole reason for being a file rather than five lines
+# of YAML is that a workflow step cannot be driven without pushing -- the same
+# reason verify-tag-verdict.sh is one.
+path = "tools/govulncheck-verdict.sh"
+docs = ["docs/release.md", "docs/testing-methodology.md"]
+
+[[entry]]
 # The publisher: it creates the release for a tag and attaches the three files.
 # release.md owns what a release must carry; the testing methodology owns the
 # part worth saying about it, which is that its FORGE half cannot be driven
