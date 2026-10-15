@@ -3,6 +3,48 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.10 — 2026-10-15
+
+R2.1: the append-only ledger store, and the example cases as ledger files.
+
+- **`internal/ledger` holds the four fact kinds and nothing else**, with a
+  position and an actor on every fact. Positions are **assigned by the store**
+  rather than passed in, because the vocabulary calls a position "assigned to
+  every fact as it is appended" — if callers chose them, monotonicity would be
+  the caller's invariant. `AppendAt` exists for `Load` and is the only door the
+  seal has to guard.
+- **Sealing, driven both ways.** Writing at or before a sealed position is an
+  error and never a reorder; a position past the seal is accepted, and `Append`
+  keeps working after a seal. `SealedPrefix` returns nothing for an unsealed
+  ledger deliberately: a check reading an unsealed ledger is a sequencing error,
+  and returning everything would hide it behind a plausible answer.
+- **The dump is deterministic and diffable**, which are two properties and both
+  are tested: byte-identical output for the same content, and one fact per line
+  asserted by changing a single fact and requiring exactly one line to move — a
+  format that reflowed would pass a round-trip test and fail that one. `Load`
+  applies the same guards as `Append` and rejects unknown fields.
+- **A tell cannot pass a claim that has not been made.** v1 does not state the
+  rule and it follows from the entry, since "the receiver now knows that claim"
+  cannot hold for a claim nobody has made. It lives in `AppendAt` rather than
+  `Validate` because referential integrity is about the ledger's state, not the
+  fact's shape.
+- **The 17 example cases are now ledgers**, under `examples/<name>/ledger/`, and
+  their positions do **not** carry over. The cases were authored as flattened
+  input; a ledger needs the knowledge to arrive as `told` facts, and a tell needs
+  a position of its own. Only two of the 17 leave room for one, and the three
+  position-bounded cases put the observation at a claim's position, which the
+  store refuses as non-monotone. The ledgers re-assign positions, preserving
+  order and the bound rather than the integers — which is what the vocabulary
+  allows when it says a replay assigns its own and compares findings, never
+  positions.
+- **The bound is now structural.** Two cases hand the statute knowledge their
+  own bound excludes; placing each tell after its claim makes the seal exclude
+  that knowledge, instead of leaving every statute to re-apply the bound.
+- **`tests/ledger` checks the committed files against the cases and does not
+  rebuild them**, because a validator that reconstructs its subject agrees with
+  itself. Cases and ledgers must be in bijection, and the bound arm refuses if
+  no case is found whose bound excludes anything.
+
 ## 0.1.9 — 2026-10-14
 
 R2.2: what an actor knows, and the handle table. Plus the pin sentence wren
