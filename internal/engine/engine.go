@@ -78,6 +78,14 @@ type Finding struct {
 	Value   any  // the finding, e.g. "bug"; nil when the rule is undefined
 	Defined bool // false means the statute yielded no finding at all
 
+	// THE STATUTE'S OWN VERDICT IS KEPT WHEN THE ENGINE OVERRIDES IT. Judge
+	// may hold a finding open as `pending` (see pending.go); Value is then
+	// "pending" and these three say so, so an overlay is never a quiet
+	// substitution. All three are zero for an Evaluate that applied none.
+	StatuteValue any      // what the statute produced, before any overlay
+	Overlay      *Overlay // the engine rule that overrode it, when one did
+	ReChecked    *Pending // the pending this observation re-checked, when it did
+
 	Rule  string       // the fully qualified rule, e.g. data.rumor.statute.finding
 	Fired []Definition // the definition(s) whose body succeeded, in row order
 
