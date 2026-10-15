@@ -3,6 +3,76 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.11 — 2026-10-15
+
+R2.3: evaluation — a finding with its rule and its trace, the examples driven
+from their ledger files, reconciliation, and `pending` on a clock.
+
+- **`internal/engine` is the seam** between R2.1's store, R2.2's flattening and
+  a statute. `Input` reads a sealed ledger and one check; `Evaluate` returns the
+  finding with the rule definition that produced it, every named sub-rule, and
+  the OPA trace retained whole for R10. The observation carries no position —
+  it is the check's input, not a fact in the prefix — and sits at `seal+1`, so
+  the statutes' `c.position <= ...` bound admits exactly the prefix.
+- **A finding names a definition, not a rule name.**
+  `data.rumor.statute.finding` is the same string for every finding in every
+  case. The module and row of the definition whose body succeeded are read off
+  the trace's `Exit` events, with the `default` marked, and the test requires
+  two different findings in one package to come from two different rows.
+- **`rumor check`** runs all 17 cases from their ledger files and prints the
+  finding, its definition and its trace size per case with a tally — issue 44's
+  "under one command", re-runnable from the binary. Examining nothing exits 1:
+  zero disagreements over zero cases reads identically to agreement everywhere.
+- **`tests/engine` requires the two paths to agree** rule by rule, case by
+  case, with no shared evaluator — the ledger path through `internal/engine`,
+  the case path through `rego` directly.
+- **Three mutants go equivalent once the bound is structural**, and are proven
+  so rather than excused: identical values for every rule on every case, and
+  the case path must still kill them. A fourth going equivalent is a failure,
+  and so is a stale declaration.
+- **ADR 0001 at the layer that runs statutes.** `Evaluate` passes no
+  `rego.EnablePrintStatements`, so OPA erases print calls and a statute full of
+  them evaluates clean and silent — measured, and the reason the engine now
+  refuses such a module outright. All 3 statutes and all 19 mutants are
+  examined, the count reported, and a print planted into each module's own
+  source as the control.
+- **Reconciliation across the actors a sealed prefix names**, refused when it is
+  not full: no pass, no query, an actor with no observed value, a value for
+  someone the prefix does not name, or a prefix naming nobody. The control the
+  done-when asks for passes — over planted-lie the honest-only set is
+  `consistent`, the planted set is `bug` resting on the lie, and the
+  stripped-tag set is `bug` resting on nothing.
+- **`pending` is an overlay, and the clock is driven.** It needs the bound from
+  the bindings (R4) and a `clock` fact, which no v1 statute reads, so the engine
+  applies it over the statute's finding and keeps that finding beside it. Past
+  the bound the statute's verdict stands, because v1 reserves `stale` for R6.
+  Re-checked at the actor's next observation of the same query and at every full
+  reconciliation; a reconciliation leaving one uncovered is refused.
+- **Two findings against v1, reported rather than patched here:** the Fact kinds
+  entry says `clock` facts appear in the examples' ledger files, and none of the
+  17 holds one; and that entry gives a `clock` fact's actor as "the run", which
+  a first reconciliation duly treated as an actor to judge.
+- `docs/vocabulary.md`'s v1 row records the two readings R2.1 and R2.3 adopted,
+  ratified as v1's meaning rather than changed, and three wordings fable amended
+  in the same pass (breakout-r2/19): which document the flattened facts are
+  fields of, that a `clock` fact belongs to no actor, and a Fact kinds note that
+  now counts what is in the ledger files — `told` in eleven of seventeen,
+  `clock` in none.
+- **`govulncheck`'s exit 3 is a verdict, not a route problem.** `ci.yml` read
+  it as "could not load the vulnerability database", which is the opposite of
+  what the tool's own source says; run 192 printed "affected by 9
+  vulnerabilities" and then announced a network finding. The classification
+  moved to `tools/govulncheck-verdict.sh` — nine named clauses, ten cases over
+  the real strings, mutation-checked — and both verdict scripts' batteries now
+  run in CI, since neither was exercised by any workflow.
+- **The vulnerability gate is red on this run and the cause is named.** This is
+  the first commit to call `rego.Rego.Eval` from library code rather than from
+  a test, so `govulncheck` now finds call paths into `net/http`,
+  `net/textproto` and `crypto/tls`. All nine entries are standard library,
+  found in go1.26.8 and fixed in go1.26.9, which the runner does not have.
+  Measured both ways: 5de30c8 exits 0. There is no repo-side fix and none was
+  invented.
+
 ## 0.1.10 — 2026-10-15
 
 R2.1: the append-only ledger store, and the example cases as ledger files.
