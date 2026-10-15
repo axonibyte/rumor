@@ -121,6 +121,16 @@ path = "internal/ledger/*.go"
 docs = ["docs/design.md", "docs/vocabulary.md"]
 
 [[entry]]
+# The evaluator: design.md owns why a finding carries the rule definition that
+# produced it and its retained trace, and the testing methodology owns the part
+# worth saying about the adapter -- that it is driven off the committed ledger
+# fixtures rather than off inputs the test built, and that one of its mutants is
+# equivalent rather than surviving. No CLI surface of its own; the subcommand
+# that drives it is cmd/rumor.
+path = "internal/engine/*.go"
+docs = ["docs/design.md", "docs/testing-methodology.md"]
+
+[[entry]]
 # The handle table: design.md owns why it is per attempt and which collision
 # v1 names, and the vocabulary owns the handle's form, which this package's
 # shape duplicates deliberately so the two must agree.
