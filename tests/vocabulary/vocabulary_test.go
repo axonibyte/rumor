@@ -265,3 +265,103 @@ func TestTheQuoteCheckFires(t *testing.T) {
 	t.Logf("PROOF the check catches a stale quote, catches one that wraps, passes the landed wording, " +
 		"passes through emphasis and case, and collects nothing from an unattributed quote")
 }
+
+// retired names a mechanism this project does not use any more, with the reason
+// it is forbidden in a fixture. A FIXTURE IS READ BY A HUMAN WHEN IT FAILS, so a
+// fixture naming a tool that does not exist sends that reader looking for a call
+// they will never find -- which is what rook said at go-port/58 about the
+// statute and is why the same three sentences in six mutants are a defect and
+// not untidiness.
+//
+// WHY A SWEEP AND NOT A HASH PIN, which is the part worth carrying. The drift
+// test in tests/statute pins the three statutes and their rules.json, and it
+// would have caught none of this: the mutants are not pinned, and more to the
+// point these sentences were false THE DAY THE MUTANTS WERE CUT. They were
+// copied from the statute's header before the statute was corrected. A pin
+// catches an edit; it cannot catch a birth defect. Only a sweep over the whole
+// corpus can, which is ratchet's rule at r1.vocab/8 -- found by sweeping rather
+// than fixing the instance -- applied to examples/ instead of the vocabulary.
+var retired = map[string]string{
+	"adr-regorus-tracing/1": "ADR 0001 lives at docs/adr/0001-engine.md; the thread it was drafted in is not its citation",
+	"set_gather_prints":     "Regorus's print API. The engine is OPA: rego.EnablePrintStatements, a print.Hook and a static scan",
+	"take_prints":           "Regorus's print API, as above",
+	"flattening in Rust":    "the flattening is Go, in internal/flatten, since the G1 pivot",
+	"crates/rumor":          "the Rust tree was removed in G4; nothing under examples/ should name a crate path",
+}
+
+// NO FIXTURE NAMES A RETIRED MECHANISM. Counts the corpus it examined and
+// proves it saw one, because zero hits over zero files is the same number as
+// zero hits over twenty-two.
+func TestNoFixtureNamesARetiredMechanism(t *testing.T) {
+	var files []string
+	err := filepath.Walk(filepath.Join(root, "examples"), func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			files = append(files, p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking examples/: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no files under examples/: an empty walk is not a pass")
+	}
+
+	// THE POSITIVE CONTROL, and it is a word every one of the three packages
+	// must contain: without it a mis-built path or an unreadable file would
+	// make every fixture clean by not being read.
+	saw := 0
+	hits := 0
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		body := string(b)
+		if strings.Contains(body, "rumor") || strings.Contains(body, "claim") {
+			saw++
+		}
+		for name, why := range retired {
+			if strings.Contains(body, name) {
+				hits++
+				t.Errorf("%s names the retired %q: %s", f, name, why)
+			}
+		}
+	}
+	if saw == 0 {
+		t.Fatalf("examined %d file(s) under examples/ and none mentioned the project at all, so the "+
+			"sweep did not read the corpus it reports on", len(files))
+	}
+	t.Logf("PROOF %d file(s) under examples/ examined, %d of them read as this project's, %d retired "+
+		"name(s) found, %d name(s) forbidden", len(files), saw, hits, len(retired))
+}
+
+// THE SWEEP'S OWN SELF-TEST: it must refuse a fixture that names a retired
+// mechanism, and admit the corrected wording. Driven on constructed text rather
+// than by editing the corpus, so the suite cannot be left dirty by a failure.
+func TestTheRetiredNameSweepFires(t *testing.T) {
+	stale := "# NO print() ANYWHERE, per ADR 0001 (adr-regorus-tracing/1): `set_gather_prints(true)`\n" +
+		"# and then `take_prints()` must come back empty. (R2 does the flattening in Rust.)"
+	fixed := "# NO print() ANYWHERE, per ADR 0001 (docs/adr/0001-engine.md): a static scan and a hook\n" +
+		"# under rego.EnablePrintStatements. (R2 does the flattening in Go, internal/flatten.)"
+
+	var found []string
+	for name := range retired {
+		if strings.Contains(stale, name) {
+			found = append(found, name)
+		}
+	}
+	if len(found) != 4 {
+		t.Fatalf("the stale fixture trips %d retired name(s), wanted 4: %v", len(found), found)
+	}
+	for name := range retired {
+		if strings.Contains(fixed, name) {
+			t.Errorf("the corrected wording still trips %q", name)
+		}
+	}
+	t.Logf("PROOF the stale header trips %d of %d retired names and the corrected header trips none",
+		len(found), len(retired))
+}

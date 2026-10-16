@@ -390,3 +390,32 @@ And the line-break trap caught three readers in a row — quill's first sweep, t
 first version of this oracle, and a `grep -o` I ran to check one of its findings.
 A quotation that wraps is one quotation; any instrument that reads lines will
 disagree.
+
+## A pin catches an edit; it cannot catch a birth defect
+
+`tests/statute` pins the three statutes and their `rules.json` by blob id, and
+that pin has done its job — it fired on the one deliberate statute correction
+before the hash was moved. It would have caught **none** of quill's Q2
+(rumor/584): three stale sentences sitting in all six `planted-lie` mutants.
+
+Two reasons, and both generalise:
+
+- **The mutants are not pinned**, and pinning them would be the wrong fix. A
+  mutant is edited deliberately whenever a clause changes; a pin there would be
+  a hash to update rather than a property to hold.
+- **The sentences were false the day the mutants were cut.** They were copied
+  from the statute's header before the statute was corrected. There was never a
+  moment when the file changed, so there is no drift for a pin to see.
+
+The guard that fits the defect is a **sweep with a denominator and a positive
+control**: no fixture under `examples/` names a retired mechanism, over all 77
+files, with a word every package must contain asserted so that an unreadable
+path cannot report a clean corpus by reading nothing. That is ratchet's rule at
+`r1.vocab/8` — *found by sweeping rather than fixing the instance* — pointed at
+the fixtures instead of the vocabulary.
+
+The shape to notice is that **the incomplete sweep was recorded as reassurance**.
+wren's R2 gate verified per blob that exactly one file of 43 had changed, which
+is simultaneously the proof the statutes' semantics held and the trace of the six
+files nobody touched. A number can be correct and still be the fingerprint of
+what was missed.
