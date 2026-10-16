@@ -473,3 +473,81 @@ refuses if the count moved.
 And each drill asserts the refusal COUNT as well as the clause. A drill that
 trips a second arm is not the drill that was designed, even when it still goes
 red.
+
+## Prove a finding was its cause by removing the cause
+
+A fixture that plants a lie and observes a `bug` has shown the two coincide. It
+has not shown the bug came from the lie: a statute that reports `bug` for an
+unrelated reason passes that fixture exactly as a correct one does, and every
+other arm with it — the finding is right, the control attributes it, the rules
+are all attacked.
+
+The missing arm is the counterfactual. Remove the cause and the finding must
+go. `rumor attaint` rebuilds each sealed prefix without its planted claims and
+requires `consistent`; a bug that outlives the lie was never the lie.
+
+Two details the store settled rather than the design:
+
+- **Dependents go with what they depend on.** A tell passing a removed claim
+  cannot stay — the ledger refuses it, and a refusal there would read as this
+  arm's finding rather than as the counterfactual being unbuildable.
+- **The bound travels with the facts.** `SealAt` refuses a position the ledger
+  no longer holds, so removing the claim *at* the seal cannot keep the old
+  seal. Sealing at the highest survivor loses nothing: every survivor is at or
+  below it. v1 already says a replay assigns its own positions and compares
+  findings, never positions.
+
+**And the counterfactual is derived, not committed.** A new fixture would have
+moved R1's gated counts, and a derived one checks every qualifying case rather
+than one example that could be written to pass.
+
+## Every refusing arm needs a permitted twin, and the pairing should be derived
+
+ratchet's rule from R2.1: *a refusal arm that never sees the accepted case
+cannot tell "refuses correctly" from "refuses always".*
+
+Coverage and discrimination are separate claims and fail separately. "Every arm
+fires somewhere" is satisfied by an arm hard-wired to refuse; "every arm can
+decline" is what catches it. Two tests, not two columns of one.
+
+**Derive the pairing.** Most arms refuse something *absent* from a healthy
+subject, so the healthy subject is their twin and no list can drift out of date;
+only the arms whose refusal is an *addition* need a twin of their own, named
+with its reason. A hand-maintained pairing is the defect one layer up from the
+thing it is checking.
+
+## Ask what a check cannot see, before calling it done
+
+Five instruments in this project failed the same way in one evening, each
+correct about its own contents and blind to the next arrival:
+
+| instrument | what it could not see |
+|---|---|
+| a lint reporting "3 issues" | a fourth, capped by `max-same-issues` |
+| a test asserting a list of clauses | a clause added after the list was written |
+| a doc block grepping the lines it quotes | a new *kind* of line |
+| that block's own total, a literal | the prose figure it was protecting going stale |
+| a floor of `6` on a 7-line list | the deletion it was added to refuse |
+
+Each fix was correct and each was the next one's blind spot, because that is
+what a fix *is* when the defect is "this check cannot see X" — closing one view
+opens the next. Adding a denominator three times did not stop it; asking the
+question once would have.
+
+**The remedy is a source that moves.** A remembered number goes stale silently;
+a number counted from the artifact moves when the artifact does. Where two
+artifacts can disagree, read one from the other so they convict each other —
+the sample's floor counted from the page's own table fails both when a kind is
+added without a sample and when a sample is deleted without the table.
+
+## A documented sample that cannot fail is decoration
+
+`release-gate.py` executes fenced blocks marked `run` and fails on a nonzero
+exit — but it compares nothing to the page, so *marking* a sample `run` proves
+only that the command exits 0. The gap is output comparison, and a sample can
+rot for a whole release while every path-coverage check stays green, because a
+coverage check cannot see a quoted figure.
+
+A sample that asserts itself closes it with no new checker. Drive both
+directions before trusting one: it must pass as committed **and** fail on a
+drifted figure, a shrunken quote list, and a reworded sentence it reads from.
