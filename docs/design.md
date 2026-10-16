@@ -208,7 +208,71 @@ does not pin the toolchain that builds the code; the `go` directive does.
 
 ## The engine owns the seed
 
-Not yet written.
+Written ahead of R5, which builds it: this section is the design R5 is built
+to, and R5's checklist in the epic is the acceptance. When R5 lands, what it
+measured amends this text rather than the text excusing the code.
+
+**A run is a seeded walk.** Every run begins from one integer, the seed,
+printed first and accepted back by `--seed`. Everything the run decides by
+chance descends from that integer through one pseudo-random generator the
+engine holds: which actor moves next, which action it takes, which lie is
+planted and where. Nothing else in the system draws randomness. Drivers and
+adapters are handed one action at a time, execute it against the system under
+test, and report what they saw; they are never given the generator. That is
+what "the engine owns the seed and the action sequence" means in the decided
+list, and the reason is replay: a run must be reproducible from the seed, the
+weight file, the bindings and the project's commit alone. A driver that drew
+its own randomness would make the replay depend on something the seed does not
+carry, and the shrinker below would be shrinking a trace it could not re-run.
+
+**How the walk chooses.** At each step the engine computes the actions that
+are applicable, by evaluating each action's preconditions against the sealed
+ledger and the handle table (an event can be joined only by an actor who knows
+of it; a capacity can be exceeded only if someone is at it). From the
+applicable set it draws one by weight. The weights come from the project's
+`platform.toml`, per stage and profile, so a project tunes what its crowd tends
+to do without touching the engine. The nemesis kinds are action kinds in the
+same pool with their own weights: `suborn` feeds an actor a false claim,
+`canard` is a false tell, `palter` a half-true claim, `essoin` an abandoned
+flow. A lie is therefore scheduled exactly the way an honest action is, which is
+why the control in the vocabulary has no trust model to lean on: the engine
+knows which claims it planted because it planted them, and the statute does
+not.
+
+**The sequence is over handles, not ids.** The walk names entities by run-local
+handles (`alice.event#1`), and the handle table maps each to whatever id the
+server returned on the current attempt. So the same seed yields the same
+sequence of actions on every attempt, even though every attempt's ids differ,
+and two attempts are compared by their findings over handles, never by raw ids
+or by positions. Without that, a replay would diverge at the first id the
+server chose differently, and nothing about the walk could be called
+deterministic.
+
+**Shrinking needs a clean world.** When a run fails, the engine first replays
+the whole failure once on a verified clean rollback. If it does not reproduce,
+the seed is marked unstable and is not shrunk; R14 turns that single replay
+into a repeated check. If it does, the shrinker looks for a shorter trace with
+the same finding: length bisection first, then removal of whole action kinds.
+Every candidate trace is run against a verified clean rollback, through the
+rollback trait (`describe`, `checkpoint`, `restore`, `verify`, `discard`; a
+process-restart provider for the toy system under test). The verify step is not
+optional: a shrink step run on a world the previous step dirtied would
+attribute to the trace what the leftover state did, and the "minimal" trace
+would be minimal only in that world. Shrinking respects bounds, so a trace is
+never shrunk to one that could not have produced its finding under an eventual
+type's bound. The result is a minimal trace: the actions, their positions,
+their handles and the rules that fired. R5 is done when its three toy bugs are
+found from committed seeds and each shrinks to under five actions with every
+step on a verified clean rollback.
+
+**Seeds are promoted, and the promoted ones run first.** A seed that found a
+defect is promoted into `seeds.lock` with a comment naming the defect, and
+committed seeds always run before new ones fill the remaining budget (R22). So
+a project's history of found bugs becomes its regression suite without anyone
+writing a test, and the walk's own output is what grows it.
+
+Two things are open and recorded as such in the epic: whether guided coverage
+weights are committed alongside `seeds.lock`, and the shrinker's name.
 
 ## Knowledge is flattened outside Rego
 
