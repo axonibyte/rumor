@@ -88,23 +88,26 @@ one of each kind is shown here, and the counts in the tally are the whole run's:
 # path-coverage check cannot see a quoted figure (quill r3/12).
 out=$(go run ./cmd/rumor attaint --examples examples) || exit 1
 
-while IFS= read -r want; do
-  [ -z "$want" ] && continue
-  printf '%s\n' "$out" | grep -qxF "$want" || {
-    printf 'docs/cli.md has drifted from the tool; this line is not in its output:\n  %s\n' "$want"
-    exit 1
-  }
-# AND THE TOTAL, because the lines above are a SUBSET check: a new KIND of
-# line that adds no tally field would leave every quoted line matching, the
-# tally unchanged and this block green, while the count in the prose went
-# stale. That is exactly what the two newest kinds did to the previous sample
-# (quill r3/14). A subset check cannot see an addition; the count can.
-[ "$(printf '%s\n' "$out" | grep -vc '^attaint:')" = 28 ] || {
-  printf 'docs/cli.md says the run prints 28 line(s) and it printed %s\n' \
-    "$(printf '%s\n' "$out" | grep -vc '^attaint:')"
+# THE TOTAL IS READ FROM THE PROSE ABOVE, NOT RESTATED HERE. A literal here
+# would be a third copy of one number -- the sentence, the comparison and its
+# message -- and only two of them inside the block a failure points at, so the
+# sentence could go stale while the gate stayed green (quill r3/16). The cost
+# is named rather than skipped: this now depends on that sentence's wording and
+# says so loudly if it is reworded. Two numbers that can disagree is worse.
+want=$(sed -n 's/.*the run prints \([0-9]\{1,\}\) of them.*/\1/p' docs/cli.md)
+[ -n "$want" ] || {
+  echo 'docs/cli.md no longer states how many lines the run prints, so this block cannot check it'
   exit 1
 }
 
+quoted=0
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  quoted=$((quoted + 1))
+  printf '%s\n' "$out" | grep -qxF "$line" || {
+    printf 'docs/cli.md has drifted from the tool; this line is not in its output:\n  %s\n' "$line"
+    exit 1
+  }
 done <<'LINES'
 planted-lie      with-planted               planted lie corroborated   bug rests on the lie
 planted-lie      believed                   killed by m1-ignores-position (from the cases)
@@ -114,6 +117,22 @@ planted-lie      with-planted               cleared by removing 1 planted claim(
 transitive-count charlie-own-lie            planted but not a control: the strip clause is not applied
 attaint: 3 package(s), 17 case(s), 12 rule(s), 19 mutant(s); 1 planted lie(s) corroborated of 4, 1 cleared by removal, 3 planted-not-control; 12 rule(s) killed, 0 unmutated; 0 refusal(s)
 LINES
+
+# BOTH GUARDS BELOW ARE UNCONDITIONAL, which the first cut got wrong: the total
+# sat INSIDE the loop, so emptying the quoted list made the subset check
+# vacuous AND stopped the total ever running -- one list absorbing both guards
+# (quill r3/16). A floor on the list keeps it honest; the total then runs once
+# rather than once per quoted line.
+[ "$quoted" -ge 6 ] || {
+  printf 'the quoted list holds %s line(s): below one per kind it stops being a sample\n' "$quoted"
+  exit 1
+}
+
+got=$(printf '%s\n' "$out" | grep -vc '^attaint:')
+[ "$got" = "$want" ] || {
+  printf 'docs/cli.md says the run prints %s line(s) and it printed %s\n' "$want" "$got"
+  exit 1
+}
 ```
 
 | line | what it records |
