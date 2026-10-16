@@ -132,9 +132,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		// what distinguish a clean tree from an empty one.
 		if _, werr := fmt.Fprintf(stdout,
 			"attaint: %d package(s), %d case(s), %d rule(s), %d mutant(s); "+
-				"%d planted lie(s) corroborated of %d, %d rule(s) killed, %d unmutated; %d refusal(s)\n",
+				"%d planted lie(s) corroborated of %d, %d cleared by removal, %d planted-not-control; "+
+				"%d rule(s) killed, %d unmutated; %d refusal(s)\n",
 			rep.Packages, rep.Cases, rep.Rules, rep.Mutants,
-			rep.Corroborated, rep.PlantedCases, rep.KilledRules, len(rep.Unmutated),
+			rep.Corroborated, rep.PlantedCases, rep.Cleared, rep.PlantedNotControl,
+			rep.KilledRules, len(rep.Unmutated),
 			len(rep.Refusals)); werr != nil {
 			_, _ = fmt.Fprintf(stderr, "attaint: the verdict could not be written: %v\n", werr)
 			return 1

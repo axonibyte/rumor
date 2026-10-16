@@ -59,7 +59,7 @@ statute that had quietly stopped deciding anything would still agree with a case
 file written to match it. `attaint` asks whether the statutes are load-bearing
 at all.
 
-Seven arms, each with its own refusal text. The text is the verdict: a gate reads
+Eight arms, each with its own refusal text. The text is the verdict: a gate reads
 it rather than the exit status, because a drill that trips the wrong arm has not
 demonstrated what it was cut to demonstrate.
 
@@ -72,6 +72,7 @@ demonstrated what it was cut to demonstrate.
 | `rule-killed-by-no-mutant` | a rule no mutant moves on either path: nothing shows it is load-bearing |
 | `mutant-the-statute-has-absorbed` | a mutant that moves nothing, which means the statute has been **weakened** into it |
 | `finding-the-package-can-no-longer-produce` | a finding the fixtures expect and the statute can no longer reach — **a deleted clause** |
+| `the-bug-survives-removing-the-planted-claims` | the strip's **second direction**: with the planted claims removed altogether the run must come back `consistent`, and a bug that outlives the lie was never the lie |
 
 Plus four counting guards — no package, no case, no rule, no mutant — because
 every arm above is satisfied for free by an empty walk.
@@ -86,6 +87,23 @@ planted-lie      rests_on_planted           killed by m3-inverts-finding (from t
 transitive-count explained                  reached by charlie-explained
 attaint: 3 package(s), 17 case(s), 12 rule(s), 19 mutant(s); 1 planted lie(s) corroborated of 4, 12 rule(s) killed, 0 unmutated; 0 refusal(s)
 ```
+
+**The strip has two directions and the contract states both.**
+`docs/vocabulary.md` under `planted`: with the *tag* removed the same run must
+still produce the same `bug` (the committed `stripped-tag` case and drill `d3`),
+and with the planted claims *removed altogether* the run must be `consistent`.
+The second is what proves the bug was the lie rather than an artifact of the
+statute. The counterfactual is **derived**, not committed — an eighteenth case
+under `examples/planted-lie` would move R1's gated 3/17/19 — so attaint rebuilds
+the sealed prefix without the planted claims (and without any tell that passed
+one, since the store refuses a tell whose claim is gone) and re-evaluates.
+
+It applies to cases that **declare themselves corroboration controls**. Three
+cases in `examples/` carry a planted claim incidentally — role-visibility is
+testing visibility, transitive-count knowledge gaps — and the vocabulary's two
+uses of `planted` are both "checks on the engine", so the clause describes a
+fixture using the lie as its control. Those three are **counted and printed**,
+never silently skipped, so the narrowing is visible to a reader.
 
 **Both paths count for the mutation pass.** R2.3 established that three mutants
 are equivalent on the ledger path, because the sealed prefix leaves their

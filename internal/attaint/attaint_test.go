@@ -554,6 +554,34 @@ func TestEveryClauseIsExercised(t *testing.T) {
 			p.mutants["m4-absorbed"] = miniStatute
 			return build(t, p)
 		}},
+		{"a bug that outlives the lie", ClauseStripDoesNotClear, func(t *testing.T) string {
+			// A DEDICATED SCENARIO even though another already raises this
+			// clause: "a control armed and never evaluated" happens to
+			// produce it too, and coverage that depends on a fixture built
+			// for a different arm stops the day that fixture changes. The
+			// overlap is logged by the loop below rather than relied on.
+			//
+			// Two honest claims and one lie, all held, observed value 1: the
+			// bug rests on believing three and seeing one, so removing the
+			// lie leaves believed 2 and the bug stands.
+			p := healthy()
+			c := p.cases["lie"]
+			c.ledger = `{"kind":"claim","position":1,"actor":"a","type":"t","ref":"r1","handles":["r1"]}
+{"kind":"claim","position":2,"actor":"a","type":"t","ref":"r2","handles":["r2"]}
+{"kind":"claim","position":3,"actor":"a","type":"t","ref":"r3","handles":["r3"],"planted":true}
+`
+			c.seal = 3
+			c.known = []string{"r1", "r2", "r3"}
+			c.claims = []map[string]any{
+				{"ref": "r1", "actor": "a", "type": "t", "position": 1, "handle": "r1"},
+				{"ref": "r2", "actor": "a", "type": "t", "position": 2, "handle": "r2"},
+				{"ref": "r3", "actor": "a", "type": "t", "position": 3, "handle": "r3", "planted": true},
+			}
+			c.value = 1
+			c.expect = map[string]any{"believed": 3, "finding": "bug", "rests_on_planted": true}
+			p.cases["lie"] = c
+			return build(t, p)
+		}},
 		{"a finding the package cannot produce", ClauseFindingUnreachable, func(t *testing.T) string {
 			p := healthy()
 			c := p.cases["lie"]
@@ -574,6 +602,11 @@ func TestEveryClauseIsExercised(t *testing.T) {
 		// EACH SCENARIO MUST PRODUCE THE CLAUSE IT IS FOR. Without this the
 		// union could be satisfied by scenarios raising each other's clauses,
 		// and a scenario that stopped working would hide behind its neighbours.
+		for c := range got {
+			if c != sc.want {
+				t.Logf("  note: %q also raised %s", sc.name, c)
+			}
+		}
 		if !got[sc.want] {
 			for _, r := range rep.Refusals {
 				t.Errorf("  %s", r)
@@ -699,6 +732,10 @@ func TestAFailedWriteIsAFailedPass(t *testing.T) {
 			return "writing the inert line"
 		case strings.Contains(line, "reached by"):
 			return "writing the reachability line"
+		case strings.Contains(line, "cleared by removing"):
+			return "writing the clearance line"
+		case strings.Contains(line, "planted but not a control"):
+			return "writing the skip line"
 		}
 		return ""
 	}

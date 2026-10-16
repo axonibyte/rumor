@@ -87,6 +87,13 @@ const (
 	ClauseRuleUnmutated      Clause = "rule-killed-by-no-mutant"
 	ClauseFindingUnreachable Clause = "finding-the-package-can-no-longer-produce"
 	ClauseMutantDead         Clause = "mutant-the-statute-has-absorbed"
+	// ClauseStripDoesNotClear is the strip's SECOND direction, which
+	// docs/vocabulary.md states and nothing checked until R3.2: with the
+	// planted claims REMOVED ALTOGETHER the run must come back `consistent`.
+	// Removing the TAG must leave the same bug (the first direction, driven by
+	// the committed stripped-tag case and drill d3); removing the CLAIMS must
+	// remove it. A bug that survives the lie's removal was never the lie.
+	ClauseStripDoesNotClear Clause = "the-bug-survives-removing-the-planted-claims"
 )
 
 // Report is what one pass measured. Every count is reported even on a refusal,
@@ -97,15 +104,21 @@ type Report struct {
 	Cases         int
 	Rules         int
 	Mutants       int
-	Corroborating int      // packages declaring CorroborationRule
-	PlantedCases  int      // cases whose sealed prefix carries a planted claim
-	Controls      int      // cases declaring themselves corroboration controls
-	Evaluated     int      // of those, controls the observation actually reached
-	Corroborated  int      // of those, bug AND resting on the lie
-	KilledRules   int      // rules killed by at least one mutant
-	Findings      int      // distinct finding values the packages reach
-	DeadMutants   []string // "pkg/mutant" indistinguishable from its own statute
-	Unmutated     []string // "pkg/rule" that no mutant moved -- always named
+	Corroborating int // packages declaring CorroborationRule
+	PlantedCases  int // cases whose sealed prefix carries a planted claim
+	Controls      int // cases declaring themselves corroboration controls
+	Evaluated     int // of those, controls the observation actually reached
+	Corroborated  int // of those, bug AND resting on the lie
+	Cleared       int // planted cases whose bug disappears when the lie is removed
+	// PlantedNotControl counts cases carrying a planted claim that do NOT
+	// declare themselves corroboration controls, so the strip clause is not
+	// applied to them. Reported because the scoping is a narrowing: a reader
+	// has to be able to see how many cases it excluded.
+	PlantedNotControl int
+	KilledRules       int      // rules killed by at least one mutant
+	Findings          int      // distinct finding values the packages reach
+	DeadMutants       []string // "pkg/mutant" indistinguishable from its own statute
+	Unmutated         []string // "pkg/rule" that no mutant moved -- always named
 
 	// LedgerInert is "pkg/mutant" for a mutant that moves NOTHING from the
 	// ledger and something from the cases. That is R2.3's equivalence set,
@@ -224,6 +237,9 @@ func Run(ctx context.Context, dir string, out io.Writer) (Report, error) {
 			return rep, err
 		}
 		if err := reachable(ctx, p, &rep, out); err != nil {
+			return rep, err
+		}
+		if err := stripClears(ctx, p, &rep, out); err != nil {
 			return rep, err
 		}
 	}
@@ -587,6 +603,167 @@ func reachesAPlantedClaim(input map[string]any) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// stripClears runs the strip's SECOND direction over one package.
+//
+// docs/vocabulary.md, `planted`, states two directions and the tree checked
+// one: "with `planted` removed from every planted claim ... the same run must
+// still produce the same `bug` findings, and with the planted claims removed
+// altogether the run must be `consistent`". The first is the committed
+// stripped-tag case and drill d3. This is the second, and it is the direction
+// that proves the bug WAS the lie: a bug that survives the lie's removal was
+// something else all along, and a statute could pass every other arm here
+// while reporting one.
+//
+// THE COUNTERFACTUAL IS DERIVED, NOT COMMITTED, and that is a decision with a
+// reason: an eighteenth case under examples/planted-lie would move R1's gated
+// 3/17/19, which is precisely why rook declined to add a `clock` example
+// (quill rumor/577). Deriving it also makes the check general -- every planted
+// case in every package, rather than one fixture that could be written to
+// pass.
+//
+// TELLS GO WITH THEIR CLAIMS. R2.1 refuses a tell that passes a claim not yet
+// made, so a prefix keeping a tell whose claim was removed would not load at
+// all -- and a refusal there would read as this arm's finding rather than as
+// the counterfactual being unbuildable.
+func stripClears(ctx context.Context, p pkg, rep *Report, out io.Writer) error {
+	for _, c := range p.cases {
+		if !c.planted {
+			continue
+		}
+		// SCOPED TO CASES THAT DECLARE THE CONTROL, and the narrowing is
+		// stated because it is exactly the shape that must not be done
+		// quietly: the arm FIRES on three of the four planted cases in
+		// examples/ and this skips them.
+		//
+		// THE REASON, and it covers these three and nothing wider: the
+		// vocabulary's `planted` section opens "its two uses are both checks
+		// on the engine", and the strip is the second use -- a statement about
+		// a fixture using the lie AS ITS CONTROL. role-visibility's
+		// viewer-own-lie-exceeds and transitive-count's two carry a planted
+		// claim INCIDENTALLY: they are testing visibility and knowledge gaps,
+		// their bug does not rest on the lie (the corroboration arm already
+		// reports they declare no attribution), and removing it leaves a bug
+		// or an explained that was never about the lie.
+		//
+		// WHAT I AM NOT DOING IS DECIDING IT. Read without that scoping the
+		// clause says those three violate the contract, which is a claim about
+		// R1's GATED tree and fable's to rule, not mine at a checkpoint. So
+		// the skipped cases are COUNTED AND PRINTED rather than passed over,
+		// and the question is on the record. If fable rules the unqualified
+		// reading, deleting four lines here restores it.
+		if v, ok := c.expect[CorroborationRule]; !ok || !sameJSON(v, true) {
+			rep.PlantedNotControl++
+			if _, werr := fmt.Fprintf(out,
+				"%-16s %-26s planted but not a control: the strip clause is not applied\n",
+				p.name, c.name); werr != nil {
+				return fmt.Errorf("writing the skip line for %s/%s: %w", p.name, c.name, werr)
+			}
+			continue
+		}
+		// AND THE CONTROL MUST HAVE BEEN EVALUATED, which d4 forced into the
+		// open rather than a review finding: a control that never FIRES is by
+		// construction a case whose bug does not rest on the lie, so removing
+		// the lie cannot clear it and this arm fires too. The two overlap by
+		// necessity, not by a fixture's accident.
+		//
+		// THE SPECIFIC DIAGNOSIS WINS. "The observation reaches no planted
+		// claim" already names the defect exactly; adding "and the bug
+		// survives removing it" is the same fact restated, and it would make
+		// every armed-never-fired case refuse twice -- which fable's "must not
+		// refuse anything else" is precisely about. The strip clause
+		// presupposes the lie is in play; where it is not, the question is not
+		// yet askable.
+		f0, err := engine.Evaluate(ctx, p.statute, p.rules, c.sealed, c.check)
+		if err != nil {
+			return fmt.Errorf("%s/%s: %w", p.name, c.name, err)
+		}
+		reached, err := reachesAPlantedClaim(f0.Input)
+		if err != nil {
+			return fmt.Errorf("%s/%s: %w", p.name, c.name, err)
+		}
+		if !reached {
+			continue
+		}
+		stripped, removed, err := withoutPlantedClaims(c.sealed)
+		if err != nil {
+			return fmt.Errorf("%s/%s: building the claims-removed counterfactual: %w", p.name, c.name, err)
+		}
+		if removed == 0 {
+			// The case is marked planted and the rebuild found nothing to
+			// remove: the two readings of "planted" have diverged and the
+			// silent version of this is an arm that passes over everything.
+			return fmt.Errorf("%s/%s is a planted case and the counterfactual removed no claim", p.name, c.name)
+		}
+		f, err := engine.Evaluate(ctx, p.statute, p.rules, stripped, c.check)
+		if err != nil {
+			return fmt.Errorf("%s/%s: the claims-removed counterfactual did not evaluate: %w", p.name, c.name, err)
+		}
+		if !sameJSON(f.Value, "consistent") {
+			rep.Refusals = append(rep.Refusals, Refusal{ClauseStripDoesNotClear,
+				fmt.Sprintf("%s/%s: with its %d planted claim(s) removed the finding is %v, not consistent -- "+
+					"the bug survives the lie's removal, so it was not the lie",
+					p.name, c.name, removed, f.Value)})
+			continue
+		}
+		rep.Cleared++
+		if _, werr := fmt.Fprintf(out, "%-16s %-26s cleared by removing %d planted claim(s)\n",
+			p.name, c.name, removed); werr != nil {
+			return fmt.Errorf("writing the clearance line for %s/%s: %w", p.name, c.name, werr)
+		}
+	}
+	return nil
+}
+
+// withoutPlantedClaims rebuilds a sealed ledger with every planted claim gone,
+// and with any tell that passed one of them gone with it. It returns the new
+// ledger and how many claims it dropped.
+func withoutPlantedClaims(l *ledger.Ledger) (*ledger.Ledger, int, error) {
+	dropped := map[string]bool{}
+	for _, f := range l.SealedPrefix() {
+		if f.Kind == ledger.KindClaim && f.Planted {
+			dropped[f.Ref] = true
+		}
+	}
+	out := ledger.New(false)
+	highest := 0
+	for _, f := range l.SealedPrefix() {
+		if f.Kind == ledger.KindClaim && f.Planted {
+			continue
+		}
+		if f.Kind == ledger.KindTold && dropped[f.ClaimRef] {
+			continue
+		}
+		if err := out.AppendAt(f); err != nil {
+			return nil, 0, err
+		}
+		if f.Position > highest {
+			highest = f.Position
+		}
+	}
+	if highest == 0 {
+		return nil, 0, fmt.Errorf("removing the planted claims empties the prefix, so there is nothing to judge")
+	}
+	// THE SEAL MOVES DOWN WITH THE LAST SURVIVING FACT WHEN IT HAS TO, and the
+	// store is what forced the question: SealAt refuses a position the ledger
+	// no longer holds ("a seal names a prefix that exists"), which is right --
+	// removing the claim AT the seal leaves that position empty.
+	//
+	// SEALING AT THE HIGHEST REMAINING LOSES NOTHING, which is why this is safe
+	// rather than a weakening: every surviving fact is at or below it, so the
+	// prefix still holds all of them, and the observation at seal+1 still sits
+	// after every one. What changes is only the integer, and v1's own rule is
+	// that a replay assigns its own positions and compares findings, never
+	// positions.
+	seal := l.Seal()
+	if highest < seal {
+		seal = highest
+	}
+	if err := out.SealAt(seal); err != nil {
+		return nil, 0, err
+	}
+	return out, len(dropped), nil
 }
 
 // moved reports whether a rule's value differs between the clean statute and a
