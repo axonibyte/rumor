@@ -80,9 +80,10 @@ _WS_VERSION = re.compile(r"^version\s*=\s*\"(?P<ver>[^\"]+)\"", re.M)
 #
 # WHAT THE TRUNCATION REACHED, MEASURED RATHER THAN ASSUMED -- because my first
 # version of this comment asserted a consequence I had not checked. The only
-# consumer of this map in this file is arm 9's `doc not in trailers`, which reads
-# the KEYS; the gate never prints a reason, and nothing else in the repository
-# reads the trailer at all. So the corrupted value had no consumer here, and no
+# consumer of this map in this file is arm 9's exemption lookup, which reads the
+# KEYS; the gate never prints a reason, and nothing else in the repository reads
+# the trailer at all. (The lookup is now keyed by (commit, doc) rather than by
+# doc -- see arm 9 -- but it still reads only keys.) So the corrupted value had no consumer here, and no
 # arm could have gone red for it -- which is exactly why twelve green arms said
 # nothing about it. The epic's "the reasons are copied into the PR summary" and
 # rook's sign-off on each reason are both hand steps, worked from the commit
@@ -612,9 +613,40 @@ def evaluate(repo: Path, base: str, head: str, today: str | None = None) -> list
 
     # --- arm 9: a source path changed with no mapped doc, and no trailer ---
     coverage = show(repo, head_rev, "docs/coverage.toml")
+    # A RUN'S TRAILERS ARE ITS OWN RUN'S, AND A WIDE BASE LENDS YOU ANOTHER'S.
+    #
+    # Keyed by doc and unioned over the WHOLE range, as this was until quill
+    # measured it (thread:rumor/645), an exemption written for one release
+    # answered for a later one: with 6a27f60 in range, rook's v0.1.12 bump
+    # trailer for docs/release.md covered ibis's unexplained VERSION change at
+    # 8feb0db, two releases on. Same head, only the base moved.
+    #
+    # THE COMMIT IS THE WRONG BOUNDARY AND THE MEASUREMENT SAYS SO. Requiring
+    # the trailer's own commit to have touched the path refuses the project's
+    # convention outright: three of four trailers in v0.1.10..main sit on a
+    # BUMP that touched only CHANGELOG.md and VERSION, because a reason is
+    # written about the RUN and the bump is the one commit that exists per run
+    # and is written last, when the range is known. Driven against each
+    # release's own tool as the control, that rule refused v0.1.12 (7 paths),
+    # v0.1.13 (3) and the queued v0.1.14 (1) -- all three accepted or green
+    # (rook /659 /663, fable's withdrawal at /683).
+    #
+    # SO THE BOUNDARY IS THE RELEASE. A bump from an EARLIER release is only in
+    # range because the base was stale or the branch was cut from another
+    # release's branch; it is not part of this run in any sense the convention
+    # means. The union therefore starts after the last bump strictly before this
+    # run's own, and the bump-for-the-run convention stands untouched. Driven
+    # twice independently, rook /666 and quill /668, agreeing on every row:
+    # v0.1.11..v0.1.14 admitted, 8feb0db's stale-base lending refused on four.
+    prior_bump = None
+    if bump_idx is not None:
+        for idx, rev in enumerate(revs[:bump_idx]):
+            if _SUBJECT.match(subjects[rev]):
+                prior_bump = idx
+    run_revs = revs if prior_bump is None else revs[prior_bump + 1 :]
     trailers: dict[str, str] = {}
     malformed_trailers: list[str] = []
-    for rev in revs:
+    for rev in run_revs:
         read = docs_unchanged(bodies[rev])
         trailers.update(read.exempt)
         malformed_trailers.extend(read.malformed)
@@ -937,6 +969,23 @@ def _world(tmp: Path, today: str) -> Path:
     return repo
 
 
+def _amend_trailer(repo: Path, trailer: str) -> None:
+    """Put a trailer on the commit just made, without rewriting its subject.
+
+    The fixtures need a reason ON THE BUMP, which is where this project writes
+    them; _clean_run commits first, so the trailer is amended in rather than
+    threaded through every caller.
+    """
+    # THE IDENTITY IS PASSED, AS _commit DOES, AND NOT INHERITED. A bare amend
+    # takes the committer from configuration, so this passed in a clone that has
+    # one and exited 128 on the runner -- "Committer identity unknown ... got
+    # 'act_runner@ci.(none)'" -- which failed the gate's own self-test and so
+    # refused a PR for a reason that was never about the PR (run 238, #57).
+    msg = git(repo, "log", "-1", "--format=%B").rstrip("\n")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t",
+        "commit", "-q", "--amend", "-m", msg + "\n\n" + trailer.rstrip("\n"))
+
+
 def _clean_run(repo: Path, today: str, ver: str = "0.2.1") -> None:
     _mk(repo, "VERSION", f"{ver}\n")
     text = (repo / "CHANGELOG.md").read_text()
@@ -1001,7 +1050,7 @@ def _docs_verdict_battery() -> tuple[int, int]:
 # success line, three broken-tool outputs and the empty string.
 EXPECT_DOCS_VERDICT_CHECKS = 7
 
-EXPECT_CASES = 16
+EXPECT_CASES = 19
 EXPECT_TRAILER_CHECKS = 15
 
 
@@ -1346,6 +1395,44 @@ def self_test() -> int:
         _commit(repo, "release: v0.2.1",
                 "Docs-Unchanged: docs/design.md -- the edit is a comment and changes no\n"
                 "command, flag or output\n")
+
+        # THE PAIR THAT PINS THE RELEASE BOUNDARY, both arms on one shape: a range
+    # holding an EARLIER release's bump, whose trailer is the only one offered
+    # for the later run's unexplained path. It must not lend. The twin is the
+    # same range with the trailer on THIS run's own bump, which must still
+    # exempt -- the project's convention, and a rule that broke it would refuse
+    # every release already accepted (fable /683, after rook's accepted-release
+    # control refused v0.1.12, v0.1.13 and the queued v0.1.14).
+    @case("docs-unchanged-no-trailer", "an earlier bump's trailer does NOT lend to a later run")
+    def earlier_bump_does_not_lend(repo):
+        # The earlier release's own change touches an UNMAPPED path on purpose:
+        # a mapped one would be unexplained in this range too and the fixture
+        # would trip its arm twice, which issue 4's rule forbids.
+        _mk(repo, "notes/one.txt", "the earlier release's own change\n")
+        _clean_run(repo, today, ver="0.2.1")          # bump 1, carries the reason
+        _amend_trailer(repo, "Docs-Unchanged: docs/design.md -- the earlier run's reason\n")
+        _mk(repo, "src/two.rs", "// the later release's change, unexplained\n")
+        _clean_run(repo, today, ver="0.2.2")          # bump 2, no trailer
+
+    @case(None, "this run's own bump trailer DOES exempt, with an earlier bump in range")
+    def own_bump_trailer_exempts(repo):
+        _mk(repo, "notes/one.txt", "the earlier release's own change\n")
+        _clean_run(repo, today, ver="0.2.1")
+        _amend_trailer(repo, "Docs-Unchanged: docs/design.md -- the earlier run's reason\n")
+        _mk(repo, "src/two.rs", "// the later release's change\n")
+        _clean_run(repo, today, ver="0.2.2")
+        _amend_trailer(repo, "Docs-Unchanged: docs/design.md -- THIS run's reason\n")
+
+    # THE ACCEPTED-RELEASE CONTROL, which is the arm this project proved a
+    # tightening needs (fable /683): the ordinary shape of every run in
+    # v0.1.10..main -- a feature commit touching a source path, and the reason
+    # on the BUMP, which touched only VERSION and CHANGELOG.md. A rule that
+    # refuses this refuses the history, and two did before this one.
+    @case(None, "the convention itself: a feature commit, the reason on the bump")
+    def the_conventional_run(repo):
+        _mk(repo, "src/two.rs", "// a change whose doc does not move\n")
+        _clean_run(repo, today)
+        _amend_trailer(repo, "Docs-Unchanged: docs/design.md -- the edit is a comment\n")
 
     battery_failures, trailer_checks = _trailer_battery()
     docs_failures, docs_checks = _docs_verdict_battery()

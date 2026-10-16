@@ -129,7 +129,7 @@ file, and emptying the recorded knowledge each turn the suite red.
 ## Self-test the oracle
 
 An oracle is checked before it is trusted, in the same run that trusts it.
-`tools/release-gate.py --self-test` drives sixteen cases, fifteen trailer checks
+`tools/release-gate.py --self-test` drives nineteen cases, fifteen trailer checks
 and seven docs-verdict checks, and asserts that **each arm fires alone**. Each
 count is declared as a constant and asserted in both directions, because a case
 that silently stops running is invisible in a self-consistent total. The
@@ -568,3 +568,27 @@ leaves its other rules standing, so defined findings are printed beside the
 absent one and no second fixture is needed. The general form — if a mutant
 exists that satisfies every assertion in the arm, the arm has one side, however
 many `if`s it contains.
+
+## A tightening needs a control from what the system already accepts
+
+An added refusal is easy to drive in the direction it was written for and easy
+to leave undriven in the other. Both of release-gate arm 9's first two fixes
+were measured only against the run that prompted them — a head already refused
+for other reasons, where nothing legitimate could be lost — and both refused
+the project's own history: keying the `Docs-Unchanged` exemption by commit made
+the gate reject v0.1.12 on seven paths, v0.1.13 on three and the then-queued
+v0.1.14 on one, because three of the four trailers in `v0.1.10..main` sit on a
+bump that touched only `CHANGELOG.md` and `VERSION`.
+
+The control is cheap and it is not the same as the fixture: run the tightened
+check against **inputs the system has already accepted** — each release with
+its own tool as the baseline — and require them to stay admitted. A fixture
+proves the new refusal fires; only an accepted input proves nothing else does.
+`--self-test` therefore carries the ordinary shape of a run in this project —
+a feature commit with the reason on the bump — beside the pair that pins the
+new boundary, because the pair alone passed every version of the rule that was
+wrong.
+
+The general form: a check that only ever gained refusals has been measured in
+one direction. Ask what it now rejects that it used to accept, and measure that
+against history rather than against a fixture written by the same hand.

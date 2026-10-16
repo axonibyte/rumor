@@ -148,6 +148,17 @@ asserts directly. Two further rules, both learned the hard way:
 
 - **A fixture must reach its arm.** A fixture that cannot produce the condition
   is green for the wrong reason, and a green fixture proves nothing.
+- **A claim must rest on objects the reader can reach: cite the FULL sha, and
+  check the object was pushed.** A swept branch leaves its commits *fetchable*
+  by full sha and no longer *discoverable* — `ls-remote` will not list them and
+  a short sha is refused — so the sha in the record is the only route back. An
+  object that was never pushed is unreachable whatever anyone sweeps, which is
+  the measurement that corrected this rule's first draft: a commit absent from
+  the forge was read as swept, and the sweep was innocent (ibis,
+  thread:rumor/660; measured from a clone that had never held it). It sits here
+  rather than beside cal's sweep rule in `README.md`, where this author first
+  put it, because fable sequenced it into this document (thread:rumor/656,
+  /718, /768).
 - **Drive all twelve in one window**, bounded by `git ls-remote origin main`
   before and after and asserted equal. If `main` advances while the twelve sit
   as open PRs, all twelve also fail `not-rebased` and no fixture shows its own
@@ -269,6 +280,41 @@ parsers on the same message and requires the same answer. The reader used to
 keep the well-formed sibling in a broken block, which made it **wider than git**
 on exactly the malformed input; a broken block now exempts nothing.
 - An empty reason does not exempt.
+
+**An exemption belongs to its own RUN, and a wide base lends you another
+run's.** A trailer is a claim about one release — "this run changed X and its
+mapped doc did not, because" — and the gate therefore unions a run's
+`Docs-Unchanged` trailers only from the commits **after the last bump in range
+that is not this run's own**. An earlier release's bump is in range only
+because the base was stale or the branch was cut from another release's
+branch; it is not part of this run in any sense the convention means.
+
+It was unioned over the whole range until quill measured the consequence
+(thread:rumor/645): same head, only the base moved, and ibis's unexplained
+`VERSION` change at 8feb0db passed on **rook's v0.1.12 bump trailer** — a
+different author's reason, two releases earlier, true of its own commit and
+spent on someone else's.
+
+**The commit is the wrong boundary, and the measurement is why.** Requiring the
+trailer's own commit to have touched the path refuses this project's
+convention outright: three of the four trailers in v0.1.10..main sit on a bump
+that touched only `CHANGELOG.md` and `VERSION`, because a reason is written
+about the run and the bump is the one commit that exists per run and is written
+last, when the whole range is known. Driven against each release's own tool as
+the control, that rule refused v0.1.12 on seven paths, v0.1.13 on three and the
+queued v0.1.14 on one — all three accepted or green. The ruling that had asked
+for it was withdrawn on that evidence (fable, thread:rumor/683).
+
+**The accepted-release control is the arm a tightening needs here.** Both
+earlier attempts added refusals and neither asked whether any run already
+accepted would now be refused; the first was verified only against a head that
+was already red, where nothing legitimate could be lost. `--self-test`
+therefore carries the ordinary shape of every run in the history — a feature
+commit touching a source path, the reason on the bump — beside the pair that
+pins the boundary: an earlier bump's trailer must **not** lend to a later run,
+and this run's own bump trailer must still exempt with an earlier bump in
+range. Unioning the whole range again fails the first; starting the union after
+this run's own bump fails the other two and the folded-trailer case with them.
 
 ### The positive control
 
