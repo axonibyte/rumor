@@ -271,6 +271,7 @@ KIND_BOUND_JOB = "bound-job"
 KIND_BOUND_CALL = "bound-call"
 KIND_PIPELINE = "pipeline"
 KIND_EXIT_STATUS = "exit-status"
+KIND_LINT_CAPS = "lint-caps"
 
 KIND_HEADLINES = {
     KIND_BOUND_CALL: "invocation with no bound -- on a single-concurrency "
@@ -280,6 +281,8 @@ KIND_HEADLINES = {
     KIND_PIPELINE:   "pipeline that reports the wrong status -- a failing "
                      "command can leave the step GREEN",
     KIND_EXIT_STATUS: "dead exit-status capture under bash -e",
+    KIND_LINT_CAPS: "golangci-lint run with a default issue cap -- the step's "
+                    "printed count is a SUBSET reported as a total",
 }
 
 
@@ -405,6 +408,53 @@ def check_file(path: Path):
                      "the failing command aborts the step first, so this capture "
                      "and every line after it is dead code -- write `rc=0` then "
                      "`cmd ... || rc=$?`"))
+
+    # --- golangci-lint's issue caps -----------------------------------------
+    # A CAP THAT MOVES THE LIST AND THE SUMMARY TOGETHER IS NOT DETECTABLE FROM
+    # THE OUTPUT. golangci-lint defaults max-same-issues to 3 and
+    # max-issues-per-linter to 50, so a step can print `3 issues: errcheck: 3`
+    # over a tree with four and nothing in that output disagrees with anything.
+    # Task 231 failed on the capped three; the fourth was reached only by
+    # running errcheck directly (thread:rumor/603, /605, wren /607).
+    #
+    # THE BINARY IS SPELLED AS A VARIABLE in ci.yml (`BIN="$GOBIN_DIR/golangci-lint"`),
+    # so a rule keyed on the literal name would match the ASSIGNMENT and never
+    # the invocation -- the same hole the Go resolver opened for the bound
+    # checker. The narrowing is therefore: within one `run:` block, a variable
+    # assigned a value containing `golangci-lint` IS golangci-lint, and only a
+    # line that invokes one of those (or the literal) with the `run`
+    # subcommand is checked. Nothing else in any workflow is touched by it.
+    for m in re.finditer(r"^(\s*)-?\s*run:\s*\|\s*\n((?:\1\s+.*\n?|\s*\n)*)",
+                         text, re.M):
+        body = m.group(2)
+        if "golangci-lint" not in body:
+            continue
+        base = text[:m.start()].count("\n") + 1
+        offset = text[m.start():m.start(2)].count("\n")
+        names = {"golangci-lint"}
+        for rel, raw in enumerate(body.splitlines(), 1):
+            code = raw.strip()
+            if not code or code.startswith("#"):
+                continue
+            a = re.match(r"([A-Za-z_][A-Za-z0-9_]*)=(.*)$", code)
+            if a and "golangci-lint" in a.group(2):
+                names.add("$" + a.group(1))
+                names.add('"$' + a.group(1) + '"')
+                continue
+            toks = code.split()
+            if "run" not in toks:
+                continue
+            if not any(t in names for t in toks):
+                continue
+            missing = [f for f in ("--max-same-issues=0", "--max-issues-per-linter=0")
+                       if f not in toks]
+            if missing:
+                findings.append(
+                    (base + offset + rel - 1, KIND_LINT_CAPS,
+                     f"`golangci-lint run` without {' and '.join(missing)}: "
+                     f"the defaults cap at 3 same-text and 50 per-linter issues "
+                     f"and cap the SUMMARY too, so the step reports a subset as "
+                     f"a total -- {code[:60]}"))
     return findings, [j[0] for j in jobs]
 
 
@@ -743,10 +793,53 @@ jobs:
 """
 
 
+
+# THE CAP DEFECT AND ITS FIX, both arms. The unflagged form is what ci.yml
+# carried when task 231 printed three of four findings; the flagged form must
+# NOT be flagged, or the only way to a green file would be to stop running the
+# linter. The binary is a VARIABLE in both, because that is how ci.yml spells
+# it and a rule that only saw the literal would pass the real file.
+LINT_CAPPED = """
+name: ci
+on: [push]
+jobs:
+  j:
+    runs-on: freebsd-15-jail
+    timeout-minutes: 45
+    steps:
+      - name: golangci-lint
+        run: |
+          set -o pipefail
+          BIN="$GOBIN_DIR/golangci-lint"
+          rc=0
+          timeout 900 "$BIN" run ./... > ../lint.log 2>&1 || rc=$?
+"""
+
+LINT_UNCAPPED = """
+name: ci
+on: [push]
+jobs:
+  j:
+    runs-on: freebsd-15-jail
+    timeout-minutes: 45
+    steps:
+      - name: golangci-lint
+        run: |
+          set -o pipefail
+          BIN="$GOBIN_DIR/golangci-lint"
+          rc=0
+          timeout 900 "$BIN" run --max-same-issues=0 --max-issues-per-linter=0 ./... > ../lint.log 2>&1 || rc=$?
+"""
+
+
 def self_test() -> int:
     import tempfile
     cases = [
         # (name, yaml, must_flag_substrings, must_not_flag)
+        ("golangci-lint run with the default caps reports a subset as a total",
+         LINT_CAPPED, ["without --max-same-issues=0 and --max-issues-per-linter=0"], []),
+        ("the same step with both caps off must NOT be flagged",
+         LINT_UNCAPPED, [], ["max-same-issues"]),
         ("probe-pkg as it shipped wedges the runner", BAD_PKG,
          ["`pkg` runs unbounded", "no timeout-minutes"], []),
         ("ratchet's bounded mirror probe passes", GOOD_MIRROR, [], ["unbounded"]),
@@ -864,7 +957,7 @@ def main(argv) -> int:
         print(f"\n{total} finding(s) across {len(files)} workflow file(s), "
               f"BY CLASS -- they do not share a cause:")
         for kind in (KIND_BOUND_CALL, KIND_BOUND_JOB, KIND_PIPELINE,
-                     KIND_EXIT_STATUS):
+                     KIND_EXIT_STATUS, KIND_LINT_CAPS):
             if counts.get(kind):
                 print(f"  {counts[kind]:>4}  {KIND_HEADLINES[kind]}")
         return 1

@@ -316,7 +316,23 @@ jobs:
             *) echo "golangci-lint is not the pinned 2.14.0: $v. A provisioned copy at the wrong version is a provisioning finding, not something to install over"; exit 1 ;;
           esac
           rc=0
-          timeout 900 "$BIN" run ./... > ../lint.log 2>&1 || rc=$?
+          # BOTH CAPS OFF, because a capped count reads as a complete one.
+          # golangci-lint defaults `issues.max-same-issues` to 3 and
+          # `issues.max-issues-per-linter` to 50 (`pkg/commands/flagsets.go`
+          # lines 118 and 120 in v2.14.0), and max-same-issues caps on the
+          # issue TEXT (`pkg/result/processors/max_same_issues.go`, keyed on
+          # `issue.Text`) -- so N identical findings are REPORTED as 3 and the
+          # remainder goes to `Infof`, which this step's `tail -30` cannot
+          # reach. MEASURED on f9ba5c9 with this same 2.14.0 binary: the
+          # default run prints `3 issues: errcheck: 3` and the same tree with
+          # these flags prints `4 issues: errcheck: 4`, the fourth being
+          # internal/attaint/attaint.go:517. Task 231 failed on the capped
+          # three; fixing exactly those would have failed task 232 on the
+          # fourth. The cap moves the list and the summary together, so nothing
+          # inside that output disagrees with anything and a reader cannot tell
+          # a cap from a count -- wren, thread:rumor/607. tools/check-workflows.py
+          # pins both flags here.
+          timeout 900 "$BIN" run --max-same-issues=0 --max-issues-per-linter=0 ./... > ../lint.log 2>&1 || rc=$?
           tail -30 ../lint.log
           test "$rc" -eq 124 && { echo "HANG: golangci-lint exceeded 900s. RUNNER finding."; exit 124; }
           test "$rc" -eq 0 || { echo "golangci-lint exited $rc: a linter fired, named above"; exit "$rc"; }
