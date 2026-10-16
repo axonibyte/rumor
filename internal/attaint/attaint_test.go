@@ -882,3 +882,86 @@ func TestEveryArmHasAPermittedTwin(t *testing.T) {
 	t.Logf("PROOF %d clause(s), each with a permitted twin it declines on: %d derived from the healthy package, %d named",
 		len(declared), derived, named)
 }
+
+// AN UNDEFINED FINDING IS NOT A SURVIVING BUG. quill r3/10 graded this latent:
+// the arm read f.Value without consulting f.Defined, so a statute yielding no
+// finding printed "the finding is <nil> ... the bug survives the lie's
+// removal" -- false, nothing survived. Unreachable while every statute carries
+// `default finding`, and nothing requires one.
+func TestAnUndefinedFindingIsNotReportedAsASurvivingBug(t *testing.T) {
+	p := healthy()
+	// No `default finding`, so the rule is undefined whenever its one clause
+	// does not hold.
+	p.statute = strings.Replace(p.statute, "default finding := \"bug\"\n\n", "", 1)
+	for id := range p.mutants {
+		p.mutants[id] = strings.Replace(p.mutants[id], "default finding := \"bug\"\n\n", "", 1)
+	}
+	c := p.cases["lie"]
+	c.ledger = `{"kind":"claim","position":1,"actor":"a","type":"t","ref":"r1","handles":["r1"]}
+{"kind":"claim","position":2,"actor":"a","type":"t","ref":"r2","handles":["r2"]}
+{"kind":"claim","position":3,"actor":"a","type":"t","ref":"r3","handles":["r3"],"planted":true}
+`
+	c.seal = 3
+	c.known = []string{"r1", "r2", "r3"}
+	c.claims = []map[string]any{
+		{"ref": "r1", "actor": "a", "type": "t", "position": 1, "handle": "r1"},
+		{"ref": "r2", "actor": "a", "type": "t", "position": 2, "handle": "r2"},
+		{"ref": "r3", "actor": "a", "type": "t", "position": 3, "handle": "r3", "planted": true},
+	}
+	c.value = 1 // believed 3 before, 2 after: the clause never holds, so undefined
+	c.expect = map[string]any{"believed": 3, "rests_on_planted": true}
+	p.cases["lie"] = c
+
+	rep := run(t, build(t, p))
+	var found string
+	for _, r := range rep.Refusals {
+		if r.Clause == ClauseStripDoesNotClear {
+			found = r.Detail
+		}
+	}
+	if found == "" {
+		for _, r := range rep.Refusals {
+			t.Errorf("  %s", r)
+		}
+		t.Fatalf("no %s refusal at all", ClauseStripDoesNotClear)
+	}
+	if !strings.Contains(found, "NO finding at all") {
+		t.Errorf("the refusal does not say the statute answered nothing:\n  %s", found)
+	}
+	// THE REGRESSION ITSELF: the old sentence claimed survival.
+	if strings.Contains(found, "the bug survives") {
+		t.Errorf("an undefined finding is reported as a surviving bug:\n  %s", found)
+	}
+	t.Logf("PROOF %s", found)
+}
+
+// A REF ON BOTH A PLANTED AND AN HONEST CLAIM IS REFUSED BY NAME. quill r3/10:
+// the store enforces no ref uniqueness, so dropping tells by ref would drop
+// tells passing the HONEST claim -- silently changing what the observer knows
+// in the very counterfactual being measured.
+func TestADuplicatedRefAcrossPlantedAndHonestIsRefused(t *testing.T) {
+	p := healthy()
+	c := p.cases["lie"]
+	c.ledger = `{"kind":"claim","position":1,"actor":"a","type":"t","ref":"dup","handles":["h1"]}
+{"kind":"claim","position":2,"actor":"a","type":"t","ref":"dup","handles":["h2"],"planted":true}
+`
+	c.seal = 2
+	c.known = []string{"dup"}
+	c.claims = []map[string]any{
+		{"ref": "dup", "actor": "a", "type": "t", "position": 1, "handle": "h1"},
+		{"ref": "dup", "actor": "a", "type": "t", "position": 2, "handle": "h2", "planted": true},
+	}
+	c.expect = map[string]any{"believed": 1, "finding": "bug", "rests_on_planted": true}
+	p.cases["lie"] = c
+
+	var out bytes.Buffer
+	_, err := Run(context.Background(), build(t, p), &out)
+	if err == nil {
+		t.Fatal("a ref carried by both a planted and an honest claim was accepted: " +
+			"the counterfactual silently drops tells passing the honest one")
+	}
+	if !strings.Contains(err.Error(), "carried by both a planted and an honest claim") {
+		t.Fatalf("refused for the wrong reason: %v", err)
+	}
+	t.Logf("PROOF %v", err)
+}

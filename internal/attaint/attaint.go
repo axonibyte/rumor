@@ -700,6 +700,21 @@ func stripClears(ctx context.Context, p pkg, rep *Report, out io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("%s/%s: the claims-removed counterfactual did not evaluate: %w", p.name, c.name, err)
 		}
+		// UNDEFINED IS NOT SURVIVAL, and the distinction is this project's own:
+		// a finding is a rule that HOLDS, and absence is key-absence (quill
+		// r3/10). Without this branch an undefined finding printed "the
+		// finding is <nil> ... the bug survives the lie's removal", which is
+		// false -- nothing survived, the statute answered nothing. Unreachable
+		// while all three statutes carry `default finding`; nothing requires
+		// one, so it is one default-less statute away.
+		if !f.Defined {
+			rep.Refusals = append(rep.Refusals, Refusal{ClauseStripDoesNotClear,
+				fmt.Sprintf("%s/%s: with its %d planted claim(s) removed the statute yields NO finding at "+
+					"all, so nothing says the run came back consistent -- an absent finding is not a verdict "+
+					"and must not be read as one",
+					p.name, c.name, removed)})
+			continue
+		}
 		if !sameJSON(f.Value, "consistent") {
 			rep.Refusals = append(rep.Refusals, Refusal{ClauseStripDoesNotClear,
 				fmt.Sprintf("%s/%s: with its %d planted claim(s) removed the finding is %v, not consistent -- "+
@@ -720,16 +735,40 @@ func stripClears(ctx context.Context, p pkg, rep *Report, out io.Writer) error {
 // and with any tell that passed one of them gone with it. It returns the new
 // ledger and how many claims it dropped.
 func withoutPlantedClaims(l *ledger.Ledger) (*ledger.Ledger, int, error) {
+	// REFS ARE NOT UNIQUE IN THE STORE, so the tell filter below cannot assume
+	// a ref identifies one claim (quill r3/10). If a ref is carried by BOTH a
+	// planted and an honest claim, dropping tells by ref would drop tells that
+	// pass the honest one -- silently changing what the observer knows in the
+	// counterfactual, which is the thing this arm is measuring. Nothing in the
+	// tree produces such a ledger and nothing forbids one, so it is refused by
+	// name rather than resolved by a guess about which claim a tell meant.
 	dropped := map[string]bool{}
+	honest := map[string]bool{}
 	for _, f := range l.SealedPrefix() {
-		if f.Kind == ledger.KindClaim && f.Planted {
+		if f.Kind != ledger.KindClaim {
+			continue
+		}
+		if f.Planted {
 			dropped[f.Ref] = true
+		} else {
+			honest[f.Ref] = true
+		}
+	}
+	for ref := range dropped {
+		if honest[ref] {
+			return nil, 0, fmt.Errorf("the ref %q is carried by both a planted and an honest claim, so "+
+				"removing the planted one cannot be told from removing the honest one and a tell passing "+
+				"it cannot be attributed", ref)
 		}
 	}
 	out := ledger.New(false)
-	highest := 0
+	highest, removed := 0, 0
 	for _, f := range l.SealedPrefix() {
 		if f.Kind == ledger.KindClaim && f.Planted {
+			// COUNTED PER CLAIM, not per distinct ref: the count appears in
+			// the operator's line and a ref-keyed count would understate a
+			// ledger carrying two planted claims under one ref.
+			removed++
 			continue
 		}
 		if f.Kind == ledger.KindTold && dropped[f.ClaimRef] {
@@ -763,7 +802,7 @@ func withoutPlantedClaims(l *ledger.Ledger) (*ledger.Ledger, int, error) {
 	if err := out.SealAt(seal); err != nil {
 		return nil, 0, err
 	}
-	return out, len(dropped), nil
+	return out, removed, nil
 }
 
 // moved reports whether a rule's value differs between the clean statute and a

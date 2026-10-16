@@ -77,16 +77,27 @@ demonstrated what it was cut to demonstrate.
 Plus four counting guards — no package, no case, no rule, no mutant — because
 every arm above is satisfied for free by an empty walk.
 
-One line per corroborated control, per rule killed (naming the mutant **and the
-path**), and per finding reached, then a tally:
+**Six kinds of line**, then a tally. Over `examples/` the run prints 28 of them;
+one of each kind is shown here, and the counts in the tally are the whole run's:
 
 ```
 planted-lie      with-planted               planted lie corroborated   bug rests on the lie
 planted-lie      believed                   killed by m1-ignores-position (from the cases)
-planted-lie      rests_on_planted           killed by m3-inverts-finding (from the ledger)
-transitive-count explained                  reached by charlie-explained
-attaint: 3 package(s), 17 case(s), 12 rule(s), 19 mutant(s); 1 planted lie(s) corroborated of 4, 12 rule(s) killed, 0 unmutated; 0 refusal(s)
+planted-lie      m1-ignores-position        alive from the cases only (the seal reaches its clause)
+planted-lie      bug                        reached by stripped-tag
+planted-lie      with-planted               cleared by removing 1 planted claim(s)
+transitive-count charlie-own-lie            planted but not a control: the strip clause is not applied
+attaint: 3 package(s), 17 case(s), 12 rule(s), 19 mutant(s); 1 planted lie(s) corroborated of 4, 1 cleared by removal, 3 planted-not-control; 12 rule(s) killed, 0 unmutated; 0 refusal(s)
 ```
+
+| line | what it records |
+|---|---|
+| `planted lie corroborated` | a control fired and the bug rests on the lie |
+| `killed by <mutant> (from the <path>)` | a rule some mutant moves, naming which and on which path |
+| `alive from the cases only` | a mutant inert on the ledger because the seal reaches its clause — R2.3's equivalence set, measured |
+| `reached by <case>` | a finding the package can still produce |
+| `cleared by removing N planted claim(s)` | the strip's second direction: the bug went when the lie did |
+| `planted but not a control` | a case carrying a planted claim the strip clause is **not** applied to — printed so the narrowing below is visible rather than asserted |
 
 **The strip has two directions and the contract states both.**
 `docs/vocabulary.md` under `planted`: with the *tag* removed the same run must
