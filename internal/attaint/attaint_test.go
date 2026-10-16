@@ -10,6 +10,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -725,4 +726,122 @@ func TestAFailedWriteIsAFailedPass(t *testing.T) {
 	}
 	t.Logf("PROOF %d write position(s) over %d distinct site(s), each refused in turn and each naming itself",
 		lines, len(seen))
+}
+
+// EVERY ARM HAS A PERMITTED TWIN, AND THE PAIRING IS DERIVED RATHER THAN
+// MAINTAINED.
+//
+// ratchet set the rule in R2.1: "a refusal arm that never sees the accepted
+// case cannot tell 'refuses correctly' from 'refuses always'". Every clause in
+// this package has a refusing case -- TestEveryClauseIsExercised proves that
+// against the declared set. This proves the other side: for each clause there
+// is a tree differing in the ONE THING the clause is about on which it does
+// NOT fire.
+//
+// WHY A SECOND TEST AND NOT A COLUMN IN THE FIRST: the two make different
+// claims and fail for different reasons. "Every clause fires somewhere" is
+// about coverage; "every clause can decline to fire" is about discrimination,
+// and an arm hard-wired to refuse passes the first and fails this one.
+//
+// THE TWIN IS DERIVED, NOT LISTED. For every clause whose refusal is a thing
+// REMOVED from a healthy tree -- no package, no case, no mutant, no rule, no
+// control declared, a lie nobody notices, a tag stripped, a finding made
+// unreachable -- the twin is the healthy package itself, which has all of
+// them. Only the two clauses whose refusal is a thing ADDED need their own
+// twin, and they are named with the reason.
+func TestEveryArmHasAPermittedTwin(t *testing.T) {
+	declared := declaredClauses(t)
+	if len(declared) == 0 {
+		t.Fatal("parsed no Clause constants out of attaint.go: the comparison would be vacuous")
+	}
+
+	// The healthy package is the universal twin: nothing is missing from it,
+	// nothing is absorbed, every rule is attacked and the control fires.
+	healthyDir := build(t, healthy())
+	var buf bytes.Buffer
+	base, err := Run(context.Background(), healthyDir, &buf)
+	if err != nil {
+		t.Fatalf("the healthy package did not run: %v", err)
+	}
+	if !base.OK() {
+		for _, r := range base.Refusals {
+			t.Errorf("  %s", r)
+		}
+		t.Fatalf("the universal twin refused %d time(s), so no arm below has a clean counterpart",
+			len(base.Refusals))
+	}
+
+	// The two clauses whose refusal is an ADDITION rather than an absence need
+	// a twin of their own: removing the addition is what the twin shows.
+	special := map[Clause]struct {
+		why   string
+		build func(t *testing.T) string
+	}{
+		ClauseMutantDead: {
+			why: "a mutant that DOES move a rule, so the arm declines where the absorbed one fired",
+			build: func(t *testing.T) string {
+				p := healthy()
+				// Not identical to the statute: differs by one rule, so it is
+				// alive. The absorbed twin in the other test IS the statute.
+				p.mutants["m4-not-absorbed"] = miniMutant
+				return build(t, p)
+			},
+		},
+		ClauseRuleUnmutated: {
+			why: "a rule ADDED to the statute that a mutant also moves, where the untouched one did not",
+			build: func(t *testing.T) string {
+				p := healthy()
+				p.statute += "\nalsoattacked := 7\n"
+				for id := range p.mutants {
+					p.mutants[id] += "\nalsoattacked := 8\n" // moved, so attacked
+				}
+				p.rules = append(p.rules, "alsoattacked")
+				c := p.cases["lie"]
+				c.expect["alsoattacked"] = 7
+				p.cases["lie"] = c
+				return build(t, p)
+			},
+		},
+	}
+
+	clauses := make([]string, 0, len(declared))
+	for c := range declared {
+		clauses = append(clauses, string(c))
+	}
+	sort.Strings(clauses)
+
+	derived, named := 0, 0
+	for _, name := range clauses {
+		c := Clause(name)
+		dir, why := healthyDir, "the healthy package, which lacks nothing"
+		if sp, ok := special[c]; ok {
+			dir, why = sp.build(t), sp.why
+			named++
+		} else {
+			derived++
+		}
+		var out bytes.Buffer
+		rep, err := Run(context.Background(), dir, &out)
+		if err != nil {
+			t.Errorf("%s: the twin tree did not run: %v", c, err)
+			continue
+		}
+		fired := false
+		for _, r := range rep.Refusals {
+			if r.Clause == c {
+				fired = true
+				t.Errorf("%s fired on its permitted twin (%s): the arm refuses where it should accept, "+
+					"so a passing run proves nothing about it -- %s", c, why, r.Detail)
+			}
+		}
+		if !fired {
+			t.Logf("  %-42s declines on %s", c, why)
+		}
+	}
+
+	if derived+named != len(declared) {
+		t.Fatalf("%d twin(s) over %d declared clause(s)", derived+named, len(declared))
+	}
+	t.Logf("PROOF %d clause(s), each with a permitted twin it declines on: %d derived from the healthy package, %d named",
+		len(declared), derived, named)
 }
