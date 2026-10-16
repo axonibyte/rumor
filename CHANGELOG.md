@@ -3,6 +3,31 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.16 — 2026-10-16
+
+**A `Docs-Unchanged` exemption belongs to its own release run.** Arm 9 of the
+release gate unioned every trailer in the range and matched by document, so a
+reason written for one release answered for a later one: with v0.1.12's bump in
+range, its `docs/release.md` reason covered an unexplained `VERSION` change two
+releases on — same head, only the base moved.
+
+- **The boundary is the release, not the commit.** The union starts after the
+  last bump in range that is not this run's own, since an earlier release's bump
+  is in range only because the base was stale or the branch was cut from another
+  release's branch. The convention stands untouched: a reason is written about
+  the run, on the bump, last, when the range is known.
+- **The commit boundary was tried first and refused the project's own
+  history** — v0.1.12 on seven paths, v0.1.13 on three, the then-queued v0.1.14
+  on one — because three of the four trailers in `v0.1.10..main` sit on a bump
+  that touched only `CHANGELOG.md` and `VERSION`.
+- **The accepted-release control is the arm a tightening needs here**, and
+  neither earlier attempt ran it: `--self-test` now carries the ordinary shape
+  of every run in this history beside the pair that pins the boundary both ways.
+- **Citing an object a reader can reach** is written down beside the
+  fixture-branch rules: a swept branch leaves its commits fetchable by full sha
+  and no longer discoverable, and an object never pushed is unreachable whatever
+  anyone sweeps.
+
 ## 0.1.15 — 2026-10-16
 
 Three fixes from one night's reading of this project's own instruments, and the
