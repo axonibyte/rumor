@@ -551,3 +551,20 @@ coverage check cannot see a quoted figure.
 A sample that asserts itself closes it with no new checker. Drive both
 directions before trusting one: it must pass as committed **and** fail on a
 drifted figure, a shrunken quote list, and a reworded sentence it reads from.
+
+## An assertion pair both halves of a mutant satisfy is one assertion
+
+A test that asserts a wrong rendering is ABSENT and a right one is PRESENT
+looks two-sided and is not. `internal/examples`' first absence arm required the
+output to contain no `<nil>` and to contain `no finding` — and a renderer
+answering `no finding` for EVERY case satisfies both, which is a worse defect
+than the one the arm was added for. It was found by a reviewer running that
+mutant rather than by reading the diff: the engine's twin arm failed it and the
+walk's passed.
+
+The repair is an assertion on a real value in the same run, and the fixture
+usually already supplies one: removing `default finding` from a copied package
+leaves its other rules standing, so defined findings are printed beside the
+absent one and no second fixture is needed. The general form — if a mutant
+exists that satisfies every assertion in the arm, the arm has one side, however
+many `if`s it contains.

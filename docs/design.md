@@ -382,6 +382,24 @@ refuses such a module statically instead of running it. `tests/statute` still
 asks the other question — whether the committed statutes and mutants call
 `print` — with two oracles.
 
+### An absent finding is not a finding of nil
+
+`Finding.Defined` is false when the statute yielded no finding at all, and
+`Finding.Says()` is how a reader is told so: the value when one was defined, an
+explicit absence when none was. The method exists because the field is easy to
+forget and the forgetting is silent — a consumer formatting `Value` directly
+prints `<nil>`, which reads as a verdict OF nil rather than as no verdict, and
+the difference is this document's own: a finding is a rule that **holds**, while
+absence is key-absence. Both consumers of `Finding` ignored the field until it
+was measured, so the sentence lives beside it rather than in each caller.
+
+Nothing in the committed corpus reaches the state: every statute carries
+`default finding`, nothing requires one, and a `pending` verdict is `Judge`'s
+and cannot arrive through `Evaluate`. It is a latent defect closed at the
+source, and the tests reach the state with a default-less statute written in
+the test rather than added to `examples/`, whose case and package counts
+`rumor attaint` asserts.
+
 ## `pending` is an overlay, and the clock is a ledger fact
 
 `pending` needs two things no v1 statute has: the bound declared for an

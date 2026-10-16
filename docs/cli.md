@@ -32,6 +32,12 @@ row, with the `default` marked — and the size of the retained evaluation trace
 A case whose finding disagrees with the verdict the example authored is named
 on its own line with the rule and both values.
 
+A case whose statute defines **no** finding prints `no finding` in that column,
+not `<nil>`: the walk renders `engine.Finding.Says()` rather than the value, so
+an absent verdict reads as an absence instead of as a verdict of nil. No
+committed example reaches it — every statute carries a `default` — and the
+tests plant one by removing that line.
+
 This is issue 44's "under one command": the equality `tests/engine` asserts in
 the suite, re-runnable by anyone holding the binary and readable without a Go
 toolchain.
