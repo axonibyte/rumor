@@ -3,6 +3,50 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.12 — 2026-10-16
+
+quill's second review, collected: the stale quotations and the fixtures that
+outlived their mechanism, with a permanent instrument for the class.
+
+- **Two quotations of `docs/vocabulary.md` in `internal/engine/pending.go` were
+  accurate when written and false thirty minutes later — in the same tag.** The
+  amendment commit reworded both entries four commits after the file quoted
+  them, and both are in v0.1.11. One of them also reported a discrepancy as open
+  and sent the reader to `thread:breakout-r2` for a call that had already been
+  made and carried into the document above it (quill rumor/577, Q1).
+- **A third misquote the oracle found and the review did not**:
+  `internal/flatten/doc.go` quoted "Rules never follow tells." with a full stop
+  where the document has a semicolon. Punctuation altered inside quotation marks
+  is still a misquote.
+- **`tests/vocabulary` holds every attributed quote in the tree to the
+  document's current text** — 13 of them, the count declared so a sweep that
+  finds none fails rather than passes, over a document whose normalised length
+  is checked for the same reason. The attribution width is a *measurement*:
+  checking every quoted span produced seven false positives for one real
+  finding, because comments quote the epic and issue 44 in the same breath.
+  Three normalisations — whitespace, markdown emphasis, case — each earned by a
+  real quote here; without them the oracle reports three defects that are not
+  there. **No exception for historical quotes**: a comment discussing an old
+  wording describes it rather than quoting it, because an exception is the hole
+  a stale quote hides in.
+- **The three sentences corrected in `planted-lie/statute.rego` at v0.1.8 were
+  left in all six of its mutants** (quill rumor/584, Q2): ADR 0001 cited by its
+  drafting thread, the print ban described in Regorus's API, and the flattening
+  said to be in Rust. 18 hits over 22 `.rego` files, re-swept to 0 after the
+  fix. A mutant is what a reader opens when a mutant fails, so a fixture naming
+  a harness that does not exist sends them looking for a call that is not there.
+- **A pin catches an edit; it cannot catch a birth defect.** The drift pins hold
+  three statutes and three `rules.json` and no mutant, and these sentences were
+  false the day the mutants were cut — copied from the statute's header before
+  the statute was corrected. So the guard is a sweep:
+  `TestNoFixtureNamesARetiredMechanism` forbids five retired names across all 77
+  files under `examples/`, with a positive control so an unreadable path cannot
+  report a clean corpus by reading nothing, and a self-test driving a stale
+  header against a corrected one.
+- Not in this release: **quill's Q3**, four Rust-era nouns still in the epic's
+  Decided list, whose fourth bullet is the authority the three already-fixed
+  "in Rust" sentences were derived from. The epic's body is cal's, not a commit.
+
 ## 0.1.11 — 2026-10-15
 
 R2.3: evaluation — a finding with its rule and its trace, the examples driven
