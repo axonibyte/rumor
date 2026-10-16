@@ -121,10 +121,23 @@ LINES
 # BOTH GUARDS BELOW ARE UNCONDITIONAL, which the first cut got wrong: the total
 # sat INSIDE the loop, so emptying the quoted list made the subset check
 # vacuous AND stopped the total ever running -- one list absorbing both guards
-# (quill r3/16). A floor on the list keeps it honest; the total then runs once
-# rather than once per quoted line.
-[ "$quoted" -ge 6 ] || {
-  printf 'the quoted list holds %s line(s): below one per kind it stops being a sample\n' "$quoted"
+# (quill r3/16). The total now runs once rather than once per quoted line.
+#
+# AND THE LIST'S OWN FLOOR IS DERIVED FROM THE TABLE ABOVE, not remembered: a
+# literal 6 permitted exactly the deletion it was added to refuse, because the
+# list quotes one line per kind PLUS the tally and so holds seven (quill
+# r3/18). Counting the table's rows makes the two convict each other -- a kind
+# added to the table without a sample, or a sample deleted without the table,
+# fails here. The sed range BOUNDS it to that table: a bare grep over the page
+# returns 20, because the clause table matches the same shape.
+kinds=$(sed -n '/^| line | what it records |/,/^$/p' docs/cli.md | grep -c '^| `')
+[ "$kinds" -gt 0 ] || {
+  echo 'docs/cli.md no longer tabulates the kinds of line, so this block cannot check the sample'
+  exit 1
+}
+[ "$quoted" -eq $((kinds + 1)) ] || {
+  printf 'the quoted list holds %s line(s); the table names %s kind(s), so it should hold %s\n' \
+    "$quoted" "$kinds" "$((kinds + 1))"
   exit 1
 }
 
