@@ -14,7 +14,7 @@
 //
 //  1. REACHABILITY IS A GRAPH WALK, AND A RULE THAT FOLLOWED TELLS WOULD BE A
 //     DIFFERENT STATUTE. The vocabulary is explicit: "Rules never follow
-//     tells." If knowledge were derived inside the statute, every statute
+//     tells". If knowledge were derived inside the statute, every statute
 //     would carry that derivation, and a statute that got it subtly wrong
 //     would produce a finding that looks like a verdict about the system
 //     under test while actually being a verdict about its own bookkeeping.

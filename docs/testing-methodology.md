@@ -348,3 +348,45 @@ The comparison is now against the case's own claims filtered to the case's
 bound — computed from the case, not read from the `.seal.json`, which records
 the same relation and would make the arm agree with a file instead of with a
 case.
+
+## A comment that quotes a document is a claim about that document
+
+R2.3 shipped two quotations of `docs/vocabulary.md` that were accurate when
+written and false thirty minutes later — **in the same tag**. The amendment
+commit reworded both entries, four commits after the file that quoted them, and
+one of those comments also reported a discrepancy as open and sent the reader to
+a thread for a decision the same tag had already made. Nothing noticed, because
+no test read those strings. quill found it by eye (rumor/577), as the pivot's
+`"in Rust"` and the stale ADR citation were found by eye before it.
+
+`tests/vocabulary` is the check. Three things about building it are the
+transferable part:
+
+**Attribution has to be narrow, and the width is a measurement not a taste.**
+The first version checked every quoted span in every comment. Measured against
+the tree, that produced **seven false positives for one real finding** —
+comments quote the epic, issue 44 and their own emphasis in the same breath. An
+oracle that cries wolf seven times is one nobody reads, which is a worse outcome
+than no oracle. Narrowing to quotes adjacent to a vocabulary citation found the
+real defect with nothing spurious; widening it slightly to the prose citation
+forms (`the vocabulary`, `v1`) caught the second real defect too.
+
+**Normalise what the medium changes, not what the author wrote.** Three
+normalisations each earned their place from a real quote here: whitespace,
+because quotations and the document both wrap and a line-oriented matcher
+reports ABSENT for text that is present; markdown emphasis, because the document
+writes a position as `*p*` and the quoting comment writes `p`; and case, because
+a sentence quoted mid-prose loses its capital and one file emphasises a clause
+in capitals. Without these the oracle reports three defects that are not there.
+
+**Give the oracle no exception for historical quotes.** The first fix for the
+stale quote *quoted the superseded sentence* while explaining it — which the
+oracle must flag, since that is exactly the shape it hunts. The resolution is
+not an exemption but a rule for comments: **a comment that needs to discuss an
+old wording describes it rather than quoting it.** An exception is the hole a
+stale quote hides in.
+
+And the line-break trap caught three readers in a row — quill's first sweep, the
+first version of this oracle, and a `grep -o` I ran to check one of its findings.
+A quotation that wraps is one quotation; any instrument that reads lines will
+disagree.

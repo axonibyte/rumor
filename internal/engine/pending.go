@@ -8,19 +8,27 @@ import (
 )
 
 // THE CLOCK AND `pending`, which R2.3 is where the vocabulary says they get
-// driven (docs/vocabulary.md, Fact kinds: "no example exercises `clock` until
-// R2.3 drives one"). Both are driven here, in this package's tests, and not by
-// a fourth example package: v1 says plainly that `pending` "has no example yet"
-// because it needs an `eventual` type with a bound declared in the bindings and
-// the bindings artefact arrives with R4. Adding an example would also move
-// tests/statute's declared 3/17/19, which are R1's gated numbers.
+// driven (docs/vocabulary.md, Fact kinds: "no example carries a `clock` fact
+// until R2.3 drives one"). Both are driven here, in this package's tests, and
+// not by a fourth example package: v1 says plainly that `pending` "has no
+// example yet" because it needs an `eventual` type with a bound declared in the
+// bindings and the bindings artefact arrives with R4. Adding an example would
+// also move tests/statute's declared 3/17/19, which are R1's gated numbers.
 //
-// A MEASUREMENT AGAINST THE SAME ENTRY, reported rather than quietly fixed: the
-// vocabulary states that "`told` and `clock` facts appear in the examples'
-// ledger files (R2.1)". `told` facts appear in 11 of the 17; `clock` facts
-// appear in NONE of them. Whether the sentence is amended or R2.1's files gain
-// a clock fact is fable's and ratchet's call, not this run's -- asked on
-// thread:breakout-r2.
+// A MEASUREMENT AGAINST THE SAME ENTRY, AND IT IS NOW SETTLED. This comment
+// used to report the Fact kinds note's told/clock claim as an open discrepancy
+// -- `told` in 11 of the 17 ledger files, `clock` in none -- and leave the call
+// to fable and ratchet on thread:breakout-r2. They made it: fable worded the
+// amendment at breakout-r2/19 and it landed in the same tag as this file, so the
+// entry now counts what is there and names the `clock` gap outright. Reporting
+// rather than quietly fixing was right; the report outlived its question by half
+// an hour, which quill found at rumor/577.
+//
+// THE SUPERSEDED WORDING IS DESCRIBED HERE AND NOT QUOTED, deliberately.
+// tests/vocabulary holds every attributed quote in this tree to the document's
+// CURRENT text with no exception for historical ones, because an exception is
+// exactly the hole a stale quote hides in. A comment that needs to talk about
+// an old wording says what it said.
 
 // Eventual declares a claim type whose agreement is allowed to lag, with the
 // bound inside which a disagreement is `pending` rather than a defect.

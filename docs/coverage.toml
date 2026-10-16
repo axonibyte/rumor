@@ -74,6 +74,14 @@ path = "tests/engine/*.go"
 docs = ["docs/testing-methodology.md", "docs/vocabulary.md"]
 
 [[entry]]
+# The quote oracle. Mapped to the vocabulary because that is the document it
+# reads and holds this tree's comments to, and to the testing methodology
+# because what it establishes is a METHOD -- a comment quoting a document is a
+# claim about that document, and claims about things that move need a check.
+path = "tests/vocabulary/*.go"
+docs = ["docs/vocabulary.md", "docs/testing-methodology.md"]
+
+[[entry]]
 path = "tests/licences/*.go"
 docs = ["docs/testing-methodology.md", "docs/release.md"]
 
