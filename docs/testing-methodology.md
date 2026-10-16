@@ -592,3 +592,28 @@ wrong.
 The general form: a check that only ever gained refusals has been measured in
 one direction. Ask what it now rejects that it used to accept, and measure that
 against history rather than against a fixture written by the same hand.
+## An executable doc block is code, and inherits none of the code's discipline
+
+A fence marked `run` is executed by the release gate, which makes it the only
+code in the tree that no suite reads. `docs/cli.md`'s sample invoked the
+toolchain as a bare `go` and behaved three ways on three boxes: absent in one
+jail, go1.27.2 in another, go1.26.9 on the runner. The workflows had already
+settled this — resolve `go go126 go125`, then `export GOTOOLCHAIN=local`, at
+eight sites in `ci.yml` and two in `tag-pipeline.yml` — and the doc block
+simply never inherited it, because nothing checked that it should.
+
+**Two distinct defects, and the first is the one that costs an hour.** A
+missing interpreter surfaced on the `doc-run-block-failed` arm, so the gate
+reported a DOCS defect for a box with no Go on it. A block that resolves its
+own tool can say `PROVISIONING finding and not a code one` instead, and the
+gate quotes a failing block's last line, so the right words reach the reader of
+the finding rather than the author of the block. The second defect is silent
+substitution: under `GOTOOLCHAIN=auto` a `go` directive above the installed
+toolchain is satisfied by *downloading* another one, so a green run is not
+evidence about the toolchain that ran it.
+
+**Pin the extraction to the executor, or the suite checks a different set.** A
+test over `run` blocks must find exactly the blocks the gate runs, so read the
+gate's fence pattern and refuse to run if it has moved. Pair it with a
+known-positive count: every check over an empty set passes, and a fence form
+that quietly stops matching is how that set empties.

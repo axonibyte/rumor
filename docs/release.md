@@ -523,7 +523,7 @@ list.
 
 | tool | used by | pinned? |
 | --- | --- | --- |
-| `go` | every build, test and lint step; the release build | not version-pinned, but the `go` directive in `go.mod` is the floor and `GOTOOLCHAIN=local` makes a raise refuse rather than download. **Resolved, not named**: FreeBSD ports installs versioned binaries, so a box may have `go126`/`go125` and no bare `go`; every recipe tries `go`, `go126`, `go125` in that order and fails naming all three |
+| `go` | every build, test and lint step; the release build; **and `release-gate.yml`**, whose `run_doc_blocks` arm executes `docs/cli.md`'s `run` block, which invokes the toolchain | not version-pinned, but the `go` directive in `go.mod` is the floor and `GOTOOLCHAIN=local` makes a raise refuse rather than download. **Resolved, not named**: FreeBSD ports installs versioned binaries, so a box may have `go126`/`go125` and no bare `go`; every recipe tries `go`, `go126`, `go125` in that order and fails naming all three — including that doc block, which did not until v0.1.18 and so refused on a DOCS arm for a box with no Go on it. The gate's probe census measures all three |
 | `gofmt` | `ci.yml`'s fmt step | same resolution, `gofmt`/`gofmt126`/`gofmt125` |
 | `golangci-lint`, `govulncheck` | `ci.yml`'s lint and vulnerability steps | **2.14.0** and **v1.9.0**, installed by pinned `go install` when absent and the version then asserted rather than printed |
 | `python3` | `release-gate.yml` runs `tools/release-gate.py`; `tools/check-workflows.py` is local-only | no version pin; the gate's probe step measures it and fails loudly when absent |

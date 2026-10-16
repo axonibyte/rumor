@@ -92,7 +92,33 @@ one of each kind is shown here, and the counts in the tally are the whole run's:
 # here cannot drift from the tool without the gate saying so. The previous
 # sample did drift -- `docs --check` stayed green throughout, because a
 # path-coverage check cannot see a quoted figure (quill r3/12).
-out=$(go run ./cmd/rumor attaint --examples examples) || exit 1
+# THE TOOLCHAIN IS RESOLVED AND PINNED, NOT ASSUMED. This one block behaved
+# three ways on three boxes: no `go` at all in rook's jail, go1.27.2 in
+# quill's, go1.26.9 on the runner (rook /749 and /753, quill /752). The first
+# of those surfaced as `doc-run-block-failed` -- a DOCS arm -- for a box with
+# no Go on it, which is what ci.yml:137 already calls "a PROVISIONING finding
+# and not a code one". ci.yml resolves the name at 8 sites and
+# tag-pipeline.yml at 2; release-gate.yml, the file that EXECUTES this block,
+# does it at none, so the discipline has to live here.
+GO=""
+for c in go go126 go125; do
+  command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+done
+test -n "$GO" || {
+  echo "no go, go126 or go125 on PATH: this box has no Go toolchain, which is a PROVISIONING finding and not a code one"
+  exit 1
+}
+
+# GOTOOLCHAIN=local IS THE PIN, AND IT IS A GATE NOT A PREFERENCE. Under the
+# default `auto`, a go directive above the installed toolchain is SILENTLY
+# satisfied by downloading another one, so naming the binary does not pin what
+# compiles the code (ratchet go-port/6, reproduced at ci.yml:138-149). It does
+# not make one version run everywhere and nothing here asks it to: go.mod's
+# 1.26.0 is OPA's floor, not an equality, so a box above the floor is
+# conforming and merely not identical to the runner.
+export GOTOOLCHAIN=local
+
+out=$("$GO" run ./cmd/rumor attaint --examples examples) || exit 1
 
 # THE TOTAL IS READ FROM THE PROSE ABOVE, NOT RESTATED HERE. A literal here
 # would be a third copy of one number -- the sentence, the comparison and its

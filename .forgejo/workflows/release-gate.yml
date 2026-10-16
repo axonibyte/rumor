@@ -101,7 +101,13 @@ jobs:
           # already exiting non-zero.
           echo "uname   $(uname -a)"
           echo "whoami  $(whoami)"
-          for t in git python3 python cargo; do
+          # `go go126 go125` REPLACE `cargo`, WHICH THIS PROJECT NO LONGER
+          # BUILDS WITH. The census was still naming the Rust toolchain and not
+          # the Go one, while release-gate.py's run_doc_blocks arm executes
+          # docs/cli.md's sample -- which invokes Go. So the one job that needs
+          # a Go toolchain was the one job whose record could not say whether it
+          # had one, and rook's missing `go` had to be diagnosed by hand (/749).
+          for t in git python3 python go go126 go125; do
             p=$(command -v "$t" 2>/dev/null) && echo "$t  FOUND  $p" || echo "$t  ABSENT"
           done
           timeout 20 python3 --version 2>/dev/null || echo "python3: none or did not answer in 20s"

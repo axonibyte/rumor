@@ -82,6 +82,15 @@ path = "tests/vocabulary/*.go"
 docs = ["docs/vocabulary.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# The `run` block oracle. Mapped to cli.md because that is the page whose
+# blocks it reads, to release.md because the gate that EXECUTES those blocks
+# is release.md's, and to the testing methodology because the method is the
+# general one: a doc fence marked `run` is executable code that no suite was
+# reading, so it drifted from the toolchain discipline every workflow keeps.
+path = "tests/docs/*.go"
+docs = ["docs/cli.md", "docs/release.md", "docs/testing-methodology.md"]
+
+[[entry]]
 path = "tests/licences/*.go"
 docs = ["docs/testing-methodology.md", "docs/release.md"]
 
