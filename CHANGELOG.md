@@ -3,6 +3,53 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.14 — 2026-10-16
+
+R3.2 (issue 53): the strip's second direction, and every arm given a permitted
+twin. Both halves of what `rumor attaint` was missing, found by building the
+checks and then pointing them at themselves.
+
+- **The contract stated two directions for the strip and the tree checked
+  one.** `docs/vocabulary.md` under `planted`: with the *tag* removed the same
+  run must still produce the same `bug`, and with the planted claims *removed
+  altogether* it must come back `consistent`. The second is what proves a bug
+  WAS the lie rather than an artifact of the statute — a statute could pass
+  every other arm while reporting one that was never about the lie. The
+  counterfactual is **derived**, not committed: an eighteenth case under
+  `examples/planted-lie` would move R1's gated 3/17/19, and deriving it checks
+  every qualifying case rather than one fixture that could be written to pass.
+- **The sentence was amended, not the fixtures.** The arm fires on three of the
+  four planted cases under the unqualified reading, and those three carry a
+  planted claim *incidentally*. The warrant for scoping it was not in the text
+  — "its two uses are both checks on the engine" says what the checks are about,
+  not which fixtures each covers — so the scope is now **in** v1's strip bullet,
+  with a Revisions row recording both readings. Changing a fixture R1's gate
+  passed to fit a sentence is the wrong direction of repair.
+- **Three conditions the control arm tells apart**, which collapsing any two
+  would lose: the control *evaluated and not passing*, *armed and never
+  evaluated*, and *no control declared*. A fixture nobody observes must not read
+  as a statute that stopped attributing.
+- **Every arm has a permitted twin, derived rather than listed.** Nine clauses
+  refuse something *absent* from a healthy tree, so the healthy package is their
+  twin and no list can drift; only the two whose refusal is an *addition* carry a
+  named twin. Coverage and discrimination are separate tests because they fail
+  separately: an arm hard-wired to refuse passes the first and fails this one.
+- **`attaint` measures R2.3's equivalence set instead of reading it**, and a
+  test compares it to `tests/engine`'s declaration in both directions through
+  `go/ast` — a *partial* pattern read would report "the declaration is stale",
+  which is a finding about mutants that is really a finding about a regex.
+- **Two latent defects**: an undefined finding reported as a surviving bug
+  (absence is not a verdict), and a ref carried by both a planted and an honest
+  claim, now refused by name rather than resolved by guessing which claim a tell
+  meant.
+- **`cli.md`'s sample is now its own check.** `release-gate.py` already executes
+  blocks marked `run` and fails on a nonzero exit, but compares nothing to the
+  page — so marking the block `run` would not have caught the stale tally this
+  release started with; the gap was output comparison. The block greps each line
+  it quotes, counts the lines against the figure **read from the prose**, and
+  takes its floor from the page's own table, so the table and the sample convict
+  each other. Four failure arms driven, including the sentence being reworded.
+
 ## 0.1.13 — 2026-10-16
 
 R3.1 (issue 52): `rumor attaint`, the self-test, with fable's drills as
