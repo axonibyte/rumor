@@ -94,6 +94,17 @@ while IFS= read -r want; do
     printf 'docs/cli.md has drifted from the tool; this line is not in its output:\n  %s\n' "$want"
     exit 1
   }
+# AND THE TOTAL, because the lines above are a SUBSET check: a new KIND of
+# line that adds no tally field would leave every quoted line matching, the
+# tally unchanged and this block green, while the count in the prose went
+# stale. That is exactly what the two newest kinds did to the previous sample
+# (quill r3/14). A subset check cannot see an addition; the count can.
+[ "$(printf '%s\n' "$out" | grep -vc '^attaint:')" = 28 ] || {
+  printf 'docs/cli.md says the run prints 28 line(s) and it printed %s\n' \
+    "$(printf '%s\n' "$out" | grep -vc '^attaint:')"
+  exit 1
+}
+
 done <<'LINES'
 planted-lie      with-planted               planted lie corroborated   bug rests on the lie
 planted-lie      believed                   killed by m1-ignores-position (from the cases)
