@@ -256,5 +256,16 @@ func TestAnUndefinedFindingIsNotPrintedAsNil(t *testing.T) {
 	if !strings.Contains(got, "no finding") {
 		t.Errorf("no line names the absence; one case must now have none:\n%s", got)
 	}
-	t.Logf("PROOF the walk names an absent finding rather than printing nil")
+	// THE OTHER SIDE, AND THIS ARM WAS ONE-SIDED WITHOUT IT (quill,
+	// thread:rumor/631): absent-<nil> plus present-"no finding" are both
+	// satisfied by a renderer that answers "no finding" for EVERY case, which
+	// is a worse defect than the one being fixed. The same planted tree
+	// supplies the control for free -- removing `default finding` leaves the
+	// `consistent` rule standing, so defined findings are still printed beside
+	// the absent ones and no second fixture is needed.
+	if !strings.Contains(got, "consistent") {
+		t.Errorf("no line carries a real finding: a renderer answering the absence for every case "+
+			"would satisfy the two assertions above, so this arm is what tells them apart:\n%s", got)
+	}
+	t.Logf("PROOF the walk names an absent finding rather than printing nil, and still prints the defined ones")
 }
