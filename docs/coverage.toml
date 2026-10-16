@@ -154,6 +154,29 @@ docs = ["docs/design.md", "docs/vocabulary.md"]
 # fixtures rather than off inputs the test built, and that one of its mutants is
 # equivalent rather than surviving. No CLI surface of its own; the subcommand
 # that drives it is cmd/rumor.
+path = "internal/attaint/*.go"
+docs = ["docs/cli.md", "docs/testing-methodology.md"]
+
+[[entry]]
+# The harness that composes a damaged tree and runs fable's drills against it.
+path = "tests/attaint/*.go"
+docs = ["docs/testing-methodology.md"]
+
+[[entry]]
+# The drill fixtures (breakout-r3/0). Each drill directory ALSO carries its own
+# README naming the arm it trips and the exact refusal text, which is what the
+# gate reads; this entry maps the overlay files to the document that owns the
+# method they demonstrate.
+path = "tests/attaint/drills/**"
+docs = ["docs/testing-methodology.md"]
+
+[[entry]]
+# R3's self-test. BOTH documents, because naming one would orphan the other
+# reader: docs/cli.md describes the command a person runs, and
+# docs/testing-methodology.md owns what the arms MEAN -- the corroboration
+# control, the per-rule mutation pass and its dead-mutant half, and the vacuity
+# guards. Filing a method under a command's reference is rook's breakout-r2/10
+# finding, so it is mapped to both rather than to the nearer one.
 path = "internal/engine/*.go"
 docs = ["docs/design.md", "docs/testing-methodology.md"]
 

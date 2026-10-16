@@ -54,7 +54,11 @@ const root = "../.."
 // that a sweep which suddenly finds none fails instead of passing. ibis main/352
 // -- zero absences reads identically whether every quote was checked or the walk
 // never ran.
-const declaredQuotes = 13
+// 13 -> 14 in R3.1: internal/attaint quotes the `planted` entry's first use,
+// which is the clause the corroboration arm implements. The quote is PRESENT --
+// the oracle reported 0 absent and refused only on the count, which is the
+// count doing its job.
+const declaredQuotes = 14
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would

@@ -47,10 +47,97 @@ Exit codes, the same three the rest of the CLI uses:
 Examining nothing is a failure and not a pass: zero disagreements over zero
 cases reads identically to agreement everywhere.
 
+## `rumor attaint`
+
+```
+rumor attaint [--examples DIR]
+```
+
+The self-test. `rumor check` asks whether each example's finding matches the
+verdict its author wrote down — a question the statutes themselves answer, so a
+statute that had quietly stopped deciding anything would still agree with a case
+file written to match it. `attaint` asks whether the statutes are load-bearing
+at all.
+
+Seven arms, each with its own refusal text. The text is the verdict: a gate reads
+it rather than the exit status, because a drill that trips the wrong arm has not
+demonstrated what it was cut to demonstrate.
+
+| clause | what it catches |
+|---|---|
+| `checker never fired` | a case declares itself a control, the lie is in the prefix, and the observation never reaches it — the control was **armed and never evaluated** |
+| `no-case-declares-a-corroboration-control` | no case declares one at all, so "every planted lie produces `bug`" holds for free |
+| `planted-lie-did-not-produce-bug` | a case whose sealed prefix carries a planted claim and whose finding is not `bug` |
+| `bug-does-not-rest-on-the-planted-claim` | a case declaring `rests_on_planted: true` whose control was **evaluated and did not pass** — the strip |
+| `rule-killed-by-no-mutant` | a rule no mutant moves on either path: nothing shows it is load-bearing |
+| `mutant-the-statute-has-absorbed` | a mutant that moves nothing, which means the statute has been **weakened** into it |
+| `finding-the-package-can-no-longer-produce` | a finding the fixtures expect and the statute can no longer reach — **a deleted clause** |
+
+Plus four counting guards — no package, no case, no rule, no mutant — because
+every arm above is satisfied for free by an empty walk.
+
+One line per corroborated control, per rule killed (naming the mutant **and the
+path**), and per finding reached, then a tally:
+
+```
+planted-lie      with-planted               planted lie corroborated   bug rests on the lie
+planted-lie      believed                   killed by m1-ignores-position (from the cases)
+planted-lie      rests_on_planted           killed by m3-inverts-finding (from the ledger)
+transitive-count explained                  reached by charlie-explained
+attaint: 3 package(s), 17 case(s), 12 rule(s), 19 mutant(s); 1 planted lie(s) corroborated of 4, 12 rule(s) killed, 0 unmutated; 0 refusal(s)
+```
+
+**Both paths count for the mutation pass.** R2.3 established that three mutants
+are equivalent on the ledger path, because the sealed prefix leaves their
+position guard nothing to exclude (`tests/engine`, declared by name). Measuring
+only the ledger would report the rules those mutants attack as unmutated —
+blaming the mutant set for a property of the bound. A rule is load-bearing if
+some mutant moves it on some path, and the path is named so a rule killed only
+from the cases is visible as such.
+
+The tally rides on every path, pass or refusal: zero refusals over nothing
+examined is the failure this command exists to make impossible to print.
+
+Exit codes, the same three the rest of the CLI uses:
+
+| code | meaning |
+|---|---|
+| 0 | every arm passed |
+| 1 | an arm refused, or the tree could not be read |
+| 2 | usage error |
+
+### The drills
+
+`tests/attaint/drills/` holds fable's drill designs (`thread:breakout-r3/0`,
+D4 split in two at `/2`) as fixtures. Each is the pristine `examples/` tree with
+one file replaced, and each directory holds only the file it changes, so the
+directory is the diff. The epic's done-when is three of them — delete, weaken,
+strip:
+
+| drill | damage | the arm it trips |
+|---|---|---|
+| `d0-control` | none | passes |
+| `d1-delete` | the clause yielding `explained` is removed | `finding-the-package-can-no-longer-produce` |
+| `d2-weaken` | the honest count stops excluding planted claims | `mutant-the-statute-has-absorbed` |
+| `d3-strip` | the `planted` tag leaves the ledger | `bug-does-not-rest-on-the-planted-claim` |
+| `d4-never` | the lie is tagged and declared, and no observation reaches it | `checker never fired` |
+| `d5-no-control` | no case declares a corroboration control at all | `no-case-declares-a-corroboration-control` |
+
+Each trips **exactly one** arm, which the harness asserts alongside the clause.
+
+The last three are one distinction in three parts, and collapsing any two of
+them would lose it: d3 is the control **evaluated and not passing**, d4 the
+control **armed and never evaluated**, d5 **no control declared**. A fixture
+nobody observes must not read as a statute that stopped attributing.
+
+```
+go test ./tests/attaint/ -v
+```
+
 ## Subcommands
 
-`docs --check` (R0.1) and `check` (R2.3). Everything else arrives with the
-phase that owns it.
+`docs --check` (R0.1), `check` (R2.3) and `attaint` (R3.1). Everything else
+arrives with the phase that owns it.
 
 ## Flags
 

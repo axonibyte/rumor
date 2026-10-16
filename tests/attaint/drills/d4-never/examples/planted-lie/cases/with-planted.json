@@ -1,0 +1,47 @@
+{
+  "why": "DRILL D4 (fable breakout-r3/2): the control is ARMED AND NEVER FIRES. The planted claim is still tagged and this case still declares itself a corroboration control, but the lie is BOB's and alice was never told of it, so the observation reaches no planted claim. The finding is still bug -- alice believes 2 and sees 1 -- and the control was never evaluated, which is a different event from a control that ran and did not pass.",
+  "expect": {
+    "believed": 2,
+    "finding": "bug",
+    "honest_total": 2,
+    "rests_on_planted": true
+  },
+  "input": {
+    "observation": {
+      "actor": "alice",
+      "position": 4,
+      "of": "user.created",
+      "query": "user.count",
+      "source": "api",
+      "value": 1
+    },
+    "known": [
+      "alice.user#1",
+      "alice.user#2"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handle": "alice.user#1"
+      },
+      {
+        "ref": "alice.user#2",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 2,
+        "handle": "alice.user#2"
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 3,
+        "handle": "bob.user#1",
+        "planted": true
+      }
+    ]
+  }
+}

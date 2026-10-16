@@ -19,11 +19,12 @@ import (
 	"io"
 	"os"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/attaint"
 	"forge.axonibyte.com/axonibyte/rumor/internal/coverage"
 	"forge.axonibyte.com/axonibyte/rumor/internal/examples"
 )
 
-const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]"
+const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor attaint [--examples DIR]"
 
 // coverageCheck is a seam, not indirection for its own sake: it lets a test
 // drive the WRITE handling below -- including the failed-write path -- without
@@ -35,6 +36,11 @@ var coverageCheck = func() (int, error) { return coverage.Check(".") }
 // tree of examples on disk.
 var examplesCheck = func(dir string, out io.Writer) (examples.Result, error) {
 	return examples.Run(context.Background(), dir, out)
+}
+
+// attaintCheck is the same seam again, for R3's self-test.
+var attaintCheck = func(dir string, out io.Writer) (attaint.Report, error) {
+	return attaint.Run(context.Background(), dir, out)
 }
 
 // defaultExamplesDir is where the three packages live in this repository. A
@@ -105,6 +111,50 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
+	if len(args) >= 1 && args[0] == "attaint" {
+		dir, ok := examplesDir(args[1:])
+		if !ok {
+			_, _ = fmt.Fprintln(stderr, usage)
+			return 2
+		}
+		rep, err := attaintCheck(dir, stdout)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "attaint: %v\n", err)
+			return 1
+		}
+		// EVERY REFUSAL IS PRINTED, not just the first. A drill that trips two
+		// arms is a different event from one that trips the arm it was cut for,
+		// and the gate reads this text rather than the exit status.
+		for _, r := range rep.Refusals {
+			_, _ = fmt.Fprintln(stdout, r.String())
+		}
+		// THE TALLY RIDES ON EVERY PATH, pass or refusal, because the counts are
+		// what distinguish a clean tree from an empty one.
+		if _, werr := fmt.Fprintf(stdout,
+			"attaint: %d package(s), %d case(s), %d rule(s), %d mutant(s); "+
+				"%d planted lie(s) corroborated of %d, %d rule(s) killed, %d unmutated; %d refusal(s)\n",
+			rep.Packages, rep.Cases, rep.Rules, rep.Mutants,
+			rep.Corroborated, rep.PlantedCases, rep.KilledRules, len(rep.Unmutated),
+			len(rep.Refusals)); werr != nil {
+			_, _ = fmt.Fprintf(stderr, "attaint: the verdict could not be written: %v\n", werr)
+			return 1
+		}
+		if !rep.OK() {
+			return 1
+		}
+		return 0
+	}
 	_, _ = fmt.Fprintln(stderr, usage)
 	return 2
+}
+
+// examplesDir reads the one flag `check` and `attaint` share.
+func examplesDir(rest []string) (string, bool) {
+	switch {
+	case len(rest) == 0:
+		return defaultExamplesDir, true
+	case len(rest) == 2 && rest[0] == "--examples":
+		return rest[1], true
+	}
+	return "", false
 }

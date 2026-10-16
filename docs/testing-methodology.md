@@ -419,3 +419,57 @@ wren's R2 gate verified per blob that exactly one file of 43 had changed, which
 is simultaneously the proof the statutes' semantics held and the trace of the six
 files nobody touched. A number can be correct and still be the fingerprint of
 what was missed.
+
+## A mutant set proves rules are attacked; it does not prove each rule is
+
+`tests/engine` asks, of every mutant, whether some case catches it. That is the
+right question for a mutant and it is satisfied by a mutant set that batters one
+rule and never touches the rest — every mutant dies, every rule but one is
+unproven, and the suite is green.
+
+`rumor attaint` (R3.1) asks the dual, per RULE: is this rule moved by at least
+one mutant, on at least one case? A rule nothing moves is NAMED rather than
+counted, because an unmutated rule is a rule nothing shows is load-bearing.
+
+Both paths count. R2.3 established that three mutants are equivalent on the
+ledger path — the sealed prefix leaves their position guard nothing to exclude.
+Measuring only the ledger would report the rules those three attack as
+unmutated, which blames the mutant set for a property of the bound. The output
+names the path, so a rule killed only from the cases is visible as one.
+
+## A statute can be weakened INTO one of its own mutants
+
+The per-rule question above has a blind spot, and a drill found it rather than a
+review: loosen `planted-lie`'s honest count so a planted claim counts as honest,
+and nothing notices. The finding is still `bug`, the corroboration control still
+passes, every rule is still moved by some other mutant, no finding became
+unreachable. The statute is weaker and every arm is green.
+
+What catches it is the other half of the mutation pass — not "is every rule
+attacked by some mutant" but **does every mutant still attack**. The weakening
+is exactly the shape of the committed mutant `m5-honest-counts-planted`, so
+after it the mutant computes what the statute computes and moves nothing. A
+mutant that moves no rule on any case on either path has not become harmless:
+the statute has drifted into it.
+
+This is distinct from a declared equivalence. The three position mutants are
+equivalent on the ledger path only and still move their rules from the cases, so
+they move something and are not dead.
+
+## A fixture that damages a tree must replace, never add
+
+The drills under `tests/attaint/drills/` are each the pristine `examples/` tree
+with one file replaced, and each drill directory holds only the file it changes
+— so the directory is the diff, readable without diffing two copies of a
+77-file tree.
+
+The hazard is a path that drifts. An overlay written to
+`examples/planted-lie/ledger/with-planted.json` when the file is `.jsonl` lands
+*beside* the original, leaves the tree undamaged, and the drill then passes
+while testing nothing — a green that means the opposite of what it appears to.
+So the harness counts the files before and after laying the overlay down and
+refuses if the count moved.
+
+And each drill asserts the refusal COUNT as well as the clause. A drill that
+trips a second arm is not the drill that was designed, even when it still goes
+red.
