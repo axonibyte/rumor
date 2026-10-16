@@ -255,15 +255,42 @@ into a repeated check. If it does, the shrinker looks for a shorter trace with
 the same finding: length bisection first, then removal of whole action kinds.
 Every candidate trace is run against a verified clean rollback, through the
 rollback trait (`describe`, `checkpoint`, `restore`, `verify`, `discard`; a
-process-restart provider for the toy system under test). The verify step is not
+process-restart provider for the toy system under test, the small deliberately
+buggy application in `examples/toy/` whose design is R5's own work in the
+`r5.toy` thread and whose bug ledger is in the epic). The verify step is not
 optional: a shrink step run on a world the previous step dirtied would
 attribute to the trace what the leftover state did, and the "minimal" trace
 would be minimal only in that world. Shrinking respects bounds, so a trace is
 never shrunk to one that could not have produced its finding under an eventual
-type's bound. The result is a minimal trace: the actions, their positions,
-their handles and the rules that fired. R5 is done when its three toy bugs are
-found from committed seeds and each shrinks to under five actions with every
-step on a verified clean rollback.
+type's bound. The result is written as a minimal trace, which names the
+output's shape (the actions, their positions, their handles and the rules that
+fired) and not a property of it; the property R5 is held to is that each of its
+three toy bugs shrinks to under five actions with every step on a verified
+clean rollback.
+
+**What "the same finding" means.** The shrinker keeps a candidate only if it
+reproduces the same finding, and that identity is stated here because R14 later
+builds its deterministic-or-unstable classification on it and the first
+shrinker would otherwise choose silently. Two findings are the same when the
+rule that fired, the finding's value, and its attribution (`rests_on_planted`)
+all agree. The attribution is part of the identity because `bug` resting on a
+planted claim and `bug` resting on none are different findings sharing one
+value, which is the difference the corroboration arm exists to see; a shrinker
+that let a trace drift from one to the other would be shrinking toward a
+different defect.
+
+**A candidate that cannot run is not one that did not reproduce.** Dropping an
+action can leave a later one with a precondition that is no longer true, so the
+candidate is inapplicable: it cannot be executed at all. The shrinker records
+that as its own outcome and discards the candidate, never as evidence that the
+failure is unstable. R14 separates the two by name, and R15's toy bug (an action
+unreachable because its precondition is never true) is what consumes the
+distinction.
+
+**An unstable seed is not promoted.** In R5 a failure that does not reproduce
+on the first clean replay is marked unstable, is not shrunk, and is not promoted
+into `seeds.lock`; R14 turns the single replay into a repeated check and keeps
+the same rule.
 
 **Seeds are promoted, and the promoted ones run first.** A seed that found a
 defect is promoted into `seeds.lock` with a comment naming the defect, and
