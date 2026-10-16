@@ -608,7 +608,8 @@ func reachesAPlantedClaim(input map[string]any) (bool, error) {
 // stripClears runs the strip's SECOND direction over one package.
 //
 // docs/vocabulary.md, `planted`, states two directions and the tree checked
-// one: "with `planted` removed from every planted claim ... the same run must
+// one: "with `planted` removed from every planted claim **in a case that
+// declares the lie its control** ... the same run must
 // still produce the same `bug` findings, and with the planted claims removed
 // altogether the run must be `consistent`". The first is the committed
 // stripped-tag case and drill d3. This is the second, and it is the direction

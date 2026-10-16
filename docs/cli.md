@@ -80,7 +80,21 @@ every arm above is satisfied for free by an empty walk.
 **Six kinds of line**, then a tally. Over `examples/` the run prints 28 of them;
 one of each kind is shown here, and the counts in the tally are the whole run's:
 
-```
+```sh run
+# THIS BLOCK IS THE SAMPLE AND ITS OWN CHECK. `release-gate.py` executes every
+# fenced block marked `run` and fails on a nonzero exit, so the lines quoted
+# here cannot drift from the tool without the gate saying so. The previous
+# sample did drift -- `docs --check` stayed green throughout, because a
+# path-coverage check cannot see a quoted figure (quill r3/12).
+out=$(go run ./cmd/rumor attaint --examples examples) || exit 1
+
+while IFS= read -r want; do
+  [ -z "$want" ] && continue
+  printf '%s\n' "$out" | grep -qxF "$want" || {
+    printf 'docs/cli.md has drifted from the tool; this line is not in its output:\n  %s\n' "$want"
+    exit 1
+  }
+done <<'LINES'
 planted-lie      with-planted               planted lie corroborated   bug rests on the lie
 planted-lie      believed                   killed by m1-ignores-position (from the cases)
 planted-lie      m1-ignores-position        alive from the cases only (the seal reaches its clause)
@@ -88,6 +102,7 @@ planted-lie      bug                        reached by stripped-tag
 planted-lie      with-planted               cleared by removing 1 planted claim(s)
 transitive-count charlie-own-lie            planted but not a control: the strip clause is not applied
 attaint: 3 package(s), 17 case(s), 12 rule(s), 19 mutant(s); 1 planted lie(s) corroborated of 4, 1 cleared by removal, 3 planted-not-control; 12 rule(s) killed, 0 unmutated; 0 refusal(s)
+LINES
 ```
 
 | line | what it records |
