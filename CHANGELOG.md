@@ -3,6 +3,34 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.15 — 2026-10-16
+
+Three fixes from one night's reading of this project's own instruments, and the
+thread they share: a check reports what it knows about, and what it does not
+know about is invisible in the same shape as nothing being wrong.
+
+- **The Runner requirements table gains its converse.** The table said what the
+  runner must have; nothing said that two of those tools are absent from every
+  agent jail, so a green local gate is `ci.yml` minus the lint and the
+  vulnerability step and an errcheck or vulnerability finding appears for the
+  first time on the push. They are a `go install` away rather than unavailable,
+  and the distinction decides what a reader does next. Two runs had already been
+  spent on this one cause, two weeks and two actors apart.
+- **`golangci-lint`'s issue counts are uncapped in CI**, with both flags pinned
+  by `tools/check-workflows.py`. The defaults cap at 3 same-text and 50
+  per-linter issues and cap the SUMMARY with the list, so a step can print
+  `3 issues: errcheck: 3` over a tree with four and nothing in its output
+  disagrees with anything. Measured with the step's own pinned binary: the same
+  tree prints 3 by default and 4 with the flags.
+- **An undefined finding says so rather than rendering as nil.**
+  `engine.Finding.Says()` answers the value when the statute defined one and an
+  explicit absence when it did not, so the distinction between a finding that
+  HOLDS and key-absence lives beside the field rather than in each consumer --
+  both of which ignored it. Latent rather than live: every committed statute
+  carries `default finding`. Its first arm was one-sided and a reviewer's mutant
+  said so; the twin that distinguishes always-absence from correct is in the
+  same commit as the arm it repairs.
+
 ## 0.1.14 — 2026-10-16
 
 R3.2 (issue 53): the strip's second direction, and every arm given a permitted
