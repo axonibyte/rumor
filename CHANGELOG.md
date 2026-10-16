@@ -3,6 +3,74 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.13 — 2026-10-16
+
+R3.1 (issue 52): `rumor attaint`, the self-test, with fable's drills as
+fixtures. `rumor check` asks whether each example's finding matches the verdict
+its author wrote down — a question the statutes themselves answer, so a statute
+that had quietly stopped deciding anything would still agree with a case file
+written to match it. `attaint` asks whether the statutes are load-bearing at
+all, and the epic's done-when is the shape of the answer: deleting a rule,
+weakening a rule or stripping a planted tag must make it fail on the R1
+examples.
+
+- **Seven arms, each with its own refusal text**, because the gate reads the
+  text and not the exit status. A single boolean would make a drill that trips
+  the wrong arm look like a drill that passed. Four counting guards sit under
+  them — no package, no case, no rule, no mutant — since every arm above is
+  satisfied for free by an empty walk.
+- **The mutation pass is two questions, and the second is the one a drill
+  earned.** "Is every rule attacked by some mutant" is the dual of what
+  `tests/engine` asserts, and it catches a deleted rule. It does *not* catch a
+  weakened one: loosening `planted-lie`'s honest count passed every arm in the
+  first build — the finding was still `bug`, the control still passed, every
+  rule was still moved by some other mutant. What catches it is **does every
+  mutant still attack**: the weakening is `m5-honest-counts-planted`'s exact
+  shape, so afterwards m5 moves nothing, and a mutant that moves nothing means
+  the statute has drifted into it rather than the mutant having gone harmless.
+- **Both paths count, which reads like a loosening and is not.** Measured on the
+  ledger alone, three rules come back unmutated: they are attacked only by the
+  mutants R2.3 declared equivalent under the structural bound, so reporting them
+  would blame the mutant set for a property of the seal. The output names the
+  path, so a rule killed only from the cases is visible as one.
+- **The equivalence set is measured here, not read.** `attaint` holds no copy of
+  `tests/engine`'s declaration and exempts nothing; those three move rules from
+  the cases, so they are alive and the dead-mutant arm never considers them.
+  What it reports is which mutants are *inert on the ledger*, discovered
+  independently, and a test compares that to `equivalentUnderTheBound` in both
+  directions — so a stale declaration and a fourth mutant going equivalent each
+  fail in two files for two reasons. The declaration is read through `go/ast`
+  rather than a pattern: a **partial** pattern match reports "the declaration is
+  stale", which is a finding about mutants that is really a finding about a
+  regex, and a partial failure wears a result's clothes where a total one does
+  not.
+- **Three conditions the control arm tells apart**, which collapsing would lose:
+  the control *evaluated and not passing* (the strip), *armed and never
+  evaluated* (nothing reaches the lie), and *no control declared at all* (a
+  vacuity). A fixture nobody observes must not read as a statute that stopped
+  attributing. Reachability is taken from the document the engine handed the
+  statute, so the knowledge rule stays in `internal/flatten` with no second
+  implementation.
+- **Six drills under `tests/attaint/drills/`**, each the pristine `examples/`
+  tree with one file replaced, so each directory is its own diff. An overlay
+  must REPLACE and never ADD: a path that drifted would land beside the original,
+  leave the tree undamaged, and pass while testing nothing — so the harness
+  counts files before and after. Each drill asserts the refusal **count** as
+  well as the clause, because a drill that trips a second arm is not the drill
+  that was designed.
+- **Review fixes, in their own commit before this one.** Four unchecked
+  `fmt.Fprintf` in `internal/attaint`: these lines are the evidence the verdict
+  rests on, so a line nobody received is not a line that was reported. The
+  runner named three of the four — `issues.max-same-issues` defaults to 3 and
+  caps on the issue *text*, identical across all four, so a count read as
+  completeness. And `TestEveryClauseIsExercised` did not do what it was named:
+  a hand list checked only by its length, asserting one clause of eleven. It now
+  reads the `Clause` constants through `go/ast` and requires the driven set to
+  equal the declared set in both directions, one scenario per clause.
+- `tests/vocabulary`'s declared quote count moves 13 → 14: `internal/attaint`
+  quotes the `planted` entry's first use, which is the clause the corroboration
+  arm implements.
+
 ## 0.1.12 — 2026-10-16
 
 quill's second review, collected: the stale quotations and the fixtures that
