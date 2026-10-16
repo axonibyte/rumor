@@ -4,8 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -37,6 +42,14 @@ type caseSpec struct {
 	value  any
 	known  []string
 	claims []map[string]any
+	// outOfBound appears in the CASE input and never in the ledger: a claim
+	// past the observation's position. The clean statute excludes it by its
+	// position guard, so a mutant that drops the guard moves a rule FROM THE
+	// CASES; the sealed prefix never held it, so that same mutant is identical
+	// FROM THE LEDGER. It is the structural-bound shape R2.3 found in the real
+	// tree, reproduced at this scale so the ledger-inert reporting path is
+	// exercised here and not only against examples/.
+	outOfBound []map[string]any
 }
 
 // A statute small enough to read, with the two rules the corroboration arm
@@ -80,6 +93,33 @@ held_claims contains c if {
 believed := count({c.ref | some c in held_claims; c.type == input.observation.of})
 
 default finding := "consistent"  # MUTANT: never a bug
+
+default rests_on_planted := false
+
+rests_on_planted if {
+	finding == "bug"
+	some c in held_claims
+	c.planted
+	c.type == input.observation.of
+}
+`
+
+// miniMutant3 drops the position guard. Against the LEDGER it changes nothing
+// -- the sealed prefix holds only in-bound facts -- and against the CASE it
+// admits the out-of-bound claim and moves `believed`. So it is alive, inert on
+// the ledger, and reported as such.
+const miniMutant3 = `package rumor.statute
+
+held_claims contains c if {
+	some c in input.claims
+	c.ref in input.known
+}
+
+believed := count({c.ref | some c in held_claims; c.type == input.observation.of})
+
+default finding := "bug"
+
+finding := "consistent" if input.observation.value == believed
 
 default rests_on_planted := false
 
@@ -147,8 +187,8 @@ func build(t *testing.T, specs ...pkgSpec) string {
 						"actor": c.actor, "query": c.query, "of": c.of,
 						"source": c.source, "value": c.value, "position": c.seal + 1,
 					},
-					"known":  c.known,
-					"claims": c.claims,
+					"known":  append(append([]string{}, c.known...), outOfBoundRefs(c.outOfBound)...),
+					"claims": append(append([]map[string]any{}, c.claims...), c.outOfBound...),
 				},
 			}
 			b, err := json.MarshalIndent(doc, "", "  ")
@@ -162,6 +202,16 @@ func build(t *testing.T, specs ...pkgSpec) string {
 		}
 	}
 	return root
+}
+
+func outOfBoundRefs(cs []map[string]any) []string {
+	out := make([]string, 0, len(cs))
+	for _, c := range cs {
+		if r, ok := c["ref"].(string); ok {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 func itoa(n int) string {
@@ -186,6 +236,7 @@ func healthy() pkgSpec {
 		mutants: map[string]string{
 			"m1-believed-constant": miniMutant,
 			"m2-never-a-bug":       miniMutant2,
+			"m3-ignores-position":  miniMutant3,
 		},
 		cases: map[string]caseSpec{
 			"lie": {
@@ -198,6 +249,9 @@ func healthy() pkgSpec {
 				claims: []map[string]any{
 					{"ref": "r1", "actor": "a", "type": "t", "position": 1, "handle": "r1"},
 					{"ref": "r2", "actor": "a", "type": "t", "position": 2, "handle": "r2", "planted": true},
+				},
+				outOfBound: []map[string]any{
+					{"ref": "r9", "actor": "a", "type": "t", "position": 9, "handle": "r9"},
 				},
 			},
 		},
@@ -392,35 +446,283 @@ func TestAnUnreachableFindingIsNamed(t *testing.T) {
 	}
 }
 
-// EVERY CLAUSE IS REACHED BY SOME TEST IN THIS FILE. A clause that stopped
-// firing would otherwise be invisible: the suite would still be green and the
-// arm would be gone.
+// EVERY DECLARED CLAUSE IS DRIVEN, AND THE DECLARED SET IS READ FROM THE
+// SOURCE RATHER THAN RETYPED.
+//
+// quill r3/5 found the previous version of this test doing none of that. It
+// held a HAND LIST of eleven clauses whose only check was `len(all) != 11`
+// against a literal, and its body asserted exactly ONE of them -- `seen` was
+// filled from a single run and compared for one clause, while `all` was used
+// for nothing but its length. A twelfth clause would have left the list at
+// eleven, passed the check, and gone unexercised and invisible. The test's own
+// comment named the state it was in: "a clause that stopped firing would
+// otherwise be invisible".
+//
+// THE FIX IS THE INSTRUMENT ALREADY IN THIS COMMIT, applied to the set it was
+// not applied to. tests/attaint reads tests/engine's equivalence declaration
+// through go/ast for exactly this reason; here the same reader takes the
+// `Clause` consts out of attaint.go, and the EXERCISED set must equal the
+// DECLARED set in BOTH directions -- a new clause fails as declared-and-not-
+// driven, a deleted one as driven-and-not-declared.
 func TestEveryClauseIsExercised(t *testing.T) {
-	all := []Clause{
-		ClauseNoPackages, ClauseNoCases, ClauseNoMutants, ClauseNoRules,
-		ClauseCheckerNeverFired, ClauseNoControlDeclared, ClauseLieNotFound,
-		ClauseControlDidNotPass, ClauseRuleUnmutated, ClauseFindingUnreachable,
-		ClauseMutantDead,
+	declared := declaredClauses(t)
+	if len(declared) == 0 {
+		t.Fatal("parsed no Clause constants out of attaint.go: the comparison would be vacuous")
 	}
+
+	// One scenario per clause, each a tree built to produce it. The clause
+	// named here is what the scenario is FOR; a scenario may raise others and
+	// the union is what is compared.
+	scenarios := []struct {
+		name  string
+		want  Clause
+		build func(t *testing.T) string
+	}{
+		{"an empty directory", ClauseNoPackages, func(t *testing.T) string { return t.TempDir() }},
+		{"a package with no cases", ClauseNoCases, func(t *testing.T) string {
+			p := healthy()
+			p.cases = nil
+			return build(t, p)
+		}},
+		{"a package with no mutants", ClauseNoMutants, func(t *testing.T) string {
+			p := healthy()
+			p.mutants = nil
+			return build(t, p)
+		}},
+		{"a package declaring no rules", ClauseNoRules, func(t *testing.T) string {
+			p := healthy()
+			p.rules = []string{}
+			return build(t, p)
+		}},
+		{"a planted lie the statute does not notice", ClauseLieNotFound, func(t *testing.T) string {
+			p := healthy()
+			c := p.cases["lie"]
+			c.value = 2
+			c.expect = map[string]any{"believed": 2, "finding": "consistent", "rests_on_planted": false}
+			p.cases["lie"] = c
+			return build(t, p)
+		}},
+		{"the tag stripped from the ledger", ClauseControlDidNotPass, func(t *testing.T) string {
+			p := healthy()
+			c := p.cases["lie"]
+			c.ledger = strings.ReplaceAll(c.ledger, `,"planted":true`, "")
+			p.cases["lie"] = c
+			return build(t, p)
+		}},
+		{"no case declaring a control", ClauseNoControlDeclared, func(t *testing.T) string {
+			p := healthy()
+			c := p.cases["lie"]
+			c.expect = map[string]any{"believed": 2, "finding": "bug", "rests_on_planted": false}
+			p.cases["lie"] = c
+			return build(t, p)
+		}},
+		{"a control armed and never evaluated", ClauseCheckerNeverFired, func(t *testing.T) string {
+			// The lie is in the prefix, tagged, and belongs to an actor the
+			// observer was never told of -- so no observation reaches it.
+			p := healthy()
+			c := p.cases["lie"]
+			c.ledger = `{"kind":"claim","position":1,"actor":"a","type":"t","ref":"r1","handles":["r1"]}
+{"kind":"claim","position":2,"actor":"a","type":"t","ref":"r2","handles":["r2"]}
+{"kind":"claim","position":3,"actor":"b","type":"t","ref":"r3","handles":["r3"],"planted":true}
+`
+			c.seal = 3
+			c.claims = []map[string]any{
+				{"ref": "r1", "actor": "a", "type": "t", "position": 1, "handle": "r1"},
+				{"ref": "r2", "actor": "a", "type": "t", "position": 2, "handle": "r2"},
+				{"ref": "r3", "actor": "b", "type": "t", "position": 3, "handle": "r3", "planted": true},
+			}
+			c.known = []string{"r1", "r2"}
+			c.expect = map[string]any{"believed": 2, "finding": "bug", "rests_on_planted": true}
+			p.cases["lie"] = c
+			return build(t, p)
+		}},
+		{"a rule no mutant moves", ClauseRuleUnmutated, func(t *testing.T) string {
+			p := healthy()
+			p.statute += "\nuntouched := 7\n"
+			for id := range p.mutants {
+				p.mutants[id] += "\nuntouched := 7\n"
+			}
+			p.rules = append(p.rules, "untouched")
+			c := p.cases["lie"]
+			c.expect["untouched"] = 7
+			p.cases["lie"] = c
+			return build(t, p)
+		}},
+		{"a mutant identical to its statute", ClauseMutantDead, func(t *testing.T) string {
+			p := healthy()
+			p.mutants["m4-absorbed"] = miniStatute
+			return build(t, p)
+		}},
+		{"a finding the package cannot produce", ClauseFindingUnreachable, func(t *testing.T) string {
+			p := healthy()
+			c := p.cases["lie"]
+			c.expect = map[string]any{"believed": 2, "finding": "explained", "rests_on_planted": true}
+			p.cases["lie"] = c
+			return build(t, p)
+		}},
+	}
+
 	seen := map[Clause]bool{}
-	// ClauseControlDidNotPass is reached by the d3 drill in tests/attaint and
-	// by the case below, so it is driven here too rather than assumed.
-	p := healthy()
-	c := p.cases["lie"]
-	c.ledger = strings.ReplaceAll(c.ledger, `,"planted":true`, "")
-	p.cases["lie"] = c
-	rep := run(t, build(t, p))
-	for _, r := range rep.Refusals {
-		seen[r.Clause] = true
-	}
-	if !seen[ClauseControlDidNotPass] {
+	for _, sc := range scenarios {
+		rep := run(t, sc.build(t))
+		got := map[Clause]bool{}
 		for _, r := range rep.Refusals {
-			t.Errorf("  %s", r)
+			seen[r.Clause] = true
+			got[r.Clause] = true
 		}
-		t.Fatalf("stripping the tag did not reach %s", ClauseControlDidNotPass)
+		// EACH SCENARIO MUST PRODUCE THE CLAUSE IT IS FOR. Without this the
+		// union could be satisfied by scenarios raising each other's clauses,
+		// and a scenario that stopped working would hide behind its neighbours.
+		if !got[sc.want] {
+			for _, r := range rep.Refusals {
+				t.Errorf("  %s", r)
+			}
+			t.Errorf("%s did not produce %s", sc.name, sc.want)
+		}
 	}
-	if len(all) != 11 {
-		t.Fatalf("%d clauses listed; the table in this test must name every declared clause", len(all))
+
+	for c := range declared {
+		if !seen[c] {
+			t.Errorf("%s is declared in attaint.go and no scenario in this test drives it: "+
+				"the arm is unexercised and a suite that stayed green would not say so", c)
+		}
 	}
-	t.Logf("PROOF %s reached by the strip; %d clause(s) declared in total", ClauseControlDidNotPass, len(all))
+	for c := range seen {
+		if !declared[c] {
+			t.Errorf("%s was produced and is not among attaint.go's declared Clause constants: "+
+				"the reader is parsing the wrong thing, or a clause is built from a literal", c)
+		}
+	}
+	// THE LOG MUST NOT CLAIM WHAT THE TEST JUST DISPROVED. The first cut
+	// printed "sets equal" unconditionally and did so on a FAILING run, beside
+	// the error saying they were not -- a summary line contradicting the
+	// finding above it, which is the shape that gets quoted into a report.
+	if t.Failed() {
+		t.Logf("%d clause(s) declared in attaint.go, %d driven by %d scenario(s); the sets DIFFER, see above",
+			len(declared), len(seen), len(scenarios))
+		return
+	}
+	t.Logf("PROOF %d clause(s) declared in attaint.go, %d driven by %d scenario(s), sets equal",
+		len(declared), len(seen), len(scenarios))
+}
+
+// declaredClauses reads the Clause constants out of attaint.go's own source.
+//
+// THROUGH go/ast, NOT A PATTERN, for the reason quill gave about the other
+// reader: a partial pattern read reports "declared and not driven", which is a
+// finding about an arm and is really a finding about a regex. With the syntax
+// tree, "some of the constants" is not a state this can be in.
+func declaredClauses(t *testing.T) map[Clause]bool {
+	t.Helper()
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "attaint.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parsing attaint.go: %v", err)
+	}
+	out := map[Clause]bool{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		vs, ok := n.(*ast.ValueSpec)
+		if !ok || vs.Type == nil {
+			return true
+		}
+		id, ok := vs.Type.(*ast.Ident)
+		if !ok || id.Name != "Clause" {
+			return true
+		}
+		for _, v := range vs.Values {
+			bl, ok := v.(*ast.BasicLit)
+			if !ok || bl.Kind != token.STRING {
+				t.Fatalf("a Clause constant is not a string literal: the declaration's shape changed")
+			}
+			lit, err := strconv.Unquote(bl.Value)
+			if err != nil {
+				t.Fatalf("unquoting %s: %v", bl.Value, err)
+			}
+			out[Clause(lit)] = true
+		}
+		return true
+	})
+	return out
+}
+
+// failAfter is a writer that succeeds n times and then refuses.
+type failAfter struct {
+	n int
+}
+
+func (w *failAfter) Write(p []byte) (int, error) {
+	if w.n <= 0 {
+		return 0, errors.New("the sink refused this line")
+	}
+	w.n--
+	return len(p), nil
+}
+
+// THE TEST THAT WOULD HAVE CAUGHT THE UNCHECKED WRITES. golangci-lint found
+// three of the four on the runner (task 231) and my local gate found none,
+// because errcheck runs nowhere else -- rook rumor/509 named that gap a day
+// before it bit me. A linter catching it is the better instrument; this is the
+// one that works where the linter is absent.
+//
+// IT WALKS THE FAILURE POSITION rather than failing the first write, because
+// each of the four sites is reached at a different point in the walk and a
+// single "fail immediately" case would only ever exercise the earliest.
+func TestAFailedWriteIsAFailedPass(t *testing.T) {
+	dir := build(t, healthy())
+
+	// How many lines a clean pass writes, so the walk below is bounded by a
+	// measurement rather than a guess.
+	var counting bytes.Buffer
+	if _, err := Run(context.Background(), dir, &counting); err != nil {
+		t.Fatalf("the healthy package did not run: %v", err)
+	}
+	lines := bytes.Count(counting.Bytes(), []byte("\n"))
+	if lines == 0 {
+		t.Fatal("the healthy package wrote no lines, so this test would pass vacuously")
+	}
+
+	// AND THE ERROR MUST NAME THE SITE THAT FAILED, not merely exist. The first
+	// cut of this test asserted `err != nil` and a mutation check showed it
+	// SURVIVED one site reverted to an unchecked write: the ignored failure at
+	// line i was masked by the next CHECKED write failing too, so the test was
+	// proving "some write is checked" while its name promised every one.
+	// Attributing the error to the line that failed makes each site
+	// individually load-bearing.
+	site := func(line string) string {
+		switch {
+		case strings.Contains(line, "planted lie corroborated"):
+			return "writing the corroboration line"
+		case strings.Contains(line, "killed by"):
+			return "writing the kill line"
+		case strings.Contains(line, "alive from the cases only"):
+			return "writing the inert line"
+		case strings.Contains(line, "reached by"):
+			return "writing the reachability line"
+		}
+		return ""
+	}
+	clean := strings.Split(strings.TrimRight(counting.String(), "\n"), "\n")
+	if len(clean) != lines {
+		t.Fatalf("counted %d line(s) and split %d", lines, len(clean))
+	}
+	seen := map[string]bool{}
+	for i := 0; i < lines; i++ {
+		want := site(clean[i])
+		if want == "" {
+			t.Fatalf("line %d is written by no site this test knows: %q", i+1, clean[i])
+		}
+		seen[want] = true
+		_, err := Run(context.Background(), dir, &failAfter{n: i})
+		if err == nil {
+			t.Errorf("the sink refused write %d of %d and Run reported no error: "+
+				"a line nobody received was counted as evidence", i+1, lines)
+			continue
+		}
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the sink refused write %d of %d (%q) and the error came from elsewhere:\n  got  %v\n  want it to name %q",
+				i+1, lines, clean[i], err, want)
+		}
+	}
+	t.Logf("PROOF %d write position(s) over %d distinct site(s), each refused in turn and each naming itself",
+		lines, len(seen))
 }

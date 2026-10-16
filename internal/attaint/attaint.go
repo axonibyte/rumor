@@ -342,7 +342,14 @@ func corroborate(ctx context.Context, p pkg, rep *Report, out io.Writer) error {
 			continue
 		}
 		rep.Corroborated++
-		fmt.Fprintf(out, "%-16s %-26s planted lie corroborated   bug rests on the lie\n", p.name, c.name)
+		// A FAILED WRITE IS A FAILED PASS, not a cosmetic loss: these lines ARE
+		// the evidence the verdict rests on, which is internal/examples.go:123's
+		// reasoning applied here. Caught by golangci-lint on the runner (task
+		// 231) and not locally -- errcheck runs nowhere else, rook rumor/509.
+		if _, werr := fmt.Fprintf(out, "%-16s %-26s planted lie corroborated   bug rests on the lie\n",
+			p.name, c.name); werr != nil {
+			return fmt.Errorf("writing the corroboration line for %s/%s: %w", p.name, c.name, werr)
+		}
 	}
 	return nil
 }
@@ -428,7 +435,10 @@ func mutate(ctx context.Context, p pkg, rep *Report, out io.Writer) error {
 	for _, rule := range p.rules {
 		if k, ok := killed[rule]; ok {
 			rep.KilledRules++
-			fmt.Fprintf(out, "%-16s %-26s killed by %s (from the %s)\n", p.name, rule, k.mutant, k.path)
+			if _, werr := fmt.Fprintf(out, "%-16s %-26s killed by %s (from the %s)\n",
+				p.name, rule, k.mutant, k.path); werr != nil {
+				return fmt.Errorf("writing the kill line for %s/%s: %w", p.name, rule, werr)
+			}
 			continue
 		}
 		// NAMED, never counted silently. issue 52: "every rule killed by at
@@ -460,8 +470,11 @@ func mutate(ctx context.Context, p pkg, rep *Report, out io.Writer) error {
 			// the bound and not about the mutant.
 			if !movedLedger[mid] && movedCases[mid] {
 				rep.LedgerInert = append(rep.LedgerInert, p.name+"/"+mid)
-				fmt.Fprintf(out, "%-16s %-26s alive from the cases only (the seal reaches its clause)\n",
-					p.name, mid)
+				if _, werr := fmt.Fprintf(out,
+					"%-16s %-26s alive from the cases only (the seal reaches its clause)\n",
+					p.name, mid); werr != nil {
+					return fmt.Errorf("writing the inert line for %s/%s: %w", p.name, mid, werr)
+				}
 			}
 			continue
 		}
@@ -514,7 +527,14 @@ func reachable(ctx context.Context, p pkg, rep *Report, out io.Writer) error {
 	for _, v := range names {
 		if by, ok := got[v]; ok {
 			rep.Findings++
-			fmt.Fprintf(out, "%-16s %-26s reached by %s\n", p.name, v, by)
+			// THE FOURTH SITE, AND THE RUNNER NAMED ONLY THREE (345, 431, 463).
+			// Fixed anyway: a write whose failure is discarded is the same
+			// defect whether or not the linter reached it, and a lint that
+			// catches three of four unchecked writes in one file is itself
+			// worth reporting rather than trusting.
+			if _, werr := fmt.Fprintf(out, "%-16s %-26s reached by %s\n", p.name, v, by); werr != nil {
+				return fmt.Errorf("writing the reachability line for %s/%s: %w", p.name, v, werr)
+			}
 			continue
 		}
 		rep.Refusals = append(rep.Refusals, Refusal{ClauseFindingUnreachable,
