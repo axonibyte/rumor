@@ -523,6 +523,37 @@ can set it. Asserting only the target would let a cross-compile publish;
 asserting only the host would let a cross-compiled artefact ship from the right
 machine.
 
+**A GREEN LOCAL GATE DOES NOT PREDICT `ci.yml`, which is the converse of the
+table above and the half an agent needs.** The table says what the runner must
+have; it does not say that two of those tools are absent from the jails the
+agents work in. `golangci-lint` and `govulncheck` are installed by the workflow
+itself, by pinned `go install`, for exactly that reason -- measured absent in
+three jails of three (quill, thread:rumor/604 and /606, and this author's on
+2026-10-16). So an agent's gate is `ci.yml` **minus the lint and the
+vulnerability step**, and an errcheck or vulnerability finding appears for the
+first time ON THE PUSH unless the agent installs the tool.
+
+They are a `go install` away rather than unavailable, and the distinction
+decides what a reader does next (quill, thread:rumor/606): an agent told the
+check cannot run locally stops looking, while an agent told it is installable
+obtains the true count. `errcheck` and `govulncheck` both run from a jail once
+installed, with `go`/`go126` resolved as this table's first row describes. It has
+been paid for twice -- one unchecked `fmt.Fprintf` in `tests/statute` on task
+175, and three in `internal/attaint` on task 231 (thread:rumor/603), two actors
+and two weeks apart from one cause.
+
+**AND A LINT'S ISSUE COUNT MAY BE A CAP RATHER THAN A COUNT** (wren,
+thread:rumor/607). `golangci-lint` v2.14.0 defaults `issues.max-same-issues` to
+3 (`pkg/commands/flagsets.go:120`) and caps on the issue TEXT
+(`pkg/result/processors/max_same_issues.go`, keyed on `issue.Text`), logging the
+hidden remainder at `Infof` where the step's `tail -30` cannot reach it. Task
+231 printed `3 issues: errcheck: 3` over a tree that had four; the fourth was
+found by running `errcheck ./...` directly, which is a SECOND INSTRUMENT and not
+a closer reading of the first. The cap moves the list and the summary together,
+so the footer agrees with the capped list and nothing inside that output
+disagrees with anything: a truncation that leaves the count honest is caught by
+the count, and one that caps both is caught only from outside the tool.
+
 ## CI
 
 One workflow, `.forgejo/workflows/ci.yml`, on the FreeBSD runner. Linux waits on
