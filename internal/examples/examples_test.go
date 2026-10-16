@@ -221,3 +221,40 @@ func TestALostLineIsAnError(t *testing.T) {
 		t.Errorf("the error does not name the case whose line was lost: %v", err)
 	}
 }
+
+// THE WALK'S OWN LINE MUST NOT READ AN UNDEFINED FINDING AS A VERDICT.
+//
+// quill found this in internal/attaint (thread:r3/10) and the same field was
+// ignored here (thread:rumor/623): the finding column printed `%v` of Value,
+// so a statute that defines no finding rendered `<nil>` -- a verdict of nil
+// rather than no verdict. The planted change is the REMOVAL of `default
+// finding` from a copied package, which is the one edit that reaches the
+// state; the committed corpus keeps its default and is not touched.
+func TestAnUndefinedFindingIsNotPrintedAsNil(t *testing.T) {
+	root := copyPackage(t, "planted-lie")
+	sp := filepath.Join(root, "planted-lie", "statute.rego")
+	b, err := os.ReadFile(sp)
+	if err != nil {
+		t.Fatalf("reading the copied statute: %v", err)
+	}
+	const def = "default finding := \"bug\"\n"
+	if !strings.Contains(string(b), def) {
+		t.Fatalf("the copied statute has no %q line: the planting no longer reaches the state under test", def)
+	}
+	if err := os.WriteFile(sp, []byte(strings.Replace(string(b), def, "", 1)), 0o644); err != nil {
+		t.Fatalf("planting the removal: %v", err)
+	}
+
+	var out strings.Builder
+	if _, err := Run(context.Background(), root, &out); err != nil {
+		t.Fatalf("the walk could not read the planted tree: %v", err)
+	}
+	got := out.String()
+	if strings.Contains(got, "<nil>") {
+		t.Errorf("a line rendered an undefined finding as <nil>:\n%s", got)
+	}
+	if !strings.Contains(got, "no finding") {
+		t.Errorf("no line names the absence; one case must now have none:\n%s", got)
+	}
+	t.Logf("PROOF the walk names an absent finding rather than printing nil")
+}

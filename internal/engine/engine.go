@@ -99,6 +99,26 @@ type Finding struct {
 	Input map[string]any // exactly what the statute was given
 }
 
+// Says renders the finding the way a reader should see it: the value when the
+// statute defined one, and an explicit absence when it did not.
+//
+// IT EXISTS BECAUSE Defined IS EASY TO FORGET AND THE FORGETTING IS SILENT.
+// A caller formatting Value directly prints `<nil>` for an undefined finding,
+// which reads as a verdict OF nil rather than as no verdict at all -- and the
+// distinction is this package's own: a finding is a rule that HOLDS, while
+// absence is key-absence (docs/vocabulary.md). Measured when quill found it in
+// internal/attaint (thread:r3/10) and internal/examples had it too
+// (thread:rumor/623, /624): two production consumers of Finding, both ignoring
+// the field, which is the shape where the third forgets as well. Each consumer
+// fixing its own print leaves the next one to rediscover it, so the sentence
+// lives here, beside the field it reads.
+func (f Finding) Says() string {
+	if !f.Defined {
+		return "no finding"
+	}
+	return fmt.Sprint(f.Value)
+}
+
 // Input builds the statute's input from a sealed ledger and one check.
 //
 // THIS IS THE ADAPTER, and it is the only place a ledger.Fact becomes a

@@ -515,3 +515,54 @@ finding := "consistent" if input.observation.value == 1
 	}
 	t.Logf("PROOF bypassing the refusal, the printing statute yields %v with no diagnostic at all", v)
 }
+
+// AN UNDEFINED FINDING IS NOT A FINDING OF NIL, and Says is where that is kept.
+//
+// Both directions, because a renderer that always said "no finding" would pass
+// a one-sided arm: the default-less statute must reach Defined==false and say
+// so, and the statute that defines one must say its value. The default-less
+// statute is written here rather than added to examples/ -- the committed
+// corpus is counted by `rumor attaint` (3 packages, 17 cases) and an extra
+// package would move numbers that have nothing to do with this.
+func TestAnUndefinedFindingSaysSoRatherThanNil(t *testing.T) {
+	l, s, _ := fixture(t, "planted-lie", "honest-only")
+	chk := Check{Actor: s.Observer, Query: "user.count", Of: "user.created",
+		Source: ledger.SourceAPI, Value: 1}
+
+	// No `default finding`, and a body that cannot hold for this observation.
+	const noDefault = `package rumor.statute
+
+finding := "bug" if input.observation.value == 99999
+`
+	const withDefault = `package rumor.statute
+
+default finding := "bug"
+
+finding := "consistent" if input.observation.value == 1
+`
+	f, err := Evaluate(context.Background(), noDefault, []string{FindingRule}, l, chk)
+	if err != nil {
+		t.Fatalf("a statute with no default was refused: %v", err)
+	}
+	if f.Defined {
+		t.Fatalf("the statute defined a finding after all (%v): the fixture no longer reaches the state under test", f.Value)
+	}
+	if got := f.Says(); got != "no finding" {
+		t.Errorf("Says() on an undefined finding is %q; a reader needs an absence, and %%v of Value would have printed <nil>", got)
+	}
+	if strings.Contains(f.Says(), "nil") {
+		t.Errorf("Says() leaked a nil rendering: %q", f.Says())
+	}
+
+	g, err := Evaluate(context.Background(), withDefault, []string{FindingRule}, l, chk)
+	if err != nil {
+		t.Fatalf("the twin with a default was refused: %v", err)
+	}
+	if !g.Defined {
+		t.Fatal("the twin carries a default and still came back undefined")
+	}
+	if got := g.Says(); got != "consistent" {
+		t.Errorf("Says() on a defined finding is %q, wanted the value itself", got)
+	}
+	t.Logf("PROOF Says() answers %q undefined and %q defined", f.Says(), g.Says())
+}

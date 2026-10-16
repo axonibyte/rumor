@@ -173,7 +173,7 @@ func one(ctx context.Context, pdir, pkgName, caseName, statute string, rules []s
 		where = fmt.Sprintf("%d definitions", len(f.Fired))
 	}
 	head := fmt.Sprintf("%-16s %-26s %-11v %-24s %4d trace event(s)",
-		pkgName, caseName, f.Value, where, f.TraceEvents)
+		pkgName, caseName, f.Says(), where, f.TraceEvents)
 	if len(bad) == 0 {
 		return head + "  agrees", true, nil
 	}
