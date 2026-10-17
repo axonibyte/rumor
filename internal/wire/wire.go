@@ -22,6 +22,7 @@ package wire
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -155,6 +156,21 @@ type Component struct {
 	Stateful bool   `json:"stateful"`
 }
 
+// Capabilities is what the adapter can actually DO, as opposed to what the
+// project declares it wants done. Each list may be empty, and empty is an
+// ANSWER: the validate arm on a declared fault, volume target or upgrade with
+// nothing behind it fires on an empty list and would be vacuous on an absent
+// field, which is why all three are required rather than omitempty.
+//
+// WHY HERE AND NOT IN platform.toml (fable, coop breakout-r4/3): the arm asks
+// whether there is anything behind a declaration, and a second static file is
+// another declaration rather than something behind the first.
+type Capabilities struct {
+	Faults  []string `json:"faults"`
+	Volume  []string `json:"volume"`
+	Upgrade []string `json:"upgrade"`
+}
+
 // DescribeResponse is the adapter's declared surface.
 type DescribeResponse struct {
 	Envelope
@@ -162,6 +178,7 @@ type DescribeResponse struct {
 	Observations []Observation `json:"observations"`
 	Contexts     []string      `json:"contexts"`
 	Components   []Component   `json:"components"`
+	Capabilities Capabilities  `json:"capabilities"`
 }
 
 // ExecuteResponse reports what the action did. IDs is keyed by the names the
@@ -258,7 +275,7 @@ var requests = map[Kind]shape{
 
 var responses = map[Kind]shape{
 	KindDescribe: {
-		required: []string{"kind", "contract", "id", "actions", "observations", "contexts", "components"},
+		required: []string{"kind", "contract", "id", "actions", "observations", "contexts", "components", "capabilities"},
 	},
 	KindExecute: {required: []string{"kind", "contract", "id", "ids", "response"}},
 	KindObserve: {required: []string{"kind", "contract", "id", "value"}},
@@ -297,7 +314,7 @@ func decode(line []byte, table map[Kind]shape, isResponse bool) (Message, error)
 	if err := want.check(kind, raw); err != nil {
 		return nil, err
 	}
-	msg, err := into(kind, isResponse, line)
+	msg, err := into(kind, isResponse, line, want.allowed())
 	if err != nil {
 		return nil, err
 	}
@@ -312,13 +329,7 @@ func decode(line []byte, table map[Kind]shape, isResponse bool) (Message, error)
 // one fault with three parts, and the caller then has to parse the sentence to
 // act on any of them.
 func (s shape) check(kind Kind, raw map[string]json.RawMessage) error {
-	allowed := make(map[string]bool, len(s.required)+len(s.optional))
-	for _, f := range s.required {
-		allowed[f] = true
-	}
-	for _, f := range s.optional {
-		allowed[f] = true
-	}
+	allowed := s.allowed()
 	var unknown []string
 	for f := range raw {
 		if !allowed[f] {
@@ -337,11 +348,25 @@ func (s shape) check(kind Kind, raw map[string]json.RawMessage) error {
 	return nil
 }
 
+// allowed is the field set, required and optional together. It is one function
+// so that the decoder's two readers of it -- the unknown-field test and the
+// whose-fault test below -- cannot drift apart.
+func (s shape) allowed() map[string]bool {
+	out := make(map[string]bool, len(s.required)+len(s.optional))
+	for _, f := range s.required {
+		out[f] = true
+	}
+	for _, f := range s.optional {
+		out[f] = true
+	}
+	return out
+}
+
 // into unmarshals into the concrete type. DisallowUnknownFields is set here as
 // a SECOND INSTRUMENT over the same line: check above reads the schema table,
 // this reads the struct tags, and a disagreement between them is a defect in
 // this package rather than in the message. It is reported as such.
-func into(kind Kind, isResponse bool, line []byte) (Message, error) {
+func into(kind Kind, isResponse bool, line []byte, allowed map[string]bool) (Message, error) {
 	var msg Message
 	switch {
 	case isResponse && kind == KindDescribe:
@@ -368,12 +393,67 @@ func into(kind Kind, isResponse bool, line []byte) (Message, error) {
 	dec := json.NewDecoder(bytes.NewReader(line))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(msg); err != nil {
-		return nil, Refusal{
-			Kind:   kind,
-			Reason: fmt.Sprintf("the schema and the struct disagree, which is a defect in package wire: %v", err),
-		}
+		return nil, unmarshalRefusal(kind, allowed, err)
 	}
 	return deref(msg), nil
+}
+
+// unmarshalRefusal reads the unmarshal's complaint and says WHOSE fault it is.
+//
+// THE DISTINCTION IS NOT COSMETIC. check above has already approved the
+// top-level key set, so an unknown field reaching here is one of two different
+// events: a field the TABLE allows and no struct carries, which is a defect in
+// this package, or a field nested inside one -- `capabilities.fault` for
+// `capabilities.faults` -- which is the adapter's. The first cut reported both
+// as this package's defect, which would have told an adapter author to go and
+// read our source. The one-field-at-a-time rule from check holds here too.
+func unmarshalRefusal(kind Kind, allowed map[string]bool, err error) error {
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &typeErr) {
+		field := typeErr.Field
+		if field == "" {
+			field = typeErr.Struct
+		}
+		return Refusal{Kind: kind, Field: field,
+			Reason: fmt.Sprintf("wrong type: %s is not a %s for", typeErr.Value, typeErr.Type)}
+	}
+	if name, ok := unknownFieldName(err.Error()); ok {
+		if _, nested := splitNested(name); !nested && allowed[name] {
+			return Refusal{Kind: kind, Field: name,
+				Reason: "the schema allows this field and no struct carries it, which is a defect in package wire:"}
+		}
+		return Refusal{Kind: kind, Field: name, Reason: "unknown field"}
+	}
+	return Refusal{Kind: kind, Reason: fmt.Sprintf("malformed: %v", err)}
+}
+
+// unknownFieldName pulls the field out of encoding/json's own sentence, which
+// is `json: unknown field "sorce"`. Matching the text is the only route: the
+// package returns a bare error for this case and has since Go 1.10.
+func unknownFieldName(text string) (string, bool) {
+	const prefix = `json: unknown field "`
+	i := strings.Index(text, prefix)
+	if i < 0 {
+		return "", false
+	}
+	rest := text[i+len(prefix):]
+	j := strings.Index(rest, `"`)
+	if j < 0 {
+		return "", false
+	}
+	return rest[:j], true
+}
+
+// splitNested reports whether a field name encoding/json gave us is nested. The
+// decoder reports nested unknown fields by their LEAF name, so the only
+// available test is whether the name is one of this message's own top-level
+// fields -- which the caller does with `allowed`. This helper exists to keep
+// that reasoning in one place rather than inlining a comment-free condition.
+func splitNested(name string) (string, bool) {
+	if i := strings.Index(name, "."); i >= 0 {
+		return name[:i], true
+	}
+	return name, false
 }
 
 // deref returns the value rather than the pointer, so a caller's type switch

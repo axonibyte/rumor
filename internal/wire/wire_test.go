@@ -47,6 +47,11 @@ func wellFormed(direction string, kind Kind) map[string]any {
 			"observations": []any{map[string]any{"name": "event", "source": "api"}},
 			"contexts":     []any{"api"},
 			"components":   []any{map[string]any{"name": "store", "stateful": true}},
+			"capabilities": map[string]any{
+				"faults":  []any{"restart"},
+				"volume":  []any{},
+				"upgrade": []any{},
+			},
 		})
 	case KindExecute:
 		return add(map[string]any{"ids": map[string]any{"event": 4711}, "response": map[string]any{"status": 201}})
@@ -348,6 +353,48 @@ func TestADisagreementBetweenTableAndStructIsReportedAsADefectHere(t *testing.T)
 	}
 	if !strings.Contains(ref.Reason, "defect in package wire") {
 		t.Errorf("reason %q does not report it as this package's defect", ref.Reason)
+	}
+}
+
+// TestANestedUnknownFieldIsTHEIRFaultNotOURS: check has already approved the
+// top-level keys, so an unknown field reaching the unmarshal is either nested
+// (the adapter's) or a field the table allows and no struct carries (ours).
+// Reporting the first as ours would send an adapter author to read our source.
+func TestANestedUnknownFieldIsTheMessagesFaultNotThePackages(t *testing.T) {
+	fixture := wellFormed("response", KindDescribe)
+	fixture["capabilities"] = map[string]any{
+		"fault":   []any{"restart"}, // the field is `faults`
+		"volume":  []any{},
+		"upgrade": []any{},
+	}
+	_, err := DecodeResponse(line(t, fixture))
+	var ref Refusal
+	if !asRefusal(err, &ref) {
+		t.Fatalf("%v, want a Refusal", err)
+	}
+	if ref.Field != "fault" {
+		t.Errorf("refusal names %q, want the nested field \"fault\"", ref.Field)
+	}
+	if !strings.Contains(ref.Reason, "unknown field") || strings.Contains(ref.Reason, "defect in package wire") {
+		t.Errorf("reason %q blames the wrong party", ref.Reason)
+	}
+}
+
+// TestAWrongTypeIsRefusedWithTheFieldAndTheTypes, because "malformed" alone
+// sends the reader back to the bytes to find out which field it was.
+func TestAWrongTypeIsRefusedWithTheFieldAndTheTypes(t *testing.T) {
+	fixture := wellFormed("request", KindExecute)
+	fixture["action"] = 7
+	_, err := DecodeRequest(line(t, fixture))
+	var ref Refusal
+	if !asRefusal(err, &ref) {
+		t.Fatalf("%v, want a Refusal", err)
+	}
+	if ref.Field != "action" {
+		t.Errorf("refusal names %q, want \"action\"", ref.Field)
+	}
+	if !strings.Contains(ref.Reason, "wrong type") || !strings.Contains(ref.Reason, "string") {
+		t.Errorf("reason %q names neither the fault nor the wanted type", ref.Reason)
 	}
 }
 

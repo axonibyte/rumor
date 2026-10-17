@@ -70,9 +70,21 @@ A decode refusal is **could-not-run** (`rumor validate` exit 2), never
 | `observations` | array of `{name, source}` | the engine's pre-run check: a bindings observation the adapter does not declare is could-not-run before any actor moves, rather than mid-run. This is the engine's check and **not** one of R4.3's thirteen refusals |
 | `contexts` | array of strings | `session`'s `context` must name one of these, and the reachability arm above is computed over them |
 | `components` | array of `{name, stateful}` | the arm on a stateful component no rollback provider covers compares these against `[[rollback]].covers` in `platform.toml`. Without `components` that arm has nothing to compare and would pass vacuously |
+| `capabilities` | object: `{faults, volume, upgrade}`, three arrays of names | the arm on a declared fault, volume target or upgrade with no capability or path behind it. Each array may be empty, and an empty array is the answer that makes the arm fire rather than an omission that makes it vacuous |
 
 `context` on an action is a context name or `"none"` for an action taken
 without a session.
+
+**WHY `capabilities` IS HERE AND NOT IN `platform.toml`** (fable, coop
+breakout-r4/3, whose D13 drill reads it from `describe`): the arm asks whether
+there is anything *behind* a declaration. A second static file saying
+`faults = ["disk_full"]` is another declaration, not something behind the first,
+so pairing the two would prove only that a project wrote one word twice.
+Pairing a declared use against the adapter's live answer is a check. The same
+reasoning runs the other way for rollback: a provider is `rumor`'s own
+machinery and the project merely selects it, so `[[rollback]]` stays in
+`platform.toml` and is paired against `components` here -- live against static
+in both cases, with the live side being whichever party has to do the thing.
 
 ### `execute`
 
@@ -300,7 +312,7 @@ refused even now, which is R4.2's rule for the same situation in the bindings:
 | table | phase | why it is here |
 |---|---|---|
 | `[[rollback]]` (`provider`, `covers`) | R13 | the arm on a stateful component with no rollback provider needs the platform-side half now, or it has nothing to compare `describe`'s `components` against. `docs/rollback.md` defines the provider interface in R13, and the names must agree then |
-| `[capabilities]` (`faults`, `upgrade`, `seeding`) | R19, R21, R20 | the arm on a declared fault, volume target or upgrade with no capability or path behind it: this table is the capability, the declared *use* is the bindings' side (R4.2), and which side declares the use is R4.2's to settle |
+| not a table: `capabilities` | R19, R20, R21 | faults, volume targets and upgrades are declared by the adapter's `describe`, not here. R4.1's first draft put them in this file; the reason they moved is under `describe` above |
 | `[thresholds]` (`blocking = false` by default) | R15 | coverage thresholds are advisory until promoted; R15 names the metrics, and until then an unknown key inside the table is refused like any other |
 
 
@@ -308,4 +320,4 @@ refused even now, which is R4.2's rule for the same situation in the bindings:
 
 | version | date | run | change |
 |---|---|---|---|
-| v1 | 2026-10-17 | R4.1 | first definitions. The wire protocol: JSON-lines over stdio, one outstanding request per process, `kind`/`contract`/`id` on every message, strict decode refused by name as could-not-run, the four request/response pairs, the error envelope's six kinds with every envelope could-not-run, the three-way version check by exact string comparison with `"1"` as v1's value, and the five things an adapter never does. No run-local handle crosses the wire in either direction, and `observe` answers `value` alone -- neither a position nor a source. `platform.toml`: `contract`, `seeds_file`, `[adapter]`, `[[venire]]`, `[stages.<name>]`, `[weights.default]` with sparse per-stage and per-profile overrides resolved profile-then-stage-then-default, and `[profiles.<name>]`; `[[rollback]]`, `[capabilities]` and `[thresholds]` reserved for R13, R19/R20/R21 and R15, accepted when absent and refused when malformed. The bindings schema is R4.2's and this file's heading stays unwritten until it lands |
+| v1 | 2026-10-17 | R4.1 | first definitions. The wire protocol: JSON-lines over stdio, one outstanding request per process, `kind`/`contract`/`id` on every message, strict decode refused by name as could-not-run, the four request/response pairs, the error envelope's six kinds with every envelope could-not-run, `describe`'s declared surface including `capabilities`, the three-way version check by exact string comparison with `"1"` as v1's value, and the five things an adapter never does. No run-local handle crosses the wire in either direction, and `observe` answers `value` alone -- neither a position nor a source. `platform.toml`: `contract`, `seeds_file`, `[adapter]`, `[[venire]]`, `[stages.<name>]`, `[weights.default]` with sparse per-stage and per-profile overrides resolved profile-then-stage-then-default, and `[profiles.<name>]`; `[[rollback]]` and `[thresholds]` reserved for R13 and R15, accepted when absent and refused when malformed, with faults, volume targets and upgrades declared by `describe`'s `capabilities` rather than by this file (fable breakout-r4/3). The bindings schema is R4.2's and this file's heading stays unwritten until it lands |
