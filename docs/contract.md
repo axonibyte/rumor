@@ -1,23 +1,290 @@
 # Contract
 
-> Stub from R0.1. The headings below are the ones this document owes; the
-> content arrives with the phase that owns the subject. `docs/coverage.toml`
-> names this file, and `rumor docs --check` fails if a source path it should
-> describe is not mapped.
+This document is the contract: what an adapter speaks, what a project declares
+itself with, and the version both are held to. R4.1 wrote the wire protocol and
+the `platform.toml` schema; the bindings schema arrives with R4.2, and
+`rumor validate` (R4.3) is what refuses a project whose three declarations do
+not agree. `docs/coverage.toml` names this file, and `rumor docs --check` fails
+if a source path it should describe is not mapped.
+
+**Every field below exists because something consumes it, and the consumer is
+named.** That is not a style rule. A field with no consumer is either dead or a
+channel for an adapter to answer a question the engine did not ask -- rook
+found one in the first draft of this protocol (`observe`'s response echoed the
+source it had been handed), and applying the same test to the rest of the draft
+took the run-local handles off the wire entirely.
 
 
 ## Adapter wire protocol
 
-Not yet written.
+### Transport and framing
+
+JSON-lines over stdio: one JSON object per line, requests on the adapter's
+stdin, responses on its stdout. The engine spawns the adapter from
+`[adapter].command` in `platform.toml`, sends `describe` first, and keeps the
+process for the whole run.
+
+**One request is outstanding at a time per process.** Responses therefore
+arrive in order, and `id` is a check rather than a router: a response whose
+`id` is not the outstanding request's is a wire refusal naming both. Where a
+stage needs concurrency (R8's N-way fan-out), it uses N adapter processes
+rather than N outstanding requests on one, because the engine owns the timing
+and a pipelined adapter would own part of it.
+
+The adapter's stderr is free text. It is captured into the run's report and
+never parsed; a diagnosis reads it (R10, R11) and no decision turns on it.
+
+EOF on stdout, or a process exit, before the run ends is **could-not-run**,
+with the exit status in the detail. It is never a refusal and never a finding.
+
+### Fields every message carries
+
+| field | type | consumer |
+|---|---|---|
+| `kind` | string | the decoder: it selects which required-field set applies, so the message's shape is read from the message itself rather than inferred from what was last sent |
+| `contract` | string | the version check below. On **every** message, not only the handshake, so a mid-run change is caught at the next message rather than at startup alone |
+| `id` | string | correlation, as above: the response to the outstanding request, and nothing else |
+
+### Strict decode, refused by name
+
+The decoder refuses a message with an **unknown** field or a **missing**
+required one, naming the message kind, the field, and which of the two it was.
+Unknown-is-an-error rather than unknown-is-ignored follows `docs/coverage.toml`'s
+parser and the reason given there: a lenient reader turns a typo into silence.
+Here the silence would be worse than an uncovered path -- an adapter sending
+`sorce` would observe nothing and the run would read as clean.
+
+A decode refusal is **could-not-run** (`rumor validate` exit 2), never
+*refused* (exit 1). The project is not wrong; its adapter is. That boundary is
+`rumor attaint`'s (R3) and fable's D7 drill asserts it.
+
+### `describe`
+
+Request: the three common fields and nothing else -- there is nothing to ask.
+
+Response:
+
+| field | type | consumer |
+|---|---|---|
+| `actions` | array of `{name, context}` | validate's arm on an action with no UI flow needs the action set; the arm on a browser-stage actor reaching an API action needs each action's `context`, because "could reach" is exactly "its context is one that actor holds a session in" |
+| `observations` | array of `{name, source}` | the engine's pre-run check: a bindings observation the adapter does not declare is could-not-run before any actor moves, rather than mid-run. This is the engine's check and **not** one of R4.3's thirteen refusals |
+| `contexts` | array of strings | `session`'s `context` must name one of these, and the reachability arm above is computed over them |
+| `components` | array of `{name, stateful}` | the arm on a stateful component no rollback provider covers compares these against `[[rollback]].covers` in `platform.toml`. Without `components` that arm has nothing to compare and would pass vacuously |
+
+`context` on an action is a context name or `"none"` for an action taken
+without a session.
+
+### `execute`
+
+Request:
+
+| field | type | consumer |
+|---|---|---|
+| `action` | string | one of `describe`'s action names |
+| `token` | string | present **exactly when** the action's context is not `"none"`: the session the action is taken in, which is also who takes it. There is no `actor` field here -- the engine knows which actor it acquired the token for, and a second statement of the same fact is a channel for the two to disagree |
+| `args` | object | the action's declared arguments (R4.2). Values are the system's own ids, never handles: see below |
+
+Response:
+
+| field | type | consumer |
+|---|---|---|
+| `ids` | object, declared name to id | the engine binds each to the handle it is assigning. Keys are the names the action declares it creates, not handles |
+| `response` | any | the bindings' declared response shape, and the read-back an `api` observation checks |
+
+**No run-local handle crosses the wire, in either direction.** The engine owns
+the handle table (`docs/design.md`: it "maps each to whatever id the server
+returned on the current attempt"), so the engine resolves a handle to an id
+when it builds `args`, and joins an id back to the handle it was assigning when
+it reads `ids`. An earlier draft keyed `ids` by handle; keying them by the
+action's declared names is the same rule as rook's finding -- the adapter was
+being handed an identifier it does nothing with, and could answer with a
+different one. An action that creates two entities is why the keys exist at all:
+a bare id could not say which was which.
+
+### `observe`
+
+Request:
+
+| field | type | consumer |
+|---|---|---|
+| `query` | string | the named observation. When `source` is `direct` its verb shape is an **epic Open item**; the decoder checks that `query` is present and leaves its shape alone until R8 fixes it |
+| `source` | string | one of `api`, `ui`, `direct` (`docs/vocabulary.md`, Observation sources) |
+| `token` | string | present **exactly when** `source` is not `direct`: `api` and `ui` are an actor's observations through its session, and `direct` is the engine's, never an actor's (R9) |
+
+Response: `value`, and nothing else.
+
+**No position.** The ledger assigns positions on append (`docs/design.md`:
+"Positions are assigned by the store, not passed in"), and
+`docs/vocabulary.md` makes an observation with no position a validation
+refusal -- which reads as "the adapter must send one". It must not: an adapter
+that supplied positions would own append-only ordering, which the ledger owns.
+
+**And no source.** The engine records the source it *asked* for; the request is
+the only place a source is chosen. An adapter that cannot observe through the
+channel it was handed answers the error envelope with `kind: "source"`, which
+is could-not-run. It must not answer through another channel, because a
+substituted source would record a `ui` rule's run against an `api` read and the
+report would name a stage that never ran.
+
+### `session`
+
+Request: `actor` (the actor's name as the ledger speaks it) and `context` (one
+of `describe`'s contexts). Response: `token`.
+
+`actor` enters the protocol here and only here. Every later message carries the
+token instead, which is what makes the browser stage's one-isolated-context-per-actor
+rule (R9) a property of this exchange rather than an honor system.
+
+### The error envelope
+
+Any response may be replaced by `kind: "error"` carrying
+`error: {kind, field?, detail}`.
+
+| `error.kind` | when | consumer |
+|---|---|---|
+| `contract` | the version the peer was sent does not match its own | validate's contract-version arm; fable's D6 drill bumps the adapter's alone |
+| `field` | the peer could not decode a message: `field` names it, `detail` says unknown or missing | the decoder's own refusals, and D7 |
+| `source` | the adapter cannot observe through the source it was handed | `observe` above: the alternative is a substituted source |
+| `session` | a session could not be acquired, or a token was rejected | the run cannot proceed as that actor |
+| `action` | the adapter does not implement a named action | the engine's assertion against its own `describe` answer: reaching this means the engine asked for something the adapter never declared |
+| `internal` | anything else; `detail` is free text | the run's could-not-run report |
+
+**Every envelope is could-not-run.** An adapter cannot refuse a project and
+cannot produce a finding: a refusal is `rumor validate`'s verdict over declared
+files, and a finding is the statute's over a sealed ledger. The adapter reports
+what it saw, or that it could not act.
+
+### The version check
+
+Three places state the contract version: the engine's own constant, the
+adapter's `contract` field, and `contract` in `platform.toml`. **All three must
+be equal, by exact string comparison.** v1's value is `"1"`, there is no
+compatibility window, and a mismatch is refused naming every value seen and
+where each came from -- a refusal that names one side leaves the reader to
+guess which of the other two it disagreed with.
+
+The version is a string rather than a number so that a later form compares
+exactly without numeric coercion deciding whether `1` and `1.0` are the same
+version.
+
+### What an adapter never does
+
+Each of these is owned elsewhere, and an adapter that did it would make a run
+irreproducible or a report untrue:
+
+- **assign a position.** The ledger assigns, on append (`docs/vocabulary.md`).
+- **draw randomness.** The engine owns the seed and the action sequence
+  (`docs/design.md`); a driver that drew its own would make replay depend on
+  something the seed does not carry.
+- **substitute an observation source.** See `observe`.
+- **see a handle.** The engine owns the handle table.
+- **report a finding, or refuse a project.** Neither is the adapter's verdict
+  to give.
+
 
 ## Bindings schema
 
 Not yet written.
 
+
 ## `platform.toml` schema
 
-Not yet written.
+A project's own declaration: which adapter to run, who the run draws its actors
+from, which stages exist, how the walk is weighted, and where its seeds live.
+The bindings (R4.2) say what the actions *are*; this file says what this
+platform *is*.
+
+The parser is strict in both directions, for `docs/coverage.toml`'s reason: an
+unknown key is an error naming the key and its table, and a missing required
+key is an error naming it. So the parser's key set **is** the schema, and a
+later phase adding a key adds it here with a Revisions entry.
+
+```toml
+contract = "1"                      # matched against the adapter's and the engine's
+seeds_file = "seeds.lock"           # default; R5 promotes a seed into it
+
+[adapter]
+command = ["rumor", "fake-adapter"] # argv the engine spawns
+cwd = "."                           # optional
+env = ["BASE_URL"]                  # optional: variable names passed through
+
+[[venire]]                          # the cast the run draws its actors from
+role = "host"                       # a role the statute speaks (docs/vocabulary.md)
+count = 1
+
+[[venire]]
+role = "guest"
+count = 3
+
+[stages.api-sim]
+enabled = true
+
+[stages.fuzz]
+enabled = false
+
+[stages.concurrency]
+enabled = false
+
+[stages.browser]
+enabled = false
+
+[weights.default]                   # action kind to weight; nemesis kinds are
+create_event = 5                    # action kinds in the same pool
+join_event = 8
+suborn = 1
+
+[weights.stage.browser]             # sparse override
+join_event = 3
+
+[weights.profile.nightly]           # sparse override, wins over the stage's
+suborn = 3
+
+[profiles.pre-push]
+stages = ["api-sim"]
+seeds = 4                           # a count, as `rumor run --seeds N` (R22)
+budget = "5m"
+
+[profiles.nightly]
+stages = ["api-sim", "concurrency", "browser"]
+seeds = 64
+budget = "2h"
+```
+
+### The keys
+
+| key | required | consumer |
+|---|---|---|
+| `contract` | yes | the three-way version check above |
+| `seeds_file` | no, defaults to `seeds.lock` | validate's arm on a missing seeds file or promoted seed; R5 writes promotions into it. Named `seeds_file` and not `seeds` because a profile's `seeds` is a **count** -- one word for a path and a count in one file is a misreading waiting to happen |
+| `[adapter].command` | yes | the engine spawns it. Nothing else in the project says how to reach the system under test |
+| `[adapter].cwd`, `[adapter].env` | no | the spawn; `env` is a list of variable **names** passed through, so a platform's secrets stay out of this file |
+| `[[venire]]` | yes, at least one | the walk draws its actors from these roles and counts. An empty venire can run nothing, which is a parse refusal rather than one of validate's thirteen |
+| `[stages.<name>].enabled` | yes, at least one enabled | stage selection and skip reasons in the report (R8); `stages.browser.enabled` is what the two browser-stage arms read, and both are vacuous without it |
+| `[weights.default]` | yes | the walk draws from the applicable set by weight (`docs/design.md`, "the engine owns the seed") |
+| `[weights.stage.<stage>]`, `[weights.profile.<profile>]` | no | the same, per stage and per profile, which is the shape design.md already relies on |
+| `[profiles.<name>]` | no | R22's profiles: `stages`, `seeds` (a count), `budget` (a duration) |
+
+**Weight resolution order, stated because an unstated precedence is where a
+tuned weight silently does nothing:** for an action kind in stage *s* under
+profile *p*, the weight is the first of `[weights.profile.p]`,
+`[weights.stage.s]`, `[weights.default]` that names it. Overrides are sparse;
+only `[weights.default]` must be complete, and an action kind no table names is
+a parse refusal naming the kind.
+
+### Reserved for the phase that owns them
+
+Present in the schema now and accepted when absent -- a **malformed** one is
+refused even now, which is R4.2's rule for the same situation in the bindings:
+
+| table | phase | why it is here |
+|---|---|---|
+| `[[rollback]]` (`provider`, `covers`) | R13 | the arm on a stateful component with no rollback provider needs the platform-side half now, or it has nothing to compare `describe`'s `components` against. `docs/rollback.md` defines the provider interface in R13, and the names must agree then |
+| `[capabilities]` (`faults`, `upgrade`, `seeding`) | R19, R21, R20 | the arm on a declared fault, volume target or upgrade with no capability or path behind it: this table is the capability, the declared *use* is the bindings' side (R4.2), and which side declares the use is R4.2's to settle |
+| `[thresholds]` (`blocking = false` by default) | R15 | coverage thresholds are advisory until promoted; R15 names the metrics, and until then an unknown key inside the table is refused like any other |
+
 
 ## Revisions
 
-Not yet written.
+| version | date | run | change |
+|---|---|---|---|
+| v1 | 2026-10-17 | R4.1 | first definitions. The wire protocol: JSON-lines over stdio, one outstanding request per process, `kind`/`contract`/`id` on every message, strict decode refused by name as could-not-run, the four request/response pairs, the error envelope's six kinds with every envelope could-not-run, the three-way version check by exact string comparison with `"1"` as v1's value, and the five things an adapter never does. No run-local handle crosses the wire in either direction, and `observe` answers `value` alone -- neither a position nor a source. `platform.toml`: `contract`, `seeds_file`, `[adapter]`, `[[venire]]`, `[stages.<name>]`, `[weights.default]` with sparse per-stage and per-profile overrides resolved profile-then-stage-then-default, and `[profiles.<name>]`; `[[rollback]]`, `[capabilities]` and `[thresholds]` reserved for R13, R19/R20/R21 and R15, accepted when absent and refused when malformed. The bindings schema is R4.2's and this file's heading stays unwritten until it lands |
