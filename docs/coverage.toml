@@ -223,6 +223,15 @@ path = "internal/fake/*.go"
 docs = ["docs/cli.md", "docs/contract.md"]
 
 [[entry]]
+# A package's bindings: the actions, observations, claim timings and roles a
+# project binds its statute to. contract.md owns the schema, and the testing
+# methodology owns the part worth saying about HOW it is read -- that a parser
+# must not refuse what `rumor validate` is built to refuse, which is tested here
+# as its own property with the battery inverted.
+path = "internal/bindings/*.go"
+docs = ["docs/contract.md", "docs/testing-methodology.md"]
+
+[[entry]]
 # The strict reader both declaration files share: unknown keys are errors, a
 # missing required key is named, a wrong type says what it wanted, and every
 # refusal carries the key's dotted path. docs/contract.md owns both schemas, so

@@ -660,3 +660,38 @@ The general form: when a document and a program state the same schema, pick one
 to be the source a test reads and have it convict the other. Prose that merely
 says "keep these in step" is not a mechanism, and the copy that drifts is always
 the one nobody runs.
+
+## A parser must not refuse what a validator is built to refuse
+
+`rumor validate`'s eighteen refusals (R4.3) and the bindings parser (R4.2) read
+the same file, and eight of those arms are about bindings that are **well formed
+and wrong**: an action with no precondition, a binding emitting a claim type no
+rule consumes, an eventual claim type with no bound, a browser-stage action with
+no UI flow, a declared fault with no capability behind it. Every one of those is
+a file a strict parser would be tempted to refuse — and a parser that refused it
+would make the arm **unreachable**. The run would stop at could-not-run, the arm
+would never evaluate, and its fixture would be measuring the parser.
+
+Nothing about that failure is visible in a green suite. The parser's tests pass,
+because refusing a malformed file is what they ask for; the arm's fixture passes
+too, because it trips *something*. Only the exit status tells them apart, and a
+fixture asserting "this file is refused" does not read it.
+
+So the division is written down in the package comment and **tested as its
+own property**, with the battery inverted: one case per arm, each mutating the
+file the way that arm's fixture will, asserting that it still **parses**. The
+parser then requires only what makes the file readable as bindings at all — a
+name, a context, a source, a timing — and `emits`, `requires`, `flow`, `bound`
+and `[uses]` are optional here and refused there.
+
+Two refusals in the same file show the boundary rather than blurring it: a
+`direct` observation must name a component, because that field is the only place
+a binding names one and validate's rollback-coverage arm has nothing to compare
+without it — while a *named component no provider covers* is the arm. The parse
+refusal is about the file's readability; the arm is about the project's
+consistency.
+
+The general form: when two checks read one input, the stricter one upstream can
+silently disarm the one downstream. Name which check owns each refusal, and test
+the upstream check for **acceptance** of exactly what the downstream one
+refuses.
