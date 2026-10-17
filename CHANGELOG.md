@@ -3,6 +3,39 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.17 — 2026-10-17
+
+**The engine owns the seed, written before anyone builds it.** `docs/design.md`
+gains the section R5 is built to, so the walk has a home in the design ahead of
+the code and R5 amends the text with what it measures rather than the text
+excusing the code.
+
+- **A run is a seeded walk.** One integer, printed first and accepted back by
+  `--seed`, is the only randomness in the system; drivers execute one action at
+  a time and never see the generator, so a run replays from the seed, the weight
+  file, the bindings and the commit alone.
+- **The walk chooses by weight from the applicable set**, with the nemesis kinds
+  (`suborn`, `canard`, `palter`, `essoin`) scheduled exactly like honest actions
+  — which is why the vocabulary's control needs no trust model: the engine knows
+  what it planted because it planted it.
+- **The sequence is over handles, not ids**, so the same seed yields the same
+  actions on every attempt while every attempt's ids differ.
+- **Shrinking needs a clean world.** One replay on a verified clean rollback
+  first; an unstable seed is not shrunk and not promoted; every candidate runs
+  through the rollback trait's `verify`; and "the same finding" is rule, value
+  and attribution agreeing, so a shrinker cannot drift from a `bug` resting on a
+  planted claim to one resting on none.
+- **An inapplicable candidate is its own outcome**, never evidence of
+  instability; R14 and R15's toy bug consume that distinction.
+- **Promoted seeds run first** (`seeds.lock`, R22), so found bugs become the
+  regression suite without anyone writing a test.
+
+Amended once from quill's review (rumor/750): the toy system under test is
+pointed at, "the same finding" is defined with why the attribution participates,
+and "minimal trace" names the output's shape while the under-five-actions bar is
+the property. Two open items stay recorded in the epic: whether guided coverage
+weights are committed beside `seeds.lock`, and the shrinker's name.
+
 ## 0.1.16 — 2026-10-16
 
 **A `Docs-Unchanged` exemption belongs to its own release run.** Arm 9 of the
