@@ -592,6 +592,7 @@ wrong.
 The general form: a check that only ever gained refusals has been measured in
 one direction. Ask what it now rejects that it used to accept, and measure that
 against history rather than against a fixture written by the same hand.
+
 ## An executable doc block is code, and inherits none of the code's discipline
 
 A fence marked `run` is executed by the release gate, which makes it the only
@@ -617,3 +618,45 @@ test over `run` blocks must find exactly the blocks the gate runs, so read the
 gate's fence pattern and refuse to run if it has moved. Pair it with a
 known-positive count: every check over an empty set passes, and a fence form
 that quietly stops matching is how that set empties.
+
+## Two copies of one schema need a check that reads both
+
+R4.1 wrote the adapter's field tables twice: in `docs/contract.md`, where a
+reader meets them, and in `internal/wire`'s schema, where the decoder refuses an
+unknown or missing field by name. Both were written from one draft in one hour,
+and nothing but that coincidence required them to stay equal. This tree has
+already paid for the same shape twice — a comment quoting a vocabulary sentence
+that was reworded four commits later in the same tag, and the release gate's
+contract-version arm matching a Rust filename for three weeks after the Go port,
+green in its own self-test throughout because the fixture was Rust too.
+
+So `tests/contract` reads the document's tables and the package's schema and
+requires one answer. Three things made it a check rather than a gesture:
+
+- **The envelope is read from the document too**, not assumed. It is the set
+  every per-message comparison subtracts, so a wrong value there would shift all
+  nine comparisons at once in the same direction — and a check whose baseline
+  moves with its subject agrees with itself.
+- **The vacuity guard is derived from the protocol**, not remembered: the number
+  of comparisons must equal the kinds in both directions. A parser that found no
+  sections would otherwise report a clean agreement, which is the failure mode
+  of every document scraper.
+- **It was driven against a mutated document**, five ways: a field row deleted,
+  a row added for a field nothing speaks, the quoted version value reworded, a
+  heading renamed, and one envelope field misspelled. All five fire. The first
+  run of the test itself failed two of those for its own reasons — it read the
+  error envelope's second table as fields, and read the response's table as the
+  request's where the request says "nothing" — which is the argument for driving
+  the parser against a broken document before trusting a green one.
+
+What it does not prove, stated because the shape invites over-reading: it
+compares field **sets**, not types, and not the required/optional split.
+`observe`'s rule that a token is present exactly when the source is not `direct`
+is prose in the document and an arm in the decoder, driven in the package's own
+tests; the agreement check would pass if the document called that field
+required.
+
+The general form: when a document and a program state the same schema, pick one
+to be the source a test reads and have it convict the other. Prose that merely
+says "keep these in step" is not a mechanism, and the copy that drifts is always
+the one nobody runs.

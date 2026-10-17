@@ -197,6 +197,24 @@ path = "internal/handle/*.go"
 docs = ["docs/design.md", "docs/vocabulary.md"]
 
 [[entry]]
+# The adapter contract in code: the messages, the strict decoder, the contract
+# version constant and the three-way version check. docs/contract.md owns the
+# protocol itself, and the two are held to each other by tests/contract rather
+# than by a reader's memory. No CLI surface, so no cli.md -- the subcommand that
+# speaks this protocol is cmd/rumor, which is mapped there already.
+path = "internal/wire/*.go"
+docs = ["docs/contract.md"]
+
+[[entry]]
+# The agreement oracle: it reads docs/contract.md's field tables and package
+# wire's schema and requires one answer. contract.md because that is the
+# document it holds the code to, and the testing methodology because what it
+# establishes is a METHOD -- two copies of one schema stay equal only under a
+# check that reads both, which is tests/vocabulary's argument one document over.
+path = "tests/contract/*.go"
+docs = ["docs/contract.md", "docs/testing-methodology.md"]
+
+[[entry]]
 path = ".forgejo/workflows/*.yml"
 docs = ["docs/release.md"]
 

@@ -60,9 +60,9 @@ A decode refusal is **could-not-run** (`rumor validate` exit 2), never
 
 ### `describe`
 
-Request: the three common fields and nothing else -- there is nothing to ask.
+**Request, beyond the envelope:** nothing. There is nothing to ask.
 
-Response:
+**Response, beyond the envelope:**
 
 | field | type | consumer |
 |---|---|---|
@@ -76,7 +76,7 @@ without a session.
 
 ### `execute`
 
-Request:
+**Request, beyond the envelope:**
 
 | field | type | consumer |
 |---|---|---|
@@ -84,7 +84,7 @@ Request:
 | `token` | string | present **exactly when** the action's context is not `"none"`: the session the action is taken in, which is also who takes it. There is no `actor` field here -- the engine knows which actor it acquired the token for, and a second statement of the same fact is a channel for the two to disagree |
 | `args` | object | the action's declared arguments (R4.2). Values are the system's own ids, never handles: see below |
 
-Response:
+**Response, beyond the envelope:**
 
 | field | type | consumer |
 |---|---|---|
@@ -103,7 +103,7 @@ a bare id could not say which was which.
 
 ### `observe`
 
-Request:
+**Request, beyond the envelope:**
 
 | field | type | consumer |
 |---|---|---|
@@ -111,7 +111,11 @@ Request:
 | `source` | string | one of `api`, `ui`, `direct` (`docs/vocabulary.md`, Observation sources) |
 | `token` | string | present **exactly when** `source` is not `direct`: `api` and `ui` are an actor's observations through its session, and `direct` is the engine's, never an actor's (R9) |
 
-Response: `value`, and nothing else.
+**Response, beyond the envelope:**
+
+| field | type | consumer |
+|---|---|---|
+| `value` | any | what was observed. The ledger writes it as an `observed` fact at the position it assigns, with the source the engine asked for |
 
 **No position.** The ledger assigns positions on append (`docs/design.md`:
 "Positions are assigned by the store, not passed in"), and
@@ -128,8 +132,18 @@ report would name a stage that never ran.
 
 ### `session`
 
-Request: `actor` (the actor's name as the ledger speaks it) and `context` (one
-of `describe`'s contexts). Response: `token`.
+**Request, beyond the envelope:**
+
+| field | type | consumer |
+|---|---|---|
+| `actor` | string | the adapter acquires the session as this actor. The name is the one the ledger speaks, not a handle |
+| `context` | string | one of `describe`'s contexts |
+
+**Response, beyond the envelope:**
+
+| field | type | consumer |
+|---|---|---|
+| `token` | string | every later message for that actor carries it in place of the actor's name |
 
 `actor` enters the protocol here and only here. Every later message carries the
 token instead, which is what makes the browser stage's one-isolated-context-per-actor
@@ -137,8 +151,15 @@ rule (R9) a property of this exchange rather than an honor system.
 
 ### The error envelope
 
-Any response may be replaced by `kind: "error"` carrying
-`error: {kind, field?, detail}`.
+Any response may be replaced by `kind: "error"`.
+
+**Response, beyond the envelope:**
+
+| field | type | consumer |
+|---|---|---|
+| `error` | object: `{kind, field?, detail}` | the run's could-not-run report, and the six kinds below |
+
+The six kinds:
 
 | `error.kind` | when | consumer |
 |---|---|---|
