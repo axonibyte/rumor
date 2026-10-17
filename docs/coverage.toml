@@ -206,6 +206,15 @@ path = "internal/wire/*.go"
 docs = ["docs/contract.md"]
 
 [[entry]]
+# A project's own declaration: the adapter to spawn, the venire, the stages, the
+# weights and the seeds file. docs/contract.md owns the schema, and the strict
+# reading lives in this package rather than in a decoder's metadata so that the
+# refusals do not change with the TOML reader underneath them. No CLI surface:
+# the command that will read it is cmd/rumor, mapped there.
+path = "internal/platform/*.go"
+docs = ["docs/contract.md"]
+
+[[entry]]
 # The agreement oracle: it reads docs/contract.md's field tables and package
 # wire's schema and requires one answer. contract.md because that is the
 # document it holds the code to, and the testing methodology because what it

@@ -301,8 +301,18 @@ budget = "2h"
 tuned weight silently does nothing:** for an action kind in stage *s* under
 profile *p*, the weight is the first of `[weights.profile.p]`,
 `[weights.stage.s]`, `[weights.default]` that names it. Overrides are sparse;
-only `[weights.default]` must be complete, and an action kind no table names is
-a parse refusal naming the kind.
+`[weights.default]` must be **complete**, so an override naming an action kind
+the default does not is a parse refusal naming the kind. The reason is the
+resolution above: a kind only an override names has no weight at all in any
+stage or profile that does not override it, which is a silent zero rather than
+a declared one. A weight of `0` is legal and means never drawn; a negative one
+is refused, because a weighted draw cannot express it and reading it as zero
+would make the file say something it does not.
+
+**None of this file's refusals are `rumor validate`'s arms.** A document that
+cannot be read as a platform at all is **could-not-run**, and it arrives before
+any of the eighteen arms evaluates. Validate's refusals are about a project
+whose statute, bindings and platform disagree.
 
 ### Reserved for the phase that owns them
 
