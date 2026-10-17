@@ -3,6 +3,44 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.18 — 2026-10-17
+
+**A fence marked `run` is executable code, and nothing was reading it.**
+`release-gate.py` executes those blocks, which made `docs/cli.md`'s sample the
+only code in the tree no suite checked. It invoked the toolchain as a bare `go`
+and behaved three ways on three boxes: absent in one jail, go1.27.2 in another,
+go1.26.9 on the runner.
+
+- **The block resolves and pins its toolchain**, the way `ci.yml` does at eight
+  sites and `tag-pipeline.yml` at two: resolve the first of `go`, `go126`,
+  `go125`, then `export GOTOOLCHAIN=local`. `release-gate.yml` — the file that
+  executes the block — did it at none, so the discipline lives in the block.
+- **A missing toolchain now reports itself as one.** It surfaced on the
+  `doc-run-block-failed` arm, so the gate blamed the documentation for a box
+  with no Go on it. The block exits 1 naming a *provisioning* finding, and the
+  gate quotes a failing block's last line, so the right words reach the reader
+  of the finding rather than the author of the block.
+- **Not `go126`.** That is a FreeBSD ports name, absent on the runner and on any
+  standard install, and it would put a minor version in prose. The pin is
+  `GOTOOLCHAIN=local` against `go.mod`'s floor, which OPA sets at 1.26.0 and
+  which is a minimum rather than an equality.
+- **`tests/docs` is the missing half of the pattern**, applied where the gate
+  reaches it. It reads the fence form out of `release-gate.py` and refuses to
+  run if the two disagree, so it cannot silently check a different set of blocks
+  than the gate executes, and it carries a known-positive count because every
+  arm in it passes vacuously over an empty set.
+- **`release-gate.yml`'s census gains the three Go names and drops `cargo`**,
+  which this project has not built with since the pivot: the one job needing a
+  Go toolchain was the one job whose record could not say whether it had one.
+  That line is a census and asserts nothing, so it ships without a test.
+
+Driven both ways. Both arms fail on the pre-fix block naming `docs/cli.md:83`,
+and six crafted cases keep them firing once the only real block passes. Of three
+mutants, disabling the pin check and emptying the bare-name scan are killed;
+disabling comment-stripping **survived** the first cut, because the fixture
+wrote `go run` after a backtick where the scanner never matches and so exercised
+nothing. The fixture carries a `$(` now and kills that mutant too.
+
 ## 0.1.17 — 2026-10-17
 
 **The engine owns the seed, written before anyone builds it.** `docs/design.md`
