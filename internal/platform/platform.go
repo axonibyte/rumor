@@ -24,6 +24,8 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 )
 
 // DefaultSeedsFile is where R5 promotes a seed when the file is not named.
@@ -87,20 +89,10 @@ type Rollback struct {
 	Covers   []string
 }
 
-// Refusal is one reason a document is not a platform. Path is the key's full
-// dotted path, which is the only form a reader can act on without counting
-// braces.
-type Refusal struct {
-	Path   string
-	Reason string
-}
-
-func (r Refusal) Error() string {
-	if r.Path == "" {
-		return "platform.toml: " + r.Reason
-	}
-	return fmt.Sprintf("platform.toml: %s: %s", r.Path, r.Reason)
-}
+// Refusal is one reason a document is not a platform: internal/decl's, because
+// the rules for reading a declaration are shared with the bindings schema and a
+// second copy of them would drift.
+type Refusal = decl.Refusal
 
 // Weight resolves one action kind's weight for a stage and a profile.
 //
@@ -138,113 +130,118 @@ type Report struct {
 	Refusals []Refusal
 }
 
+// THE FILE'S NAME IS THE LOADER'S TO ADD. A Refusal carries the key path and
+// the reason and not "platform.toml:", because this package is handed a decoded
+// document and does not know what it was read from -- the same refusal over a
+// document built by a test has no filename at all.
+
 // OK reports whether the document is a platform.
 func (r Report) OK() bool { return len(r.Refusals) == 0 }
 
 // Parse reads a decoded document. The argument is what a TOML reader produced:
 // tables as map[string]any, arrays as []any, integers as int64 or int.
 func Parse(doc map[string]any) Report {
-	r := &reader{doc: doc}
+	r := decl.New(doc)
 	var p Platform
 
-	p.Contract = r.str("contract", true)
-	p.SeedsFile = r.str("seeds_file", false)
+	p.Contract = r.Str("contract", true)
+	p.SeedsFile = r.Str("seeds_file", false)
 	if p.SeedsFile == "" {
 		p.SeedsFile = DefaultSeedsFile
 	}
 
-	if a, ok := r.table("adapter", true); ok {
-		p.Adapter.Command = a.strings("command", true)
+	if a, ok := r.Table("adapter", true); ok {
+		p.Adapter.Command = a.Strings("command", true)
 		if len(p.Adapter.Command) == 0 {
-			r.refuse("adapter.command", "an empty argv: the engine would have nothing to spawn")
+			r.Refuse("adapter.command", "an empty argv: the engine would have nothing to spawn")
 		}
-		p.Adapter.Cwd = a.str("cwd", false)
-		p.Adapter.Env = a.strings("env", false)
-		a.done()
+		p.Adapter.Cwd = a.Str("cwd", false)
+		p.Adapter.Env = a.Strings("env", false)
+		a.Done()
 	}
 
-	for _, m := range r.tables("venire") {
+	for _, m := range r.Tables("venire") {
 		var member Member
-		member.Role = m.str("role", true)
-		member.Count = m.integer("count", true)
+		member.Role = m.Str("role", true)
+		member.Count = m.Int("count", true)
 		if member.Count < 1 {
-			m.refuse("count", fmt.Sprintf("%d: a role with no actors can do nothing", member.Count))
+			m.Refuse("count", fmt.Sprintf("%d: a role with no actors can do nothing", member.Count))
 		}
-		m.done()
+		m.Done()
 		p.Venire = append(p.Venire, member)
 	}
 	if len(p.Venire) == 0 {
-		r.refuse("venire", "no entries: a run with no actors can do nothing. This is a parse refusal, not one of validate's arms")
+		r.Refuse("venire", "no entries: a run with no actors can do nothing. This is a parse refusal, not one of validate's arms")
 	}
 
 	p.Stages = map[string]Stage{}
-	if stages, ok := r.table("stages", true); ok {
+	if stages, ok := r.Table("stages", true); ok {
 		enabled := 0
-		for _, name := range stages.keys() {
-			s, _ := stages.table(name, true)
-			st := Stage{Enabled: s.boolean("enabled", true)}
+		for _, name := range stages.Keys() {
+			s, _ := stages.Table(name, true)
+			st := Stage{Enabled: s.Bool("enabled", true)}
 			if st.Enabled {
 				enabled++
 			}
-			s.done()
+			s.Done()
 			p.Stages[name] = st
 		}
 		if len(p.Stages) == 0 {
-			stages.refuse("", "no stages declared")
+			stages.Refuse("", "no stages declared")
 		} else if enabled == 0 {
-			stages.refuse("", "every stage is disabled: the run would do nothing")
+			stages.Refuse("", "every stage is disabled: the run would do nothing")
 		}
-		stages.done()
+		stages.Done()
 	}
 
 	p.Weights = Weights{Stage: map[string]map[string]int{}, Profile: map[string]map[string]int{}}
-	if w, ok := r.table("weights", true); ok {
-		p.Weights.Default = w.weightTable("default", true)
+	if w, ok := r.Table("weights", true); ok {
+		p.Weights.Default = weightTable(w, "default", true)
 		if len(p.Weights.Default) == 0 {
-			w.refuse("default", "no action kinds: the walk would have nothing to draw from")
+			w.Refuse("default", "no action kinds: the walk would have nothing to draw from")
 		}
 		for _, side := range []string{"stage", "profile"} {
-			if t, ok := w.table(side, false); ok {
-				for _, name := range t.keys() {
+			if t, ok := w.Table(side, false); ok {
+				for _, name := range t.Keys() {
 					into := p.Weights.Stage
 					if side == "profile" {
 						into = p.Weights.Profile
 					}
-					into[name] = t.weightTable(name, true)
+					into[name] = weightTable(t, name, true)
 				}
-				t.done()
+				t.Done()
 			}
 		}
-		w.done()
+		w.Done()
 	}
 
 	p.Profiles = map[string]Profile{}
-	if profs, ok := r.table("profiles", false); ok {
-		for _, name := range profs.keys() {
-			pt, _ := profs.table(name, true)
+	if profs, ok := r.Table("profiles", false); ok {
+		for _, name := range profs.Keys() {
+			pt, _ := profs.Table(name, true)
 			var prof Profile
-			prof.Stages = pt.strings("stages", true)
-			prof.Seeds = pt.integer("seeds", true)
+			prof.Stages = pt.Strings("stages", true)
+			prof.Seeds = pt.Int("seeds", true)
 			if prof.Seeds < 1 {
-				pt.refuse("seeds", fmt.Sprintf("%d: a profile that runs no seed runs nothing", prof.Seeds))
+				pt.Refuse("seeds", fmt.Sprintf("%d: a profile that runs no seed runs nothing", prof.Seeds))
 			}
-			prof.Budget = pt.duration("budget", true)
-			pt.done()
+			prof.Budget = pt.Duration("budget", true)
+			pt.Done()
 			p.Profiles[name] = prof
 		}
-		profs.done()
+		profs.Done()
 	}
 
-	for _, rb := range r.tables("rollback") {
-		entry := Rollback{Provider: rb.str("provider", true), Covers: rb.strings("covers", true)}
+	for _, rb := range r.Tables("rollback") {
+		entry := Rollback{Provider: rb.Str("provider", true), Covers: rb.Strings("covers", true)}
 		if len(entry.Covers) == 0 {
-			rb.refuse("covers", "a provider that covers nothing: name the components it restores")
+			rb.Refuse("covers", "a provider that covers nothing: name the components it restores")
 		}
-		rb.done()
+		rb.Done()
 		p.Rollback = append(p.Rollback, entry)
 	}
 
-	if th, ok := r.table("thresholds", false); ok {
+	if th, ok := r.Table("thresholds", false); ok {
 		// R15 NAMES THE METRICS, so this table is carried as read rather than
 		// checked against a key set this phase would be inventing. `blocking`
 		// is the one key fixed now, because the epic makes a coverage threshold
@@ -257,51 +254,67 @@ func Parse(doc map[string]any) Report {
 		// and refused -- correctly: the phrase is the epic's, and the quote
 		// oracle cannot tell which v1 a nearby mention means.
 		p.Thresholds = map[string]any{}
-		for _, name := range th.keys() {
-			p.Thresholds[name] = th.any(name)
+		for _, name := range th.Keys() {
+			p.Thresholds[name] = th.Any(name)
 		}
 		if b, ok := p.Thresholds["blocking"]; ok {
 			if _, isBool := b.(bool); !isBool {
-				th.refuse("blocking", fmt.Sprintf("%T: blocking is true or false", b))
+				th.Refuse("blocking", fmt.Sprintf("%T: blocking is true or false", b))
 			}
 		}
-		th.done()
+		th.Done()
 	}
 
-	r.done()
+	r.Done()
 
 	// CROSS-KEY REFUSALS, after every key has been read: each one needs two
 	// parts of the file and so cannot be checked while reading either.
 	for name, t := range p.Weights.Stage {
 		if _, ok := p.Stages[name]; !ok {
-			r.refuse("weights.stage."+name, "no stage of that name is declared")
+			r.Refuse("weights.stage."+name, "no stage of that name is declared")
 		}
-		r.weightsAgainstDefault("weights.stage."+name, t, p.Weights.Default)
+		weightsAgainstDefault(r, "weights.stage."+name, t, p.Weights.Default)
 	}
 	for name, t := range p.Weights.Profile {
 		if _, ok := p.Profiles[name]; !ok {
-			r.refuse("weights.profile."+name, "no profile of that name is declared")
+			r.Refuse("weights.profile."+name, "no profile of that name is declared")
 		}
-		r.weightsAgainstDefault("weights.profile."+name, t, p.Weights.Default)
+		weightsAgainstDefault(r, "weights.profile."+name, t, p.Weights.Default)
 	}
 	for name, prof := range p.Profiles {
 		for _, s := range prof.Stages {
 			if _, ok := p.Stages[s]; !ok {
-				r.refuse("profiles."+name+".stages", "names stage "+s+", which is not declared")
+				r.Refuse("profiles."+name+".stages", "names stage "+s+", which is not declared")
 			}
 		}
 	}
 
-	sort.Slice(r.refusals, func(i, j int) bool {
-		if r.refusals[i].Path != r.refusals[j].Path {
-			return r.refusals[i].Path < r.refusals[j].Path
-		}
-		return r.refusals[i].Reason < r.refusals[j].Reason
-	})
-	if len(r.refusals) > 0 {
-		return Report{Refusals: r.refusals}
+	if found := r.Refusals(); len(found) > 0 {
+		return Report{Refusals: found}
 	}
 	return Report{Platform: p}
+}
+
+// weightTable reads one weights table: action kind to a non-negative integer.
+// Zero is legal and means never drawn; a negative weight is refused, because a
+// weighted draw cannot express it and silently treating it as zero would make
+// the file say something it does not mean.
+func weightTable(r *decl.Reader, key string, required bool) map[string]int {
+	t, ok := r.Table(key, required)
+	if !ok {
+		return nil
+	}
+	out := map[string]int{}
+	for _, kind := range t.Keys() {
+		n := t.Int(kind, true)
+		if n < 0 {
+			t.Refuse(kind, fmt.Sprintf("%d: a weight cannot be negative", n))
+			continue
+		}
+		out[kind] = n
+	}
+	t.Done()
+	return out
 }
 
 // weightsAgainstDefault is the completeness rule: `[weights.default]` must name
@@ -309,7 +322,7 @@ func Parse(doc map[string]any) Report {
 // reason is resolution -- Weight falls through to the default, so a kind only
 // an override names has no weight in any stage or profile that does not
 // override it, which is a silent zero rather than a declared one.
-func (r *reader) weightsAgainstDefault(path string, table, def map[string]int) {
+func weightsAgainstDefault(r *decl.Reader, path string, table, def map[string]int) {
 	var missing []string
 	for kind := range table {
 		if _, ok := def[kind]; !ok {
@@ -318,252 +331,6 @@ func (r *reader) weightsAgainstDefault(path string, table, def map[string]int) {
 	}
 	sort.Strings(missing)
 	for _, kind := range missing {
-		r.refuse(path, "names action kind "+kind+", which [weights.default] does not: the default table must be complete")
+		r.Refuse(path, "names action kind "+kind+", which [weights.default] does not: the default table must be complete")
 	}
-}
-
-// --- the reader -----------------------------------------------------------
-
-// reader walks one table, remembers which keys it read, and refuses the rest.
-// It is the Undecoded() of a hand-written decoder, kept here so the strictness
-// does not depend on which TOML library is wired in.
-type reader struct {
-	doc      map[string]any
-	path     string
-	read     map[string]bool
-	refusals []Refusal
-	parent   *reader
-}
-
-func (r *reader) refuse(key, reason string) {
-	path := r.join(key)
-	ref := Refusal{Path: path, Reason: reason}
-	top := r
-	for top.parent != nil {
-		top = top.parent
-	}
-	top.refusals = append(top.refusals, ref)
-}
-
-func (r *reader) join(key string) string {
-	switch {
-	case r.path == "":
-		return key
-	case key == "":
-		return r.path
-	default:
-		return r.path + "." + key
-	}
-}
-
-func (r *reader) mark(key string) {
-	if r.read == nil {
-		r.read = map[string]bool{}
-	}
-	r.read[key] = true
-}
-
-// keys reports this table's keys, sorted, and marks none of them: a caller
-// iterating keys is responsible for reading each one.
-func (r *reader) keys() []string {
-	out := make([]string, 0, len(r.doc))
-	for k := range r.doc {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
-// done refuses every key nothing read. UNKNOWN IS AN ERROR, not a skip, for
-// docs/coverage.toml's reason: a lenient reader turns one mistyped key into a
-// platform that runs with a weight, a stage or a provider the project believes
-// it declared.
-func (r *reader) done() {
-	for _, k := range r.keys() {
-		if !r.read[k] {
-			r.refuse(k, "unknown key")
-		}
-	}
-}
-
-func (r *reader) any(key string) any {
-	r.mark(key)
-	return r.doc[key]
-}
-
-func (r *reader) str(key string, required bool) string {
-	r.mark(key)
-	v, ok := r.doc[key]
-	if !ok {
-		if required {
-			r.refuse(key, "missing key")
-		}
-		return ""
-	}
-	s, ok := v.(string)
-	if !ok {
-		r.refuse(key, fmt.Sprintf("%T: wanted a string", v))
-		return ""
-	}
-	return s
-}
-
-func (r *reader) boolean(key string, required bool) bool {
-	r.mark(key)
-	v, ok := r.doc[key]
-	if !ok {
-		if required {
-			r.refuse(key, "missing key")
-		}
-		return false
-	}
-	b, ok := v.(bool)
-	if !ok {
-		r.refuse(key, fmt.Sprintf("%T: wanted true or false", v))
-		return false
-	}
-	return b
-}
-
-func (r *reader) integer(key string, required bool) int {
-	r.mark(key)
-	v, ok := r.doc[key]
-	if !ok {
-		if required {
-			r.refuse(key, "missing key")
-		}
-		return 0
-	}
-	n, ok := asInt(v)
-	if !ok {
-		r.refuse(key, fmt.Sprintf("%T: wanted an integer", v))
-		return 0
-	}
-	return n
-}
-
-// asInt accepts the integer types a TOML reader may hand over. A float is
-// REFUSED rather than truncated: 2.5 actors is a mistake in the file and
-// rounding it would carry the mistake into the run.
-func asInt(v any) (int, bool) {
-	switch n := v.(type) {
-	case int:
-		return n, true
-	case int64:
-		return int(n), true
-	case int32:
-		return int(n), true
-	}
-	return 0, false
-}
-
-func (r *reader) duration(key string, required bool) time.Duration {
-	s := r.str(key, required)
-	if s == "" {
-		return 0
-	}
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		r.refuse(key, fmt.Sprintf("%q: wanted a duration such as 5m or 2h", s))
-		return 0
-	}
-	if d <= 0 {
-		r.refuse(key, fmt.Sprintf("%q: a budget of zero or less runs nothing", s))
-		return 0
-	}
-	return d
-}
-
-func (r *reader) strings(key string, required bool) []string {
-	r.mark(key)
-	v, ok := r.doc[key]
-	if !ok {
-		if required {
-			r.refuse(key, "missing key")
-		}
-		return nil
-	}
-	items, ok := v.([]any)
-	if !ok {
-		if ss, ok := v.([]string); ok {
-			return ss
-		}
-		r.refuse(key, fmt.Sprintf("%T: wanted an array of strings", v))
-		return nil
-	}
-	out := make([]string, 0, len(items))
-	for i, item := range items {
-		s, ok := item.(string)
-		if !ok {
-			r.refuse(fmt.Sprintf("%s[%d]", key, i), fmt.Sprintf("%T: wanted a string", item))
-			continue
-		}
-		out = append(out, s)
-	}
-	return out
-}
-
-func (r *reader) table(key string, required bool) (*reader, bool) {
-	r.mark(key)
-	v, ok := r.doc[key]
-	if !ok {
-		if required {
-			r.refuse(key, "missing table")
-		}
-		return &reader{doc: map[string]any{}, path: r.join(key), parent: r}, false
-	}
-	t, ok := v.(map[string]any)
-	if !ok {
-		r.refuse(key, fmt.Sprintf("%T: wanted a table", v))
-		return &reader{doc: map[string]any{}, path: r.join(key), parent: r}, false
-	}
-	return &reader{doc: t, path: r.join(key), parent: r}, true
-}
-
-// tables reads an array of tables -- `[[venire]]`, `[[rollback]]`. An absent
-// key is an empty list and not a refusal; the CALLER decides whether empty is
-// allowed, because venire's empty is fatal and rollback's is not.
-func (r *reader) tables(key string) []*reader {
-	r.mark(key)
-	v, ok := r.doc[key]
-	if !ok {
-		return nil
-	}
-	items, ok := v.([]any)
-	if !ok {
-		r.refuse(key, fmt.Sprintf("%T: wanted an array of tables", v))
-		return nil
-	}
-	var out []*reader
-	for i, item := range items {
-		t, ok := item.(map[string]any)
-		if !ok {
-			r.refuse(fmt.Sprintf("%s[%d]", key, i), fmt.Sprintf("%T: wanted a table", item))
-			continue
-		}
-		out = append(out, &reader{doc: t, path: fmt.Sprintf("%s[%d]", r.join(key), i), parent: r})
-	}
-	return out
-}
-
-// weightTable reads one weights table: action kind to a non-negative integer.
-// Zero is legal and means never drawn; a negative weight is refused, because a
-// weighted draw cannot express it and silently treating it as zero would make
-// the file say something it does not mean.
-func (r *reader) weightTable(key string, required bool) map[string]int {
-	t, ok := r.table(key, required)
-	if !ok {
-		return nil
-	}
-	out := map[string]int{}
-	for _, kind := range t.keys() {
-		n := t.integer(kind, true)
-		if n < 0 {
-			t.refuse(kind, fmt.Sprintf("%d: a weight cannot be negative", n))
-			continue
-		}
-		out[kind] = n
-	}
-	t.done()
-	return out
 }

@@ -223,6 +223,15 @@ path = "internal/fake/*.go"
 docs = ["docs/cli.md", "docs/contract.md"]
 
 [[entry]]
+# The strict reader both declaration files share: unknown keys are errors, a
+# missing required key is named, a wrong type says what it wanted, and every
+# refusal carries the key's dotted path. docs/contract.md owns both schemas, so
+# it owns the rules for reading them; the first cut had these rules inside
+# internal/platform and internal/bindings would have been a copy.
+path = "internal/decl/*.go"
+docs = ["docs/contract.md"]
+
+[[entry]]
 # A project's own declaration: the adapter to spawn, the venire, the stages, the
 # weights and the seeds file. docs/contract.md owns the schema, and the strict
 # reading lives in this package rather than in a decoder's metadata so that the

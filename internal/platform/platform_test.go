@@ -237,7 +237,11 @@ func TestWhatCanRunNothingIsRefused(t *testing.T) {
 		{"a profile with no seeds", "profiles.nightly.seeds", "runs nothing", func(doc map[string]any) {
 			doc["profiles"].(map[string]any)["nightly"].(map[string]any)["seeds"] = int64(0)
 		}},
-		{"a zero budget", "profiles.nightly.budget", "runs nothing", func(doc map[string]any) {
+		// THE WORDING HERE IS internal/decl's, not this package's: a duration
+		// of zero is refused by the shared reader, so the fragment asserted is
+		// the part that is about the VALUE rather than about what a budget is
+		// for.
+		{"a zero budget", "profiles.nightly.budget", "zero or less", func(doc map[string]any) {
 			doc["profiles"].(map[string]any)["nightly"].(map[string]any)["budget"] = "0s"
 		}},
 	} {

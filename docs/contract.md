@@ -217,7 +217,121 @@ irreproducible or a report untrue:
 
 ## Bindings schema
 
-Not yet written.
+What a project binds its statute to: one `bindings.toml` per package, beside
+the statute it binds. The wire protocol above says what an adapter can be
+asked; this says what this project's actions, observations and claims ARE, in
+the vocabulary's words (`docs/vocabulary.md`: `of`, `role`, `visible_to`, and
+`ref` is a handle).
+
+**EVERY FIELD IS DERIVED FROM THE THREE EXAMPLE PACKAGES' OWN CASES, not
+invented.** What they speak: `planted-lie` emits `user.created` and observes
+`user.count` with source `api` and `of = user.created`; `role-visibility` emits
+`doc.created` carrying `visible_to` and observes `doc.count`;
+`transitive-count` emits `user.created`, observes `user.count` and carries
+tells. Each case's observation holds an actor, a position, `of`, a query, a
+source and a value; each claim holds `ref`, an actor, a type, a position and a
+handle, with `ref` and the handle equal.
+
+```toml
+[[action]]
+name = "create_user"           # one of `describe`'s action names
+context = "api"                # a context name, or "none"
+emits = ["user.created"]       # claim types this action appends
+requires = ["can_create"]      # preconditions AS STATUTE REFERENCES: rule names
+creates = ["user"]             # the keys `execute`'s `ids` comes back under
+response = { status = 201 }    # the expected response shape
+
+[[observation]]
+name = "user.count"            # `observe`'s `query`
+source = "api"                 # api | ui | direct
+of = "user.created"            # the claim type it is judged against
+
+[claim."user.created"]
+timing = "immediate"           # or "eventual", which then needs a bound
+
+[[role]]
+name = "host"
+contexts = ["api"]             # the session contexts an actor of this role may hold
+```
+
+### The keys, and the arm each one answers to
+
+| key | required | consumer |
+|---|---|---|
+| `[[action]].name` | yes | `execute`'s `action`; the adapter must declare it in `describe` |
+| `[[action]].context` | yes | the arm on a browser-stage actor reaching an API action pairs this with `[[role]].contexts` |
+| `[[action]].emits` | yes | the arm on a rule referencing a claim type no binding emits, and its mirror on a binding emitting a type no rule consumes |
+| `[[action]].requires` | yes | the arm on an action with no precondition. Rule NAMES, because the engine evaluates preconditions against the sealed ledger (`docs/design.md`) and a prose condition could not be evaluated at all |
+| `[[action]].creates` | no | the keys of `execute`'s `ids`. Absent for an action that creates nothing |
+| `[[action]].response` | no | the response shape an `api` observation reads back |
+| `[[observation]].name` | yes | `observe`'s `query` |
+| `[[observation]].source` | yes | one of the vocabulary's three |
+| `[[observation]].of` | yes | the claim type the observation is judged against -- the cases carry `of` in the observation, and `internal/ledger` puts `Of` beside Query, Source and Value on the `observed` fact (ibis, coop r4/20) |
+| `[[observation]].component` | only for `source = "direct"` | the arm on a stateful component no rollback provider covers: a `direct` observation reads the project's own store, so it is the binding that NAMES a component, which is then paired with `describe`'s `components` and `platform.toml`'s `[[rollback]].covers`. fable's D11 drill removes the provider and expects the component named |
+| `[claim.<type>].timing` | yes, per emitted type | `immediate`, or `eventual` with a bound. The arm on an eventual type with no bound reads this |
+| `[claim.<type>].bound` | only when `timing = "eventual"` | a duration (`30s`) or `"quiesce"`. The second half of that arm refuses eventual claims with no quiesce probe declared |
+| `[[role]].name`, `.contexts` | yes | the reachability arm above. A role is the vocabulary's `role` |
+
+**THE OBSERVATION DECLARES NO POSITION, and that is settled rather than
+omitted** (ibis, coop r4/20): the arm on an observation lacking a position or a
+source is static over the **cases'** declared observations, which carry both --
+17 of them across the three packages, none missing either field -- and D16
+strips one field from one of those. A position in this file would be a fourth
+place the same fact is stated, and the adapter must not send one either (see
+`observe` above).
+
+### UI actions
+
+An action whose context is a browser context declares a **flow** instead of a
+response shape: the steps the driver executes (R9).
+
+```toml
+[[action]]
+name = "create_doc"
+context = "browser"
+emits = ["doc.created"]
+requires = ["can_create"]
+
+  [[action.flow]]
+  step = "navigate"
+  to = "/docs/new"
+
+  [[action.flow]]
+  step = "fill"
+  field = "title"
+  value = "quarterly"
+
+  [[action.flow]]
+  step = "click"
+  target = "submit"
+
+  [[action.flow]]
+  step = "wait"
+  until = "doc-created"
+```
+
+| step | fields | why |
+|---|---|---|
+| `navigate` | `to` | the path, never a full URL: the base belongs to the platform's adapter, not to a binding |
+| `fill` | `field`, `value` | |
+| `click` | `target` | |
+| `wait` | `until` | **a condition and never a duration.** R9's flake policy is explicit that there are no fixed sleeps, so a `wait` step carrying a duration is refused by name rather than slept through. An action that fails its wait condition is retried once at the same position and then recorded as a `ui_timeout` finding (R9), which is a different outcome from a refusal here |
+
+The arm on a browser-stage action with no UI flow reads `[[action.flow]]`; it is
+what makes "the browser stage is enabled" more than a flag.
+
+### Reserved for the phase that owns them
+
+Present in the schema now, **accepted when absent and refused when malformed**,
+which is issue 63's own rule:
+
+| table | phase | why it is named now |
+|---|---|---|
+| `[clock]` | R7 | the vocabulary's Time section puts the test clock's declaration in the bindings, and the arm on a rule reading `clock` with no clock control refuses on this table's absence -- so it has to live here to be absent from here |
+| `[quiesce]` | R6 | the second half of the eventual arm: eventual claims with no quiesce probe declared |
+| `[deadline]` | R7 | deadline fields arrive with controlled time |
+| `[seeding]` | R20 | a declared seeding path, which R20 may also reach through an action |
+| `[uses]` (`faults`, `volume`, `upgrade`) | R19, R20, R21 | the arm on a declared fault, volume target or upgrade with no capability behind it. This table is the project's ASK; `describe`'s `capabilities` is what the adapter can actually do, and the arm pairs them -- live against static, which is why neither side is in the other's file |
 
 
 ## `platform.toml` schema
@@ -330,4 +444,4 @@ refused even now, which is R4.2's rule for the same situation in the bindings:
 
 | version | date | run | change |
 |---|---|---|---|
-| v1 | 2026-10-17 | R4.1 | first definitions. The wire protocol: JSON-lines over stdio, one outstanding request per process, `kind`/`contract`/`id` on every message, strict decode refused by name as could-not-run, the four request/response pairs, the error envelope's six kinds with every envelope could-not-run, `describe`'s declared surface including `capabilities`, the three-way version check by exact string comparison with `"1"` as v1's value, and the five things an adapter never does. No run-local handle crosses the wire in either direction, and `observe` answers `value` alone -- neither a position nor a source. `platform.toml`: `contract`, `seeds_file`, `[adapter]`, `[[venire]]`, `[stages.<name>]`, `[weights.default]` with sparse per-stage and per-profile overrides resolved profile-then-stage-then-default, and `[profiles.<name>]`; `[[rollback]]` and `[thresholds]` reserved for R13 and R15, accepted when absent and refused when malformed, with faults, volume targets and upgrades declared by `describe`'s `capabilities` rather than by this file (fable breakout-r4/3). The bindings schema is R4.2's and this file's heading stays unwritten until it lands |
+| v1 | 2026-10-17 | R4.1 | first definitions. The wire protocol: JSON-lines over stdio, one outstanding request per process, `kind`/`contract`/`id` on every message, strict decode refused by name as could-not-run, the four request/response pairs, the error envelope's six kinds with every envelope could-not-run, `describe`'s declared surface including `capabilities`, the three-way version check by exact string comparison with `"1"` as v1's value, and the five things an adapter never does. No run-local handle crosses the wire in either direction, and `observe` answers `value` alone -- neither a position nor a source. `platform.toml`: `contract`, `seeds_file`, `[adapter]`, `[[venire]]`, `[stages.<name>]`, `[weights.default]` with sparse per-stage and per-profile overrides resolved profile-then-stage-then-default, and `[profiles.<name>]`; `[[rollback]]` and `[thresholds]` reserved for R13 and R15, accepted when absent and refused when malformed, with faults, volume targets and upgrades declared by `describe`'s `capabilities` rather than by this file (fable breakout-r4/3). The bindings schema arrived with R4.2 in the same run: one `bindings.toml` per package, with actions (name, context, emits, requires as statute references, creates, response), UI flows whose `wait` step takes a condition and never a duration, observations (name, source, `of`, and `component` for `direct`), per-type claim timing with a bound for `eventual`, roles and the session contexts they may hold, and `[clock]`, `[quiesce]`, `[deadline]`, `[seeding]` and `[uses]` reserved for R7, R6, R7, R20 and R19/R20/R21. An observation declares no position: that arm is static over the CASES' observations, which carry one (ibis, coop r4/20) |
