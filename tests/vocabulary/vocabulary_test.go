@@ -43,8 +43,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/vocabulary"
 )
 
 const root = "../.."
@@ -372,3 +375,70 @@ func TestTheRetiredNameSweepFires(t *testing.T) {
 	t.Logf("PROOF the stale header trips %d of %d retired names and the corrected header trips none",
 		len(found), len(retired))
 }
+
+// --- the version constant (R4.1) ------------------------------------------
+
+// TestTheVersionConstantIsTheDocumentsHighestRevision.
+//
+// docs/vocabulary.md's preamble promised this constant to R4's contract, and a
+// constant nothing reads would be a token for the release gate to match rather
+// than a claim. So the document is the source and the constant is held to it.
+//
+// THE HIGHEST ROW, NOT THE LAST ONE. The first version of this check read the
+// table's final row, which assumes an ordering the document never states --
+// driven against a `v9` row inserted at the TOP of the table, it passed. Taking
+// the maximum is order-agnostic, so a newer row anywhere in the table is seen.
+//
+// AND NOT "v1 APPEARS SOMEWHERE", which stays true forever once v2 is added --
+// exactly the bump this check exists to catch.
+func TestTheVersionConstantIsTheDocumentsHighestRevision(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(root, "docs", "vocabulary.md"))
+	if err != nil {
+		t.Fatalf("docs/vocabulary.md: %v", err)
+	}
+	rows := revisionVersions(string(b))
+	if len(rows) == 0 {
+		t.Fatal("no version rows under \"Revisions\": a parser that found none would otherwise agree with anything")
+	}
+	highest := rows[0]
+	for _, v := range rows {
+		if versionNumber(v) > versionNumber(highest) {
+			highest = v
+		}
+	}
+	if highest != vocabulary.VocabularyVersion {
+		t.Errorf("the Revisions table's highest version is %q and internal/vocabulary says %q: "+
+			"one of the two moved without the other (rows seen: %v)", highest, vocabulary.VocabularyVersion, rows)
+	}
+}
+
+// revisionVersions reads the first column of the Revisions table's rows. It
+// skips the header and the separator by requiring the cell to look like a
+// version, which is also what stops it reading the tables above.
+func revisionVersions(text string) []string {
+	start := strings.Index(text, "## Revisions")
+	if start < 0 {
+		return nil
+	}
+	var out []string
+	for _, line := range strings.Split(text[start:], "\n") {
+		m := revisionRow.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		out = append(out, m[1])
+	}
+	return out
+}
+
+// versionNumber reads the integer out of a `vN` cell. A cell the row pattern
+// matched always has one, so a parse failure is impossible rather than ignored.
+func versionNumber(v string) int {
+	n, err := strconv.Atoi(strings.TrimPrefix(v, "v"))
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
+var revisionRow = regexp.MustCompile(`^\|\s*(v[0-9]+)\s*\|`)

@@ -206,6 +206,14 @@ path = "internal/wire/*.go"
 docs = ["docs/contract.md"]
 
 [[entry]]
+# The vocabulary version constant, which docs/vocabulary.md's preamble promised
+# to R4's contract. ONE document: this package says nothing about the CLI or the
+# design, only which vocabulary the module implements, and the name it is
+# spelled with is deliberate -- see the package comment.
+path = "internal/vocabulary/*.go"
+docs = ["docs/vocabulary.md"]
+
+[[entry]]
 # The fake adapter: it speaks the whole protocol against nothing, so R4.3's
 # permitted twin has something to validate against and fable's drills have
 # something to misbehave for. BOTH documents, and not the nearer one: cli.md
