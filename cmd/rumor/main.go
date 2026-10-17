@@ -18,13 +18,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/attaint"
 	"forge.axonibyte.com/axonibyte/rumor/internal/coverage"
 	"forge.axonibyte.com/axonibyte/rumor/internal/examples"
+	"forge.axonibyte.com/axonibyte/rumor/internal/fake"
+	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
-const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor attaint [--examples DIR]"
+const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor attaint [--examples DIR]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD]"
 
 // coverageCheck is a seam, not indirection for its own sake: it lets a test
 // drive the WRITE handling below -- including the failed-write path -- without
@@ -43,13 +46,20 @@ var attaintCheck = func(dir string, out io.Writer) (attaint.Report, error) {
 	return attaint.Run(context.Background(), dir, out)
 }
 
+// fakeAdapter is the same seam once more, for R4.1's fake adapter: it lets a
+// test drive the flag surface and the exit codes without a pipe, and lets one
+// drive the failed-write path.
+var fakeAdapter = func(cfg fake.Config, in io.Reader, out io.Writer) error {
+	return fake.Run(cfg, in, out)
+}
+
 // defaultExamplesDir is where the three packages live in this repository. A
 // flag overrides it, because the command is useful against another tree and
 // because a test must be able to point it somewhere that does not exist.
 const defaultExamplesDir = "examples"
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
 // run is separated from main so a test can drive the argument surface and read
@@ -57,7 +67,7 @@ func main() {
 // line a test cannot cover. The streams are io.Writer rather than *os.File so a
 // test can supply one that fails, which is what the write handling below is
 // for.
-func run(args []string, stdout, stderr io.Writer) int {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 2 && args[0] == "docs" && args[1] == "--check" {
 		n, err := coverageCheck()
 		if err != nil {
@@ -146,8 +156,66 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
+	if len(args) >= 1 && args[0] == "fake-adapter" {
+		cfg, bad := fakeConfig(args[1:])
+		if bad != "" {
+			_, _ = fmt.Fprintf(stderr, "fake-adapter: %s\n", bad)
+			_, _ = fmt.Fprintln(stderr, usage)
+			return 2
+		}
+		if err := fakeAdapter(cfg, stdin, stdout); err != nil {
+			// NO TALLY LINE HERE, unlike every other subcommand: this one's
+			// stdout IS the protocol, and a human-readable verdict written to
+			// it would be a message the engine's decoder has to refuse. The
+			// report goes to stderr, which the contract says is free text.
+			_, _ = fmt.Fprintf(stderr, "fake-adapter: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 	_, _ = fmt.Fprintln(stderr, usage)
 	return 2
+}
+
+// fakeConfig reads `fake-adapter`'s flags. Each one exists for a named drill
+// (coop breakout-r4): --contract for D6, --omit for D7, --fail for the error
+// envelope, --surface for R4.2's bindings and R4.3's twin. The second return is
+// the reason the arguments were refused, empty when they were not.
+func fakeConfig(rest []string) (fake.Config, string) {
+	cfg := fake.Config{Surface: fake.Default(), Omit: map[wire.Kind]string{}}
+	for len(rest) > 0 {
+		if len(rest) < 2 {
+			return cfg, fmt.Sprintf("%s takes a value", rest[0])
+		}
+		flag, value := rest[0], rest[1]
+		rest = rest[2:]
+		switch flag {
+		case "--surface":
+			f, err := os.Open(value)
+			if err != nil {
+				return cfg, fmt.Sprintf("--surface %s: %v", value, err)
+			}
+			defer f.Close()
+			s, err := fake.LoadSurface(f)
+			if err != nil {
+				return cfg, err.Error()
+			}
+			cfg.Surface = s
+		case "--contract":
+			cfg.Contract = value
+		case "--fail":
+			cfg.Fail = wire.FaultKind(value)
+		case "--omit":
+			kind, field, ok := strings.Cut(value, ".")
+			if !ok || kind == "" || field == "" {
+				return cfg, fmt.Sprintf("--omit %s: wanted KIND.FIELD, as in execute.ids", value)
+			}
+			cfg.Omit[wire.Kind(kind)] = field
+		default:
+			return cfg, fmt.Sprintf("unknown flag %s", flag)
+		}
+	}
+	return cfg, ""
 }
 
 // examplesDir reads the one flag `check` and `attaint` share.

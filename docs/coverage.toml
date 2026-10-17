@@ -206,6 +206,15 @@ path = "internal/wire/*.go"
 docs = ["docs/contract.md"]
 
 [[entry]]
+# The fake adapter: it speaks the whole protocol against nothing, so R4.3's
+# permitted twin has something to validate against and fable's drills have
+# something to misbehave for. BOTH documents, and not the nearer one: cli.md
+# owns the command and its four flags, which the run block there checks against
+# the binary's own usage, and contract.md owns the protocol the answers are on.
+path = "internal/fake/*.go"
+docs = ["docs/cli.md", "docs/contract.md"]
+
+[[entry]]
 # A project's own declaration: the adapter to spawn, the venire, the stages, the
 # weights and the seeds file. docs/contract.md owns the schema, and the strict
 # reading lives in this package rather than in a decoder's metadata so that the

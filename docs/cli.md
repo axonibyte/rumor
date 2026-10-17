@@ -253,10 +253,154 @@ nobody observes must not read as a statute that stopped attributing.
 go test ./tests/attaint/ -v
 ```
 
+## `rumor fake-adapter`
+
+```
+rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD]
+```
+
+The fake adapter (R4.1, issue 62): it speaks the whole wire protocol
+(`docs/contract.md`) against nothing. Requests arrive as JSON-lines on stdin and
+answers leave on stdout, one per line; **stderr is the only place this
+subcommand writes prose**, because its stdout is the wire and a tally line there
+would be a message the engine's decoder has to refuse.
+
+Every answer is recorded rather than computed -- the declared surface, one
+response per action, one value per observation, one token. An adapter that
+computed its answers would be a second implementation of the system under test,
+and a run against it would prove something about the fake.
+
+**A SUBCOMMAND AND NOT A SECOND BINARY.** `ci.yml` builds one artifact
+(`go build -o ../rumor-bin ./cmd/rumor`) and the tag pipeline builds one; a
+`cmd/fake-adapter` would need both. What it would NOT have missed is coverage:
+`go test`, `go vet`, `golangci-lint` and `govulncheck` all run `./...`, so a
+second package would already be tested, vetted, linted and scanned (rook, coop
+r4/4, correcting the reason this entry first gave).
+
+| flag | what it does | what consumes it |
+|---|---|---|
+| `--surface FILE` | reads the declared surface and the recorded answers from JSON, strictly: an unknown key is refused by name | R4.2's example bindings and R4.3's permitted twin, which pin the values they validate against |
+| `--contract VERSION` | answers with that contract version instead of the engine's | fable's D6 drill: a version bump on one side of three, refused naming all three |
+| `--fail KIND` | answers every request with an error envelope of that kind | issue 62's "speaks the error envelope when asked to"; the kinds are in `docs/contract.md` |
+| `--omit KIND.FIELD` | deletes one required field from one kind's response | fable's D7 drill: the decoder refuses the field by name, and validate reports could-not-run rather than a refusal |
+
+Without `--surface` the built-in surface answers: two API actions, an `api` and
+a `direct` observation, one stateful component, no capabilities. It is complete
+by construction -- every declared action has a recorded response and every
+declared observation a recorded value -- because a drill copies it and changes
+one thing, and an incoherent starting world would make every drill pass for the
+wrong reason.
+
+| exit | meaning |
+|---|---|
+| 0 | stdin reached EOF and every answer was written |
+| 1 | an answer could not be written, or stdin could not be read |
+| 2 | usage error |
+
+A malformed request is **answered**, not fatal: it becomes an error envelope
+whose `field` is the decoder's own, because an adapter that exited would make
+the engine read a transport failure where the fault was one message.
+
+```sh run
+# THE SECOND `run` BLOCK IN THIS FILE, and it checks the table above against the
+# binary rather than describing it. The toolchain preamble is repeated rather
+# than shared because the gate executes each block in its own shell
+# (release-gate.py's run_doc_blocks); the ARGUMENT for resolving the name and
+# pinning GOTOOLCHAIN is in the attaint block above and is not restated here.
+GO=""
+for c in go go126 go125; do
+  command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+done
+test -n "$GO" || {
+  echo "no go, go126 or go125 on PATH: this box has no Go toolchain, which is a PROVISIONING finding and not a code one"
+  exit 1
+}
+export GOTOOLCHAIN=local
+
+# BUILT ONCE, OUT OF TREE, AND RUN FIVE TIMES. `go run` per case would relink
+# per case inside this arm's 60s bound, and a build INTO the tree would leave an
+# unmapped path that `docs --check` refuses -- which is how run 142 went red on
+# `rumor-bin`.
+tmp=$(mktemp -d) || exit 1
+trap 'rm -rf "$tmp"' EXIT
+"$GO" build -o "$tmp/rumor" ./cmd/rumor || exit 1
+
+# THE VERSION IS READ FROM THE CONSTANT, not written here. Three places already
+# state the contract version -- the engine, the adapter and platform.toml -- and
+# a fourth copy inside a doc block is the copy that goes stale unnoticed.
+ver=$(sed -n 's/^const ContractVersion = "\(.*\)"$/\1/p' internal/wire/wire.go)
+[ -n "$ver" ] || {
+  echo "internal/wire no longer declares ContractVersion as a quoted literal, so this block cannot build a request"
+  exit 1
+}
+
+describe="{\"kind\":\"describe\",\"contract\":\"$ver\",\"id\":\"d1\"}"
+execute="{\"kind\":\"execute\",\"contract\":\"$ver\",\"id\":\"e1\",\"action\":\"create_event\",\"args\":{},\"token\":\"t\"}"
+
+out=$(printf '%s\n' "$describe" | "$tmp/rumor" fake-adapter) || exit 1
+for want in '"kind":"describe"' '"capabilities"' '"contexts"'; do
+  case "$out" in
+    *"$want"*) : ;;
+    *) echo "the fake adapter's describe answer does not carry $want: $out"; exit 1 ;;
+  esac
+done
+
+bumped=$(printf '%s\n' "$describe" | "$tmp/rumor" fake-adapter --contract 99) || exit 1
+case "$bumped" in
+  *'"contract":"99"'*) : ;;
+  *) echo "--contract did not reach the answer: $bumped"; exit 1 ;;
+esac
+
+# --omit, BOTH WAYS. The deletion alone would also pass for an adapter that
+# never answered `ids` at all, so the control is the same request without it.
+omitted=$(printf '%s\n' "$execute" | "$tmp/rumor" fake-adapter --omit execute.ids) || exit 1
+control=$(printf '%s\n' "$execute" | "$tmp/rumor" fake-adapter) || exit 1
+case "$omitted" in
+  *'"ids"'*) echo "--omit execute.ids left ids in the answer: $omitted"; exit 1 ;;
+esac
+case "$control" in
+  *'"ids"'*) : ;;
+  *) echo "the unomitted answer carries no ids either, so the check above proves nothing: $control"; exit 1 ;;
+esac
+
+# THE FLAG TABLE AND THE BINARY'S USAGE CONVICT EACH OTHER, in both directions:
+# a flag documented and not implemented fails here, and so does one implemented
+# and not documented. The usage text is the binary's own, read off a refusal.
+usage=$("$tmp/rumor" fake-adapter --nonesuch x 2>&1 >/dev/null)
+# SCOPED TO THIS SUBCOMMAND'S LINE. The usage text carries every subcommand, so
+# the reverse direction below read `--examples` off `rumor check` and refused --
+# correctly, for a flag that is not this table's to document.
+fakeusage=$(printf '%s\n' "$usage" | sed -n 's/.*rumor fake-adapter //p')
+[ -n "$fakeusage" ] || {
+  echo "the binary's usage no longer carries a `rumor fake-adapter` line, so neither direction below can be checked: $usage"
+  exit 1
+}
+documented=$(sed -n '/^## `rumor fake-adapter`/,/^## Subcommands/p' docs/cli.md |
+  sed -n 's/^| `\(--[a-z-]*\)[ `].*/\1/p')
+n=0
+for f in $documented; do
+  n=$((n + 1))
+  case "$fakeusage" in
+    *"$f"*) : ;;
+    *) echo "docs/cli.md documents $f and the binary's usage does not name it: $fakeusage"; exit 1 ;;
+  esac
+done
+[ "$n" -ge 1 ] || {
+  echo "no flag rows found in the fake-adapter table, so the loop above examined nothing"
+  exit 1
+}
+for f in $(printf '%s\n' "$fakeusage" | tr ' ' '\n' | sed -n 's/^\[\(--[a-z-]*\)$/\1/p'); do
+  case " $(printf '%s ' $documented)" in
+    *" $f "*) : ;;
+    *) echo "the binary's usage names $f and docs/cli.md's flag table does not"; exit 1 ;;
+  esac
+done
+```
+
 ## Subcommands
 
-`docs --check` (R0.1), `check` (R2.3) and `attaint` (R3.1). Everything else
-arrives with the phase that owns it.
+`docs --check` (R0.1), `check` (R2.3), `attaint` (R3.1) and `fake-adapter`
+(R4.1). Everything else arrives with the phase that owns it.
 
 ## Flags
 
