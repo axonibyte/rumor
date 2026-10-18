@@ -1,0 +1,30 @@
+{
+  "why": "FIXTURE for arm 1: the twin with one change -- this case is judged on `doc.archived`, which no action emits.",
+  "expect": {
+    "believed": 1,
+    "may_publish": true,
+    "finding": "consistent"
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "position": 2,
+      "of": "doc.archived",
+      "query": "doc.count",
+      "source": "direct",
+      "value": 1
+    },
+    "known": [
+      "alice.doc#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.published",
+        "position": 1,
+        "handle": "alice.doc#1"
+      }
+    ]
+  }
+}

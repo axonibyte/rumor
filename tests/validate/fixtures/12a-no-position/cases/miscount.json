@@ -1,0 +1,30 @@
+{
+  "why": "FIXTURE for arm 12a: the twin with one change -- this case's observation declares no position.",
+  "expect": {
+    "believed": 1,
+    "may_publish": true,
+    "finding": "bug",
+    "rests_on_planted": false
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "of": "doc.published",
+      "query": "doc.count",
+      "source": "direct",
+      "value": 2
+    },
+    "known": [
+      "alice.doc#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.published",
+        "position": 1,
+        "handle": "alice.doc#1"
+      }
+    ]
+  }
+}

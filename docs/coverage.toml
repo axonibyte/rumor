@@ -91,6 +91,33 @@ path = "tests/docs/*.go"
 docs = ["docs/cli.md", "docs/release.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# `rumor validate` itself (R4.3). Mapped to contract.md because that document
+# IS this package's prose -- it states what the three declarations must agree
+# on, and the exit statuses 0/1/2 including the rule that a decode refusal is
+# could-not-run and never refused -- and to cli.md because the verb's surface
+# lives there.
+path = "internal/validate/*.go"
+docs = ["docs/contract.md", "docs/cli.md"]
+
+[[entry]]
+# The arm fixtures: the permitted twin copied once per arm, each with exactly
+# ONE change. Mapped to contract.md because each change is a key that document
+# describes, and to the testing methodology for the method -- deliberately
+# BROKEN projects, kept OUT of examples/ so `check` and `attaint` never walk
+# them (fable, coop r4/63), and read only by validate's own suite.
+path = "tests/validate/fixtures/**"
+docs = ["docs/contract.md", "docs/testing-methodology.md"]
+
+[[entry]]
+# The arm oracle. Mapped to contract.md for the same reason as the package, and
+# to the testing methodology because the METHOD is the transferable part: one
+# fixture per arm, each the permitted twin with exactly ONE change, and an
+# invariant that each trips its own arm and no other -- a fixture tripping two
+# arms shows neither.
+path = "tests/validate/*.go"
+docs = ["docs/contract.md", "docs/testing-methodology.md"]
+
+[[entry]]
 path = "tests/licences/*.go"
 docs = ["docs/testing-methodology.md", "docs/release.md"]
 

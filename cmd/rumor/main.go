@@ -25,10 +25,11 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/coverage"
 	"forge.axonibyte.com/axonibyte/rumor/internal/examples"
 	"forge.axonibyte.com/axonibyte/rumor/internal/fake"
+	"forge.axonibyte.com/axonibyte/rumor/internal/validate"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
-const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor attaint [--examples DIR]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD]"
+const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor validate PROJECT\n       rumor attaint [--examples DIR]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD]"
 
 // coverageCheck is a seam, not indirection for its own sake: it lets a test
 // drive the WRITE handling below -- including the failed-write path -- without
@@ -53,6 +54,11 @@ var attaintCheck = func(dir string, out io.Writer) (attaint.Report, error) {
 var fakeAdapter = func(cfg fake.Config, in io.Reader, out io.Writer) error {
 	return fake.Run(cfg, in, out)
 }
+
+// validateProject is the same kind of seam as the four above, for R4.3: it lets
+// a test drive the argument surface and the three exit statuses without a
+// project on disk.
+var validateProject = func(dir string) validate.Report { return validate.Run(dir) }
 
 // defaultExamplesDir is where the three packages live in this repository. A
 // flag overrides it, because the command is useful against another tree and
@@ -91,6 +97,40 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
+	if len(args) >= 1 && args[0] == "validate" {
+		if len(args) != 2 {
+			_, _ = fmt.Fprintln(stderr, usage)
+			return 2
+		}
+		rep := validateProject(args[1])
+
+		// EVERY REFUSAL, NAMED BY ITS ARM, and the could-not-run reasons kept
+		// separate: docs/contract.md:57 makes those exit 2 and never 1, since a
+		// project that cannot be READ is not a project that is wrong.
+		for _, c := range rep.CouldNotRun {
+			if _, werr := fmt.Fprintf(stdout, "validate: could not run: %s\n", c); werr != nil {
+				_, _ = fmt.Fprintf(stderr, "validate: writing the verdict: %v\n", werr)
+				return 2
+			}
+		}
+		for _, ref := range rep.Refusals {
+			if _, werr := fmt.Fprintf(stdout, "validate: REFUSED %s\n", ref); werr != nil {
+				_, _ = fmt.Fprintf(stderr, "validate: writing the verdict: %v\n", werr)
+				return 2
+			}
+		}
+		// THE TALLY IS THE VERDICT A READER GREPS FOR, so a failed write is a
+		// failed run rather than a cosmetic loss -- the rule docs --check and
+		// check already follow above.
+		if _, werr := fmt.Fprintf(stdout,
+			"validate: %s -- %d action(s), %d observation(s), %d case(s), %d rule(s), %d mutant(s); %d refusal(s)\n",
+			rep.Project, rep.Actions, rep.Observations, rep.Cases, rep.Rules, rep.Mutants, len(rep.Refusals)); werr != nil {
+			_, _ = fmt.Fprintf(stderr, "validate: writing the verdict: %v\n", werr)
+			return 2
+		}
+		return rep.Exit()
+	}
+
 	if len(args) >= 1 && args[0] == "check" {
 		dir := defaultExamplesDir
 		rest := args[1:]

@@ -1,0 +1,36 @@
+{
+  "why": "FIXTURE for arm 12b: the twin with one change -- this case's observation declares no source.",
+  "expect": {
+    "believed": 1,
+    "may_publish": true,
+    "finding": "consistent"
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "position": 3,
+      "of": "doc.published",
+      "query": "doc.count",
+      "value": 1
+    },
+    "known": [
+      "alice.doc#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.published",
+        "position": 1,
+        "handle": "alice.doc#1"
+      },
+      {
+        "ref": "alice.doc#2",
+        "actor": "alice",
+        "type": "doc.published",
+        "position": 3,
+        "handle": "alice.doc#2"
+      }
+    ]
+  }
+}
