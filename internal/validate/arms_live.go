@@ -29,6 +29,12 @@ func live(rep *Report, dir string, p platform.Platform) (wire.DescribeResponse, 
 	}, 0)
 	if err != nil {
 		rep.cannot("asking the adapter to describe itself: %v", err)
+		// THE FOUR LIVE ARMS ARE SKIPPED AND NOT PASSED. The run is
+		// could-not-run either way, but a report claiming eighteen of eighteen
+		// when four never ran would be the vacuity this accounting exists for.
+		for _, arm := range []string{"9a", "9b", "9c", "13"} {
+			rep.skip(arm, "the adapter did not answer a describe, so what it can do is unknown")
+		}
 		return d, false
 	}
 	rep.Described = true
@@ -47,6 +53,9 @@ func live(rep *Report, dir string, p platform.Platform) (wire.DescribeResponse, 
 // it vacuous. That is the opposite of the usual default and it is the point --
 // the ask is refused because nothing can serve it.
 func arm9(rep *Report, b bindings.Bindings, d wire.DescribeResponse) {
+	rep.ran("9a")
+	rep.ran("9b")
+	rep.ran("9c")
 	check := func(arm string, asked, offered []string, what string) {
 		have := map[string]bool{}
 		for _, o := range offered {
@@ -76,6 +85,7 @@ func arm9(rep *Report, b bindings.Bindings, d wire.DescribeResponse) {
 // one of the three. Restating the comparison here would be a second copy to
 // drift, so this arm calls it and reports what it said.
 func arm13(rep *Report, p platform.Platform, d wire.DescribeResponse) {
+	rep.ran("13")
 	if err := wire.CheckVersion(d.Contract, p.Contract); err != nil {
 		rep.refuse("13", "%v", err)
 	}

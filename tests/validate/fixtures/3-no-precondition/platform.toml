@@ -28,7 +28,7 @@ count = 2
 
 [stages]
 api = { enabled = true }
-browser = { enabled = false }
+browser = { enabled = true }
 
 [weights.default]
 publish_doc = 1

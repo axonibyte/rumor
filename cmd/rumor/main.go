@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/attaint"
@@ -122,9 +123,26 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		// THE TALLY IS THE VERDICT A READER GREPS FOR, so a failed write is a
 		// failed run rather than a cosmetic loss -- the rule docs --check and
 		// check already follow above.
+		// SKIPPED ARMS ARE NAMED IN THE VERDICT, not left to the difference
+		// between two numbers: "16 of 18" tells a reader a count and "4, 5
+		// skipped: the browser stage is disabled" tells them what to do.
+		if len(rep.Skipped) > 0 {
+			names := make([]string, 0, len(rep.Skipped))
+			for arm := range rep.Skipped {
+				names = append(names, arm)
+			}
+			sort.Strings(names)
+			for _, arm := range names {
+				if _, werr := fmt.Fprintf(stdout, "validate: arm %s skipped: %s\n", arm, rep.Skipped[arm]); werr != nil {
+					_, _ = fmt.Fprintf(stderr, "validate: writing the verdict: %v\n", werr)
+					return 2
+				}
+			}
+		}
 		if _, werr := fmt.Fprintf(stdout,
-			"validate: %s -- %d action(s), %d observation(s), %d case(s), %d rule(s), %d mutant(s); %d refusal(s)\n",
-			rep.Project, rep.Actions, rep.Observations, rep.Cases, rep.Rules, rep.Mutants, len(rep.Refusals)); werr != nil {
+			"validate: %s -- %d of %d arm(s) evaluated; %d action(s), %d observation(s), %d case(s), %d rule(s), %d mutant(s); %d refusal(s)\n",
+			rep.Project, len(rep.Evaluated), validate.TotalArms,
+			rep.Actions, rep.Observations, rep.Cases, rep.Rules, rep.Mutants, len(rep.Refusals)); werr != nil {
 			_, _ = fmt.Fprintf(stderr, "validate: writing the verdict: %v\n", werr)
 			return 2
 		}

@@ -35,6 +35,13 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 )
 
+// TotalArms is how many arms this package has, pinned here because a run that
+// evaluated sixteen of them reads identically to one that evaluated eighteen
+// and found nothing -- the same reason every count in this project is declared
+// (fable ruled the number at coop breakout-r4/6, and it moves only with a count
+// posted there first).
+const TotalArms = 18
+
 // Refusal is one arm firing, named by the arm so a fixture can assert that it
 // tripped ITS arm and no other -- the invariant fable set over the eighteen.
 type Refusal struct {
@@ -64,7 +71,14 @@ type Report struct {
 	Mutants      int
 	Stages       int
 	Described    bool
-	Rollbacks    int
+
+	// EVALUATED AND SKIPPED, SEPARATELY. An arm whose precondition is absent --
+	// the browser stage off, no rule declared, no seeds file -- did not pass;
+	// it did not run. Reporting the two as one would make a project that
+	// exercises four arms look like one that satisfies eighteen.
+	Evaluated []string
+	Skipped   map[string]string
+	Rollbacks int
 }
 
 // OK reports whether the project is one its own declarations agree on.
@@ -82,6 +96,22 @@ func (r Report) Exit() int {
 	default:
 		return 0
 	}
+}
+
+// ran records that an arm evaluated. Every arm calls this or skip, exactly
+// once, and TestEveryArmAccountsForItself asserts the two cover TotalArms.
+func (r *Report) ran(arm string) {
+	r.Evaluated = append(r.Evaluated, arm)
+}
+
+// skip records that an arm did not evaluate, and why. The reason is the useful
+// half: "the browser stage is disabled" tells a reader that two arms are
+// waiting on a flag rather than that the project satisfied them.
+func (r *Report) skip(arm, f string, a ...any) {
+	if r.Skipped == nil {
+		r.Skipped = map[string]string{}
+	}
+	r.Skipped[arm] = fmt.Sprintf(f, a...)
 }
 
 func (r *Report) refuse(arm, f string, a ...any) {

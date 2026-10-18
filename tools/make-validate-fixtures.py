@@ -11,7 +11,7 @@ Run after ANY change to examples/twin, and tests/validate asserts the result --
 see TestEveryFixtureIsTheTwinPlusItsOwnChange, which fails if a fixture differs
 from the twin anywhere its table does not allow.
 """
-import json, os, shutil, sys
+import json, os, re, shutil, sys
 
 SRC = "examples/twin"
 ROOT = "tests/validate/fixtures"
@@ -104,27 +104,21 @@ def build():
     # fixtures rather than one. Each README below names which edit is which.
 
     d = fresh("4-no-ui-flow")
-    p = os.path.join(d, "platform.toml"); s = open(p).read()
-    open(p, "w").write(s.replace("browser = { enabled = false }", "browser = { enabled = true }", 1))
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
-    open(p, "w").write(s + '''
-# THE CONDITION: a browser-stage action declaring no flow. `requires` is present
-# so this action does not trip arm 3 as well -- a setup edit that trips an arm
-# by itself would make this two fixtures (fable, coop r4/74).
-[[action]]
-name = "publish_doc_ui"
-context = "browser"
-requires = ["may_publish"]
-''')
+    # the twin's browser action keeps its name, its context and its precondition
+    # and loses its flow: ONE change, and no setup edit is needed now that the
+    # twin carries the browser stage and the action itself (fable's D9 required
+    # that, and it made this fixture simpler rather than harder).
+    s = re.sub(r"\n  \[\[action\.flow\]\]\n(?:  [a-z]+ = [^\n]*\n)+", "\n", s)
+    open(p, "w").write("# FIXTURE for arm 4: the twin with one change -- publish_doc_ui loses its UI\n"
+                       "# flow, so a browser-stage action has nothing for the driver to execute.\n" + s)
     open(os.path.join(d, "WHY-no-ui-flow.md"), "w").write(
-        "# FIXTURE for arm 4\n\nSETUP: `stages.browser.enabled` goes true. Both browser arms are VACUOUS\n"
-        "without it (docs/contract.md:419), so the flag is what makes the condition\nreachable rather than part of it.\n\n"
-        "CONDITION: a browser-stage action declaring no flow.\n\n"
-        "The added action carries `requires` on purpose: without it the setup would\ntrip arm 3 too, and fable's rule is that a fixture whose setup edit trips an\narm by itself is two fixtures.\n")
+        "# FIXTURE for arm 4\n\nONE CHANGE, no setup: the twin already enables the browser stage and declares\n"
+        "`publish_doc_ui` with a flow, because fable's D9 drill requires the untouched\n"
+        "examples to pass with every arm EVALUATED and none skipped. So this fixture\n"
+        "only removes the flow.\n")
 
     d = fresh("5-browser-reaches-api")
-    p = os.path.join(d, "platform.toml"); s = open(p).read()
-    open(p, "w").write(s.replace("browser = { enabled = false }", "browser = { enabled = true }", 1))
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
     open(p, "w").write(s + '''
 # THE CONDITION: an actor holding BOTH a browser session and the api context,
@@ -135,10 +129,10 @@ name = "editor"
 contexts = ["browser", "api"]
 ''')
     open(os.path.join(d, "WHY-browser-reaches-api.md"), "w").write(
-        "# FIXTURE for arm 5\n\nSETUP: `stages.browser.enabled` goes true, without which the arm is vacuous.\n\n"
-        "CONDITION: a role holding both `browser` and `api`, so a browser-stage actor\ncould take the api action the twin already declares. No browser ACTION is\n"
-        "needed -- reachability is about the actor's contexts and the action's.\n\n"
-        "This role is deliberately not in the twin: quill's agreement test refuses a\ndeclared role no case carries, and the twin's cases carry none.\n")
+        "# FIXTURE for arm 5\n\nONE CHANGE, no setup: the twin already enables the browser stage. This adds a\n"
+        "role holding both `browser` and `api`, so a browser-stage actor could take the\n"
+        "api action the twin declares.\n\n"
+        "The role is deliberately not in the twin: tests/contract's agreement test\nrefuses a declared role no case carries, and the twin's cases carry none.\n")
 
     d = fresh("7b-quiesce-no-probe")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()

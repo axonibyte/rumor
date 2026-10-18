@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -279,8 +280,8 @@ var changedBy = map[string][]string{
 	// type made eventual -- and each fixture's README names which edit is which.
 	// A setup edit that tripped an arm by itself would make the fixture two
 	// fixtures, which is why 4's added action carries `requires`.
-	"4-no-ui-flow":          {"platform.toml", "bindings.toml", "WHY-no-ui-flow.md"},
-	"5-browser-reaches-api": {"platform.toml", "bindings.toml", "WHY-browser-reaches-api.md"},
+	"4-no-ui-flow":          {"bindings.toml", "WHY-no-ui-flow.md"},
+	"5-browser-reaches-api": {"bindings.toml", "WHY-browser-reaches-api.md"},
 	"6-component-uncovered": {"platform.toml"},
 	"7b-quiesce-no-probe":   {"bindings.toml"},
 	"10b-unreadable-seed":   {"seeds.lock"},
@@ -347,6 +348,116 @@ func TestEveryFixtureIsTheTwinPlusItsOwnChange(t *testing.T) {
 				sort.Strings(drifted)
 				t.Fatalf("%s differs from the twin outside what it declares to change: %v -- "+
 					"regenerate with tools/make-validate-fixtures.py", f, drifted)
+			}
+		})
+	}
+}
+
+// allArms is the eighteen, named. fable ruled the count at coop breakout-r4/6
+// and it moves only with a count posted in r4 first.
+var allArms = []string{
+	"1", "2", "3", "4", "5", "6", "7a", "7b", "8",
+	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13",
+}
+
+// TestEveryArmAccountsForItself is the "18 of 18" invariant, and it is an
+// accounting one rather than a single project's number.
+//
+// WHY NOT SIMPLY THE TWIN: the twin reports SIXTEEN of eighteen, because arms 4
+// and 5 are vacuous unless `stages.browser.enabled` is true and the twin cannot
+// enable them. Making it able to would mean declaring a browser action and a
+// role, and tests/contract's agreement test refuses an examples/* package that
+// declares either with no case carrying it. So the eighteenth arm is reached
+// across the SUITE -- each fixture that enables the browser stage evaluates
+// those two -- and what this test pins is that every arm is evaluated SOMEWHERE
+// and that no run ever both evaluates and skips one.
+func TestEveryArmAccountsForItself(t *testing.T) {
+	seen := map[string]bool{}
+
+	check := func(name string, rep validate.Report) {
+		for _, a := range rep.Evaluated {
+			if _, also := rep.Skipped[a]; also {
+				t.Errorf("%s reports arm %s as BOTH evaluated and skipped", name, a)
+			}
+			seen[a] = true
+		}
+		if n := len(rep.Evaluated) + len(rep.Skipped); n != validate.TotalArms {
+			t.Errorf("%s accounts for %d arm(s), want %d: every arm either evaluates or says why not",
+				name, n, validate.TotalArms)
+		}
+	}
+
+	check("the twin", validate.Run(filepath.Join("..", "..", "examples", "twin")))
+	for _, f := range fixtures(t) {
+		check(f, validate.Run(filepath.Join("fixtures", f)))
+	}
+
+	var missing []string
+	for _, a := range allArms {
+		if !seen[a] {
+			missing = append(missing, a)
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("arm(s) %v are evaluated by nothing in this suite: an arm no run reaches is an arm "+
+			"whose fixture proves only that the fixture was read", missing)
+	}
+	if len(allArms) != validate.TotalArms {
+		t.Fatalf("this test names %d arms and validate.TotalArms is %d", len(allArms), validate.TotalArms)
+	}
+	t.Logf("PROOF %d of %d arms evaluated across the twin and %d fixtures",
+		len(seen), validate.TotalArms, len(fixtures(t)))
+}
+
+// TestTheDocumentedOutputIsTheBinarysOutput holds docs/cli.md's two console
+// blocks to what `rumor validate` actually prints.
+//
+// IT EXISTS BECAUSE THEY WENT STALE ONCE, inside an hour: the blocks were
+// byte-checked when written, then the twin gained a browser stage to satisfy
+// fable's D9 drill and both became wrong -- 16 of 18 where the binary now says
+// 18, and 12 where it says 14. A quoted output is a claim about the program,
+// and this project checks quoted documents elsewhere (tests/vocabulary) for the
+// same reason. The fixtures got a drift oracle in C3; this is the docs' one.
+func TestTheDocumentedOutputIsTheBinarysOutput(t *testing.T) {
+	bin, err := exec.LookPath("rumor")
+	if err != nil {
+		t.Fatalf("TestMain should have put rumor on PATH: %v", err)
+	}
+	root := filepath.Join("..", "..")
+	raw, err := os.ReadFile(filepath.Join(root, "docs", "cli.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := regexp.MustCompile("(?s)```console\n\\$ rumor validate examples/twin[^\n]*\n(.*?)```").
+		FindAllStringSubmatch(string(raw), -1)
+	if len(blocks) != 2 {
+		t.Fatalf("docs/cli.md holds %d `rumor validate examples/twin` console block(s), want 2: "+
+			"this oracle names what it checks, so a third would be unchecked", len(blocks))
+	}
+
+	run := func(path string) string {
+		cmd := exec.Command(bin, "validate", "examples/twin")
+		cmd.Dir = root
+		cmd.Env = []string{"PATH=" + path, "GOTOOLCHAIN=local"}
+		out, _ := cmd.CombinedOutput() // a non-zero status is a verdict, not a failure
+		return strings.TrimRight(string(out), "\n")
+	}
+
+	// THE TWO ENVIRONMENTS ARE THE POINT of the two blocks: whether a `rumor`
+	// exists to spawn decides four arms, and the documented figure depends on
+	// it. The second uses an empty temp dir rather than an empty PATH so the
+	// difference is "no rumor here" and not "no PATH at all".
+	cases := []struct {
+		what, path, want string
+	}{
+		{"with the adapter on PATH", filepath.Dir(bin), strings.TrimRight(blocks[0][1], "\n")},
+		{"no rumor on PATH", t.TempDir(), strings.TrimRight(blocks[1][1], "\n")},
+	}
+	for _, c := range cases {
+		t.Run(c.what, func(t *testing.T) {
+			got := run(c.path)
+			if got != c.want {
+				t.Errorf("docs/cli.md claims:\n%s\n\nthe binary prints:\n%s", c.want, got)
 			}
 		})
 	}

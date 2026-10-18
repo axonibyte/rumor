@@ -1,3 +1,5 @@
+# FIXTURE for arm 4: the twin with one change -- publish_doc_ui loses its UI
+# flow, so a browser-stage action has nothing for the driver to execute.
 # Bindings for the permitted twin (R4.3, issue 64).
 #
 # THIS IS THE FILE arm 3 EXISTS FOR. `requires` names a statute RULE, and this
@@ -50,10 +52,23 @@ faults = ["latency"]
 volume = ["small"]
 upgrade = ["v1-to-v1"]
 
-# THE CONDITION: a browser-stage action declaring no flow. `requires` is present
-# so this action does not trip arm 3 as well -- a setup edit that trips an arm
-# by itself would make this two fixtures (fable, coop r4/74).
+# A BROWSER-STAGE ACTION, WITH ITS FLOW, so arms 4 and 5 EVALUATE on this
+# package rather than skipping: fable's D9 drill requires the untouched examples
+# to pass with every arm evaluated and NONE skipped, and both browser arms are
+# vacuous unless stages.browser.enabled is true (docs/contract.md:419).
+#
+# IT EMITS NOTHING AND NAMES NO ROLE, and that is forced rather than minimal.
+# tests/contract's agreement test refuses an examples/* package that emits a
+# claim type no case carries, or declares a role no case carries -- and this
+# package's cases carry one claim type and no role. So the browser material the
+# twin can hold is exactly this: an action with a flow, a precondition, and
+# nothing that would make the bindings claim a subject the cases do not have.
 [[action]]
 name = "publish_doc_ui"
 context = "browser"
 requires = ["may_publish"]
+touches = ["doc_store"]
+
+
+
+

@@ -53,6 +53,75 @@ Exit codes, the same three the rest of the CLI uses:
 Examining nothing is a failure and not a pass: zero disagreements over zero
 cases reads identically to agreement everywhere.
 
+## `rumor validate`
+
+```
+rumor validate PROJECT
+```
+
+Refuses a project whose statute, bindings and platform do not agree (R4.3,
+issue 64). PROJECT is a directory holding `bindings.toml`, `platform.toml`,
+`statute.rego`, `rules.json`, `cases/` and `mutants/` -- `examples/twin` is one.
+
+**The exit statuses are `docs/contract.md`'s and not this command's choice:**
+
+| status | meaning |
+|---|---|
+| 0 | passed: every arm that evaluated found nothing |
+| 1 | refused: an arm fired, and the line NAMES it |
+| 2 | could-not-run: a declaration could not be READ, or the adapter did not answer |
+
+**2 outranks 1.** If the declarations could not be read, what an arm would have
+said about them is not known -- and a decode refusal is 2 and never 1, because
+"the project is not wrong; its adapter is". fable's D7 drill asserts that
+boundary for the adapter and this command keeps the same one.
+
+**It reports what it EVALUATED, not only what it refused.** Eighteen arms are
+declared, and an arm whose precondition is absent -- the browser stage off, no
+rule declared, no seeds file -- did not pass, it did not run. Those are named
+with their reason rather than folded into a number:
+
+```console
+$ rumor validate examples/twin          # with the adapter on PATH
+validate: twin -- 18 of 18 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
+```
+
+Eighteen of eighteen is what a complete small project looks like: fable's D9
+drill requires the untouched examples to pass with every arm EVALUATED and none
+skipped, which is why the twin enables the browser stage and declares a browser
+action with its flow. **An adapter it cannot reach costs four arms**, and that
+is worth showing because the figure depends on it -- the twin's
+`[adapter].command` is `rumor fake-adapter`, so a `rumor` that is not installed
+takes the capability arms and the contract-version arm with it:
+
+```console
+$ rumor validate examples/twin          # no rumor on PATH
+validate: could not run: asking the adapter to describe itself: spawning "rumor": exec: "rumor": executable file not found in $PATH
+validate: arm 13 skipped: the adapter did not answer a describe, so what it can do is unknown
+validate: arm 9a skipped: the adapter did not answer a describe, so what it can do is unknown
+validate: arm 9b skipped: the adapter did not answer a describe, so what it can do is unknown
+validate: arm 9c skipped: the adapter did not answer a describe, so what it can do is unknown
+validate: twin -- 14 of 18 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
+```
+
+The run is could-not-run either way -- exit 2, never a refusal, because the
+project is not wrong when its adapter will not start -- and the four arms are
+SKIPPED rather than passed.
+
+The twin's browser action **emits nothing and names no role**, and that is
+forced rather than minimal: `tests/contract`'s agreement test refuses an
+`examples/*` package emitting a claim type no case carries, or declaring a role
+no case carries. Each arm's own fixture lives in `tests/validate/fixtures/`, is
+the twin with one change, and trips exactly its own arm.
+
+**Four arms ask the adapter.** The capability arms (9a, 9b, 9c) pair `[uses]` in
+`bindings.toml` -- the project's ASK -- against `describe`'s `capabilities`,
+what the adapter can actually do; and the contract-version arm (13) compares the
+engine's constant, the adapter's `contract` and `platform.toml`'s. For those,
+this command spawns `[adapter].command` through the one wire client, sends a
+single `describe`, reads one line and stops the process. An adapter that will
+not start or will not speak is could-not-run, never a refusal.
+
 ## `rumor attaint`
 
 ```
@@ -399,8 +468,8 @@ done
 
 ## Subcommands
 
-`docs --check` (R0.1), `check` (R2.3), `attaint` (R3.1) and `fake-adapter`
-(R4.1). Everything else arrives with the phase that owns it.
+`docs --check` (R0.1), `check` (R2.3), `validate` (R4.3), `attaint` (R3.1) and
+`fake-adapter` (R4.1). Everything else arrives with the phase that owns it.
 
 ## Flags
 

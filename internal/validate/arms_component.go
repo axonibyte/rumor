@@ -24,6 +24,7 @@ import (
 // nothing reads directly fell outside an arm whose wording is about bindings
 // that touch one (ibis, coop r4/23, and bindings.go says so at the field).
 func arm6(rep *Report, b bindings.Bindings, p platform.Platform) {
+	rep.ran("6")
 	covered := map[string]bool{}
 	for _, rb := range p.Rollback {
 		for _, c := range rb.Covers {

@@ -49,3 +49,37 @@ timing = "immediate"
 faults = ["latency"]
 volume = ["small"]
 upgrade = ["v1-to-v1"]
+
+# A BROWSER-STAGE ACTION, WITH ITS FLOW, so arms 4 and 5 EVALUATE on this
+# package rather than skipping: fable's D9 drill requires the untouched examples
+# to pass with every arm evaluated and NONE skipped, and both browser arms are
+# vacuous unless stages.browser.enabled is true (docs/contract.md:419).
+#
+# IT EMITS NOTHING AND NAMES NO ROLE, and that is forced rather than minimal.
+# tests/contract's agreement test refuses an examples/* package that emits a
+# claim type no case carries, or declares a role no case carries -- and this
+# package's cases carry one claim type and no role. So the browser material the
+# twin can hold is exactly this: an action with a flow, a precondition, and
+# nothing that would make the bindings claim a subject the cases do not have.
+[[action]]
+name = "publish_doc_ui"
+context = "browser"
+requires = ["may_publish"]
+touches = ["doc_store"]
+
+  [[action.flow]]
+  step = "navigate"
+  to = "/docs/new"
+
+  [[action.flow]]
+  step = "fill"
+  field = "title"
+  value = "quarterly"
+
+  [[action.flow]]
+  step = "click"
+  target = "publish"
+
+  [[action.flow]]
+  step = "wait"
+  until = "doc-published"

@@ -40,8 +40,10 @@ func isBrowser(ctx string) bool { return ctx == "browser" }
 // backwards, the fixture directories rename and nothing else moves.
 func arm4(rep *Report, b bindings.Bindings, p platform.Platform) {
 	if !browserEnabled(p) {
+		rep.skip("4", "stages.browser.enabled is not true, and this arm is vacuous without it")
 		return
 	}
+	rep.ran("4")
 	var bad []string
 	for _, a := range b.Actions {
 		if isBrowser(a.Context) && len(a.Flow) == 0 {
@@ -64,8 +66,10 @@ func arm4(rep *Report, b bindings.Bindings, p platform.Platform) {
 // actor property exists to prevent (:161).
 func arm5(rep *Report, b bindings.Bindings, p platform.Platform) {
 	if !browserEnabled(p) {
+		rep.skip("5", "stages.browser.enabled is not true, and this arm is vacuous without it")
 		return
 	}
+	rep.ran("5")
 	byContext := map[string][]string{}
 	for _, a := range b.Actions {
 		if !isBrowser(a.Context) {
@@ -105,6 +109,8 @@ func arm5(rep *Report, b bindings.Bindings, p platform.Platform) {
 // fire instead of the parser refusing the file. 7b is docs/contract.md:341's
 // "second half of the eventual arm".
 func arm7(rep *Report, b bindings.Bindings) {
+	rep.ran("7a")
+	rep.ran("7b")
 	var noBound, noProbe []string
 	for t, c := range b.Claims {
 		if c.Timing != "eventual" {
@@ -140,8 +146,12 @@ func arm7(rep *Report, b bindings.Bindings) {
 func arm8(rep *Report, dir string, b bindings.Bindings) {
 	src, err := os.ReadFile(filepath.Join(dir, "statute.rego"))
 	if err != nil {
-		return // no statute is not this arm's finding
+		rep.skip("8", "no statute.rego to read, so whether a rule reaches for the clock is unasked")
+		return
 	}
+	// READ AND PASSED IS NOT SKIPPED: a statute that never touches input.clock
+	// is one this arm EVALUATED and found nothing wrong with.
+	rep.ran("8")
 	if !strings.Contains(string(src), "input.clock") {
 		return
 	}
@@ -166,6 +176,7 @@ func arm8(rep *Report, dir string, b bindings.Bindings) {
 // -- empty, because no seed has been promoted and R5 owns the entry format --
 // and this arm asks the question of every project.
 func arm10a(rep *Report, dir string, p platform.Platform) {
+	rep.ran("10a")
 	path := p.SeedsFile
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(dir, path)
@@ -195,8 +206,10 @@ func arm10b(rep *Report, dir string, p platform.Platform) {
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return // absent is arm 10a's finding, not this one's
+		rep.skip("10b", "there is no seeds file to read; its absence is arm 10a's finding")
+		return
 	}
+	rep.ran("10b")
 	var bad []string
 	for i, line := range strings.Split(string(raw), "\n") {
 		t := strings.TrimSpace(line)

@@ -22,6 +22,7 @@ import (
 // This is the first of internal/bindings/bindings.go:304's pair, held back from
 // the parser because it needs both files and that package is handed one.
 func arm1(rep *Report, b bindings.Bindings, cases map[string]caseDoc) {
+	rep.ran("1")
 	emitted := map[string]bool{}
 	for _, a := range b.Actions {
 		for _, t := range a.Emits {
@@ -48,6 +49,7 @@ func arm1(rep *Report, b bindings.Bindings, cases map[string]caseDoc) {
 // project produces something whose settling nothing declares, so no later arm
 // can ask whether it settles immediately or within a bound.
 func arm2(rep *Report, b bindings.Bindings) {
+	rep.ran("2")
 	var bad []string
 	for _, a := range b.Actions {
 		for _, t := range a.Emits {
@@ -76,6 +78,7 @@ func arm2(rep *Report, b bindings.Bindings) {
 // nothing and NO arm refuses it. A nineteenth arm is not this package's to
 // invent; the count is fable's.
 func arm3(rep *Report, b bindings.Bindings) {
+	rep.ran("3")
 	var bad []string
 	for _, a := range b.Actions {
 		if len(a.Requires) == 0 {
@@ -102,8 +105,10 @@ func arm3(rep *Report, b bindings.Bindings) {
 // cuts nothing and mutants/README.md already refuses one naming the cut.
 func arm11(rep *Report, dir string, rules []string) {
 	if len(rules) == 0 {
-		return // nothing declared, so nothing is owed a fixture
+		rep.skip("11", "rules.json declares no rule, so none is owed a mutation fixture")
+		return
 	}
+	rep.ran("11")
 	statute, _ := os.ReadFile(filepath.Join(dir, "statute.rego"))
 	files, _ := filepath.Glob(filepath.Join(dir, "mutants", "*.rego"))
 	real := 0
@@ -135,6 +140,8 @@ func arm11(rep *Report, dir string, rules []string) {
 // TWO ARMS, ONE WALK, because they quantify over the same set and a case
 // missing both should name both rather than the first.
 func arm12(rep *Report, cases map[string]caseDoc) {
+	rep.ran("12a")
+	rep.ran("12b")
 	var noPos, noSrc []string
 	for name, c := range cases {
 		if c.Input.Observation.Position == nil {
