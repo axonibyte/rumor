@@ -343,3 +343,89 @@ func TestLoadRefusesTheFileAndNotTheProject(t *testing.T) {
 type errDecode struct{}
 
 func (errDecode) Error() string { return "line 1: unexpected character" }
+
+// --- the TOML reader ------------------------------------------------------
+
+// TestTOMLProducesWhatTheReadersExpect: every Reader method above is written
+// against the shapes a TOML decoder hands over, and until this test the claim
+// "integers arrive as int64, tables as map[string]any, arrays as []any" was a
+// comment. It is the two-instrument rule applied to a dependency -- the schema's
+// expectations on one side, the library's actual output on the other.
+func TestTOMLProducesWhatTheReadersExpect(t *testing.T) {
+	doc, err := TOML([]byte(`
+name = "a platform"
+on = true
+count = 3
+budget = "5m"
+paths = ["one", "two"]
+
+[table]
+inner = "value"
+
+[[entries]]
+k = "v"
+
+[[entries]]
+k = "w"
+`))
+	if err != nil {
+		t.Fatalf("TOML: %v", err)
+	}
+	r := New(doc)
+	if got := r.Str("name", true); got != "a platform" {
+		t.Errorf("Str = %q", got)
+	}
+	if !r.Bool("on", true) {
+		t.Error("Bool = false")
+	}
+	if got := r.Int("count", true); got != 3 {
+		t.Errorf("Int = %d: a TOML integer must reach Int, whatever width the library chose", got)
+	}
+	if got := r.Duration("budget", true); got != 5*time.Minute {
+		t.Errorf("Duration = %v", got)
+	}
+	if got := r.Strings("paths", true); len(got) != 2 || got[1] != "two" {
+		t.Errorf("Strings = %v", got)
+	}
+	inner, ok := r.Table("table", true)
+	if !ok || inner.Str("inner", true) != "value" {
+		t.Error("Table")
+	}
+	inner.Done()
+	entries := r.Tables("entries")
+	if len(entries) != 2 {
+		t.Fatalf("Tables = %d, want 2: an array of tables must arrive as one", len(entries))
+	}
+	for _, e := range entries {
+		e.Str("k", true)
+		e.Done()
+	}
+	r.Done()
+	if found := r.Refusals(); len(found) != 0 {
+		t.Errorf("a well-formed TOML document was refused: %v", found)
+	}
+}
+
+func TestTOMLRefusesWhatIsNotTOMLAndAcceptsAnEmptyDocument(t *testing.T) {
+	if _, err := TOML([]byte("name = \nthis is not toml")); err == nil {
+		t.Error("malformed TOML was accepted")
+	} else if !strings.Contains(err.Error(), "not TOML") {
+		t.Errorf("%q does not say what it is not", err)
+	}
+	// AN ALL-COMMENTS FILE IS A DOCUMENT WITH NO KEYS, not a nil one -- and this
+	// is a claim about BurntSushi/toml v1.6.0, measured: an empty file, a
+	// comments-only file and a blank-line file each decode to a non-nil map of
+	// length 0. The assertion is here so that a library change which starts
+	// answering nil is caught by a test rather than by Load refusing a file
+	// that was readable.
+	doc, err := TOML([]byte("# nothing but a comment\n"))
+	if err != nil {
+		t.Fatalf("an all-comments file: %v", err)
+	}
+	if doc == nil {
+		t.Error("an all-comments file decoded to nil, which Load reads as a broken decoder")
+	}
+	if len(doc) != 0 {
+		t.Errorf("document %v", doc)
+	}
+}

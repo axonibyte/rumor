@@ -1,0 +1,42 @@
+# Bindings for the role-visibility example (R4.2, issue 63).
+#
+# DERIVED FROM THIS PACKAGE'S OWN CASES: the claim type is `doc.created`, the
+# observation is `doc.count` with source `api` and `of = doc.created`, the
+# actors are alice, bob and dana, and the ROLES are `admin` and `viewer` --
+# measured, not chosen: they are the values the cases carry in the observation's
+# `role` and in each claim's `visible_to`.
+#
+# THIS IS THE ONLY ONE OF THE THREE PACKAGES THAT CAN DECLARE ROLES at all,
+# which is why the other two have no [[role]] table: a schema field with no case
+# behind it would be this file inventing the package's subject.
+#
+# `visible_to` IS A CLAIM FIELD AND NOT A BINDING FIELD (docs/vocabulary.md), so
+# it appears nowhere below. The binding says which role an actor may hold and in
+# which context; who a claim is visible to is the ledger's.
+#
+# `requires` IS ABSENT and this file does not validate yet, for planted-lie's
+# reason: the rules here are `believed_visible`, `visible_truth`,
+# `untold_visible` and `finding`. See quill coop r4/37.
+
+[[action]]
+name = "create_doc"
+context = "api"
+emits = ["doc.created"]
+creates = ["doc"]
+response = { status = 201 }
+
+[[observation]]
+name = "doc.count"
+source = "api"
+of = "doc.created"
+
+[claim."doc.created"]
+timing = "immediate"
+
+[[role]]
+name = "admin"
+contexts = ["api"]
+
+[[role]]
+name = "viewer"
+contexts = ["api"]

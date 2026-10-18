@@ -1,0 +1,30 @@
+# Bindings for the transitive-count example (R4.2, issue 63).
+#
+# DERIVED FROM THIS PACKAGE'S OWN CASES: the claim type is `user.created`, the
+# observation is `user.count` with source `api` and `of = user.created`, and the
+# actors are alice, bob, charlie and dana. The package's subject is the one-hop
+# `told` flattening, which is the ENGINE's (internal/flatten) and not a
+# binding's: a tell never reaches the system under test, so nothing here
+# declares one.
+#
+# `requires` IS ABSENT and this file does not validate yet, for planted-lie's
+# reason: this statute's rules are `believed`, `truth`, `untold_accounts` and
+# `finding` -- three counts and a finding, no precondition to reference. See
+# quill coop r4/37.
+#
+# NO [[role]]: no case here carries one.
+
+[[action]]
+name = "create_user"
+context = "api"
+emits = ["user.created"]
+creates = ["user"]
+response = { status = 201 }
+
+[[observation]]
+name = "user.count"
+source = "api"
+of = "user.created"
+
+[claim."user.created"]
+timing = "immediate"

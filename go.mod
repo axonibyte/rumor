@@ -11,6 +11,7 @@ go 1.26.0
 require github.com/open-policy-agent/opa v1.21.2
 
 require (
+	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect

@@ -343,8 +343,23 @@ func (r *Reader) Tables(key string) []*Reader {
 	if !ok {
 		return nil
 	}
-	items, ok := v.([]any)
-	if !ok {
+	// TWO SHAPES, BECAUSE THE DECODER CHOOSES ONE AND THE TEST CAUGHT IT.
+	// BurntSushi/toml hands an array of tables over as []map[string]any, not as
+	// []any of maps, so the first version of this method returned ZERO readers
+	// for a perfectly good `[[venire]]` -- and every refusal built on it would
+	// have been "no entries: a run with no actors can do nothing" about a file
+	// that declared two. TestTOMLProducesWhatTheReadersExpect exists for exactly
+	// this: the schema's expectation on one side, the library's actual output on
+	// the other, and no comment in between.
+	var items []any
+	switch typed := v.(type) {
+	case []any:
+		items = typed
+	case []map[string]any:
+		for _, m := range typed {
+			items = append(items, m)
+		}
+	default:
 		r.Refuse(key, fmt.Sprintf("%T: wanted an array of tables", v))
 		return nil
 	}

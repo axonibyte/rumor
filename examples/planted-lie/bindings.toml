@@ -1,0 +1,39 @@
+# Bindings for the planted-lie example (R4.2, issue 63).
+#
+# DERIVED FROM THIS PACKAGE'S OWN CASES, and the derivation is the point: the
+# claim type is `user.created`, the observation is `user.count` with source
+# `api` and `of = user.created`, and the only actor is alice. docs/contract.md's
+# Bindings schema section is the schema; `rumor validate` (R4.3) is what holds a
+# project to it.
+#
+# WHAT THE CASES CANNOT SUPPLY, said rather than invented (rook, coop r4/24): a
+# case is a LEDGER INPUT, so it carries claims and an observation and never the
+# act that produced them. The action's NAME and its response shape are therefore
+# this file's, chosen to match what the claim says happened and nothing more.
+#
+# `requires` IS ABSENT, AND THIS FILE THEREFORE DOES NOT VALIDATE YET. Validate's
+# third arm refuses an action with no precondition, and this statute has no
+# precondition RULE to point at: its four rules are three counts and a finding
+# (`believed`, `honest_total`, `rests_on_planted`, `finding`). A statute
+# reference to one of those would be a precondition that is not one, which is
+# worse than the refusal it would silence. The collision is quill coop r4/37,
+# and the fix is fable's to rule.
+#
+# NO [[role]], for the same discipline: no case in this package carries a role,
+# so there is none to declare. role-visibility's bindings do, because its cases
+# do.
+
+[[action]]
+name = "create_user"
+context = "api"
+emits = ["user.created"]
+creates = ["user"]
+response = { status = 201 }
+
+[[observation]]
+name = "user.count"
+source = "api"
+of = "user.created"
+
+[claim."user.created"]
+timing = "immediate"

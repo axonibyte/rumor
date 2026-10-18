@@ -32,6 +32,9 @@ import (
 	"strings"
 	"testing"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
+	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
@@ -225,3 +228,73 @@ func without(all, drop []string) []string {
 	}
 	return out
 }
+
+// --- the document's own samples (R4.1, R4.2) ------------------------------
+
+// TestEveryTomlSampleInTheDocumentParses.
+//
+// THIS IS THE TEST R4.1 LISTED AS OWED and could not write until the reader
+// landed: `docs/contract.md` prints a `platform.toml`, a `bindings.toml` and a
+// UI-flow fragment, and until now nothing read them. A documented sample that
+// cannot fail is decoration -- this tree's own methodology -- and these three
+// are the first thing a project copies.
+//
+// EACH FENCE IS PARSED AS WHAT ITS SECTION SAYS IT IS, which is also how the
+// test avoids the shape that bit the first version of the field-table parser:
+// the fences are found inside their own `## ` section rather than by position
+// in the file.
+func TestEveryTomlSampleInTheDocumentParses(t *testing.T) {
+	raw, err := os.ReadFile(doc)
+	if err != nil {
+		t.Fatalf("reading %s: %v", doc, err)
+	}
+	text := string(raw)
+
+	platformSamples := tomlFences(t, text, "## `platform.toml` schema")
+	if len(platformSamples) != 1 {
+		t.Fatalf("%d toml sample(s) under the platform.toml schema, want 1", len(platformSamples))
+	}
+	doc0, err := decl.TOML([]byte(platformSamples[0]))
+	if err != nil {
+		t.Fatalf("the platform.toml sample is not TOML: %v", err)
+	}
+	if rep := platform.Parse(doc0); !rep.OK() {
+		t.Errorf("the platform.toml sample does not parse as a platform: %v", rep.Refusals)
+	}
+
+	bindingSamples := tomlFences(t, text, "## Bindings schema")
+	if len(bindingSamples) != 2 {
+		t.Fatalf("%d toml sample(s) under the bindings schema, want 2 (the file and the UI flow)",
+			len(bindingSamples))
+	}
+	for i, sample := range bindingSamples {
+		decoded, err := decl.TOML([]byte(sample))
+		if err != nil {
+			t.Errorf("bindings sample %d is not TOML: %v", i, err)
+			continue
+		}
+		if rep := bindings.Parse(decoded); !rep.OK() {
+			t.Errorf("bindings sample %d does not parse as bindings: %v", i, rep.Refusals)
+		}
+	}
+}
+
+// tomlFences returns the ```toml blocks inside one `## ` section.
+func tomlFences(t *testing.T, text, heading string) []string {
+	t.Helper()
+	start := strings.Index(text, heading)
+	if start < 0 {
+		t.Fatalf("no %q section in %s", heading, doc)
+	}
+	rest := text[start+len(heading):]
+	if end := strings.Index(rest, "\n## "); end >= 0 {
+		rest = rest[:end]
+	}
+	var out []string
+	for _, m := range tomlFence.FindAllStringSubmatch(rest, -1) {
+		out = append(out, m[1])
+	}
+	return out
+}
+
+var tomlFence = regexp.MustCompile("(?s)```toml\n(.*?)```")
