@@ -21,7 +21,7 @@ BIN is the binary to drive; build it with `go build -o` first.
 import json, os, re, shutil, subprocess, tempfile, sys
 
 ROOT = os.getcwd()
-BIN  = os.environ.get("BIN", "./rumor-bin")   # built with `go build -o`
+BIN  = "/tmp/claude-1001/rumor-bin"
 PATHDIR = tempfile.mkdtemp()
 shutil.copy(BIN, os.path.join(PATHDIR, "rumor"))
 ENVP = dict(os.environ, PATH=PATHDIR + os.pathsep + os.environ["PATH"], GOTOOLCHAIN="local")
@@ -90,15 +90,18 @@ row("D7", "describe missing a required field", rc, arms, cnr,
     lambda rc, a, c: rc == 2 and a == [] and c >= 1)
 
 # D8 VACUITY: three ways, each a refusal or could-not-run, never a pass
+# EXIT 1, A REFUSAL, ruled by fable at coop r4/79: could-not-run is the
+# adapter's and the decoder's, where the project is not wrong; a project that
+# has not said what it is IS wrong. attaint draws the same line.
 p = copytwin(); open(os.path.join(p, "rules.json"), "w").write("[]")
 rc, arms, cnr, _ = run(p)
-row("D8", "zero rules", rc, arms, cnr, lambda rc, a, c: rc != 0)
+row("D8", "zero rules", rc, arms, cnr, lambda rc, a, c: rc == 1 and c == 0)
 p = copytwin(); os.remove(os.path.join(p, "bindings.toml"))
 rc, arms, cnr, _ = run(p)
-row("D8", "no bindings file", rc, arms, cnr, lambda rc, a, c: rc == 2 and c >= 1)
+row("D8", "no bindings file", rc, arms, cnr, lambda rc, a, c: rc == 1 and c == 0)
 p = copytwin(); open(os.path.join(p, "bindings.toml"), "w").write("# nothing\n")
 rc, arms, cnr, _ = run(p)
-row("D8", "zero actions", rc, arms, cnr, lambda rc, a, c: rc == 2 and c >= 1)
+row("D8", "zero actions", rc, arms, cnr, lambda rc, a, c: rc == 1 and c == 0)
 
 # D9 TWIN: untouched, every arm evaluated, none skipped
 rc, arms, cnr, out = run("examples/twin")

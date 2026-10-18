@@ -167,17 +167,25 @@ func TestEveryFixtureTripsExactlyItsOwnArm(t *testing.T) {
 	}
 }
 
-// TestAProjectThatCannotBeReadIsCouldNotRunAndNotRefused pins
-// docs/contract.md:57's boundary: exit 2 is "the project is not wrong, its
-// declarations could not be read", and it must never arrive as a refusal naming
-// an arm -- fable's D7 asserts the same boundary for the adapter.
-func TestAProjectThatCannotBeReadIsCouldNotRunAndNotRefused(t *testing.T) {
-	rep := validate.Run(filepath.Join(t.TempDir(), "nothing-here"))
+// TestADecoderFailureIsCouldNotRunAndNotRefused pins docs/contract.md:57's
+// boundary where it still lives after fable's ruling at coop r4/79.
+//
+// THE BOUNDARY MOVED AND THIS TEST MOVED WITH IT. It pointed at a missing
+// project, which is now a REFUSAL -- a project that has not said what it is is
+// the project being wrong. could-not-run belongs to the ADAPTER and the
+// DECODER, so this aims at the decoder: a bindings.toml that is not TOML.
+func TestADecoderFailureIsCouldNotRunAndNotRefused(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "bindings.toml"), []byte("this is not = = toml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep := validate.Run(dir)
 	if len(rep.Refusals) != 0 {
-		t.Errorf("an unreadable project produced %d refusal(s): %v", len(rep.Refusals), rep.Refusals)
+		t.Errorf("a malformed bindings.toml produced %d refusal(s): %v -- a file the reader cannot read "+
+			"is not a project that is wrong", len(rep.Refusals), rep.Refusals)
 	}
 	if len(rep.CouldNotRun) == 0 {
-		t.Fatal("an unreadable project produced no could-not-run reason, so the run reported nothing at all")
+		t.Fatal("no could-not-run reason, so the run reported nothing at all")
 	}
 	if rep.Exit() != 2 {
 		t.Errorf("exit %d, want 2", rep.Exit())
@@ -185,25 +193,65 @@ func TestAProjectThatCannotBeReadIsCouldNotRunAndNotRefused(t *testing.T) {
 	t.Logf("PROOF could-not-run: %s", rep.CouldNotRun[0])
 }
 
-// TestAnEmptyProjectIsVacuousRatherThanValid is the vacuity guard C2 owes: a
-// bindings file that parses and declares no action would let every arm over
-// actions pass in silence.
-func TestAnEmptyProjectIsVacuousRatherThanValid(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "bindings.toml"), []byte("# nothing declared\n"), 0o644); err != nil {
-		t.Fatal(err)
+// TestAVacuousProjectIsRefusedAndAccountsForEveryArm is fable's D8, ruled at
+// coop r4/79: zero rules, no bindings and zero actions are each a REFUSAL at
+// exit 1 and never a pass -- "there is nothing to validate because the project
+// has not said what it is" -- and `rumor attaint` draws the same line.
+//
+// IT PINS THE ACCOUNTING THROUGH THE VACUITY PATH too: the arms did not run, so
+// all eighteen are SKIPPED with the refusal named, rather than left unaccounted
+// while the verdict claims eighteen.
+func TestAVacuousProjectIsRefusedAndAccountsForEveryArm(t *testing.T) {
+	twin := filepath.Join("..", "..", "examples", "twin")
+	cases := []struct {
+		what, clause string
+		set          func(t *testing.T, dir string)
+	}{
+		{"no bindings at all", "no-bindings", func(t *testing.T, dir string) {
+			if err := os.Remove(filepath.Join(dir, "bindings.toml")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"zero actions", "bindings-refused", func(t *testing.T, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, "bindings.toml"), []byte("# nothing\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"zero rules", "no-rule-declared", func(t *testing.T, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, "rules.json"), []byte("[]"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
 	}
-	if err := os.WriteFile(filepath.Join(dir, "rules.json"), []byte(`["finding"]`), 0o644); err != nil {
-		t.Fatal(err)
+	for _, c := range cases {
+		t.Run(c.what, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "twin")
+			if out, err := exec.Command("cp", "-r", twin, dir).CombinedOutput(); err != nil {
+				t.Fatalf("copying the twin: %v %s", err, out)
+			}
+			c.set(t, dir)
+			rep := validate.Run(dir)
+			if rep.Exit() != 1 {
+				t.Errorf("%s exits %d, want 1 (refused)", c.what, rep.Exit())
+			}
+			if len(rep.CouldNotRun) != 0 {
+				t.Errorf("%s also reported could-not-run %v: that is the decoder's verdict, not the project's",
+					c.what, rep.CouldNotRun)
+			}
+			var clauses []string
+			for _, r := range rep.Refusals {
+				clauses = append(clauses, r.Arm)
+			}
+			if len(clauses) != 1 || clauses[0] != c.clause {
+				t.Fatalf("%s refused %v, want exactly [%s]", c.what, clauses, c.clause)
+			}
+			if n := len(rep.Evaluated) + len(rep.Skipped); n != validate.TotalArms {
+				t.Errorf("%s accounts for %d arm(s), want %d: a vacuity must not leave arms unaccounted",
+					c.what, n, validate.TotalArms)
+			}
+			t.Logf("PROOF %s -> %s, %d arm(s) skipped", c.what, rep.Refusals[0], len(rep.Skipped))
+		})
 	}
-	rep := validate.Run(dir)
-	if rep.Exit() != 2 {
-		t.Errorf("a project declaring no action exits %d, want 2: a pass over an empty set is vacuous", rep.Exit())
-	}
-	if len(rep.CouldNotRun) == 0 {
-		t.Error("no could-not-run reason names the empty set")
-	}
-	t.Logf("PROOF %v", rep.CouldNotRun)
 }
 
 // TestTheCasesVacuityGuardFires is the live half of C2's vacuity guard: a
@@ -231,27 +279,32 @@ func TestTheCasesVacuityGuardFires(t *testing.T) {
 }
 
 // TestBindingsStillRefusesAZeroActionFile PINS A COUPLING rather than trusting
-// it. internal/validate drops its own actions-vacuity check because
-// internal/bindings refuses a zero-action file first, which makes the check
-// unreachable -- and a check that cannot fire reads exactly like one that does.
-// If that refusal ever moves, this fails here instead of opening a silent hole
-// in validate.
+// it. internal/validate has no actions-vacuity check of its own because
+// internal/bindings refuses a zero-action file first, which would make such a
+// check unreachable -- and a check that cannot fire reads exactly like one that
+// does. If that refusal moves, this fails here instead of opening a silent hole.
+//
+// IT READS THE REFUSAL'S TEXT AND NOT THE EXIT STATUS NOW: fable's r4/79 made a
+// project's emptiness a refusal rather than could-not-run, so the coupling
+// shows up in what the refusal says.
 func TestBindingsStillRefusesAZeroActionFile(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "bindings.toml")
-	if err := os.WriteFile(path, []byte("# nothing declared\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "bindings.toml"), []byte("# nothing declared\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	rep := validate.Run(dir)
-	if rep.Exit() != 2 {
-		t.Fatalf("a zero-action bindings file exits %d, want 2", rep.Exit())
+	if rep.Exit() != 1 {
+		t.Fatalf("a zero-action bindings file exits %d, want 1", rep.Exit())
 	}
-	joined := strings.Join(rep.CouldNotRun, " ")
+	var joined string
+	for _, r := range rep.Refusals {
+		joined += r.Detail + " "
+	}
 	if !strings.Contains(joined, "no actions") {
-		t.Fatalf("the could-not-run reason is %q; validate relies on bindings refusing "+
-			"\"no actions\", so validate now has an unguarded vacuity", joined)
+		t.Fatalf("the refusal reads %q; validate relies on bindings refusing \"no actions\", so validate "+
+			"now has an unguarded vacuity", joined)
 	}
-	t.Logf("PROOF the coupling holds: %s", joined)
+	t.Logf("PROOF the coupling holds: %s", strings.TrimSpace(joined))
 }
 
 // changedBy declares, per fixture, the ONLY paths that may differ from the

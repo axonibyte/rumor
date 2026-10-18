@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
@@ -49,7 +50,20 @@ type Refusal struct {
 	Detail string
 }
 
-func (r Refusal) String() string { return fmt.Sprintf("arm %s: %s", r.Arm, r.Detail) }
+// String names an ARM by number and a VACUITY by its clause.
+//
+// A CLAUSE IS NOT AN ARM, and printing "arm no-rule-declared" said it was. The
+// eighteen are numbered; a vacuity refusal is a clause the way `rumor attaint`'s
+// are ("no-mutant-examined"), and a reader greping for an arm should not match
+// one.
+func (r Refusal) String() string {
+	for _, a := range allArmIDs {
+		if r.Arm == a {
+			return fmt.Sprintf("arm %s: %s", r.Arm, r.Detail)
+		}
+	}
+	return fmt.Sprintf("%s: %s", r.Arm, r.Detail)
+}
 
 // Report is what validating one project produced: every refusal rather than the
 // first, as internal/platform and `rumor attaint` both do, because a project
@@ -114,6 +128,33 @@ func (r *Report) skip(arm, f string, a ...any) {
 	r.Skipped[arm] = fmt.Sprintf(f, a...)
 }
 
+// vacuous refuses the project for saying nothing, and accounts for every arm.
+//
+// EXIT 1 AND NOT 2, ruled by fable at coop r4/79: could-not-run belongs to the
+// adapter and the decoder, where the PROJECT is not wrong. A statute declaring
+// zero rules, a missing bindings file, bindings with zero actions -- those are
+// the project being wrong, because there is nothing to validate until it has
+// said what it is. `rumor attaint` already draws the line there: zero packages,
+// zero rules or zero mutants is a refusal and not a pass.
+//
+// IT SKIPS ALL EIGHTEEN WITH THE SAME REASON rather than leaving them
+// unaccounted. The arms did not run, and why they did not run is the finding.
+func (r *Report) vacuous(clause, f string, a ...any) {
+	r.refuse(clause, f, a...)
+	for _, arm := range allArmIDs {
+		if _, already := r.Skipped[arm]; !already {
+			r.skip(arm, "the project declares too little to validate: see the %s refusal", clause)
+		}
+	}
+}
+
+// allArmIDs is the eighteen, for the accounting above. tests/validate asserts
+// this list against TotalArms so the two cannot drift.
+var allArmIDs = []string{
+	"1", "2", "3", "4", "5", "6", "7a", "7b", "8",
+	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13",
+}
+
 func (r *Report) refuse(arm, f string, a ...any) {
 	r.Refusals = append(r.Refusals, Refusal{Arm: arm, Detail: fmt.Sprintf(f, a...)})
 }
@@ -141,15 +182,31 @@ type caseDoc struct {
 func Run(dir string) Report {
 	rep := Report{Project: filepath.Base(dir)}
 
-	brep, err := bindings.Load(filepath.Join(dir, "bindings.toml"), decl.TOML)
+	// A MISSING OR UNREADABLE bindings.toml IS THE PROJECT SAYING NOTHING, and
+	// fable ruled that a refusal rather than could-not-run (r4/79). The
+	// DECODER's own failures stay could-not-run, which is the line fable drew:
+	// malformed syntax is the reader's finding, an absent declaration is the
+	// project's.
+	bpath := filepath.Join(dir, "bindings.toml")
+	if _, serr := os.Stat(bpath); serr != nil {
+		rep.vacuous("no-bindings", "there is no bindings.toml: a project that does not say what it binds "+
+			"has nothing for any arm to read")
+		return rep
+	}
+	brep, err := bindings.Load(bpath, decl.TOML)
 	if err != nil {
 		rep.cannot("bindings.toml: %v", err)
 		return rep
 	}
 	if !brep.OK() {
+		// THE PARSER'S REFUSALS ARE THE PROJECT'S, not the reader's: it refuses
+		// a file it READ and found wanting -- "no actions: a binding with
+		// nothing to do binds nothing" among them.
+		var why []string
 		for _, ref := range brep.Refusals {
-			rep.cannot("bindings.toml: %s", ref.Error())
+			why = append(why, ref.Error())
 		}
+		rep.vacuous("bindings-refused", "bindings.toml does not describe a project: %s", strings.Join(why, "; "))
 		return rep
 	}
 	b := brep.Bindings
@@ -214,10 +271,13 @@ func Run(dir string) Report {
 	// whose rules nothing asserts, and the verdict was exit 0. A project with no
 	// rule has no statute worth validating.
 	if rep.Rules == 0 {
-		rep.cannot("rules.json declares no rule, so there is no statute to hold the bindings to")
+		rep.vacuous("no-rule-declared", "rules.json declares no rule, so there is no statute to hold "+
+			"the bindings to")
+		return rep
 	}
 	if rep.Cases == 0 {
-		rep.cannot("no case under cases/, so every arm over observations is vacuous")
+		rep.vacuous("no-case", "there is no case under cases/, so no observation exists for an arm to read")
+		return rep
 	}
 	if len(rep.CouldNotRun) > 0 {
 		return rep
