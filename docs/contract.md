@@ -20,9 +20,18 @@ took the run-local handles off the wire entirely.
 ### Transport and framing
 
 JSON-lines over stdio: one JSON object per line, requests on the adapter's
-stdin, responses on its stdout. The engine spawns the adapter from
+stdin, responses on its stdout. **The wire client spawns the adapter** from
 `[adapter].command` in `platform.toml`, sends `describe` first, and keeps the
 process for the whole run.
+
+**THE CLIENT AND NOT THE ENGINE, as of R4.3** (fable, coop r4/74). This said
+"the engine spawns" until `rumor validate` needed a `describe` of its own: the
+capability arms and the contract-version arm can only be answered by ASKING the
+adapter, so validate owns the first spawn in this project. It owns it as ONE
+client in `internal/wire` that R5's engine reuses, rather than a validate-only
+spawner -- two spawners would drift, and the second would be written by whoever
+needed it next without the reasons the first had. validate asks `describe` and
+nothing else, and keeps the process for one exchange rather than a run.
 
 **One request is outstanding at a time per process.** Responses therefore
 arrive in order, and `id` is a check rather than a router: a response whose
@@ -406,6 +415,31 @@ stages = ["api-sim", "concurrency", "browser"]
 seeds = 64
 budget = "2h"
 ```
+
+### The seeds file
+
+`seeds_file` names the file R5 promotes a seed into, and this is its **minimal**
+format, fixed in R4 so `rumor validate`'s arm on a promoted seed has something
+to read (fable, coop r4/74). R5 may EXTEND it and may not contradict it.
+
+```
+17                      # a promoted seed, on its own line
+42  # overcounted after a late tell
+```
+
+- **One seed per line**: a non-negative integer, optionally followed by `#` and
+  a comment naming the defect it found.
+- **Blank lines are ignored**, and so are lines whose first non-space character
+  is `#`. A comment allowed AFTER a seed and refused on its own line would be a
+  distinction with nothing behind it, and a lock file with no room for a header
+  cannot explain itself -- `examples/twin/seeds.lock` is exactly that case, a
+  file whose only content is why it is empty.
+- **Empty is a state, not a placeholder**: no seed has found a failure yet. The
+  file's presence is what arm 10a reads; its contents are what 10b reads.
+
+A line that is neither ignorable nor a seed is **refused by arm 10b, naming the
+line** -- a promoted seed that cannot be read is a promoted seed missing, and a
+run that silently skipped it would replay less than it reported.
 
 ### The keys
 

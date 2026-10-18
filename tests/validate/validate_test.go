@@ -7,7 +7,9 @@
 package validate_test
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,12 +21,45 @@ import (
 // THE DECLARED SIZE, which is the claim: C2 ships six arms and C3 brings the
 // count to eighteen. A fixture directory that vanished would otherwise leave
 // every remaining arm passing and the suite quiet about it.
-const wantFixtures = 13
+const wantFixtures = 18
 
 // armOf is the fixture naming convention: <arm>-<slug>. The arm is the part
 // before the first dash, so the directory name IS the expectation and a
 // renamed directory cannot quietly assert something else.
 func armOf(dir string) string { return strings.SplitN(dir, "-", 2)[0] }
+
+// TestMain BUILDS THE BINARY ONCE AND PUTS IT ON PATH, which is how the live
+// arms are reachable without anything in the twin being test-shaped (fable,
+// coop r4/74). The twin's [adapter].command is `rumor fake-adapter --surface
+// surface.json` -- what a real project writes -- so the only question is
+// whether a `rumor` exists to spawn. The same `go build -o` ci.yml runs answers
+// it.
+//
+// A FAILED BUILD FAILS THE SUITE rather than skipping it: the four live arms
+// would otherwise report could-not-run and every test here would pass over
+// them, which is the vacuity this project refuses everywhere else.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "rumor-validate-bin")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "TestMain: %v\n", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(dir)
+
+	bin := filepath.Join(dir, "rumor")
+	build := exec.Command("go", "build", "-o", bin, "./cmd/rumor")
+	build.Dir = filepath.Join("..", "..")
+	build.Env = append(os.Environ(), "GOTOOLCHAIN=local")
+	if out, berr := build.CombinedOutput(); berr != nil {
+		fmt.Fprintf(os.Stderr, "TestMain: building rumor for the live arms: %v\n%s\n", berr, out)
+		os.Exit(1)
+	}
+	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH")); err != nil {
+		fmt.Fprintf(os.Stderr, "TestMain: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(m.Run())
+}
 
 func fixturesDir(t *testing.T) string {
 	t.Helper()
@@ -248,6 +283,15 @@ var changedBy = map[string][]string{
 	"5-browser-reaches-api": {"platform.toml", "bindings.toml", "WHY-browser-reaches-api.md"},
 	"6-component-uncovered": {"platform.toml"},
 	"7b-quiesce-no-probe":   {"bindings.toml"},
+	"10b-unreadable-seed":   {"seeds.lock"},
+
+	// THE LIVE ARMS change the project's ASK and never the adapter's surface:
+	// changing what the adapter can do would test the fake adapter, and these
+	// arms are about what the project asks for.
+	"9a-fault-unavailable":   {"bindings.toml"},
+	"9b-volume-unavailable":  {"bindings.toml"},
+	"9c-upgrade-unavailable": {"bindings.toml"},
+	"13-contract-mismatch":   {"platform.toml"},
 }
 
 // TestEveryFixtureIsTheTwinPlusItsOwnChange is the drift oracle. Without it a

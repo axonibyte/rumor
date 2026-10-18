@@ -1,6 +1,7 @@
 package validate
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -173,4 +174,60 @@ func arm10a(rep *Report, dir string, p platform.Platform) {
 		rep.refuse("10a", "seeds_file names %q and it is not there: the promoted seeds a run would "+
 			"replay first cannot be read", p.SeedsFile)
 	}
+}
+
+// arm10b: A PROMOTED SEED THAT CANNOT BE READ.
+//
+// THE FORMAT IS docs/contract.md's "The seeds file", fixed in R4 precisely so
+// this arm has something to read (fable, coop r4/74): one seed per line, a
+// non-negative integer, optionally followed by `#` and a comment. Blank lines
+// and comment-only lines are ignored -- a comment allowed after a seed and
+// refused on its own line would be a distinction with nothing behind it, and
+// the twin's own seeds.lock is a file whose only content is why it is empty.
+//
+// "A promoted seed that cannot be read is a promoted seed missing": a run that
+// skipped the line would replay less than it reported, so the line is NAMED
+// rather than counted.
+func arm10b(rep *Report, dir string, p platform.Platform) {
+	path := p.SeedsFile
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(dir, path)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return // absent is arm 10a's finding, not this one's
+	}
+	var bad []string
+	for i, line := range strings.Split(string(raw), "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		seed := t
+		if h := strings.Index(t, "#"); h >= 0 {
+			seed = strings.TrimSpace(t[:h])
+		}
+		if !isNonNegativeInt(seed) {
+			bad = append(bad, fmt.Sprintf("line %d: %q", i+1, t))
+		}
+	}
+	if len(bad) > 0 {
+		rep.refuse("10b", "seeds_file holds line(s) that are not a promoted seed: %s -- a seed that "+
+			"cannot be read is a seed a replay would skip", strings.Join(bad, "; "))
+	}
+}
+
+// isNonNegativeInt is the seed grammar, written out rather than delegated to
+// strconv so a leading `+`, a sign, whitespace or an empty string are all
+// refused by the same reading the document states.
+func isNonNegativeInt(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }

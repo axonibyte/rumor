@@ -39,3 +39,14 @@ component = "doc_store"
 
 [claim."doc.published"]
 timing = "immediate"
+
+# THE PROJECT'S ASK, paired against the adapter's `describe` capabilities by
+# arms 9a, 9b and 9c -- live against static, which is why neither side is
+# written in the other's file (docs/contract.md:344). It asks for exactly what
+# examples/twin/surface.json offers, so those three arms are exercised by this
+# package passing them rather than by it declaring nothing: an empty ask would
+# make them silent here (contract.md:73 -- an empty array is an ANSWER).
+[uses]
+faults = ["latency"]
+volume = ["small"]
+upgrade = ["v1-to-v1"]

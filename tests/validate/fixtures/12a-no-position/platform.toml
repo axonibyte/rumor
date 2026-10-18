@@ -11,10 +11,16 @@
 # arm only pairs it with the component the bindings name on a `direct`
 # observation. Removing this table is fable's D11 drill.
 
-contract = "0.1"
+contract = "1"
 
 [adapter]
-command = ["rumor", "fake-adapter"]
+# THE SURFACE IS NAMED HERE, as a real project configures its own adapter: the
+# fake adapter's DEFAULT surface answers with no capabilities at all, so without
+# this the twin's [uses] would be paired against the wrong adapter's answer and
+# arms 9a/9b/9c would refuse a project that is correct. Found by declaring the
+# ask rather than by reading: an empty [uses] would have passed in silence.
+# The path is relative to the project, which is the cwd the wire client uses.
+command = ["rumor", "fake-adapter", "--surface", "surface.json"]
 
 [[venire]]
 role = "author"

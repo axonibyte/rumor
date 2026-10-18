@@ -1,0 +1,51 @@
+# Bindings for the permitted twin (R4.3, issue 64).
+#
+# THIS IS THE FILE arm 3 EXISTS FOR. `requires` names a statute RULE, and this
+# package has one that is genuinely a precondition: `may_publish` is false for
+# an actor who has already published in the sealed prefix. The R1 three cannot
+# supply that -- their rules are counts and a finding -- which is why
+# examples/planted-lie/bindings.toml says `requires` is absent there
+# permanently and points here (fable, coop r4/45).
+#
+# DERIVED FROM THIS PACKAGE'S OWN CASES, in both directions, which is the rule
+# issue 63 settled for the R1 three and this file keeps: the claim type is
+# `doc.published`, the observation is `doc.count` with source `direct` and
+# `of = doc.published`, and the actors are alice and dana. Nothing here names a
+# role, because no case in this package carries one.
+#
+# WHAT THE CASES CANNOT SUPPLY, said rather than invented (rook, coop r4/24): a
+# case is a LEDGER INPUT, so it carries claims and an observation and never the
+# act that produced them. The action's NAME, its response shape and what it
+# TOUCHES are therefore this file's.
+
+[[action]]
+name = "publish_doc"
+context = "api"
+emits = ["doc.published"]
+requires = ["may_publish"]
+creates = ["doc"]
+touches = ["doc_store"]
+response = { status = 201 }
+
+# source = "direct" is what makes `component` required, and the component is
+# what platform.toml's [[rollback]].covers has to cover: fable's D11 drill
+# removes the provider and expects this name back.
+[[observation]]
+name = "doc.count"
+source = "direct"
+of = "doc.published"
+component = "doc_store"
+
+[claim."doc.published"]
+timing = "immediate"
+
+# THE PROJECT'S ASK, paired against the adapter's `describe` capabilities by
+# arms 9a, 9b and 9c -- live against static, which is why neither side is
+# written in the other's file (docs/contract.md:344). It asks for exactly what
+# examples/twin/surface.json offers, so those three arms are exercised by this
+# package passing them rather than by it declaring nothing: an empty ask would
+# make them silent here (contract.md:73 -- an empty array is an ANSWER).
+[uses]
+faults = ["latency"]
+volume = ["small"]
+upgrade = ["v1-to-v1"]

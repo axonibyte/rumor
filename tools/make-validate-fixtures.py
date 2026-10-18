@@ -150,6 +150,33 @@ contexts = ["browser", "api"]
     s = s.replace('covers = ["doc_store"]', 'covers = ["some_other_store"]', 1)
     open(p, "w").write("# FIXTURE for arm 6: the twin with one change -- the rollback provider covers\n# a component nothing names, leaving doc_store uncovered.\n" + s)
 
+    d = fresh("10b-unreadable-seed")
+    p = os.path.join(d, "seeds.lock")
+    open(p, "a").write("not-a-seed  # FIXTURE for arm 10b: the twin with one change --\n"
+                       "# this line is neither blank, nor a comment, nor a non-negative integer,\n"
+                       "# so it is a promoted seed a replay would skip.\n")
+
+    # ---- the live arms: the ask is changed, never the adapter ----------------
+    # Each of these asks for a capability the twin's own surface.json does not
+    # offer. The SURFACE is left alone on purpose: changing what the adapter can
+    # do would test the fake adapter, and the arm is about the project's ASK.
+    for arm, key, want in (("9a", "faults", "partition"),
+                           ("9b", "volume", "enormous"),
+                           ("9c", "upgrade", "v1-to-v9")):
+        d = fresh("%s-%s-unavailable" % (arm, key.rstrip("s")))
+        p = os.path.join(d, "bindings.toml"); s = open(p).read()
+        s = s.replace('%s = ["%s"]' % (key, {"faults": "latency", "volume": "small",
+                                             "upgrade": "v1-to-v1"}[key]),
+                      '%s = ["%s"]' % (key, want), 1)
+        open(p, "w").write("# FIXTURE for arm %s: the twin with one change -- [uses] asks for a\n"
+                           "# %s the adapter's describe does not offer.\n" % (arm, key.rstrip("s")) + s)
+
+    d = fresh("13-contract-mismatch")
+    p = os.path.join(d, "platform.toml"); s = open(p).read()
+    s = s.replace('contract = "1"', 'contract = "2"', 1)
+    open(p, "w").write("# FIXTURE for arm 13: the twin with one change -- platform.toml states a\n"
+                       "# contract version the engine and the adapter do not.\n" + s)
+
     return sorted(os.listdir(ROOT))
 
 

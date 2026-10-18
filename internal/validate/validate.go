@@ -63,6 +63,7 @@ type Report struct {
 	Rules        int
 	Mutants      int
 	Stages       int
+	Described    bool
 	Rollbacks    int
 }
 
@@ -192,7 +193,15 @@ func Run(dir string) Report {
 	arm7(&rep, b)
 	arm8(&rep, dir, b)
 	arm10a(&rep, dir, plat)
+	arm10b(&rep, dir, plat)
 	arm11(&rep, dir, rules)
 	arm12(&rep, cases)
+
+	// THE LIVE ARMS LAST, because they are the only ones that spawn anything and
+	// the static verdict should not depend on whether an adapter started.
+	if d, ok := live(&rep, dir, plat); ok {
+		arm9(&rep, b, d)
+		arm13(&rep, plat, d)
+	}
 	return rep
 }
