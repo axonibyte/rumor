@@ -592,23 +592,48 @@ def evaluate(repo: Path, base: str, head: str, today: str | None = None) -> list
         .splitlines()
         if line
     ]
+    # THIS ARM WAS UNFIREABLE FOR THREE WEEKS AND ITS SELF-TEST WAS GREEN THE
+    # WHOLE TIME (quill r4/5, ibis r4/7, rook r4/8; fable's ruling r4/30: fix,
+    # not leave). It matched `CONTRACT_VERSION` in a path ending `.rs`, and the
+    # Go port left no .rs file in the tree in any spelling -- while the fixture
+    # below was ALSO Rust, so filter and fixture agreed with each other and with
+    # nothing in the repository. A check derived from the structure it checks.
+    #
+    # IT READS THE DECLARED VALUE, NOT A MENTION, and that narrowing is measured
+    # rather than preferred (quill r4/39): eight .go files name these constants
+    # and only TWO declare them, so "any changed .go file containing
+    # ContractVersion" would demand a Revisions entry for editing a test that
+    # merely cites it -- a refusal about ordinary work, which is how a gate gets
+    # worked around. Firing is identical where it should fire: the value moving,
+    # the declaration appearing, or the declaration leaving.
     for which in ("contract", "vocabulary"):
-        const = f"{which.upper()}_VERSION"
-        touched = any(
-            const in (show(repo, head_rev, path) or "")
-            and (show(repo, head_rev, path) or "") != (show(repo, merge_base, path) or "")
-            for path in changed
-            if path.endswith(".rs")
-        )
-        if not touched:
-            continue
         doc = f"docs/{which}.md"
+        const = f"{which.capitalize()}Version"
+        declaration = re.compile(rf"^const\s+{const}\s*=\s*(?P<value>.+?)\s*$", re.M)
+
+        def declared_value(ref, pattern=declaration):
+            """The constant's value per changed .go file at `ref`, where declared."""
+            out = {}
+            for path in changed:
+                if not path.endswith(".go"):
+                    continue
+                found = pattern.search(show(repo, ref, path) or "")
+                if found:
+                    out[path] = found.group("value")
+            return out
+
+        was, now = declared_value(merge_base), declared_value(head_rev)
+        moved = sorted(p for p in set(was) | set(now) if was.get(p) != now.get(p))
+        if not moved:
+            continue
         before = show(repo, merge_base, doc) or ""
         after = show(repo, head_rev, doc) or ""
         if _revisions(after) == _revisions(before):
             add(
                 "revision-entry-missing",
-                f"{const} changed without a new entry under \"Revisions\" in {doc}",
+                f"{const} changed in {moved[0]} "
+                f"({was.get(moved[0], 'absent')} -> {now.get(moved[0], 'absent')}) "
+                f"without a new entry under \"Revisions\" in {doc}",
             )
 
     # --- arm 9: a source path changed with no mapped doc, and no trailer ---
@@ -1050,7 +1075,7 @@ def _docs_verdict_battery() -> tuple[int, int]:
 # success line, three broken-tool outputs and the empty string.
 EXPECT_DOCS_VERDICT_CHECKS = 7
 
-EXPECT_CASES = 19
+EXPECT_CASES = 20
 EXPECT_TRAILER_CHECKS = 15
 
 
@@ -1363,10 +1388,35 @@ def self_test() -> int:
         _commit(repo, "docs: the contract doc and its revisions list")
         git(repo, "checkout", "-q", "run")
         git(repo, "reset", "-q", "--hard", "main")
-        _mk(repo, "src/lib.rs", "pub const CONTRACT_VERSION: u32 = 2;\n")
+        # GO, NOT RUST, AND THAT IS THE WHOLE POINT OF THE REPAIR: this fixture
+        # was `src/lib.rs` with CONTRACT_VERSION, which agreed with the old
+        # filter and with nothing in the tree, so the arm's green meant only
+        # that two wrong things matched each other.
+        _mk(repo, "src/wire.go", 'package wire\n\nconst ContractVersion = "2"\n')
         # the mapped doc DOES change, so arm 9 cannot also fire; what is absent
         # is a new entry under Revisions
         _mk(repo, "docs/contract.md", "contract, edited\n\n## Revisions\n\n- one\n")
+        _clean_run(repo, today)
+
+    @case("revision-entry-missing", "the VOCABULARY half, which had no case at all")
+    def revision_missing_vocabulary(repo):
+        # THE TWENTIETH CASE, and the arm's other document. ibis found that this
+        # half was dead too (coop r4/7): the loop has always run over
+        # ("contract", "vocabulary") and no fixture ever drove the second, so
+        # "19 of 19" covered an arm that was live for neither document and would
+        # have covered one live for half. The constant now exists --
+        # internal/vocabulary.VocabularyVersion, which docs/vocabulary.md's own
+        # preamble assigned to R4's contract (quill r4/12) -- so the half is
+        # fireable and this case proves it fires.
+        git(repo, "checkout", "-q", "main")
+        _mk(repo, "docs/coverage.toml",
+            '[[entry]]\npath = "src/**"\ndocs = ["docs/vocabulary.md"]\n')
+        _mk(repo, "docs/vocabulary.md", "vocabulary\n\n## Revisions\n\n- v1\n")
+        _commit(repo, "docs: the vocabulary doc and its revisions list")
+        git(repo, "checkout", "-q", "run")
+        git(repo, "reset", "-q", "--hard", "main")
+        _mk(repo, "src/vocabulary.go", 'package vocabulary\n\nconst VocabularyVersion = "v2"\n')
+        _mk(repo, "docs/vocabulary.md", "vocabulary, edited\n\n## Revisions\n\n- v1\n")
         _clean_run(repo, today)
 
     # THE TRAILER PAIR. Same tree in both -- src/lib.rs changed, its mapped

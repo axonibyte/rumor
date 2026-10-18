@@ -129,7 +129,7 @@ file, and emptying the recorded knowledge each turn the suite red.
 ## Self-test the oracle
 
 An oracle is checked before it is trusted, in the same run that trusts it.
-`tools/release-gate.py --self-test` drives nineteen cases, fifteen trailer checks
+`tools/release-gate.py --self-test` drives twenty cases, fifteen trailer checks
 and seven docs-verdict checks, and asserts that **each arm fires alone**. Each
 count is declared as a constant and asserted in both directions, because a case
 that silently stops running is invisible in a self-consistent total. The

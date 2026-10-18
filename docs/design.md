@@ -102,6 +102,40 @@ See `docs/prior-art.md` for the registry, GitHub and cross-language sweep
 behind the first entry, including the one collision that matters inside Rust:
 in the Nostr protocol *rumor* is a defined term for an unsigned event.
 
+### The second direct dependency, added in R4.1
+
+`github.com/BurntSushi/toml v1.6.0`, MIT, pinned. OPA was the first; this is the
+second, and the whole dependency surface is still those two plus what they pull.
+
+**Why a library and not a parser of our own.** `platform.toml` and a package's
+`bindings.toml` use nested tables and arrays of tables, which
+`internal/coverage`'s hand-written line reader does not reach — that one reads
+two keys in one flat shape and was ported as-is from the Rust tree. The
+alternative was a first TOML parser whose failure mode is a SILENT mis-parse of
+a valid file, against a library whose failure mode is a refusal with a line
+number.
+
+**It was ruled rather than taken quietly** (quill coop r4/16, fable r4/30),
+because a direct dependency is a standing cost to everyone who audits this tree.
+rook measured it against the gate's own discriminators rather than the
+allowlist's reputation (r4/17): the licence file is `COPYING`, which
+`tests/licences` does match; `classify()` fires exactly one family, so no
+`dualApproved` entry is owed; and `ci.yml` pins no absolute module count, so
+adding a module moves no literal.
+
+**What it is NOT allowed to decide.** Strictness belongs to `internal/decl`, not
+to the decoder: the library answers "is this TOML" and nothing else, so a
+mistyped key arrives as a document and is refused by name with its key path
+rather than as a parse error naming a line. That split is also why the library
+is swappable — `decl.Decoder` is a function parameter — and why
+`internal/platform` and `internal/bindings` do not import it at all.
+
+**One measured surprise, recorded because the comment version of it was wrong
+for an hour:** this library hands an array of tables over as
+`[]map[string]any`, not as `[]any` of maps. `decl.Reader.Tables` accepts both,
+and the test that found it reads the library's actual output rather than our
+expectation of it.
+
 ## The engine
 
 Rules are Rego, evaluated by **OPA embedded as a library**, at

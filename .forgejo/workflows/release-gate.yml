@@ -268,8 +268,8 @@ jobs:
           # slip: raising EXPECT_CASES is one edit of three, and the other two
           # are this grep and the count written out in
           # docs/testing-methodology.md's "Self-test the oracle".
-          grep -q '19 of 19 cases ok, 15 of 15 trailer checks ok, 7 of 7 docs-verdict checks ok, 0 failed' ../self.log \
-            || { echo "the self-test did not report 19 of 19 cases, 15 of 15 trailer checks and 7 of 7 docs-verdict checks: a case did not run, or the gate's declared counts were changed without this literal"; exit 1; }
+          grep -q '20 of 20 cases ok, 15 of 15 trailer checks ok, 7 of 7 docs-verdict checks ok, 0 failed' ../self.log \
+            || { echo "the self-test did not report 20 of 20 cases, 15 of 15 trailer checks and 7 of 7 docs-verdict checks: a case did not run, or the gate's declared counts were changed without this literal"; exit 1; }
           # THIS PROOF IS NOT A SECOND COPY OF THE ASSERTION ABOVE. The grep
           # above pins the NUMBERS; this one pins the SHAPE and displays what
           # actually ran, with a pattern deliberately not coupled to the
