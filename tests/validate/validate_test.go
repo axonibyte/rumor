@@ -45,7 +45,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "TestMain: %v\n", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	bin := filepath.Join(dir, "rumor")
 	build := exec.Command("go", "build", "-o", bin, "./cmd/rumor")
