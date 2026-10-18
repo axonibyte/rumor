@@ -3,6 +3,41 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.19 — 2026-10-18
+
+**The adapter wire contract, the platform declaration and the bindings
+schema** — R4.1 and R4.2 of the R4 call (issues 62 and 63).
+
+- **A strict JSON-lines contract over stdio** (`internal/wire`): `describe`,
+  `execute`, `observe`, `session` and one error envelope, with `kind`,
+  `contract` and `id` on every message. Unknown and missing fields are refused
+  **by name**, a decode failure is a could-not-run rather than a project
+  refusal, and no run-local handle crosses the wire. `observe` answers with a
+  value alone.
+- **`platform.toml`, with `[[rollback]]`** (`internal/platform`): weights
+  resolve profile → stage → default, and a profile that leaves a stage
+  unweighted is refused against the default rather than silently inheriting it.
+- **The bindings schema** (`internal/bindings`): actions, observations,
+  `[claim.<type>]` timing and bound, roles and the reserved tables. `requires`
+  is absent from the three example bindings permanently, which is a ruling and
+  is pinned by a test that says so.
+- **One strict reader behind both** (`internal/decl`), so `platform.toml` and
+  `bindings.toml` refuse identically: a nil decoder, an absent file, an empty
+  file, an undecodable one and a decoder returning `(nil, nil)` are each
+  refused by name. A parser must not refuse what a validator is built to
+  refuse, so `emits`, `requires`, `flow`, `bound` and `[uses]` parse and are
+  answered for by validation.
+- **A fake adapter** (`rumor fake-adapter`) that can fail a kind or omit a
+  required field on demand, so the contract's refusals have a driver instead of
+  a description.
+- **A second direct dependency**: `BurntSushi/toml` v1.6.0, through the license
+  and vulnerability gates. `docs/design.md` no longer claims OPA is the only
+  one — the sentence was true when written and became false here.
+- **Arm 10 of the release gate was dead on the Go tree** and is fixed: it reads
+  the *declared* `ContractVersion` and `VocabularyVersion` at base and head
+  rather than a Rust-era path, with the vocabulary half added as a case. 19 of
+  19 becomes 20 of 20.
+
 ## 0.1.18 — 2026-10-17
 
 **A fence marked `run` is executable code, and nothing was reading it.**
