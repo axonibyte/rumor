@@ -9,9 +9,26 @@ drill and its own clause.
 
 ## What is damaged
 
-`examples/planted-lie/ledger/with-planted.jsonl and examples/planted-lie/cases/with-planted.json`
+`every package's planted ledger and case` — currently
+`examples/planted-lie/{ledger,cases}/with-planted.*` and
+`examples/twin/{ledger,cases}/planted-publish.*`
 
-The tag is removed from the ledger AND the case stops declaring itself a corroboration control, so no case anywhere in the corpus expects `rests_on_planted: true`.
+In each, the tag is removed from the ledger AND the case stops declaring itself
+a corroboration control, so no case anywhere in the corpus expects
+`rests_on_planted: true`.
+
+## Why it strips EVERY package and not one
+
+It stripped planted-lie alone until R4.3, and that was the drill's ASSUMPTION
+rather than its meaning (fable, coop r4/65): planted-lie was simply the only
+package that had a control when this drill was written. The twin earned one in
+R4.3, its control survived a one-package overlay, the corpus still held a
+control, and attaint rightly did not refuse — so the drill produced 0 refusals
+where it wants exactly 1. The sentence being drilled is about the CORPUS, so the
+overlay is corpus-wide and the expected outcome is unchanged at one refusal.
+
+A per-package guard was refused instead: it would make every package carry a lie
+to be allowed in.
 
 Only the changed file is committed here. `tests/attaint/drills_test.go` copies
 the pristine `examples/` into a temp directory and lays this overlay over it, so

@@ -1,0 +1,39 @@
+{
+  "why": "DRILL D5: the plant is never tagged. The tag is gone from this ledger and the case no longer declares itself a corroboration control, so -- together with planted-lie's half of this overlay -- the corpus holds no control for attaint to fire.",
+  "expect": {
+    "believed": 2,
+    "may_publish": true,
+    "finding": "bug",
+    "rests_on_planted": false
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "position": 4,
+      "of": "doc.published",
+      "query": "doc.count",
+      "source": "direct",
+      "value": 1
+    },
+    "known": [
+      "alice.doc#1",
+      "alice.doc#2"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.published",
+        "position": 1,
+        "handle": "alice.doc#1"
+      },
+      {
+        "ref": "alice.doc#2",
+        "actor": "alice",
+        "type": "doc.published",
+        "position": 3,
+        "handle": "alice.doc#2"
+      }
+    ]
+  }
+}
