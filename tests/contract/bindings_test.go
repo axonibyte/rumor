@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
@@ -44,11 +45,11 @@ func TestEveryExampleCarriesBindingsThatAgreeWithItsCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("globbing: %v", err)
 	}
-	// R1 SHIPPED THREE PACKAGES AND R4.2 OWES ONE FILE EACH. The literal is the
+	// R1 SHIPPED THREE PACKAGES, R4.2 OWES ONE FILE EACH, AND R4.3 ADDED THE TWIN. The literal is the
 	// claim: a fourth package without bindings, or a bindings file for a package
 	// that no longer exists, fails here rather than passing quietly.
-	if len(pkgs) != 3 {
-		t.Fatalf("%d bindings file(s) under examples/, want 3: %v", len(pkgs), pkgs)
+	if len(pkgs) != 4 {
+		t.Fatalf("%d bindings file(s) under examples/, want 4: %v", len(pkgs), pkgs)
 	}
 
 	for _, path := range pkgs {
@@ -173,8 +174,14 @@ func TestEveryExampleCarriesBindingsThatAgreeWithItsCases(t *testing.T) {
 	}
 }
 
-// TestTheR1BindingsDeclareNoPreconditions PINS A RULING rather than flagging an
+// TestOnlyTheTwinDeclaresAPrecondition PINS A RULING rather than flagging an
 // open question, which is what it was for about forty minutes.
+//
+// IT IS TWO-DIRECTIONAL SINCE R4.3 (ibis), and that is the point rather than a
+// convenience: narrowing it to "skip the twin" would have let the twin LOSE its
+// precondition silently, and arm 3's only case material with it. So the
+// assertion is the exact set -- the twin declares one, the R1 three do not --
+// and either half failing is a defect.
 //
 // The collision: validate's third arm refuses an action with no precondition,
 // and no R1 statute HAS a precondition rule -- all three are counts, sets, a
@@ -182,31 +189,35 @@ func TestEveryExampleCarriesBindingsThatAgreeWithItsCases(t *testing.T) {
 // not both. fable ruled it (coop r4/45, on quill r4/37): the R1 packages are
 // LEDGER fixtures, their bindings are held to the strict reader and to their own
 // cases, and issue 63's done-when reads "parse and agree with the cases" for
-// them. Validation lives in a purpose-built twin under examples/validate/twin/,
-// where a statute with a real precondition rule gives arm 3 case material that
-// is derived rather than invented.
+// them. Validation lives in a purpose-built twin, which fable moved to
+// examples/twin/ at coop r4/63 -- flat, beside the three, so every reader that
+// walks examples/* sees it without seven call sites learning to recurse.
 //
 // SO A `requires` APPEARING HERE IS A DEFECT, not progress: it would make an R1
 // fixture pretend to be the twin. The assertion therefore stays, where before it
 // was written to be deleted.
-func TestTheR1BindingsDeclareNoPreconditions(t *testing.T) {
+func TestOnlyTheTwinDeclaresAPrecondition(t *testing.T) {
 	pkgs, _ := filepath.Glob(filepath.Join(examplesDir, "*", "bindings.toml"))
+	seen := map[string]bool{}
 	var withRequires []string
 	for _, path := range pkgs {
 		rep, err := bindings.Load(path, decl.TOML)
 		if err != nil || !rep.OK() {
 			t.Fatalf("%s: %v %v", path, err, rep.Refusals)
 		}
+		pkg := filepath.Base(filepath.Dir(path))
 		for _, a := range rep.Bindings.Actions {
-			if len(a.Requires) > 0 {
-				withRequires = append(withRequires, filepath.Base(filepath.Dir(path)))
+			if len(a.Requires) > 0 && !seen[pkg] {
+				seen[pkg] = true
+				withRequires = append(withRequires, pkg)
 			}
 		}
 	}
 	sort.Strings(withRequires)
-	if len(withRequires) != 0 {
-		t.Errorf("%v declare preconditions, which fable's ruling (coop r4/45) reserves for the twin "+
-			"under examples/validate/twin/: an R1 package is a LEDGER fixture and its statute has no "+
-			"precondition rule for a `requires` to point at", withRequires)
+	if strings.Join(withRequires, ",") != "twin" {
+		t.Errorf("packages declaring a precondition: %v, want exactly [twin]. An R1 package is a "+
+			"LEDGER fixture whose statute has no precondition rule for a `requires` to point at "+
+			"(fable, coop r4/45); the twin is the one package that must have one, or arm 3 has no "+
+			"case material (fable, coop r4/63)", withRequires)
 	}
 }

@@ -411,8 +411,8 @@ func allFixtures(t *testing.T) [][2]string {
 			strings.TrimSuffix(filepath.Base(p), ".jsonl"),
 		})
 	}
-	if len(out) != 17 {
-		t.Fatalf("expected the 17 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
+	if len(out) != 22 {
+		t.Fatalf("expected the 22 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
 	}
 	return out
 }
@@ -422,7 +422,7 @@ func allFixtures(t *testing.T) [][2]string {
 // applied it; mutating that argument upward kills nothing, so the mutant is
 // equivalent and the honest thing is to state and check the premise it rests
 // on: nothing handed to the flattener sits past the seal. Checked across all
-// 17 fixtures, including the three whose files hold facts beyond it.
+// 22 fixtures, including the three whose files hold facts beyond it.
 func TestNothingHandedToTheFlattenerSitsPastTheSeal(t *testing.T) {
 	beyond := 0
 	for _, f := range allFixtures(t) {
@@ -447,11 +447,11 @@ func TestNothingHandedToTheFlattenerSitsPastTheSeal(t *testing.T) {
 		}
 	}
 	// Without a fixture that HAS facts past its seal, the loop above would
-	// pass over 17 ledgers none of which could violate it.
+	// pass over 22 ledgers none of which could violate it.
 	if beyond == 0 {
 		t.Error("no fixture holds a fact past its seal, so this arm proved nothing")
 	}
-	t.Logf("PROOF 17 fixture(s) examined, %d of them holding facts past the seal, 0 leaked to the flattener", beyond)
+	t.Logf("PROOF 22 fixture(s) examined, %d of them holding facts past the seal, 0 leaked to the flattener", beyond)
 }
 
 // THE ENGINE REFUSES A STATUTE THAT CALLS print(), and the control inverts:

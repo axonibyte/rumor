@@ -13,11 +13,11 @@ import (
 const realTree = "../../examples"
 
 // Declared sizes, matching tests/statute's and tests/engine's. A tally of zero
-// disagreements reads identically over zero cases and over seventeen, so the
+// disagreements reads identically over zero cases and over twenty-two, so the
 // count of what was EXAMINED is asserted first.
 const (
-	wantPackages = 3
-	wantCases    = 17
+	wantPackages = 4
+	wantCases    = 22
 )
 
 func TestRunOverTheCommittedTree(t *testing.T) {

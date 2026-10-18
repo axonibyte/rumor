@@ -201,7 +201,7 @@ func TestTheSuiteExaminesSomething(t *testing.T) {
 	// reads identically whether every mutant died or none ran. So the sizes are
 	// asserted before any verdict is reported.
 	pkgs := load(t)
-	if len(pkgs) != 3 {
+	if len(pkgs) != 4 {
 		t.Fatalf("expected 3 statute packages, found %d: %v", len(pkgs), names(pkgs))
 	}
 	totalCases, totalMutants := 0, 0
@@ -215,8 +215,8 @@ func TestTheSuiteExaminesSomething(t *testing.T) {
 		totalCases += len(p.cases)
 		totalMutants += len(p.mutants)
 	}
-	if totalCases != 17 {
-		t.Errorf("expected 17 cases across the three packages, counted %d", totalCases)
+	if totalCases != 22 {
+		t.Errorf("expected 22 cases across the four packages, counted %d", totalCases)
 	}
 	// 19, NOT 20, and the shortfall is documented rather than accidental: I
 	// declared 20 from a guess and this assertion caught it. planted-lie has
@@ -225,7 +225,7 @@ func TestTheSuiteExaminesSomething(t *testing.T) {
 	// was moved to transitive-count (which carries it as m2) rather than left to
 	// survive. 6 + 7 + 6. A surviving mutant and a missing one look the same in
 	// a total, which is why the number is declared and the gap is named.
-	if totalMutants != 19 {
+	if totalMutants != 23 {
 		t.Errorf("expected 19 mutants across the three packages, counted %d", totalMutants)
 	}
 	t.Logf("PROOF examined %d package(s), %d case(s), %d mutant(s)",
@@ -514,11 +514,11 @@ func TestNoStatuteCallsPrint(t *testing.T) {
 
 	// COUNT WHAT WAS EXAMINED, not only what was refused: zero findings reads
 	// identically whether every module was clean or none was opened.
-	if modulesScanned != 22 {
-		t.Errorf("scanned %d modules, expected 22 (3 statutes + 19 mutants); a count that drifts means a file stopped being examined", modulesScanned)
+	if modulesScanned != 27 {
+		t.Errorf("scanned %d modules, expected 27 (4 statutes + 23 mutants); a count that drifts means a file stopped being examined", modulesScanned)
 	}
-	if evaluations != 17 {
-		t.Errorf("evaluated %d cases under the print hook, expected 17", evaluations)
+	if evaluations != 22 {
+		t.Errorf("evaluated %d cases under the print hook, expected 22", evaluations)
 	}
 	// The proof line states the count it MEASURED. Printing "0 prints"
 	// unconditionally put a contradiction one line under the finding when this
