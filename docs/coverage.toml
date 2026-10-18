@@ -302,6 +302,16 @@ path = "tools/release-gate.py"
 docs = ["docs/release.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# The fixture generator. Mapped to the testing methodology because what it
+# protects is a METHOD -- every arm fixture is the permitted twin with exactly
+# one change, which hand-maintained copies cannot stay true to: when the twin
+# earned its seeds.lock, six fixtures predating that file began tripping a
+# second arm and no test noticed. Mapped to contract.md because each change it
+# makes is a key that document describes.
+path = "tools/make-validate-fixtures.py"
+docs = ["docs/testing-methodology.md", "docs/contract.md"]
+
+[[entry]]
 # The tag pipeline's verdict on `git verify-tag`. Mapped to release.md because
 # what it decides is whether a tag publishes, and to the testing methodology
 # because its whole reason for being a file rather than four lines of YAML is

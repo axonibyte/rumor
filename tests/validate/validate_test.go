@@ -19,7 +19,7 @@ import (
 // THE DECLARED SIZE, which is the claim: C2 ships six arms and C3 brings the
 // count to eighteen. A fixture directory that vanished would otherwise leave
 // every remaining arm passing and the suite quiet about it.
-const wantFixtures = 6
+const wantFixtures = 9
 
 // armOf is the fixture naming convention: <arm>-<slug>. The arm is the part
 // before the first dash, so the directory name IS the expectation and a
@@ -216,4 +216,83 @@ func TestBindingsStillRefusesAZeroActionFile(t *testing.T) {
 			"\"no actions\", so validate now has an unguarded vacuity", joined)
 	}
 	t.Logf("PROOF the coupling holds: %s", joined)
+}
+
+// changedBy declares, per fixture, the ONLY paths that may differ from the
+// permitted twin. Everything else the fixture shares with the twin must be
+// byte-identical.
+//
+// THIS TABLE IS THE "ONE CHANGE" INVARIANT MADE MECHANICAL, and it exists
+// because the invariant broke silently once: when the twin earned its
+// seeds.lock, six fixtures predating that file began tripping arm 10a as well
+// as their own, and no test noticed. A fixture is generated from the twin by
+// tools/make-validate-fixtures.py; this is the oracle over the result.
+var changedBy = map[string][]string{
+	"1-type-not-emitted":   {"cases/fresh-publisher.json"},
+	"2-type-not-described": {"bindings.toml"},
+	"3-no-precondition":    {"bindings.toml"},
+	"7a-eventual-no-bound": {"bindings.toml"},
+	"8-clock-no-control":   {"statute.rego"},
+	"10a-no-seeds-file":    {"seeds.lock", "WHY-no-seeds-file.md"},
+	"11-no-mutants":        {"mutants", "WHY-no-mutants.md"},
+	"12a-no-position":      {"cases/miscount.json"},
+	"12b-no-source":        {"cases/untold-claim.json"},
+}
+
+// TestEveryFixtureIsTheTwinPlusItsOwnChange is the drift oracle. Without it a
+// change to the twin silently invalidates every fixture that predates it, and
+// the arm-isolation test above starts failing for a reason that has nothing to
+// do with the arms.
+func TestEveryFixtureIsTheTwinPlusItsOwnChange(t *testing.T) {
+	twin := filepath.Join("..", "..", "examples", "twin")
+	for _, f := range fixtures(t) {
+		t.Run(f, func(t *testing.T) {
+			allowed, ok := changedBy[f]
+			if !ok {
+				t.Fatalf("%s is in fixtures/ and not in changedBy: declare what it changes, "+
+					"or the one-change invariant says nothing about it", f)
+			}
+			allow := map[string]bool{}
+			for _, a := range allowed {
+				allow[a] = true
+			}
+			var drifted []string
+			err := filepath.Walk(twin, func(path string, fi os.FileInfo, err error) error {
+				if err != nil || fi.IsDir() {
+					return err
+				}
+				rel, rerr := filepath.Rel(twin, path)
+				if rerr != nil {
+					return rerr
+				}
+				// an allowed path, or anything under an allowed directory
+				for a := range allow {
+					if rel == a || strings.HasPrefix(rel, a+string(filepath.Separator)) {
+						return nil
+					}
+				}
+				want, rerr := os.ReadFile(path)
+				if rerr != nil {
+					return rerr
+				}
+				got, gerr := os.ReadFile(filepath.Join("fixtures", f, rel))
+				if gerr != nil {
+					drifted = append(drifted, rel+" (missing from the fixture)")
+					return nil
+				}
+				if string(got) != string(want) {
+					drifted = append(drifted, rel)
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("walking the twin: %v", err)
+			}
+			if len(drifted) > 0 {
+				sort.Strings(drifted)
+				t.Fatalf("%s differs from the twin outside what it declares to change: %v -- "+
+					"regenerate with tools/make-validate-fixtures.py", f, drifted)
+			}
+		})
+	}
 }

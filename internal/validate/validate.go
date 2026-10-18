@@ -32,6 +32,7 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
+	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 )
 
 // Refusal is one arm firing, named by the arm so a fixture can assert that it
@@ -61,6 +62,8 @@ type Report struct {
 	Cases        int
 	Rules        int
 	Mutants      int
+	Stages       int
+	Rollbacks    int
 }
 
 // OK reports whether the project is one its own declarations agree on.
@@ -122,6 +125,21 @@ func Run(dir string) Report {
 	rep.Actions = len(b.Actions)
 	rep.Observations = len(b.Observations)
 
+	prep, perr := platform.Load(filepath.Join(dir, "platform.toml"), decl.TOML)
+	if perr != nil {
+		rep.cannot("platform.toml: %v", perr)
+		return rep
+	}
+	if !prep.OK() {
+		for _, ref := range prep.Refusals {
+			rep.cannot("platform.toml: %s", ref.Error())
+		}
+		return rep
+	}
+	plat := prep.Platform
+	rep.Stages = len(plat.Stages)
+	rep.Rollbacks = len(plat.Rollback)
+
 	var rules []string
 	if raw, err := os.ReadFile(filepath.Join(dir, "rules.json")); err != nil {
 		rep.cannot("rules.json: %v", err)
@@ -168,6 +186,11 @@ func Run(dir string) Report {
 	arm1(&rep, b, cases)
 	arm2(&rep, b)
 	arm3(&rep, b)
+	arm4(&rep, b, plat)
+	arm5(&rep, b, plat)
+	arm7(&rep, b)
+	arm8(&rep, dir, b)
+	arm10a(&rep, dir, plat)
 	arm11(&rep, dir, rules)
 	arm12(&rep, cases)
 	return rep
