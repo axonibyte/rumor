@@ -62,6 +62,9 @@ func TestTheWellFormedBindingsAreAccepted(t *testing.T) {
 	if len(b.Actions[0].Emits) != 1 || b.Actions[0].Emits[0] != "user.created" {
 		t.Errorf("emits %v", b.Actions[0].Emits)
 	}
+	if len(b.Actions[0].Touches) != 0 {
+		t.Errorf("touches %v: an action that names none mutates none", b.Actions[0].Touches)
+	}
 	if b.Actions[0].Response["status"] != int64(201) {
 		t.Errorf("response %v", b.Actions[0].Response)
 	}
@@ -105,6 +108,9 @@ func TestWhatValidateMustRefuseStillParses(t *testing.T) {
 		}},
 		{"a declared fault with nothing behind it", func(doc map[string]any) {
 			doc["uses"] = map[string]any{"faults": []any{"disk_full"}}
+		}},
+		{"an action touching a component no rollback provider covers", func(doc map[string]any) {
+			doc["action"].([]any)[0].(map[string]any)["touches"] = []any{"uncovered-store"}
 		}},
 		{"a role that could reach an API action from the browser", func(doc map[string]any) {
 			doc["role"].([]any)[0].(map[string]any)["contexts"] = []any{"api", "browser"}
@@ -192,6 +198,26 @@ func TestWhatCannotBeReadAsBindingsIsRefused(t *testing.T) {
 		if !names(rep.Refusals, tc.path, tc.want) {
 			t.Errorf("%s: refusals are %v", tc.name, rep.Refusals)
 		}
+	}
+}
+
+// TestWhatAnActionTouchesIsCarried, which is the half of the rollback-coverage
+// arm an observation cannot express: an action may MUTATE a component nothing
+// reads directly.
+func TestWhatAnActionTouchesIsCarried(t *testing.T) {
+	doc := wellFormed()
+	doc["action"].([]any)[0].(map[string]any)["touches"] = []any{"store", "queue"}
+	rep := Parse(doc)
+	if !rep.OK() {
+		t.Fatalf("refused: %v", rep.Refusals)
+	}
+	if got := rep.Bindings.Actions[0].Touches; len(got) != 2 || got[0] != "store" || got[1] != "queue" {
+		t.Errorf("touches %v", got)
+	}
+	doc = wellFormed()
+	doc["action"].([]any)[0].(map[string]any)["touches"] = "store"
+	if rep := Parse(doc); rep.OK() || !names(rep.Refusals, "action[0].touches", "wanted an array of strings") {
+		t.Errorf("a scalar touches: %v", rep.Refusals)
 	}
 }
 

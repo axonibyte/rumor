@@ -84,6 +84,19 @@ type Action struct {
 	Creates  []string
 	Response map[string]any
 	Flow     []Step
+
+	// Touches names the stateful components this action MUTATES, which is the
+	// other half of the rollback-coverage arm: a component is otherwise
+	// nameable only on a `direct` observation, so an action that dirties an
+	// uncovered component and is never read directly fell outside an arm whose
+	// wording is about bindings that touch one (ibis, coop r4/23).
+	//
+	// OPTIONAL, AND THE COST IS STATED RATHER THAN DESIGNED AWAY: an action
+	// naming nothing is read as mutating nothing, exactly as an action with no
+	// `requires` is read as having no precondition. Arm 3 refuses the second;
+	// no arm refuses the first, and a nineteenth arm is not this package's to
+	// invent -- the count is fable's.
+	Touches []string
 }
 
 // Step is one step of a UI flow.
@@ -159,6 +172,7 @@ func Parse(doc map[string]any) Report {
 			Emits:    a.Strings("emits", false),
 			Requires: a.Strings("requires", false),
 			Creates:  a.Strings("creates", false),
+			Touches:  a.Strings("touches", false),
 		}
 		if t, ok := a.Table("response", false); ok {
 			action.Response = map[string]any{}
