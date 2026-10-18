@@ -14,6 +14,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -191,12 +192,19 @@ func fakeConfig(rest []string) (fake.Config, string) {
 		rest = rest[2:]
 		switch flag {
 		case "--surface":
-			f, err := os.Open(value)
+			// READ AND HAND OVER THE BYTES, rather than opening a handle and
+			// deferring its close. Two reasons and the second is the one that
+			// made CI red: a deferred close inside this LOOP would not run
+			// until the function returned, and `defer f.Close()` leaves the
+			// close's error unchecked, which errcheck refuses -- the lint gate
+			// is the one check this jail could not run until the pinned
+			// golangci-lint was installed here, and this was the first thing it
+			// found (task 280-282, ci.yml red on every push of this branch).
+			data, err := os.ReadFile(value)
 			if err != nil {
 				return cfg, fmt.Sprintf("--surface %s: %v", value, err)
 			}
-			defer f.Close()
-			s, err := fake.LoadSurface(f)
+			s, err := fake.LoadSurface(bytes.NewReader(data))
 			if err != nil {
 				return cfg, err.Error()
 			}
