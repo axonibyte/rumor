@@ -14,9 +14,19 @@
 # it appears nowhere below. The binding says which role an actor may hold and in
 # which context; who a claim is visible to is the ledger's.
 #
-# `requires` IS ABSENT and this file does not validate yet, for planted-lie's
-# reason: the rules here are `believed_visible`, `visible_truth`,
-# `untold_visible` and `finding`. See quill coop r4/37.
+# THE COLLISION IS RULED (fable, coop r4/45, on quill r4/37): this package's
+# bindings are held to the strict reader and to this package's own CASES, in
+# both directions, and issue 63's done-when reads "parse and agree with the
+# cases" for the R1 three. VALIDATION lives in a purpose-built twin under
+# examples/validate/twin/, where a statute with a real precondition rule gives
+# arm 3 case material that is derived rather than invented. So `requires` is
+# absent here permanently and not pending: adding one would make this fixture
+# pretend to be the twin, and the R1 packages are LEDGER fixtures -- their
+# statutes judge claims, and their cases carry no actions to have preconditions
+# for.
+#
+# The rules here are `believed_visible`, `visible_truth`, `untold_visible` and
+# `finding` -- the same shape, and the same reason for no `requires`.
 
 [[action]]
 name = "create_doc"

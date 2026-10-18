@@ -173,17 +173,23 @@ func TestEveryExampleCarriesBindingsThatAgreeWithItsCases(t *testing.T) {
 	}
 }
 
-// TestTheBindingsDoNotYetValidate records the collision rather than hiding it:
-// every one of the three omits `requires`, because no example statute has a
-// precondition RULE to reference, and validate's third arm refuses an action
-// with no precondition. The files PARSE -- which is this package's boundary --
-// and R4.3 will refuse them until fable rules on the collision (quill coop
-// r4/37).
+// TestTheR1BindingsDeclareNoPreconditions PINS A RULING rather than flagging an
+// open question, which is what it was for about forty minutes.
 //
-// IT IS A TEST AND NOT A COMMENT so that the day the statutes gain preconditions
-// and these files gain `requires`, this assertion fails and sends someone to
-// delete it. A comment would have gone stale silently.
-func TestTheBindingsDoNotYetValidate(t *testing.T) {
+// The collision: validate's third arm refuses an action with no precondition,
+// and no R1 statute HAS a precondition rule -- all three are counts, sets, a
+// finding and the planted control. So these three files can parse or validate,
+// not both. fable ruled it (coop r4/45, on quill r4/37): the R1 packages are
+// LEDGER fixtures, their bindings are held to the strict reader and to their own
+// cases, and issue 63's done-when reads "parse and agree with the cases" for
+// them. Validation lives in a purpose-built twin under examples/validate/twin/,
+// where a statute with a real precondition rule gives arm 3 case material that
+// is derived rather than invented.
+//
+// SO A `requires` APPEARING HERE IS A DEFECT, not progress: it would make an R1
+// fixture pretend to be the twin. The assertion therefore stays, where before it
+// was written to be deleted.
+func TestTheR1BindingsDeclareNoPreconditions(t *testing.T) {
 	pkgs, _ := filepath.Glob(filepath.Join(examplesDir, "*", "bindings.toml"))
 	var withRequires []string
 	for _, path := range pkgs {
@@ -199,7 +205,8 @@ func TestTheBindingsDoNotYetValidate(t *testing.T) {
 	}
 	sort.Strings(withRequires)
 	if len(withRequires) != 0 {
-		t.Errorf("%v now declare preconditions: the arm-3 collision is resolved, so delete this test "+
-			"and the paragraphs in those files that say the bindings do not validate", withRequires)
+		t.Errorf("%v declare preconditions, which fable's ruling (coop r4/45) reserves for the twin "+
+			"under examples/validate/twin/: an R1 package is a LEDGER fixture and its statute has no "+
+			"precondition rule for a `requires` to point at", withRequires)
 	}
 }

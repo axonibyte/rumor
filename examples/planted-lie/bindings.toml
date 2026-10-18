@@ -11,13 +11,20 @@
 # act that produced them. The action's NAME and its response shape are therefore
 # this file's, chosen to match what the claim says happened and nothing more.
 #
-# `requires` IS ABSENT, AND THIS FILE THEREFORE DOES NOT VALIDATE YET. Validate's
-# third arm refuses an action with no precondition, and this statute has no
-# precondition RULE to point at: its four rules are three counts and a finding
-# (`believed`, `honest_total`, `rests_on_planted`, `finding`). A statute
-# reference to one of those would be a precondition that is not one, which is
-# worse than the refusal it would silence. The collision is quill coop r4/37,
-# and the fix is fable's to rule.
+# THE COLLISION IS RULED (fable, coop r4/45, on quill r4/37): this package's
+# bindings are held to the strict reader and to this package's own CASES, in
+# both directions, and issue 63's done-when reads "parse and agree with the
+# cases" for the R1 three. VALIDATION lives in a purpose-built twin under
+# examples/validate/twin/, where a statute with a real precondition rule gives
+# arm 3 case material that is derived rather than invented. So `requires` is
+# absent here permanently and not pending: adding one would make this fixture
+# pretend to be the twin, and the R1 packages are LEDGER fixtures -- their
+# statutes judge claims, and their cases carry no actions to have preconditions
+# for.
+#
+# This statute's four rules are three counts and a finding -- `believed`,
+# `honest_total`, `rests_on_planted`, `finding` -- so a `requires` here could
+# only point at something that is not a precondition.
 #
 # NO [[role]], for the same discipline: no case in this package carries a role,
 # so there is none to declare. role-visibility's bindings do, because its cases
