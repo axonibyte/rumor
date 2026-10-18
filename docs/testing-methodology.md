@@ -706,3 +706,63 @@ The general form: when two checks read one input, the stricter one upstream can
 silently disarm the one downstream. Name which check owns each refusal, and test
 the upstream check for **acceptance** of exactly what the downstream one
 refuses.
+
+## An existence check is not an accuracy check
+
+Until v0.1.19 this project asserted that `go.mod` **existed** and never that it
+was **right**. The whole of it was one line in `ci.yml`'s fetch step —
+
+    test -f go.mod || { echo "no go.mod: wrong tree"; exit 1; }
+
+— which is a wrong-tree guard: it reads none of the file's content, and
+`tag-pipeline.yml` names the file only in a comment. So an unused `require`, a
+missing one, or a `go.sum` short an entry could travel all the way to a tag with
+nothing in the repository to say so, through every release including v0.1.18.
+
+**The two are easy to confuse because the cheap check is the one that passes.**
+A path that exists, a file that parses, a binary that runs: each is a real
+precondition, and each reads like a verdict on the thing it is a precondition
+for. The question to ask of any guard is which of the two it answers, and
+whether anything answers the other.
+
+`ci.yml`'s manifest arm answers accuracy with `go mod tidy -diff`, and three
+properties of it are the methodology rather than the plumbing.
+
+**The diff is on stdout and the excuse is on stderr.** `go mod tidy -diff`
+exits non-zero BOTH for "these files are not what tidying would write" and for
+"I could not read the module graph" — and tidying needs the network, because it
+resolves the test-only dependencies of dependencies: 32 modules on a cold cache,
+measured. A step reading only the exit code would blame the manifest for an
+unreachable proxy, which is the misattribution `v0.1.18` fixed in the doc blocks
+(a jail with no Go read as documentation drift) and the one run 192 made visible
+in the vulnerability step (nine CVEs reported as a database outage). So the two
+streams are captured into two files and the answer is read from which one has
+content.
+
+**The reading is a script with its own battery, because a step cannot be
+driven.** `tools/gomod-accuracy-verdict.sh` classifies into four answers — tidy,
+inaccurate, step defect, blocked — over nine named clauses, and `ci.yml`'s
+verdict-scripts step runs its self-test on the runner and greps its declared
+count: all 9 clauses over 10 cases. That is the same arrangement, and the same
+reason, as `tools/govulncheck-verdict.sh` and `tools/verify-tag-verdict.sh`.
+Two of the nine clauses exist only to refuse a contradiction rather than to act
+on one: a clean exit beside a diff means the tool's documented contract and our
+reading of it disagree, and acting on either would be acting on a contract we
+have just been shown we do not understand.
+
+**A pass over an empty graph is not a pass.** `go mod tidy` exits 0 on a module
+with no requirements at all, so the arm's known positive is that there was
+something to be accurate about — an empty or absent `go.sum` is `BLOCKED`, not
+green. This is the vacuity guard `rumor validate` carries for a project that
+declares no rule, applied at the one place in this arm that can be vacuous.
+
+**And the wiring is driven separately from the reading.** The battery covers
+what the clauses say; nothing in it covers whether the step captures the two
+streams into the right files, passes them in the right order with the real exit
+status, and propagates the verdict's code.
+`tools/drive-gomod-accuracy.py` extracts the step from `ci.yml` — by its
+`- name:` line, not from a copy — and runs it over four trees: the tree as
+committed, one with an unused require, one with `GOPROXY=off` over an empty
+module cache, and one with no requirements at all. The third is the condition
+the arm is shaped around, and it is the one a reading of the exit code alone
+gets wrong.

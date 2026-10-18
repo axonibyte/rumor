@@ -338,6 +338,28 @@ path = "tools/govulncheck-verdict.sh"
 docs = ["docs/release.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# The manifest verdict: what `go mod tidy -diff` said, classified. It is a file
+# and not five lines of YAML for the reason govulncheck-verdict.sh is one -- a
+# workflow step cannot be driven without pushing -- so it belongs to the
+# methodology with that one.
+#
+# NOT MAPPED TO release.md, AND THE REASON IS EXACTLY THIS WIDE: go.mod and
+# go.sum are release.md's (it owns the version sources and what the lock is
+# FOR) and neither changed here. What landed is a CI ARM and its battery, which
+# is testing-methodology.md's subject. A second mapping would ask release.md to
+# change whenever a clause of this reading moves, which says nothing about how
+# this repo releases.
+path = "tools/gomod-accuracy-verdict.sh"
+docs = ["docs/testing-methodology.md"]
+
+[[entry]]
+# The driver for the arm's WIRING, as distinct from its reading: it extracts
+# ci.yml's step and runs it over four trees, including an unreachable proxy.
+# Author-local, like the arm it drives is runner-only.
+path = "tools/drive-gomod-accuracy.py"
+docs = ["docs/testing-methodology.md"]
+
+[[entry]]
 # The publisher: it creates the release for a tag and attaches the three files.
 # release.md owns what a release must carry; the testing methodology owns the
 # part worth saying about it, which is that its FORGE half cannot be driven

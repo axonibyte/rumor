@@ -304,6 +304,42 @@ jobs:
             && { echo "an arm skipped on the twin: D9 requires every arm evaluated and none skipped"; exit 1; }
           echo "PROOF $(grep -oE '[0-9]+ of [0-9]+ arm\(s\) evaluated' ../validate.log | head -1)"
 
+      - name: go.mod is ACCURATE, not merely present
+        run: |
+          set -o pipefail
+          cd src-tree
+          GO=""
+          for c in go go126 go125; do
+            command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+          done
+          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          # See the build step for why this is a gate and not a preference.
+          export GOTOOLCHAIN=local
+          # THE GATE ASSERTED go.mod EXISTS AND NEVER THAT IT WAS RIGHT. The
+          # fetch step's `test -f go.mod` is a wrong-tree guard and reads none
+          # of the file's content, so through every release to v0.1.19 an
+          # unused require, a missing one, or a go.sum short an entry could
+          # travel to a tag with nothing to say so (ibis, thread:rumor).
+          #
+          # THE DIFF IS ON STDOUT AND THE EXCUSE IS ON STDERR, which is why
+          # they are captured apart: tidy exits non-zero BOTH for "these files
+          # are not what tidying would write" and for "I could not read the
+          # module graph", and it needs the network to answer at all -- it
+          # resolves the test-only dependencies of dependencies, 32 modules on
+          # a cold cache, measured. The READING is
+          # tools/gomod-accuracy-verdict.sh's, with its own battery in the
+          # verdict-scripts step below, because a classification written inline
+          # here is one a push is the only way to exercise.
+          rc=0
+          timeout 300 "$GO" mod tidy -diff > ../tidy.diff 2> ../tidy.err || rc=$?
+          v=0
+          timeout 60 sh tools/gomod-accuracy-verdict.sh ../tidy.diff ../tidy.err "$rc" go.sum || v=$?
+          # The verdict's own codes travel out of this step: 3 a verdict on the
+          # tree, 2 a defect in this step or in our reading of the tool, 1 no
+          # answer reached. The clause and its reason are on stdout above.
+          test "$v" -eq 0 || { echo "the manifest arm answered $v, named by the clause above"; exit "$v"; }
+          echo "PROOF go.mod and go.sum are tidy, by the clause above"
+
       - name: golangci-lint
         run: |
           set -o pipefail
@@ -398,6 +434,19 @@ jobs:
           grep -qE 'all 9 clauses answered as expected over 10 case\(s\)' ../gv-self.log \
             || { echo "the self-test did not report all 9 clauses over 10 cases: a clause stopped being reached, or the script's clauses changed without this literal"; exit 1; }
           rc=0
+          timeout 120 sh tools/gomod-accuracy-verdict.sh --self-test > ../gm-self.log 2>&1 || rc=$?
+          cat ../gm-self.log
+          test "$rc" -eq 124 && { echo "HANG: the manifest verdict's self-test exceeded 120s. RUNNER finding; the verdict was NOT checked."; exit 124; }
+          test "$rc" -eq 0 || { echo "the manifest verdict's own self-test FAILED, so its reading of go mod tidy -diff means nothing"; exit "$rc"; }
+          # THE DECLARED COUNT, as above. 9 clauses over 10 cases -- two cases
+          # reach `nothing-to-be-accurate-about`, for an empty go.sum and an
+          # absent one. That it is the same 9-over-10 as the govulncheck
+          # verdict is a coincidence and not a copied line: the counts are
+          # grepped out of two different logs, named here so a reader does not
+          # read one literal as serving both.
+          grep -qE 'all 9 clauses answered as expected over 10 case\(s\)' ../gm-self.log \
+            || { echo "the self-test did not report all 9 clauses over 10 cases: a clause stopped being reached, or the script's clauses changed without this literal"; exit 1; }
+          rc=0
           timeout 120 sh tools/verify-tag-verdict.sh --self-test > ../vt-self.log 2>&1 || rc=$?
           cat ../vt-self.log
           test "$rc" -eq 124 && { echo "HANG: the tag verdict's self-test exceeded 120s. RUNNER finding."; exit 124; }
@@ -408,7 +457,7 @@ jobs:
           # would make this file fail on a deliberate change to that script in
           # a run that does not touch this file. Its own PROOF line carries the
           # count, and it is printed above.
-          echo "PROOF both verdict scripts' batteries ran on this runner"
+          echo "PROOF all three verdict scripts' batteries ran on this runner"
 
       - name: govulncheck
         run: |
