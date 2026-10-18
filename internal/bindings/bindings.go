@@ -160,6 +160,17 @@ type Report struct {
 // OK reports whether the document is a set of bindings.
 func (r Report) OK() bool { return len(r.Refusals) == 0 }
 
+// Load reads a package's bindings.toml and parses it. The decoder is the
+// caller's, and the two error shapes are internal/platform's: an unreadable
+// file is could-not-run, a readable file that is not bindings is a verdict.
+func Load(path string, dec decl.Decoder) (Report, error) {
+	doc, err := decl.Load(path, dec)
+	if err != nil {
+		return Report{}, err
+	}
+	return Parse(doc), nil
+}
+
 // Parse reads a decoded document.
 func Parse(doc map[string]any) Report {
 	r := decl.New(doc)

@@ -1,6 +1,8 @@
 package platform
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -421,4 +423,51 @@ func names(refusals []Refusal, path, fragment string) bool {
 		}
 	}
 	return false
+}
+
+// TestLoadKeepsTheTwoErrorShapesApart: an unreadable FILE is an error, which is
+// could-not-run; a readable file that is not a platform is a Report full of
+// refusals, which is a verdict on the project. `rumor validate`'s exit statuses
+// turn on exactly that line, so collapsing the two here would move a refusal
+// into the could-not-run bucket for every caller at once.
+func TestLoadKeepsTheTwoErrorShapesApart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "platform.toml")
+	if err := os.WriteFile(path, []byte("# the decoder below ignores these bytes\n"), 0o600); err != nil {
+		t.Fatalf("writing the fixture: %v", err)
+	}
+
+	// A READABLE FILE THAT IS A PLATFORM.
+	rep, err := Load(path, func([]byte) (map[string]any, error) { return wellFormed(), nil })
+	if err != nil {
+		t.Fatalf("a well-formed platform is an error: %v", err)
+	}
+	if !rep.OK() || rep.Platform.Contract != "1" {
+		t.Errorf("report %+v", rep)
+	}
+
+	// A READABLE FILE THAT IS NOT: refusals, and NO error.
+	rep, err = Load(path, func([]byte) (map[string]any, error) {
+		doc := wellFormed()
+		delete(doc, "contract")
+		return doc, nil
+	})
+	if err != nil {
+		t.Fatalf("a refused platform came back as an error: %v", err)
+	}
+	if rep.OK() || !names(rep.Refusals, "contract", "missing key") {
+		t.Errorf("report %+v", rep)
+	}
+
+	// AN UNREADABLE FILE: an error, and an empty report rather than a refusal
+	// list a caller might print as findings.
+	rep, err = Load(filepath.Join(dir, "nonesuch.toml"), func([]byte) (map[string]any, error) {
+		return wellFormed(), nil
+	})
+	if err == nil {
+		t.Fatal("an absent file was accepted")
+	}
+	if len(rep.Refusals) != 0 {
+		t.Errorf("an absent file produced refusals: %v", rep.Refusals)
+	}
 }

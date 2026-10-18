@@ -1,6 +1,8 @@
 package decl
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -278,3 +280,66 @@ func TestANilDocumentIsAnEmptyOneAndNotAPanic(t *testing.T) {
 		t.Errorf("a nil document: %v", r.Refusals())
 	}
 }
+
+// --- Load, the file half --------------------------------------------------
+
+// TestLoadRefusesTheFileAndNotTheProject: every refusal here is about the FILE,
+// which is could-not-run. A file that cannot be read says nothing about what it
+// would have declared, and reporting it as a verdict on the project would send
+// the reader to fix the wrong thing.
+func TestLoadRefusesTheFileAndNotTheProject(t *testing.T) {
+	dir := t.TempDir()
+	good := func(b []byte) (map[string]any, error) { return map[string]any{"name": string(b)}, nil }
+
+	write := func(name, text string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(text), 0o600); err != nil {
+			t.Fatalf("writing %s: %v", name, err)
+		}
+		return p
+	}
+
+	// THE CONTROL FIRST, so the refusals below are not a reader that refuses
+	// everything.
+	doc, err := Load(write("ok.toml", "name = x"), good)
+	if err != nil {
+		t.Fatalf("a readable file is refused: %v", err)
+	}
+	if doc["name"] != "name = x" {
+		t.Errorf("document %v", doc)
+	}
+
+	for _, tc := range []struct {
+		name, want string
+		path       string
+		dec        Decoder
+	}{
+		{"no decoder wired", "no decoder is wired", write("a.toml", "x"), nil},
+		{"absent file", "no such file", filepath.Join(dir, "nonesuch.toml"), good},
+		{"empty file", "the file is empty", write("empty.toml", ""), good},
+		{"whitespace only", "the file is empty", write("blank.toml", "\n\t \n"), good},
+		{"the decoder refuses", "cannot be read as a declaration", write("bad.toml", "x"),
+			func([]byte) (map[string]any, error) { return nil, errDecode{} }},
+		{"the decoder answers nothing at all", "no document and no error", write("nil.toml", "x"),
+			func([]byte) (map[string]any, error) { return nil, nil }},
+	} {
+		_, err := Load(tc.path, tc.dec)
+		if err == nil {
+			t.Errorf("%s: accepted", tc.name)
+			continue
+		}
+		if !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: %q does not say %q", tc.name, err, tc.want)
+		}
+		// THE PATH IS IN EVERY ONE OF THEM: a run reads several declaration
+		// files, and "the file is empty" without a name is a refusal the reader
+		// has to go looking for.
+		if !strings.Contains(err.Error(), filepath.Base(tc.path)) {
+			t.Errorf("%s: %q does not name the file", tc.name, err)
+		}
+	}
+}
+
+type errDecode struct{}
+
+func (errDecode) Error() string { return "line 1: unexpected character" }

@@ -24,10 +24,55 @@
 package decl
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"sort"
 	"time"
 )
+
+// Decoder turns a declaration file's bytes into a decoded document: tables as
+// map[string]any, arrays as []any, integers as int64 or int.
+//
+// IT IS A PARAMETER AND NOT A PACKAGE VARIABLE. The TOML reader is one
+// dependency decision (held in coop r4/16), and a nil global waiting to be
+// wired is a nil dereference waiting for the one path nobody drove. Passing it
+// in means the wiring is visible at the call site and a test supplies its own
+// without touching package state.
+type Decoder func(data []byte) (map[string]any, error)
+
+// Load reads a declaration file and decodes it. The refusals here are about the
+// FILE -- absent, unreadable, undecodable, empty -- and are therefore
+// could-not-run rather than a verdict on the project: a file that cannot be
+// read says nothing about what it would have declared.
+//
+// AN EMPTY FILE IS REFUSED HERE rather than passed on as an empty document,
+// because the schema's own missing-key refusals would then name every required
+// key in turn and bury the one fact that matters.
+func Load(path string, dec Decoder) (map[string]any, error) {
+	if dec == nil {
+		return nil, fmt.Errorf("%s: no decoder is wired, so nothing can read it", path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, fmt.Errorf("%s: the file is empty, so it declares nothing", path)
+	}
+	doc, err := dec(data)
+	if err != nil {
+		return nil, fmt.Errorf("%s: cannot be read as a declaration: %w", path, err)
+	}
+	if doc == nil {
+		// A DECODER THAT RETURNS (nil, nil) IS NOT A DECODER THAT SAID "EMPTY":
+		// New would treat nil as an empty document and the schema would refuse
+		// every required key, which reads as a project that declared nothing
+		// rather than as a reader that answered nothing.
+		return nil, fmt.Errorf("%s: the decoder returned no document and no error", path)
+	}
+	return doc, nil
+}
 
 // Refusal is one reason a document is not the declaration it claims to be.
 // Path is the key's full dotted path, which is the only form a reader can act

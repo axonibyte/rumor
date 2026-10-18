@@ -1,6 +1,8 @@
 package bindings
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -372,5 +374,35 @@ func TestTheThreePackagesVocabularyFits(t *testing.T) {
 		if !rep.OK() {
 			t.Errorf("%s: refused: %v", tc.pkg, rep.Refusals)
 		}
+	}
+}
+
+// TestLoadKeepsTheTwoErrorShapesApart is internal/platform's test over this
+// package's loader: an unreadable file is could-not-run, a readable file that is
+// not bindings is a verdict.
+func TestLoadKeepsTheTwoErrorShapesApart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bindings.toml")
+	if err := os.WriteFile(path, []byte("# the decoder below ignores these bytes\n"), 0o600); err != nil {
+		t.Fatalf("writing the fixture: %v", err)
+	}
+	rep, err := Load(path, func([]byte) (map[string]any, error) { return wellFormed(), nil })
+	if err != nil || !rep.OK() {
+		t.Fatalf("well-formed bindings: err %v, report %+v", err, rep)
+	}
+	rep, err = Load(path, func([]byte) (map[string]any, error) {
+		doc := wellFormed()
+		delete(doc, "action")
+		return doc, nil
+	})
+	if err != nil {
+		t.Fatalf("refused bindings came back as an error: %v", err)
+	}
+	if rep.OK() || !names(rep.Refusals, "action", "no actions") {
+		t.Errorf("report %+v", rep)
+	}
+	if _, err := Load(filepath.Join(dir, "nonesuch.toml"),
+		func([]byte) (map[string]any, error) { return wellFormed(), nil }); err == nil {
+		t.Fatal("an absent file was accepted")
 	}
 }

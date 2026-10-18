@@ -138,6 +138,22 @@ type Report struct {
 // OK reports whether the document is a platform.
 func (r Report) OK() bool { return len(r.Refusals) == 0 }
 
+// Load reads a platform.toml and parses it. The decoder is the caller's, for
+// internal/decl's reason: the TOML dependency is one decision and this package
+// does not need to know which way it went.
+//
+// THE TWO ERROR SHAPES ARE DIFFERENT ON PURPOSE. A file that cannot be read at
+// all comes back as an error -- could-not-run. A file that reads and is not a
+// platform comes back as a Report full of refusals, which is a verdict on the
+// project. `rumor validate`'s exit statuses turn on exactly that distinction.
+func Load(path string, dec decl.Decoder) (Report, error) {
+	doc, err := decl.Load(path, dec)
+	if err != nil {
+		return Report{}, err
+	}
+	return Parse(doc), nil
+}
+
 // Parse reads a decoded document. The argument is what a TOML reader produced:
 // tables as map[string]any, arrays as []any, integers as int64 or int.
 func Parse(doc map[string]any) Report {
