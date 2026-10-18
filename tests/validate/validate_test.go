@@ -515,3 +515,60 @@ func TestTheDocumentedOutputIsTheBinarysOutput(t *testing.T) {
 		})
 	}
 }
+
+// wantTallies is how many command tallies docs/cli.md quotes outside the
+// `rumor validate` blocks above: `check`'s and `attaint`'s. It is DECLARED so
+// that an empty scan fails -- a regexp that matched nothing would assert the
+// happy path twice and say nothing about either tally.
+const wantTallies = 2
+
+// TestTheDocumentedTalliesAreTheBinarys holds those two quoted tallies to what
+// the commands actually print over examples/.
+//
+// IT EXISTS BECAUSE THE TWIN MOVED BOTH AND NO SUITE NOTICED. A fourth example
+// took the corpus from 3 packages and 17 cases to 4 and 22, and docs/cli.md
+// went on quoting the old figures: `check`'s tally sits in a plain fence that
+// nothing executes, and `attaint`'s sits inside a `run` block that only
+// release-gate.py executes -- on a pull request to main, which is after every
+// push a branch makes. The branch tip was green in CI while the gate refused it
+// with doc-run-block-failed. `go test ./...` runs on every push, so a claim
+// about what the program prints is checked here rather than at the release.
+//
+// IT CHECKS PRESENCE, NOT THE WHOLE STREAM, which is what the validate oracle
+// above does instead: these two samples quote ONE line of a many-line run on
+// purpose, so the assertion the document makes is that this line appears, and
+// holding it to the entire output would be asserting something it never said.
+func TestTheDocumentedTalliesAreTheBinarys(t *testing.T) {
+	bin, err := exec.LookPath("rumor")
+	if err != nil {
+		t.Fatalf("TestMain should have put rumor on PATH: %v", err)
+	}
+	root := filepath.Join("..", "..")
+	raw, err := os.ReadFile(filepath.Join(root, "docs", "cli.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	quoted := regexp.MustCompile(`(?m)^(check|attaint): .*$`).FindAllString(string(raw), -1)
+	if len(quoted) != wantTallies {
+		t.Fatalf("docs/cli.md quotes %d `check`/`attaint` tally line(s), want %d: this oracle "+
+			"names what it checks, so an unquoted or a third tally is unchecked", len(quoted), wantTallies)
+	}
+	for _, line := range quoted {
+		verb := strings.SplitN(line, ":", 2)[0]
+		t.Run(verb, func(t *testing.T) {
+			cmd := exec.Command(bin, verb, "--examples", "examples")
+			cmd.Dir = root
+			cmd.Env = []string{"PATH=" + filepath.Dir(bin), "GOTOOLCHAIN=local"}
+			out, cmdErr := cmd.CombinedOutput()
+			if cmdErr != nil {
+				t.Fatalf("rumor %s --examples examples: %v\n%s", verb, cmdErr, out)
+			}
+			for _, got := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+				if got == line {
+					return
+				}
+			}
+			t.Errorf("docs/cli.md quotes:\n%s\n\nrumor %s printed:\n%s", line, verb, out)
+		})
+	}
+}
