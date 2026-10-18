@@ -107,6 +107,14 @@ in the Nostr protocol *rumor* is a defined term for an unsigned event.
 `github.com/BurntSushi/toml v1.6.0`, MIT, pinned. OPA was the first; this is the
 second, and the whole dependency surface is still those two plus what they pull.
 
+**It is a DIRECT require in `go.mod`, and it took a review to get there.** `go
+get` had left it in the indirect block while `internal/decl/toml.go` imported it
+directly — so this page called it a direct dependency and the module graph
+called it indirect, and the next `go mod tidy` would have produced a `go.mod`
+diff over a pure label correction. rook found it by reading the file rather than
+the prose (coop r4/48), and nothing under `.forgejo/` or `tools/` runs `go mod
+tidy -diff`, which is why a green CI run said nothing about it.
+
 **Why a library and not a parser of our own.** `platform.toml` and a package's
 `bindings.toml` use nested tables and arrays of tables, which
 `internal/coverage`'s hand-written line reader does not reach — that one reads
@@ -145,9 +153,15 @@ Rules are Rego, evaluated by **OPA embedded as a library**, at
 537, sharpened at 542). A `go.mod` `require` is a **minimum**, not an exact
 pin: minimal version selection takes the highest version any module in the
 graph asks for, so a transitive requirement could raise the one that builds.
-Nothing in this tree does — OPA is the only direct dependency and nothing
-requires a newer OPA — so the selected version *is* v1.21.2, and `go.sum` pins
-the content of what is fetched, which is why the verdicts are reproducible. The
+Nothing in this tree does, and the reason moved with R4.1: there are now TWO
+direct dependencies, and the second one's own `go.mod` declares **no requires at
+all** (`github.com/BurntSushi/toml v1.6.0`: a module line and `go 1.18`,
+nothing else), so it cannot raise OPA or anything under it. The selected version
+therefore *is* v1.21.2, and `go.sum` pins the content of what is fetched, which
+is why the verdicts are reproducible. The earlier wording here — "OPA is the only
+direct dependency" — was still on the page after R4.1 added the second, and rook
+caught it (coop r4/48): the conclusion survived, the stated reason did not, which
+is the worse of the two to leave standing. The
 previous engine was pinned with Cargo's `=`, which refuses the raise outright;
 Go has no such operator, and an earlier version of this paragraph described
 Cargo's guarantee in Go's syntax. The property to rely on is: one direct
