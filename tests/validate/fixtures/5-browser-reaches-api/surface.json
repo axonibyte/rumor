@@ -1,0 +1,21 @@
+{
+  "actions": [
+    { "name": "publish_doc", "context": "api" }
+  ],
+  "observations": [
+    { "name": "doc.count", "source": "direct" }
+  ],
+  "contexts": ["api"],
+  "components": [
+    { "name": "doc_store", "stateful": true }
+  ],
+  "capabilities": { "faults": [], "volume": [], "upgrade": [] },
+  "execute": {
+    "publish_doc": {
+      "ids": { "doc": "d-1" },
+      "response": { "status": 201 }
+    }
+  },
+  "observe": { "doc.count": 1 },
+  "token": "twin-token"
+}

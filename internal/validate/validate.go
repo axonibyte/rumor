@@ -188,6 +188,7 @@ func Run(dir string) Report {
 	arm3(&rep, b)
 	arm4(&rep, b, plat)
 	arm5(&rep, b, plat)
+	arm6(&rep, b, plat)
 	arm7(&rep, b)
 	arm8(&rep, dir, b)
 	arm10a(&rep, dir, plat)

@@ -19,7 +19,7 @@ import (
 // THE DECLARED SIZE, which is the claim: C2 ships six arms and C3 brings the
 // count to eighteen. A fixture directory that vanished would otherwise leave
 // every remaining arm passing and the suite quiet about it.
-const wantFixtures = 9
+const wantFixtures = 13
 
 // armOf is the fixture naming convention: <arm>-<slug>. The arm is the part
 // before the first dash, so the directory name IS the expectation and a
@@ -237,6 +237,17 @@ var changedBy = map[string][]string{
 	"11-no-mutants":        {"mutants", "WHY-no-mutants.md"},
 	"12a-no-position":      {"cases/miscount.json"},
 	"12b-no-source":        {"cases/untold-claim.json"},
+
+	// FIXTURES WHOSE CONDITION HAS A PRECONDITION declare BOTH edits, and fable's
+	// rule (coop r4/74) is that this is still ONE change: one CONDITION, not one
+	// byte. The setup edit prepares the ground -- the browser stage on, a claim
+	// type made eventual -- and each fixture's README names which edit is which.
+	// A setup edit that tripped an arm by itself would make the fixture two
+	// fixtures, which is why 4's added action carries `requires`.
+	"4-no-ui-flow":          {"platform.toml", "bindings.toml", "WHY-no-ui-flow.md"},
+	"5-browser-reaches-api": {"platform.toml", "bindings.toml", "WHY-browser-reaches-api.md"},
+	"6-component-uncovered": {"platform.toml"},
+	"7b-quiesce-no-probe":   {"bindings.toml"},
 }
 
 // TestEveryFixtureIsTheTwinPlusItsOwnChange is the drift oracle. Without it a

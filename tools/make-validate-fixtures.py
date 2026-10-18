@@ -95,6 +95,61 @@ def build():
          lambda c: c["input"]["observation"].pop("source", None),
          "FIXTURE for arm 12b: the twin with one change -- this case's observation declares no source.")
 
+
+    # ---- arms whose CONDITION has a PRECONDITION ------------------------------
+    # fable, coop r4/74: "one change" is one CONDITION, not one byte. Where the
+    # refusing condition needs the ground prepared -- the browser stage ON before
+    # a flow can be missing -- the enabling edit is SETUP and the removing edit is
+    # the CONDITION, and a setup edit that trips an arm by itself would mean two
+    # fixtures rather than one. Each README below names which edit is which.
+
+    d = fresh("4-no-ui-flow")
+    p = os.path.join(d, "platform.toml"); s = open(p).read()
+    open(p, "w").write(s.replace("browser = { enabled = false }", "browser = { enabled = true }", 1))
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    open(p, "w").write(s + '''
+# THE CONDITION: a browser-stage action declaring no flow. `requires` is present
+# so this action does not trip arm 3 as well -- a setup edit that trips an arm
+# by itself would make this two fixtures (fable, coop r4/74).
+[[action]]
+name = "publish_doc_ui"
+context = "browser"
+requires = ["may_publish"]
+''')
+    open(os.path.join(d, "WHY-no-ui-flow.md"), "w").write(
+        "# FIXTURE for arm 4\n\nSETUP: `stages.browser.enabled` goes true. Both browser arms are VACUOUS\n"
+        "without it (docs/contract.md:419), so the flag is what makes the condition\nreachable rather than part of it.\n\n"
+        "CONDITION: a browser-stage action declaring no flow.\n\n"
+        "The added action carries `requires` on purpose: without it the setup would\ntrip arm 3 too, and fable's rule is that a fixture whose setup edit trips an\narm by itself is two fixtures.\n")
+
+    d = fresh("5-browser-reaches-api")
+    p = os.path.join(d, "platform.toml"); s = open(p).read()
+    open(p, "w").write(s.replace("browser = { enabled = false }", "browser = { enabled = true }", 1))
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    open(p, "w").write(s + '''
+# THE CONDITION: an actor holding BOTH a browser session and the api context,
+# so it could reach publish_doc from the browser stage. docs/contract.md:69 --
+# "could reach" is "its context is one that actor holds a session in".
+[[role]]
+name = "editor"
+contexts = ["browser", "api"]
+''')
+    open(os.path.join(d, "WHY-browser-reaches-api.md"), "w").write(
+        "# FIXTURE for arm 5\n\nSETUP: `stages.browser.enabled` goes true, without which the arm is vacuous.\n\n"
+        "CONDITION: a role holding both `browser` and `api`, so a browser-stage actor\ncould take the api action the twin already declares. No browser ACTION is\n"
+        "needed -- reachability is about the actor's contexts and the action's.\n\n"
+        "This role is deliberately not in the twin: quill's agreement test refuses a\ndeclared role no case carries, and the twin's cases carry none.\n")
+
+    d = fresh("7b-quiesce-no-probe")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    s = s.replace('timing = "immediate"', 'timing = "eventual"\nbound = "quiesce"', 1)
+    open(p, "w").write("# FIXTURE for arm 7b.\n#\n# SETUP: doc.published settles EVENTUALLY rather than immediately, without\n# which a bound says nothing (bindings.go refuses a bound on an immediate type).\n#\n# CONDITION: the bound is `quiesce` and no [quiesce] probe is declared.\n" + s)
+
+    d = fresh("6-component-uncovered")
+    p = os.path.join(d, "platform.toml"); s = open(p).read()
+    s = s.replace('covers = ["doc_store"]', 'covers = ["some_other_store"]', 1)
+    open(p, "w").write("# FIXTURE for arm 6: the twin with one change -- the rollback provider covers\n# a component nothing names, leaving doc_store uncovered.\n" + s)
+
     return sorted(os.listdir(ROOT))
 
 

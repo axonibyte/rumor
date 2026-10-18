@@ -1,0 +1,34 @@
+# FIXTURE for arm 6: the twin with one change -- the rollback provider covers
+# a component nothing names, leaving doc_store uncovered.
+# The permitted twin's platform (R4.3, issue 64).
+#
+# THE FIRST platform.toml IN THE TREE. internal/platform has read this shape
+# since R4.1 and nothing committed exercised it, so the required keys here come
+# from the reader rather than from an example: `contract`, `[adapter].command`,
+# every `[stages].*.enabled`, `[weights].default`, and each `[[venire]]` entry's
+# role and count.
+#
+# [[rollback]] IS THE HALF ARM 6 NEEDS NOW. docs/rollback.md defines the
+# provider interface in R13; until then the name is carried as declared and the
+# arm only pairs it with the component the bindings name on a `direct`
+# observation. Removing this table is fable's D11 drill.
+
+contract = "0.1"
+
+[adapter]
+command = ["rumor", "fake-adapter"]
+
+[[venire]]
+role = "author"
+count = 2
+
+[stages]
+api = { enabled = true }
+browser = { enabled = false }
+
+[weights.default]
+publish_doc = 1
+
+[[rollback]]
+provider = "doc-store-truncate"
+covers = ["some_other_store"]
