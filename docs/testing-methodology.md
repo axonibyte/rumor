@@ -129,6 +129,17 @@ file, and emptying the recorded knowledge each turn the suite red.
 ## Self-test the oracle
 
 An oracle is checked before it is trusted, in the same run that trusts it.
+`rumor validate` declares **eighteen** arms, and the count is pinned in three
+places that move together (`internal/validate.TotalArms`, `ci.yml`'s literal,
+and this sentence), the way the release gate's own case count is. The invariant
+is an ACCOUNTING one rather than a per-project number (fable, coop r4/77): every
+run accounts for all eighteen as evaluated or skipped-with-its-reason, never
+silently and never twice, and across `tests/validate/fixtures/` every arm is
+evaluated at least once. The permitted twin evaluates all eighteen, which is
+what fable's D9 drill requires of it; a project declaring no browser stage
+honestly reports sixteen, and one whose adapter cannot be reached reports
+fourteen -- the skips named, and could-not-run rather than refused.
+
 `tools/release-gate.py --self-test` drives twenty cases, fifteen trailer checks
 and seven docs-verdict checks, and asserts that **each arm fires alone**. Each
 count is declared as a constant and asserted in both directions, because a case

@@ -207,6 +207,15 @@ func Run(dir string) Report {
 	// exactly like one that does. The coupling is pinned by an oracle instead --
 	// tests/validate asserts that bindings still refuses a zero-action file --
 	// so this hole cannot open quietly if that refusal ever moves.
+	// ZERO RULES IS A VACUITY AND NOT A PASS, found by driving fable's D8 drill
+	// (coop breakout-r4/0: "zero rules; zero bindings; zero actions -- each a
+	// refusal, never a pass"). It passed until that drill ran: arm 11 SKIPS when
+	// rules.json declares nothing, sixteen arms then evaluated over a statute
+	// whose rules nothing asserts, and the verdict was exit 0. A project with no
+	// rule has no statute worth validating.
+	if rep.Rules == 0 {
+		rep.cannot("rules.json declares no rule, so there is no statute to hold the bindings to")
+	}
 	if rep.Cases == 0 {
 		rep.cannot("no case under cases/, so every arm over observations is vacuous")
 	}

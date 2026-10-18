@@ -265,6 +265,45 @@ jobs:
             || { echo "no coverage count: the check did not run"; exit 1; }
           echo "PROOF $(grep -oE '[0-9]+ path\(s\), every one mapped' ../docs.log | head -1 || true)"
 
+      - name: validate's arm accounting (the literal, with the adapter reachable)
+        run: |
+          set -o pipefail
+          cd src-tree
+          GO=""
+          for c in go go126 go125; do
+            command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+          done
+          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          # See the build step for why this is a gate and not a preference.
+          export GOTOOLCHAIN=local
+          # THE BINARY HAS TO BE CALLED `rumor` HERE. The build step writes
+          # ../rumor-bin, outside the clone and under that name on purpose, but
+          # examples/twin's [adapter].command is ["rumor", "fake-adapter", ...]
+          # -- what a real project writes -- so four arms need a `rumor` to
+          # spawn. A link under the right name in a scratch dir on PATH is how
+          # tests/validate's TestMain does it too.
+          bindir="$RUNNER_TEMP/validate-bin"
+          mkdir -p "$bindir"
+          cp ../rumor-bin "$bindir/rumor" || { echo "no rumor-bin to link: the build step did not run"; exit 1; }
+          rc=0
+          PATH="$bindir:$PATH" timeout 300 ./../rumor-bin validate examples/twin > ../validate.log 2>&1 || rc=$?
+          cat ../validate.log
+          test "$rc" -eq 124 && { echo "HANG: validate exceeded 300s. RUNNER finding."; exit 124; }
+          test "$rc" -eq 0 || { echo "validate exited $rc on the permitted twin, which must PASS: an arm fired, or a declaration could not be read"; exit "$rc"; }
+          # THE LITERAL. fable ruled the count at coop breakout-r4/6 and the
+          # reading at r4/77: every run accounts for all eighteen arms, each
+          # evaluated or skipped with its reason, and the twin -- which D9
+          # requires to pass with NONE skipped -- evaluates all eighteen. This
+          # line moves only with a count posted in r4 first, together with
+          # internal/validate.TotalArms and docs/testing-methodology.md.
+          grep -q '18 of 18 arm(s) evaluated' ../validate.log \
+            || { echo "the twin did not report 18 of 18 arms evaluated: an arm was added or removed without this literal, or an arm skipped where D9 requires none"; exit 1; }
+          grep -q '0 refusal(s)' ../validate.log \
+            || { echo "the twin was refused, and the permitted twin is the one project that must pass"; exit 1; }
+          grep -q 'skipped' ../validate.log \
+            && { echo "an arm skipped on the twin: D9 requires every arm evaluated and none skipped"; exit 1; }
+          echo "PROOF $(grep -oE '[0-9]+ of [0-9]+ arm\(s\) evaluated' ../validate.log | head -1)"
+
       - name: golangci-lint
         run: |
           set -o pipefail

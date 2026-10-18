@@ -125,12 +125,21 @@ func Describe(ctx context.Context, s Spawn, timeout time.Duration) (DescribeResp
 		return zero, fmt.Errorf("the adapter answered nothing before closing: %w", err)
 	}
 
-	var resp DescribeResponse
-	if derr := json.Unmarshal(raw, &resp); derr != nil {
-		return zero, fmt.Errorf("the adapter's answer is not a describe response: %w", derr)
+	// THE STRICT DECODER, NOT json.Unmarshal, and driving fable's D7 drill is
+	// what found the difference. A plain unmarshal accepts a describe with
+	// `contract` missing, leaves the field empty, and the contract-version arm
+	// then REFUSES the project for a value its adapter never sent -- exit 1
+	// blaming the project for its adapter's malformed message. The decoder
+	// refuses the message by name instead, and this returns an error, which the
+	// caller reports as could-not-run: "the project is not wrong; its adapter
+	// is" (docs/contract.md:57). D7 asserts exactly that boundary.
+	msg, derr := DecodeResponse(raw)
+	if derr != nil {
+		return zero, fmt.Errorf("the adapter's describe is not a well-formed response: %w", derr)
 	}
-	if resp.Kind != "describe" {
-		return zero, fmt.Errorf("the adapter answered %q where a describe was asked", resp.Kind)
+	resp, ok := msg.(DescribeResponse)
+	if !ok {
+		return zero, fmt.Errorf("the adapter answered %q where a describe was asked", msg.Env().Kind)
 	}
 	return resp, nil
 }

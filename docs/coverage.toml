@@ -302,6 +302,15 @@ path = "tools/release-gate.py"
 docs = ["docs/release.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# The drill driver. Mapped to the testing methodology because the METHOD is the
+# transferable part -- fable designs the drills, the author drives them ONCE
+# before the gate does, and driving them found two defects reading them had not
+# -- and to contract.md because each drill's condition is a key that document
+# describes.
+path = "tools/drive-validate-drills.py"
+docs = ["docs/testing-methodology.md", "docs/contract.md"]
+
+[[entry]]
 # The fixture generator. Mapped to the testing methodology because what it
 # protects is a METHOD -- every arm fixture is the permitted twin with exactly
 # one change, which hand-maintained copies cannot stay true to: when the twin
