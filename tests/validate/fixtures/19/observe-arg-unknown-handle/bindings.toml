@@ -1,5 +1,7 @@
 # FIXTURE for arm 19: the twin with one change -- the observation takes an arg
 # naming a handle no action creates, so the engine would resolve it to nothing.
+# `doc` IS created by publish_doc and comes first: the dangling name is SECOND
+# so a cell reading only Args[0] cannot pass this fixture (measured -- it did).
 # Bindings for the permitted twin (R4.3, issue 64).
 #
 # THIS IS THE FILE arm 3 EXISTS FOR. `requires` names a statute RULE, and this
@@ -36,7 +38,7 @@ response = { status = 201 }
 name = "doc.count"
 source = "direct"
 of = "doc.published"
-args = ["nonesuch"]
+args = ["doc", "nonesuch"]
 component = "doc_store"
 
 [claim."doc.published"]

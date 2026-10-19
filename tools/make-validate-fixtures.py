@@ -191,10 +191,14 @@ contexts = ["browser", "api"]
 
     d = fresh("19/requires-unknown-rule")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
-    s = s.replace('requires = ["may_publish"]', 'requires = ["may_publish_absent"]', 1)
+    s = s.replace('requires = ["may_publish"]', 'requires = ["may_publish", "may_publish_absent"]', 1)
     open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- publish_doc requires a rule\n"
                        "# name rules.json does not declare. rook found this one against examples/toy\n"
-                       "# (coop r5/22) and every one of the eighteen arms passed it.\n" + s)
+                       "# (coop r5/22) and every one of the eighteen arms passed it.\n"
+                       "#\n"
+                       "# THE DANGLING NAME IS SECOND, after a declared one, and that is the fixture's\n"
+                       "# REACH: with it first, a cell that read only `Requires[0]` passed this fixture\n"
+                       "# -- measured. A list-shaped reference needs its defect past element one.\n" + s)
 
     d = fresh("19/weight-unknown-action")
     p = os.path.join(d, "platform.toml"); s = open(p).read()
@@ -237,15 +241,19 @@ count = 1
     d = fresh("19/observe-arg-unknown-handle")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
     s = s.replace('of = "doc.published"\ncomponent = "doc_store"',
-                  'of = "doc.published"\nargs = ["nonesuch"]\ncomponent = "doc_store"', 1)
+                  'of = "doc.published"\nargs = ["doc", "nonesuch"]\ncomponent = "doc_store"', 1)
     open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- the observation takes an arg\n"
-                       "# naming a handle no action creates, so the engine would resolve it to nothing.\n" + s)
+                       "# naming a handle no action creates, so the engine would resolve it to nothing.\n"
+                       "# `doc` IS created by publish_doc and comes first: the dangling name is SECOND\n"
+                       "# so a cell reading only Args[0] cannot pass this fixture (measured -- it did).\n" + s)
 
     d = fresh("19/flow-placeholder-unknown-handle")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
-    s = s.replace('to = "/docs/new"', 'to = "/docs/{nonesuch}"', 1)
+    s = s.replace('to = "/docs/new"', 'to = "/docs/{doc}/{nonesuch}"', 1)
     open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- a UI flow step names a\n"
-                       "# handle in braces that no action creates.\n" + s)
+                       "# handle in braces that no action creates. `{doc}` is created by publish_doc\n"
+                       "# and comes first, so the dangling name is the SECOND placeholder in the same\n"
+                       "# field -- a cell reading only the first survived this fixture before.\n" + s)
 
     d = fresh("19/claim-table-unemitted-type")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
@@ -256,10 +264,22 @@ count = 1
 
     d = fresh("19/observation-not-in-describe")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
-    s = s.replace('name = "doc.count"', 'name = "doc.count.absent"', 1)
-    open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- the bindings declare an\n"
-                       "# observation the adapter's surface.json does not. The SURFACE is left alone,\n"
-                       "# as for 9a-9c: the arm is about the project's claim, not the adapter.\n" + s)
+    s = s.replace('''[[observation]]
+name = "doc.count"''', '''[[observation]]
+name = "doc.count"''', 1)
+    open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- the bindings declare a\n"
+                       "# SECOND observation the adapter's surface.json does not. The SURFACE is left\n"
+                       "# alone, as for 9a-9c: the arm is about the project's claim, not the adapter.\n"
+                       "#\n"
+                       "# THE DANGLING ONE IS SECOND and `doc.count` stays declared, because with the\n"
+                       "# only observation renamed a cell reading just Observations[0] passed this\n"
+                       "# fixture -- measured. The added observation names no component and no args,\n"
+                       "# so it reaches no other arm.\n" + s + '''
+[[observation]]
+name = "doc.count.absent"
+source = "api"
+of = "doc.published"
+''')
 
     # THE MISMATCH IS DERIVED FROM THE ENGINE'S OWN VERSION, not typed. This
     # wrote `contract = "2"` as "a version nobody declares", and the 2026-10-19

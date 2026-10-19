@@ -1,5 +1,7 @@
 # FIXTURE for arm 19: the twin with one change -- a UI flow step names a
-# handle in braces that no action creates.
+# handle in braces that no action creates. `{doc}` is created by publish_doc
+# and comes first, so the dangling name is the SECOND placeholder in the same
+# field -- a cell reading only the first survived this fixture before.
 # Bindings for the permitted twin (R4.3, issue 64).
 #
 # THIS IS THE FILE arm 3 EXISTS FOR. `requires` names a statute RULE, and this
@@ -71,7 +73,7 @@ touches = ["doc_store"]
 
   [[action.flow]]
   step = "navigate"
-  to = "/docs/{nonesuch}"
+  to = "/docs/{doc}/{nonesuch}"
 
   [[action.flow]]
   step = "fill"

@@ -1,6 +1,11 @@
-# FIXTURE for arm 19: the twin with one change -- the bindings declare an
-# observation the adapter's surface.json does not. The SURFACE is left alone,
-# as for 9a-9c: the arm is about the project's claim, not the adapter.
+# FIXTURE for arm 19: the twin with one change -- the bindings declare a
+# SECOND observation the adapter's surface.json does not. The SURFACE is left
+# alone, as for 9a-9c: the arm is about the project's claim, not the adapter.
+#
+# THE DANGLING ONE IS SECOND and `doc.count` stays declared, because with the
+# only observation renamed a cell reading just Observations[0] passed this
+# fixture -- measured. The added observation names no component and no args,
+# so it reaches no other arm.
 # Bindings for the permitted twin (R4.3, issue 64).
 #
 # THIS IS THE FILE arm 3 EXISTS FOR. `requires` names a statute RULE, and this
@@ -34,7 +39,7 @@ response = { status = 201 }
 # what platform.toml's [[rollback]].covers has to cover: fable's D11 drill
 # removes the provider and expects this name back.
 [[observation]]
-name = "doc.count.absent"
+name = "doc.count"
 source = "direct"
 of = "doc.published"
 component = "doc_store"
@@ -86,3 +91,8 @@ touches = ["doc_store"]
   [[action.flow]]
   step = "wait"
   until = "doc-published"
+
+[[observation]]
+name = "doc.count.absent"
+source = "api"
+of = "doc.published"

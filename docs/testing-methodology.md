@@ -886,3 +886,31 @@ rules.json declares no rule`. The status was right, because could-not-run
 outranks refused, so a test reading only the exit code would have passed over
 it. A refusal naming a declaration nobody read is wrong whatever the status
 above it says.
+
+## A list-shaped reference needs its defect past element one
+
+Four of arm 19's eight cells walk a list — an action's `requires`, an
+observation's `args`, a flow step's `{handle}` placeholders, and the bindings'
+observations — and each fixture broke the *only* entry there was. Replacing each
+loop with one that reads `x[0]` alone then passed every fixture built for it:
+the cheapest wrong implementation of those four cells was invisible to the
+battery written to hold them. Each fixture now carries a declared name first and
+the dangling one after it, and all four mutants fail naming the fixture that
+stopped being refused.
+
+**Position matters more than it looks.** With the defect LAST, a cell that reads
+only the first element and a cell that stops before the last are both caught;
+with it FIRST, only a cell that skips the first is. One fixture cannot kill all
+three shortcuts, so the defect goes last and the surviving one is written down
+here rather than imagined away.
+
+**And a mutant can be killed for the wrong reason.** The first version of this
+sweep used `x[:1]`, which PANICS on an empty slice — the twin's observation
+declares no `args` at all — so three mutants came back "killed" by a crash with
+nothing to do with reading past element one. A panic-safe mutant
+(`x[:min(1, len(x))]`) reported the truth: all three had survived. Read HOW a
+mutant died, not only that it did.
+
+It is the same law as the concurrency arm's one seat, one layer down: an arm can
+only see a defect its INPUT reaches, and a list of length one reaches no
+iteration bug at all.

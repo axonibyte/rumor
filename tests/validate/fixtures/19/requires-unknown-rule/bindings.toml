@@ -1,6 +1,10 @@
 # FIXTURE for arm 19: the twin with one change -- publish_doc requires a rule
 # name rules.json does not declare. rook found this one against examples/toy
 # (coop r5/22) and every one of the eighteen arms passed it.
+#
+# THE DANGLING NAME IS SECOND, after a declared one, and that is the fixture's
+# REACH: with it first, a cell that read only `Requires[0]` passed this fixture
+# -- measured. A list-shaped reference needs its defect past element one.
 # Bindings for the permitted twin (R4.3, issue 64).
 #
 # THIS IS THE FILE arm 3 EXISTS FOR. `requires` names a statute RULE, and this
@@ -25,7 +29,7 @@
 name = "publish_doc"
 context = "api"
 emits = ["doc.published"]
-requires = ["may_publish_absent"]
+requires = ["may_publish", "may_publish_absent"]
 creates = ["doc"]
 touches = ["doc_store"]
 response = { status = 201 }
