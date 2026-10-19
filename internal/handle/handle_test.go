@@ -60,11 +60,18 @@ func TestTheShapeAcceptsEveryHandleTheExamplesUse(t *testing.T) {
 	// THE COUNT IS DECLARED AND ASSERTED BOTH WAYS. Zero refusals over an
 	// empty corpus reads exactly like zero refusals over a valid one, so a
 	// floor is not enough -- and my first floor was a GUESS of 10, which this
-	// assertion caught: the examples carry exactly 8 distinct handles across
+	// assertion caught: the examples carried exactly 8 distinct handles across
 	// the three packages. Fewer means the walk stopped seeing files; more
 	// means the corpus grew and this oracle should be re-read rather than
 	// quietly widened.
-	const wantHandles = 8
+	//
+	// 14 SINCE examples/toy (R5.2, 2026-10-19), AND IT WAS RE-READ RATHER THAN
+	// WIDENED. The toy adds exactly six: alice.event#1, alice.del#1,
+	// bob.join#1, bob.left#1, carol.join#1 and dana.join#1. The user handles in
+	// the list are not new -- transitive-count already carried them -- and
+	// every one of the six is accepted by the shape below, which is the half
+	// this oracle exists to assert.
+	const wantHandles = 14
 	if len(handles) != wantHandles {
 		t.Fatalf("found %d distinct handle(s) in the examples and this test declares %d: %v. A change in the corpus must be seen, not absorbed",
 			len(handles), wantHandles, handles)

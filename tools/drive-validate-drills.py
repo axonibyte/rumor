@@ -16,13 +16,40 @@ WHAT DRIVING THEM FOUND, which READING them did not:
     nothing, sixteen arms evaluated over a statute whose rules nothing asserts,
     and the verdict was exit 0. It is a vacuity guard now.
 
-BIN is the binary to drive; build it with `go build -o` first.
+THE BINARY IS BUILT HERE, NOT FOUND. This read a hard-coded
+/tmp/claude-1001/rumor-bin, and on 2026-10-19 the contract version went to 2:
+every fixture then declared 2 against a binary nobody had rebuilt, arm 13 fired
+on all of them, and 18 of 23 drills reported MISMATCH -- for a staleness in the
+harness rather than anything about the arms. A driver that drives whatever
+happens to be lying around is not driving this tree. $RUMOR_BIN overrides for a
+caller that has already built one; the default builds and FAILS LOUDLY if it
+cannot, because a drive that could not build is not a drive that passed.
 """
 import json, os, re, shutil, subprocess, tempfile, sys
 
 ROOT = os.getcwd()
-BIN  = "/tmp/claude-1001/rumor-bin"
 PATHDIR = tempfile.mkdtemp()
+
+
+def _binary():
+    """The rumor under test: $RUMOR_BIN, else built from this tree."""
+    override = os.environ.get("RUMOR_BIN")
+    if override:
+        if not os.path.isfile(override):
+            raise SystemExit("drive-validate-drills: $RUMOR_BIN=%s is not a file" % override)
+        return override
+    out = os.path.join(PATHDIR, "rumor-under-test")
+    r = subprocess.run(["go", "build", "-o", out, "./cmd/rumor"], cwd=ROOT,
+                       capture_output=True, text=True,
+                       env=dict(os.environ, GOTOOLCHAIN="local"))
+    if r.returncode != 0:
+        raise SystemExit("drive-validate-drills: cannot build ./cmd/rumor, so nothing was "
+                         "driven:\n" + (r.stderr or r.stdout))
+    return out
+
+
+BIN = _binary()
+# The same binary under the name the projects' [adapter].command spawns.
 shutil.copy(BIN, os.path.join(PATHDIR, "rumor"))
 ENVP = dict(os.environ, PATH=PATHDIR + os.pathsep + os.environ["PATH"], GOTOOLCHAIN="local")
 
@@ -116,3 +143,8 @@ for d, what, rc, arms, cnr, v in rows:
     print("%-5s %-*s %4d %-9s %4d %s" % (d, w, what, rc, arms, cnr, v))
 bad = [r for r in rows if r[5] != "OK"]
 print("\n%d drill case(s), %d as written, %d MISMATCH" % (len(rows), len(rows)-len(bad), len(bad)))
+# THE STATUS SAYS WHAT THE TEXT SAYS. This script printed MISMATCH and exited 0
+# until 2026-10-19, so every caller that read its exit code -- including my own
+# battery -- saw green over 18 failing drills. A driver whose verdict is only in
+# its prose is one a CI step cannot gate on.
+sys.exit(1 if bad else 0)

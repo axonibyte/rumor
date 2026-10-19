@@ -45,11 +45,12 @@ func TestEveryExampleCarriesBindingsThatAgreeWithItsCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("globbing: %v", err)
 	}
-	// R1 SHIPPED THREE PACKAGES, R4.2 OWES ONE FILE EACH, AND R4.3 ADDED THE TWIN. The literal is the
-	// claim: a fourth package without bindings, or a bindings file for a package
-	// that no longer exists, fails here rather than passing quietly.
-	if len(pkgs) != 4 {
-		t.Fatalf("%d bindings file(s) under examples/, want 4: %v", len(pkgs), pkgs)
+	// R1 SHIPPED THREE PACKAGES, R4.2 OWES ONE FILE EACH, R4.3 ADDED THE TWIN AND
+	// R5.2 THE TOY. The literal is the claim: a package without bindings, or a
+	// bindings file for a package that no longer exists, fails here rather than
+	// passing quietly.
+	if len(pkgs) != 5 {
+		t.Fatalf("%d bindings file(s) under examples/, want 5: %v", len(pkgs), pkgs)
 	}
 
 	for _, path := range pkgs {
@@ -69,7 +70,17 @@ func TestEveryExampleCarriesBindingsThatAgreeWithItsCases(t *testing.T) {
 
 		// what the CASES say
 		caseTypes, caseRoles := map[string]bool{}, map[string]bool{}
-		var query, source, of string
+		// THE CASES' OBSERVATIONS AS A SET. This held one (query, source, of)
+		// and refused a package whose cases observed differently, saying so in
+		// its own message: "this test assumes one observation per package and
+		// that is no longer true". examples/toy (R5.2) made it untrue -- it
+		// observes a count through `api` AND the store through `direct`, the
+		// second oracle being the whole point of a `direct` observation and the
+		// only thing validate's rollback-coverage arm has to compare. So the
+		// assertion is now a set equality, which is what it always meant: every
+		// observation the cases carry is declared, and every declared
+		// observation is carried.
+		caseObs := map[[3]string]bool{}
 		cases, err := filepath.Glob(filepath.Join(dir, "cases", "*.json"))
 		if err != nil || len(cases) == 0 {
 			t.Errorf("%s: no cases to derive from (%v)", name, err)
@@ -85,14 +96,7 @@ func TestEveryExampleCarriesBindingsThatAgreeWithItsCases(t *testing.T) {
 				t.Fatalf("%s: %v", c, err)
 			}
 			o := cf.Input.Observation
-			if query == "" {
-				query, source, of = o.Query, o.Source, o.Of
-			}
-			if o.Query != query || o.Source != source || o.Of != of {
-				t.Errorf("%s: %s observes (%s, %s, %s) where another case observes (%s, %s, %s); "+
-					"this test assumes one observation per package and that is no longer true",
-					name, filepath.Base(c), o.Query, o.Source, o.Of, query, source, of)
-			}
+			caseObs[[3]string{o.Query, o.Source, o.Of}] = true
 			if o.Role != "" {
 				caseRoles[o.Role] = true
 			}
@@ -111,17 +115,31 @@ func TestEveryExampleCarriesBindingsThatAgreeWithItsCases(t *testing.T) {
 			}
 		}
 
-		// THE OBSERVATION, all three fields.
-		if len(b.Observations) != 1 {
-			t.Errorf("%s: %d observation(s) declared, and the cases carry one", name, len(b.Observations))
-		} else {
-			o := b.Observations[0]
-			if o.Name != query || string(o.Source) != source || o.Of != of {
-				t.Errorf("%s: bindings observe (%s, %s, %s), cases observe (%s, %s, %s)",
-					name, o.Name, o.Source, o.Of, query, source, of)
-			}
+		// THE OBSERVATIONS, all three fields, BOTH DIRECTIONS. A declared
+		// observation no case carries is a binding for another package; an
+		// observation the cases carry and the bindings do not declare is a
+		// ledger the bindings cannot produce.
+		declaredObs := map[[3]string]bool{}
+		for _, o := range b.Observations {
+			key := [3]string{o.Name, string(o.Source), o.Of}
+			declaredObs[key] = true
 			if o.Source != wire.SourceAPI && o.Source != wire.SourceUI && o.Source != wire.SourceDirect {
 				t.Errorf("%s: source %q is not one of the vocabulary's three", name, o.Source)
+			}
+		}
+		if len(b.Observations) == 0 {
+			t.Errorf("%s: no observation declaredObs, and the cases carry %d", name, len(caseObs))
+		}
+		for key := range caseObs {
+			if !declaredObs[key] {
+				t.Errorf("%s: the cases observe (%s, %s, %s) and the bindings declare no such observation",
+					name, key[0], key[1], key[2])
+			}
+		}
+		for key := range declaredObs {
+			if !caseObs[key] {
+				t.Errorf("%s: the bindings declare (%s, %s, %s) and no case carries it",
+					name, key[0], key[1], key[2])
 			}
 		}
 
@@ -214,10 +232,18 @@ func TestOnlyTheTwinDeclaresAPrecondition(t *testing.T) {
 		}
 	}
 	sort.Strings(withRequires)
-	if strings.Join(withRequires, ",") != "twin" {
-		t.Errorf("packages declaring a precondition: %v, want exactly [twin]. An R1 package is a "+
+	// THE SET GREW BY ONE AND THE RULE DID NOT. examples/toy (R5.2) is a real
+	// application rather than a ledger fixture, and validate's arm 3 refuses
+	// ANY action with no precondition -- so every one of its six actions names
+	// a rule, and the package could not exist otherwise. What this assertion is
+	// about is unchanged and is the other half: an R1 package has no
+	// precondition rule for a `requires` to point at, so a `requires` there
+	// would still be an R1 fixture pretending to be the twin.
+	if got := strings.Join(withRequires, ","); got != "toy,twin" {
+		t.Errorf("packages declaring a precondition: %v, want exactly [toy twin]. An R1 package is a "+
 			"LEDGER fixture whose statute has no precondition rule for a `requires` to point at "+
-			"(fable, coop r4/45); the twin is the one package that must have one, or arm 3 has no "+
-			"case material (fable, coop r4/63)", withRequires)
+			"(fable, coop r4/45); the twin is the one FIXTURE package that must have one, or arm 3 "+
+			"has no case material (fable, coop r4/63); and examples/toy is an application, whose "+
+			"every action must declare one", withRequires)
 	}
 }

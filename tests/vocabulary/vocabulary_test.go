@@ -64,7 +64,7 @@ const root = "../.."
 // 14 -> 15 in R3.2: internal/attaint quotes the `planted` entry's SECOND use,
 // the strip, which is the clause the new arm implements. Same shape as the
 // 13 -> 14 move: the oracle reported 0 absent and refused on the count alone.
-const declaredQuotes = 15
+const declaredQuotes = 26
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would

@@ -1,0 +1,10 @@
+{
+ "bound": 5,
+ "known_in_prefix": [
+  "alice.event#1",
+  "dana.join#1"
+ ],
+ "observer": "carol",
+ "own_claims_need_no_tell": [],
+ "seal": 5
+}

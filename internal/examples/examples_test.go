@@ -16,8 +16,8 @@ const realTree = "../../examples"
 // disagreements reads identically over zero cases and over twenty-two, so the
 // count of what was EXAMINED is asserted first.
 const (
-	wantPackages = 4
-	wantCases    = 22
+	wantPackages = 5
+	wantCases    = 29
 )
 
 func TestRunOverTheCommittedTree(t *testing.T) {

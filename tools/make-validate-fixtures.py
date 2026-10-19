@@ -17,6 +17,17 @@ SRC = "examples/twin"
 ROOT = "tests/validate/fixtures"
 
 
+def contract_version():
+    """internal/wire's ContractVersion, read rather than remembered."""
+    # The repo root, which is this script's cwd: ROOT is relative to it, and
+    # walking up from ROOT was off by one level on the first cut.
+    src = open(os.path.join("internal", "wire", "wire.go")).read()
+    m = re.search(r'const ContractVersion = "([^"]+)"', src)
+    if not m:
+        raise SystemExit("internal/wire/wire.go does not declare ContractVersion")
+    return m.group(1)
+
+
 def fresh(arm):
     d = os.path.join(ROOT, arm)
     shutil.rmtree(d, ignore_errors=True)
@@ -165,11 +176,21 @@ contexts = ["browser", "api"]
         open(p, "w").write("# FIXTURE for arm %s: the twin with one change -- [uses] asks for a\n"
                            "# %s the adapter's describe does not offer.\n" % (arm, key.rstrip("s")) + s)
 
+    # THE MISMATCH IS DERIVED FROM THE ENGINE'S OWN VERSION, not typed. This
+    # wrote `contract = "2"` as "a version nobody declares", and the 2026-10-19
+    # bump to contract 2 turned the fixture into an AGREEMENT -- arm 13 then
+    # passed on the fixture built to trip it, which is a fixture going stale
+    # rather than an arm breaking. A mismatch is "not what the engine says", so
+    # it is spelled that way and survives every later bump.
     d = fresh("13-contract-mismatch")
     p = os.path.join(d, "platform.toml"); s = open(p).read()
-    s = s.replace('contract = "1"', 'contract = "2"', 1)
+    engine = contract_version()
+    before = 'contract = "%s"' % engine
+    assert s.count(before) == 1, "the twin's platform.toml does not state the engine's version"
+    s = s.replace(before, 'contract = "%s-not-the-engines"' % engine, 1)
     open(p, "w").write("# FIXTURE for arm 13: the twin with one change -- platform.toml states a\n"
-                       "# contract version the engine and the adapter do not.\n" + s)
+                       "# contract version the engine and the adapter do not. The value is derived\n"
+                       "# from internal/wire's own constant, so a bump cannot make it agree.\n" + s)
 
     return sorted(os.listdir(ROOT))
 

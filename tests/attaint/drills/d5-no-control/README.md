@@ -10,8 +10,9 @@ drill and its own clause.
 ## What is damaged
 
 `every package's planted ledger and case` — currently
-`examples/planted-lie/{ledger,cases}/with-planted.*` and
-`examples/twin/{ledger,cases}/planted-publish.*`
+`examples/planted-lie/{ledger,cases}/with-planted.*`,
+`examples/twin/{ledger,cases}/planted-publish.*` and
+`examples/toy/{ledger,cases}/planted-join.*`
 
 In each, the tag is removed from the ledger AND the case stops declaring itself
 a corroboration control, so no case anywhere in the corpus expects
@@ -70,3 +71,17 @@ Or against a tree by hand, after laying the overlay over a copy of `examples/`:
 ```
 rumor attaint --examples <that tree>
 ```
+
+## Widened again in R5.2, for the reason it was widened in R4.3
+
+`examples/toy` earned a control of its own — `planted-join`, where a join the
+engine planted makes the observer believe two where the store holds one — so
+this drill had to strip it too. Without that it produced ZERO refusals: every
+other package's control was gone and the toy's still stood, so no clause was
+reached and the drill passed while testing nothing. That is the same failure
+R4.3 fixed for the twin, and it is the reason this file names the packages
+rather than saying "the planted ones": a drill whose scope lives only in a
+glob cannot tell you it has stopped covering something.
+
+The overlay is generated from the package's own source alongside the cases, so
+the stripped copy cannot drift from what it strips.

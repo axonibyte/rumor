@@ -11,7 +11,7 @@
 # arm only pairs it with the component the bindings name on a `direct`
 # observation. Removing this table is fable's D11 drill.
 
-contract = "1"
+contract = "2"
 
 [adapter]
 # THE SURFACE IS NAMED HERE, as a real project configures its own adapter: the

@@ -131,6 +131,7 @@ a bare id could not say which was which.
 | `query` | string | the named observation. When `source` is `direct` its verb shape is an **epic Open item**; the decoder checks that `query` is present and leaves its shape alone until R8 fixes it |
 | `source` | string | one of `api`, `ui`, `direct` (`docs/vocabulary.md`, Observation sources) |
 | `token` | string | present **exactly when** `source` is not `direct`: `api` and `ui` are an actor's observations through its session, and `direct` is the engine's, never an actor's (R9) |
+| `args` | object | the observation's **declared arguments**, present **exactly when** the observation declares any in `bindings.toml`. Values are the system's **own ids, never run-local handles**: the engine owns the handle table and resolves a handle before the message is written, exactly as it does for an execute's `args`. The decoder cannot check the "exactly when" half -- whether an observation declares arguments is in the project's bindings, and the decoder reads one message without them -- so it accepts `args` as optional and `rumor validate`, which holds both halves, pairs the declaration against the request |
 
 **Response, beyond the envelope:**
 
@@ -200,7 +201,7 @@ what it saw, or that it could not act.
 
 Three places state the contract version: the engine's own constant, the
 adapter's `contract` field, and `contract` in `platform.toml`. **All three must
-be equal, by exact string comparison.** v1's value is `"1"`, there is no
+be equal, by exact string comparison.** v1's value is `"2"`, there is no
 compatibility window, and a mismatch is refused naming every value seen and
 where each came from -- a refusal that names one side leaves the reader to
 guess which of the other two it disagreed with.
@@ -366,7 +367,7 @@ key is an error naming it. So the parser's key set **is** the schema, and a
 later phase adding a key adds it here with a Revisions entry.
 
 ```toml
-contract = "1"                      # matched against the adapter's and the engine's
+contract = "2"                      # matched against the adapter's and the engine's
 seeds_file = "seeds.lock"           # default; R5 promotes a seed into it
 
 [adapter]
@@ -488,4 +489,5 @@ refused even now, which is R4.2's rule for the same situation in the bindings:
 
 | version | date | run | change |
 |---|---|---|---|
+| v2 | 2026-10-19 | R5.2 | `observe` gains `args`: an object of the observation's declared arguments, present exactly when the observation declares any, carrying the system's own ids and never handles -- the same row an execute has carried since v1, for the same reason. `query` is the observation's NAME alone. `bindings.toml`'s `[[observation]]` gains `args`, the declared argument names, so the engine composes a request from the bindings and the handle table and nothing else. WHY IT IS A VERSION AND NOT AN ADDITION: before this an observation of one entity had nowhere to say which, so a subject would have been folded into `query` -- a second way of carrying an id, in a shape the decoder cannot type and with a separator that becomes contract by accident. The toy's adapter did exactly that for one checkpoint, which is how the gap was found (ibis, coop r5.toy/7; ruled by fable at /8). `direct` keeps its open verb shape for R8. The three-way version check now compares against `"2"`, and arm 13 does its job on an adapter still declaring `"1"` |
 | v1 | 2026-10-17 | R4.1 | first definitions. The wire protocol: JSON-lines over stdio, one outstanding request per process, `kind`/`contract`/`id` on every message, strict decode refused by name as could-not-run, the four request/response pairs, the error envelope's six kinds with every envelope could-not-run, `describe`'s declared surface including `capabilities`, the three-way version check by exact string comparison with `"1"` as v1's value, and the five things an adapter never does. No run-local handle crosses the wire in either direction, and `observe` answers `value` alone -- neither a position nor a source. `platform.toml`: `contract`, `seeds_file`, `[adapter]`, `[[venire]]`, `[stages.<name>]`, `[weights.default]` with sparse per-stage and per-profile overrides resolved profile-then-stage-then-default, and `[profiles.<name>]`; `[[rollback]]` and `[thresholds]` reserved for R13 and R15, accepted when absent and refused when malformed, with faults, volume targets and upgrades declared by `describe`'s `capabilities` rather than by this file (fable breakout-r4/3). The bindings schema arrived with R4.2 in the same run: one `bindings.toml` per package, with actions (name, context, emits, requires as statute references, creates, response), UI flows whose `wait` step takes a condition and never a duration, observations (name, source, `of`, and `component` for `direct`), what each action `touches` for the rollback arm, per-type claim timing with a bound for `eventual`, roles and the session contexts they may hold, and `[clock]`, `[quiesce]`, `[deadline]`, `[seeding]` and `[uses]` reserved for R7, R6, R7, R20 and R19/R20/R21. An observation declares no position: that arm is static over the CASES' observations, which carry one (ibis, coop r4/20) |

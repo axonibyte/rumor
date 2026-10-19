@@ -37,7 +37,10 @@ import (
 // A STRING, NOT A NUMBER, so that a later form compares exactly without numeric
 // coercion deciding whether 1 and 1.0 are the same version. v1's value is "1"
 // and there is no compatibility window: see CheckVersion.
-const ContractVersion = "1"
+// 2 since 2026-10-19: `observe` gained `args`, so an observation can name its
+// subject in a typed field instead of folding it into the query string (fable,
+// coop r5.toy/8). docs/contract.md's Revisions carries the entry.
+const ContractVersion = "2"
 
 // Kind is a message's kind, which the decoder reads off the message rather than
 // inferring from what was last sent.
@@ -123,6 +126,20 @@ type ObserveRequest struct {
 	Query  string `json:"query"`
 	Source Source `json:"source"`
 	Token  string `json:"token,omitempty"`
+
+	// Args carries the observation's declared arguments, the same row as an
+	// execute's: the system's own ids, never run-local handles, because the
+	// engine owns the handle table and resolves a handle before the message is
+	// written (fable, coop r5.toy/8).
+	//
+	// THE CONTRACT SAYS "PRESENT EXACTLY WHEN THE OBSERVATION DECLARES ANY" AND
+	// THE DECODER CANNOT CHECK THAT, which is why it is optional here rather
+	// than required. Whether an observation declares arguments is in the
+	// project's bindings, and this decoder reads ONE message without the
+	// bindings and without the adapter's describe -- the same boundary that
+	// leaves an execute's token-against-context to the engine. `rumor
+	// validate` has both halves and is where the pairing belongs.
+	Args map[string]any `json:"args,omitempty"`
 }
 
 // SessionRequest acquires a session. Actor enters the protocol here and only
@@ -268,7 +285,7 @@ var requests = map[Kind]shape{
 	},
 	KindObserve: {
 		required: []string{"kind", "contract", "id", "query", "source"},
-		optional: []string{"token"},
+		optional: []string{"token", "args"},
 	},
 	KindSession: {required: []string{"kind", "contract", "id", "actor", "context"}},
 }

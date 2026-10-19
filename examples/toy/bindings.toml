@@ -1,0 +1,157 @@
+# Bindings for the toy system under test (R5.2, issue 73).
+#
+# THE SURFACE HERE AND cmd/toy-adapter's `describe` CONVICT EACH OTHER, which is
+# validate's arms 1 and 2: an action or observation declared here and not served
+# is refused, and so is one served and not declared. Both lists are written out
+# in full in both places on purpose -- a shared constant would make the two
+# agree by construction and the arms vacuous.
+#
+# DERIVED FROM THIS PACKAGE'S OWN CASES, in both directions, which is the rule
+# issue 63 settled: every claim type below is carried by a case in cases/, and
+# every role below is a role some case observes as. tests/contract's agreement
+# test refuses either half.
+
+[[action]]
+# `may_create_user` is one user per actor, which is cmd/toy's own rule: it
+# refuses a name already taken. The claim type is carried by honest-count, whose
+# observer holds his own `user.created` -- which is what makes the precondition
+# FALSE somewhere rather than a rule that is always true.
+name = "create_user"
+context = "none"
+emits = ["user.created"]
+requires = ["may_create_user"]
+creates = ["user"]
+touches = ["store"]
+response = { status = 201 }
+
+[[action]]
+name = "create_event"
+context = "api"
+emits = ["event.created"]
+requires = ["may_create_event"]
+creates = ["event"]
+touches = ["store"]
+response = { status = 201 }
+
+[[action]]
+# THE PRECONDITION, and the only `requires` in this package: `may_join` is the
+# ledger-expressible half of what cmd/toy enforces -- the actor knows of the
+# event and has not already joined. The capacity half is NOT here, because
+# capacity is not a ledger fact (see statute.rego) and a `requires` naming a
+# rule the ledger cannot support would be a precondition in name only.
+name = "join_event"
+context = "api"
+emits = ["event.joined"]
+requires = ["may_join"]
+touches = ["store"]
+response = { status = 200 }
+
+[[action]]
+name = "leave_event"
+context = "api"
+emits = ["event.left"]
+requires = ["may_leave"]
+touches = ["store"]
+response = { status = 200 }
+
+[[action]]
+name = "delete_event"
+context = "api"
+emits = ["event.deleted"]
+requires = ["may_delete"]
+touches = ["store"]
+response = { status = 200 }
+
+# A BROWSER-STAGE ACTION WITH ITS FLOW, so arms 4 and 5 EVALUATE rather than
+# skipping: both are vacuous unless stages.browser.enabled is true, and arm 4
+# reads the flow. The page it drives is cmd/toy's /ui/events/<id>, which is
+# plain HTML with no script -- R9 drives it with a real browser.
+#
+# THE CONTEXT IS LITERALLY "browser" because internal/validate's isBrowser tests
+# for that string; "ui" would make both arms skip while looking correct.
+[[action]]
+name = "join_event_ui"
+context = "browser"
+emits = ["event.joined"]
+requires = ["may_join"]
+touches = ["store"]
+
+  [[action.flow]]
+  step = "navigate"
+  to = "/ui/events/{event}"
+
+  [[action.flow]]
+  step = "click"
+  target = "join"
+
+  [[action.flow]]
+  step = "wait"
+  until = "count-changed"
+
+# NO `list_events` OBSERVATION, AND THE REASON IS THE AGREEMENT TEST. The toy
+# serves GET /events and the API visibility leak lives in what a caller is shown
+# -- but an observation of a LIST is a value this statute cannot judge: v1's
+# findings are value agreement, and comparing a list of events to an attendance
+# count is a second kind of judgement. So the leak is planted where the cases
+# observe, in the count, and the list stays an HTTP route that no observation
+# declares until R9 or R18 needs one. tests/contract refuses a declared
+# observation no case carries, which is what would otherwise hide this.
+
+[[observation]]
+# `args` IS CONTRACT 2's ROW (docs/contract.md Revisions, 2026-10-19): a count is
+# of ONE event, and before this an observation had nowhere to say which. The
+# engine composes the request from these names and the handle table, resolving
+# each handle to the toy's own id; `query` is the observation's name alone.
+name = "event_count"
+source = "api"
+of = "event.joined"
+args = ["event"]
+
+# source = "direct" is what makes `component` required, and the component is
+# what platform.toml's [[rollback]].covers has to cover -- validate's arm 6.
+# This is the SECOND ORACLE behind the API's count: cmd/toy computes it from the
+# attendee list where the API reports a denormalized counter, and an oracle that
+# read the same field could not disagree with it.
+[[observation]]
+name = "store_event_count"
+source = "direct"
+of = "event.joined"
+args = ["event"]
+component = "store"
+
+[claim."user.created"]
+timing = "immediate"
+
+[claim."event.created"]
+timing = "immediate"
+
+[claim."event.joined"]
+timing = "immediate"
+
+[claim."event.left"]
+timing = "immediate"
+
+[claim."event.deleted"]
+timing = "immediate"
+
+# THE ROLES, each carried by a case: member by honest-count, guest by
+# untold-join and visibility-leak, admin by the other three.
+#
+# ALL THREE HOLD `api` AND NONE HOLDS `browser`, which is arm 5's doing and is
+# worth saying rather than leaving as an omission: that arm refuses a role
+# holding a browser context that can ALSO reach non-browser actions, and every
+# role here observes through the API in its own case. A browser-only role is
+# what R9 adds when the stage actually runs; declaring one now would either trip
+# arm 5 or name a role no case carries, and the agreement test refuses the
+# second.
+[[role]]
+name = "admin"
+contexts = ["api"]
+
+[[role]]
+name = "member"
+contexts = ["api"]
+
+[[role]]
+name = "guest"
+contexts = ["api"]

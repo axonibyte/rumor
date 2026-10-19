@@ -1,0 +1,54 @@
+{
+  "why": "carol was told the event exists and nothing else; dana joined it. carol believes nobody is attending and the API says one, and the gap is exactly the join she was never told of -- `explained`, not a defect. She may join: she knows of it and has not.",
+  "expect": {
+    "believed": 0,
+    "role_sees_subject": true,
+    "may_join": true,
+    "finding": "explained",
+    "rests_on_planted": false,
+    "may_leave": false,
+    "may_create_user": true,
+    "may_create_event": true,
+    "may_delete": false
+  },
+  "input": {
+    "observation": {
+      "actor": "carol",
+      "of": "event.joined",
+      "query": "event_count",
+      "source": "api",
+      "value": 1,
+      "role": "guest",
+      "position": 4
+    },
+    "known": [
+      "alice.event#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 1,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest"
+        ]
+      },
+      {
+        "ref": "dana.join#1",
+        "actor": "dana",
+        "type": "event.joined",
+        "position": 4,
+        "handles": [
+          "dana.join#1",
+          "alice.event#1"
+        ]
+      }
+    ]
+  }
+}

@@ -189,20 +189,26 @@ func TestOmitIsD7EndToEnd(t *testing.T) {
 // TestContractIsD6: the adapter claims another version, every answer carries it,
 // and the engine's own check names all three values.
 func TestContractIsD6(t *testing.T) {
+	// THE BUMPED VERSION IS DERIVED, NOT TYPED. This read "2", which stopped
+	// being a bump the day the engine reached 2 (2026-10-19) -- the test then
+	// failed saying the check had accepted a bumped adapter, when what it had
+	// accepted was agreement. A bump is "not what the engine says", so it is
+	// spelled that way.
+	bumped := wire.ContractVersion + "-bumped"
 	cfg := dflt()
-	cfg.Contract = "2"
+	cfg.Contract = bumped
 	msg, err := wire.DecodeResponse(drive(t, cfg, request(wire.KindDescribe, nil)))
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got := msg.Env().Contract; got != "2" {
-		t.Fatalf("contract %q, want 2", got)
+	if got := msg.Env().Contract; got != bumped {
+		t.Fatalf("contract %q, want %q", got, bumped)
 	}
 	err = wire.CheckVersion(msg.Env().Contract, wire.ContractVersion)
 	if err == nil {
 		t.Fatal("the version check accepted a bumped adapter")
 	}
-	for _, want := range []string{`"2"`, `"` + wire.ContractVersion + `"`} {
+	for _, want := range []string{`"` + bumped + `"`, `"` + wire.ContractVersion + `"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("%q omits %s", err, want)
 		}

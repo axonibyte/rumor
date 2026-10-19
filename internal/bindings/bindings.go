@@ -125,6 +125,19 @@ type Observation struct {
 	// rollback-coverage arm compares against `describe`'s components and
 	// platform.toml's [[rollback]].covers (fable's D11).
 	Component string
+
+	// Args are the observation's declared argument NAMES, mirroring an
+	// action's: the engine composes an observe request from these and the
+	// handle table and nothing else, resolving each handle to the system's own
+	// id (contract 2; fable, coop r5.toy/8).
+	//
+	// WHY THE NAMES AND NOT THE VALUES: a count is of ONE event, and before
+	// contract 2 an observation had nowhere to say which -- so the subject
+	// would have been folded into the query string, a second way of carrying an
+	// id in a shape neither the decoder nor the engine could check, with a
+	// separator that was contract by accident. `query` is the observation's
+	// name alone again.
+	Args []string
 }
 
 // Claim is when one claim type settles.
@@ -208,6 +221,10 @@ func Parse(doc map[string]any) Report {
 			Name:   o.Str("name", true),
 			Source: wire.Source(o.Str("source", true)),
 			Of:     o.Str("of", true),
+			// OPTIONAL, like an action's `emits`: an observation of the whole
+			// system declares none, and one of a particular entity declares the
+			// arguments that name it.
+			Args: o.Strings("args", false),
 		}
 		switch obs.Source {
 		case wire.SourceAPI, wire.SourceUI:

@@ -1,0 +1,66 @@
+{
+  "why": "D5 OVERLAY: the same case with the planted tag removed from the ledger and the control no longer declared, so no case anywhere in the corpus expects `rests_on_planted: true`. The finding is still `bug` -- carol's join is now an honest claim alice was told of, and alice still believes two where the store holds one -- which is the point: the vacuity is the MISSING CONTROL, not a missing bug.",
+  "expect": {
+    "believed": 2,
+    "role_sees_subject": true,
+    "may_join": true,
+    "finding": "bug",
+    "rests_on_planted": false,
+    "may_leave": false,
+    "may_create_user": true,
+    "may_create_event": false,
+    "may_delete": true
+  },
+  "input": {
+    "observation": {
+      "actor": "alice",
+      "of": "event.joined",
+      "query": "event_count",
+      "source": "api",
+      "value": 1,
+      "role": "admin",
+      "position": 6
+    },
+    "known": [
+      "alice.event#1",
+      "bob.join#1",
+      "carol.join#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 1,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest"
+        ]
+      },
+      {
+        "ref": "bob.join#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 3,
+        "handles": [
+          "bob.join#1",
+          "alice.event#1"
+        ]
+      },
+      {
+        "ref": "carol.join#1",
+        "actor": "carol",
+        "type": "event.joined",
+        "position": 5,
+        "handles": [
+          "carol.join#1",
+          "alice.event#1"
+        ]
+      }
+    ]
+  }
+}

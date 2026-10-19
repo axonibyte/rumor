@@ -13,12 +13,19 @@
 // and not the exit status (fable, breakout-r3/0). A single boolean would make a
 // drill that trips the wrong arm look like a drill that passed.
 //
-//  1. CORROBORATION. docs/vocabulary.md `planted`, first use: "a `bug`
-//     attributable to a planted claim is the control passing. `rumor attaint`
+//  1. CORROBORATION. docs/vocabulary.md `planted`, first use: "`rumor attaint`
 //     requires every planted lie in a fixture to produce `bug`". So every case
 //     whose sealed prefix carries a planted claim must find `bug`, and that bug
 //     must REST ON the lie -- the corroboration rule must hold. A `bug` the
 //     statute reached by some other route is the engine reporting a defect, not
+//     THE QUOTE IS SHORTER THAN IT WAS, and deliberately. The 2026-10-19
+//     amendment (fable breakout-r5/1) inserted a sentence between "the control
+//     passing" and "`rumor attaint` requires", so the old quotation spanned
+//     text that is no longer contiguous -- tests/vocabulary caught it as a
+//     quote the document no longer says. What the amendment scopes is a WALK,
+//     which counts what it did not reach; attaint over FIXTURES is unchanged,
+//     a fixture's author having arranged the observation, and that is the
+//     clause this package rests on.
 //     the control passing, which is exactly what examples/planted-lie's
 //     `stripped-tag` case says in its own `why`.
 //

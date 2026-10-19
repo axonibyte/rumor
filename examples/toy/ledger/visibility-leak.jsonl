@@ -1,0 +1,5 @@
+{"kind":"claim","position":1,"actor":"alice","type":"event.created","ref":"alice.event#1","handles":["alice.event#1"],"visible_to":["admin","member"]}
+{"kind":"told","position":2,"actor":"alice","to":"carol","claim_ref":"alice.event#1"}
+{"kind":"told","position":3,"actor":"alice","to":"dana","claim_ref":"alice.event#1"}
+{"kind":"claim","position":4,"actor":"dana","type":"event.joined","ref":"dana.join#1","handles":["dana.join#1","alice.event#1"]}
+{"kind":"told","position":5,"actor":"dana","to":"carol","claim_ref":"dana.join#1"}

@@ -50,14 +50,13 @@ var (
 		{Name: "join_event", Context: "api"},
 		{Name: "leave_event", Context: "api"},
 		{Name: "delete_event", Context: "api"},
-		{Name: "join_event_ui", Context: "ui"},
+		{Name: "join_event_ui", Context: "browser"},
 	}
 	observations = []wire.Observation{
-		{Name: "list_events", Source: wire.SourceAPI},
 		{Name: "event_count", Source: wire.SourceAPI},
 		{Name: "store_event_count", Source: wire.SourceDirect},
 	}
-	contexts = []string{"api", "ui"}
+	contexts = []string{"api", "browser"}
 	// THE STORE IS STATEFUL AND THE API IS NOT, which is the distinction
 	// validate's rollback-coverage arm compares against platform.toml's
 	// [[rollback]] entries: the file is the world, so `store` is the component
@@ -343,7 +342,7 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 	// says so rather than substituting one.
 	var want wire.Source
 	switch name {
-	case "list_events", "event_count":
+	case "event_count":
 		want = wire.SourceAPI
 	case "store_event_count":
 		want = wire.SourceDirect
@@ -358,8 +357,6 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 
 	var path string
 	switch name {
-	case "list_events":
-		path = "/events"
 	case "event_count":
 		if subject == "" {
 			return fault(id, wire.FaultField, "query",

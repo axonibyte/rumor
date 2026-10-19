@@ -1,0 +1,54 @@
+{
+  "why": "THE EPIC'S R5 LEDGER ROW, api-sim. The event is visible to admin and member only, and carol observes it as a GUEST: her role may see nothing of it, so her expectation is nothing, and the one the API showed her cannot be accounted for. docs/vocabulary.md:80 -- a leak is a bug when it MOVES the observed value, which this one does; a leak that preserved the value would be R18's trespass instead. She HOLDS dana's join, having been told of it, and her expectation is still nothing: knowing a claim and being permitted to see it are different questions, and the restriction is what the m1 mutant removes.",
+  "expect": {
+    "believed": 0,
+    "role_sees_subject": false,
+    "may_join": true,
+    "finding": "bug",
+    "rests_on_planted": false,
+    "may_leave": false,
+    "may_create_user": true,
+    "may_create_event": true,
+    "may_delete": false
+  },
+  "input": {
+    "observation": {
+      "actor": "carol",
+      "of": "event.joined",
+      "query": "event_count",
+      "source": "api",
+      "value": 1,
+      "role": "guest",
+      "position": 5
+    },
+    "known": [
+      "alice.event#1",
+      "dana.join#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 1,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member"
+        ]
+      },
+      {
+        "ref": "dana.join#1",
+        "actor": "dana",
+        "type": "event.joined",
+        "position": 4,
+        "handles": [
+          "dana.join#1",
+          "alice.event#1"
+        ]
+      }
+    ]
+  }
+}

@@ -24,7 +24,7 @@ offered as the check. One line per case, then a tally:
 ```
 planted-lie      honest-only                consistent  statute.rego:55            72 trace event(s)  agrees
 transitive-count charlie-explained          explained   statute.rego:61           284 trace event(s)  agrees
-check: 22 case(s) over 4 package(s) from ledger files, 22 agreed, 0 disagreed
+check: 29 case(s) over 5 package(s) from ledger files, 29 agreed, 0 disagreed
 ```
 
 Each line carries the finding, **the definition that produced it** — module and
@@ -152,7 +152,7 @@ demonstrated what it was cut to demonstrate.
 Plus four counting guards — no package, no case, no rule, no mutant — because
 every arm above is satisfied for free by an empty walk.
 
-**Six kinds of line**, then a tally. Over `examples/` the run prints 36 of them;
+**Six kinds of line**, then a tally. Over `examples/` the run prints 50 of them;
 one of each kind is shown here, and the counts in the tally are the whole run's:
 
 ```sh run
@@ -216,7 +216,7 @@ planted-lie      m1-ignores-position        alive from the cases only (the seal 
 planted-lie      bug                        reached by stripped-tag
 planted-lie      with-planted               cleared by removing 1 planted claim(s)
 transitive-count charlie-own-lie            planted but not a control: the strip clause is not applied
-attaint: 4 package(s), 22 case(s), 16 rule(s), 23 mutant(s); 2 planted lie(s) corroborated of 5, 2 cleared by removal, 3 planted-not-control; 16 rule(s) killed, 0 unmutated; 0 refusal(s)
+attaint: 5 package(s), 29 case(s), 25 rule(s), 32 mutant(s); 3 planted lie(s) corroborated of 6, 3 cleared by removal, 3 planted-not-control; 25 rule(s) killed, 0 unmutated; 0 refusal(s)
 LINES
 
 # BOTH GUARDS BELOW ARE UNCONDITIONAL, which the first cut got wrong: the total
@@ -264,7 +264,7 @@ still produce the same `bug` (the committed `stripped-tag` case and drill `d3`),
 and with the planted claims *removed altogether* the run must be `consistent`.
 The second is what proves the bug was the lie rather than an artifact of the
 statute. The counterfactual is **derived**, not committed — a further case
-under `examples/planted-lie` would move the gated 4/22/23 — so attaint rebuilds
+under `examples/planted-lie` would move the gated 5/28/32 — so attaint rebuilds
 the sealed prefix without the planted claims (and without any tell that passed
 one, since the store refuses a tell whose claim is gone) and re-evaluates.
 

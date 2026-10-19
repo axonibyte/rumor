@@ -1,0 +1,4 @@
+# No seed has been promoted yet. The format is one non-negative integer per
+# line with an optional `#` comment (docs/contract.md); R5.3 writes the first
+# promotion here, and a comment-only file is a project that has promoted none --
+# which validate arm 10a reads as present and readable rather than missing.

@@ -411,8 +411,8 @@ func allFixtures(t *testing.T) [][2]string {
 			strings.TrimSuffix(filepath.Base(p), ".jsonl"),
 		})
 	}
-	if len(out) != 22 {
-		t.Fatalf("expected the 22 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
+	if len(out) != 29 {
+		t.Fatalf("expected the 29 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
 	}
 	return out
 }
@@ -422,7 +422,7 @@ func allFixtures(t *testing.T) [][2]string {
 // applied it; mutating that argument upward kills nothing, so the mutant is
 // equivalent and the honest thing is to state and check the premise it rests
 // on: nothing handed to the flattener sits past the seal. Checked across all
-// 22 fixtures, including the three whose files hold facts beyond it.
+// 29 fixtures, including the three whose files hold facts beyond it.
 func TestNothingHandedToTheFlattenerSitsPastTheSeal(t *testing.T) {
 	beyond := 0
 	for _, f := range allFixtures(t) {

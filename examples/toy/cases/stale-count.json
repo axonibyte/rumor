@@ -1,0 +1,66 @@
+{
+  "why": "THE EPIC'S R5 LEDGER ROW, api-sim. alice deleted the event and the count still reports its attendee. The delete is in the ledger, so the statute knows the event is gone, and no value about a deleted event agrees with the world -- which is the disagreement a denormalized counter left undecremented produces.",
+  "expect": {
+    "believed": 1,
+    "role_sees_subject": true,
+    "may_join": true,
+    "finding": "bug",
+    "rests_on_planted": false,
+    "may_leave": false,
+    "may_create_user": true,
+    "may_create_event": false,
+    "may_delete": false
+  },
+  "input": {
+    "observation": {
+      "actor": "alice",
+      "of": "event.joined",
+      "query": "event_count",
+      "source": "api",
+      "value": 1,
+      "role": "admin",
+      "position": 5
+    },
+    "known": [
+      "alice.event#1",
+      "bob.join#1",
+      "alice.del#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 1,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest"
+        ]
+      },
+      {
+        "ref": "bob.join#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 3,
+        "handles": [
+          "bob.join#1",
+          "alice.event#1"
+        ]
+      },
+      {
+        "ref": "alice.del#1",
+        "actor": "alice",
+        "type": "event.deleted",
+        "position": 5,
+        "handles": [
+          "alice.del#1",
+          "alice.event#1"
+        ]
+      }
+    ]
+  }
+}

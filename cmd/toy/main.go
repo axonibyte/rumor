@@ -347,8 +347,13 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, fmt.Sprintf("no user named %q: a session belongs to a user that exists", body.Actor))
 		return
 	}
-	if body.Context != "api" && body.Context != "ui" {
-		fail(w, http.StatusBadRequest, fmt.Sprintf("context %q is neither api nor ui", body.Context))
+	// THE CONTEXT NAMES ARE THE PROJECT'S, AND "browser" IS NOT A FREE CHOICE:
+	// internal/validate's isBrowser tests for that exact string, so a UI action
+	// declared under any other name makes validate's arms 4 and 5 skip instead
+	// of evaluating. The page is served under /ui/, which is a path and not a
+	// context -- the two are deliberately not the same word.
+	if body.Context != "api" && body.Context != "browser" {
+		fail(w, http.StatusBadRequest, fmt.Sprintf("context %q is neither api nor browser", body.Context))
 		return
 	}
 	sess := &session{Token: s.nextID("t"), UserID: found.ID, Context: body.Context}

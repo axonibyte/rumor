@@ -1,5 +1,6 @@
 # FIXTURE for arm 13: the twin with one change -- platform.toml states a
-# contract version the engine and the adapter do not.
+# contract version the engine and the adapter do not. The value is derived
+# from internal/wire's own constant, so a bump cannot make it agree.
 # The permitted twin's platform (R4.3, issue 64).
 #
 # THE FIRST platform.toml IN THE TREE. internal/platform has read this shape
@@ -13,7 +14,7 @@
 # arm only pairs it with the component the bindings name on a `direct`
 # observation. Removing this table is fable's D11 drill.
 
-contract = "2"
+contract = "2-not-the-engines"
 
 [adapter]
 # THE SURFACE IS NAMED HERE, as a real project configures its own adapter: the

@@ -402,10 +402,18 @@ func TestCheckVersionNamesEveryValueItSaw(t *testing.T) {
 	if err := CheckVersion(ContractVersion, ContractVersion); err != nil {
 		t.Fatalf("three equal versions refused: %v", err)
 	}
+	// THE MISMATCH VALUES ARE DERIVED, NOT TYPED. This table held "2" and "3"
+	// as versions nobody declared, and the 2026-10-19 bump to contract 2 turned
+	// two of its rows into AGREEMENTS -- the test then reported them as
+	// wrongly accepted, which is the test going stale rather than the code
+	// breaking. A mismatch has to be defined as "not what the engine says",
+	// so it is spelled that way and survives every later bump.
+	other := ContractVersion + "-not-this"
+	another := ContractVersion + "-nor-this"
 	for _, tc := range []struct{ adapter, platform string }{
-		{"2", ContractVersion},
-		{ContractVersion, "2"},
-		{"2", "3"},
+		{other, ContractVersion},
+		{ContractVersion, other},
+		{other, another},
 		{"", ""},
 	} {
 		err := CheckVersion(tc.adapter, tc.platform)

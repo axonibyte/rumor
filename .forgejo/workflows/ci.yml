@@ -303,6 +303,31 @@ jobs:
           grep -q 'skipped' ../validate.log \
             && { echo "an arm skipped on the twin: D9 requires every arm evaluated and none skipped"; exit 1; }
           echo "PROOF $(grep -oE '[0-9]+ of [0-9]+ arm\(s\) evaluated' ../validate.log | head -1)"
+          # AND THE TOY, WHICH IS A PROJECT WITH A REAL PROCESS BEHIND IT (R5.2,
+          # issue 73). examples/toy's [adapter].command is ["toy-adapter"], and
+          # that adapter starts cmd/toy itself, so this is the only arm that
+          # proves the pair works end to end on the runner: the twin's adapter
+          # answers from a recorded surface, the toy's answers by driving an
+          # application over HTTP.
+          #
+          # BOTH BINARIES GO ON PATH UNDER THEIR OWN NAMES, for the reason the
+          # rumor link above exists: the project names them as a real project
+          # would, and a run that found neither would report could-not-run on
+          # four arms and still account for eighteen.
+          timeout 300 "$GO" build -o "$bindir/toy" ./cmd/toy || { echo "cmd/toy did not build"; exit 1; }
+          timeout 300 "$GO" build -o "$bindir/toy-adapter" ./cmd/toy-adapter || { echo "cmd/toy-adapter did not build"; exit 1; }
+          rc=0
+          PATH="$bindir:$PATH" timeout 300 ./../rumor-bin validate examples/toy > ../validate-toy.log 2>&1 || rc=$?
+          cat ../validate-toy.log
+          test "$rc" -eq 124 && { echo "HANG: validate on the toy exceeded 300s. RUNNER finding."; exit 124; }
+          test "$rc" -eq 0 || { echo "validate exited $rc on the toy, which issue 73 requires to pass"; exit "$rc"; }
+          grep -q '18 of 18 arm(s) evaluated' ../validate-toy.log \
+            || { echo "the toy did not report 18 of 18 arms evaluated"; exit 1; }
+          grep -q '0 refusal(s)' ../validate-toy.log \
+            || { echo "the toy was refused, and issue 73 requires it to validate"; exit 1; }
+          grep -q 'skipped' ../validate-toy.log \
+            && { echo "an arm skipped on the toy: it declares a browser stage and a direct observation so that none has to"; exit 1; }
+          echo "PROOF the toy $(grep -oE '[0-9]+ of [0-9]+ arm\(s\) evaluated' ../validate-toy.log | head -1), adapter and application both spawned"
 
       - name: go.mod is ACCURATE, not merely present
         run: |

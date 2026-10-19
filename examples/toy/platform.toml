@@ -1,0 +1,44 @@
+# The toy's platform (R5.2, issue 73).
+
+contract = "2"
+
+[adapter]
+# THE ADAPTER IS A BINARY ON PATH, not a `rumor` subcommand: the toy is a system
+# under test and not part of this tool's surface. It starts cmd/toy itself when
+# TOY_ADDR is unset, which is what makes `rumor validate examples/toy` answer
+# the four live arms without an engine or a rollback provider in the picture.
+command = ["toy-adapter"]
+
+[[venire]]
+role = "admin"
+count = 1
+
+[[venire]]
+role = "member"
+count = 2
+
+[[venire]]
+role = "guest"
+count = 1
+
+[stages]
+api = { enabled = true }
+browser = { enabled = true }
+
+[weights.default]
+# JOINING IS THE COMMON ACTION and the weights say so: a walk that created as
+# many events as it joined would rarely put two actors on one event, which is
+# the shape both api-sim rows and R8's race need.
+create_user = 1
+create_event = 1
+join_event = 4
+leave_event = 1
+delete_event = 1
+join_event_ui = 1
+
+[[rollback]]
+# THE PROCESS-RESTART PROVIDER, which C3 implements and R5.3 consumes. It covers
+# `store` -- the component the bindings name on the `direct` observation, and
+# the one the whole world lives in as a single file.
+provider = "toy-process-restart"
+covers = ["store"]

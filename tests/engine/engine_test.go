@@ -55,9 +55,9 @@ const statutePackage = "data.rumor.statute"
 // identically whether every case agreed or none ran, so the sizes are asserted
 // before any verdict is reported. They match tests/statute's own declarations.
 const (
-	wantPackages = 4
-	wantCases    = 22
-	wantMutants  = 23
+	wantPackages = 5
+	wantCases    = 29
+	wantMutants  = 32
 )
 
 type observation struct {
