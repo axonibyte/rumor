@@ -219,6 +219,70 @@ func idsOf(t *testing.T, body map[string]any) map[string]bool {
 	return out
 }
 
+// THE DEFAULT visible_to, WHICH NOTHING OVERRIDES AND SO NOTHING WAS PINNING.
+// Every other arm here passes an explicit `visible_to`, which left
+// createEvent's default branch exercised by no test at all: driven at 2187e7a,
+// changing the default from {admin, member} to {admin, member, guest}, to
+// {admin} or to {} left the WHOLE cmd/toy package silent. The first of those is
+// the epic's visibility-leak row arriving by accident, on the one axis this SUT
+// exists to be wrong about -- so the default needs an arm of its own, with no
+// override set.
+//
+// AND ITS CONSEQUENCE IS PART OF THE RULE rather than a surprise: a defaulted
+// event takes no new members ever, because joinEvent agrees with listEvents
+// about visibility and a caller who has not joined holds the guest role. That
+// is what "not public" means here, as joinEvent's own comment says -- there is
+// no invitation in this domain.
+func TestAnEventWithNoVisibleToIsAdminAndMemberOnly(t *testing.T) {
+	h := start(t)
+	alice := h.actor("alice")
+	bob := h.actor("bob")
+
+	// NO visible_to KEY AT ALL, which is why this does not use h.createEvent:
+	// the helper always sends one, and the production path under test is the
+	// one where the field is absent.
+	code, body := h.do(http.MethodPost, "/events", alice, map[string]any{
+		"title": "defaulted", "capacity": 2,
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("creating an event with no visible_to: status %d (%v)", code, body)
+	}
+	id, _ := body["id"].(string)
+	if id == "" {
+		t.Fatalf("the created event carried no id: %v", body)
+	}
+	raw, ok := body["visible_to"].([]any)
+	if !ok {
+		t.Fatalf("the created event carried no visible_to: %v", body)
+	}
+	var got []string
+	for _, r := range raw {
+		s, _ := r.(string)
+		got = append(got, s)
+	}
+	// ERRORF AND NOT FATALF, so the endpoint half below runs too: an arm that
+	// stopped here would rest entirely on the echoed field, and a field echo is
+	// a string -- the thing rook's r5/10 finding was about.
+	want := []string{roleAdmin, roleMember}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("the default visible_to is %v, want %v", got, want)
+	}
+
+	// AND THE DEFAULT IS READ THE SAME WAY BY THE ENDPOINTS, which is what
+	// makes the list above more than a field echo.
+	_, lst := h.do(http.MethodGet, "/events", bob, nil)
+	if idsOf(t, lst)[id] {
+		t.Errorf("bob is a guest of the defaulted event and saw it: the default is not public")
+	}
+	if code, _ := h.do(http.MethodPost, "/events/"+id+"/join", bob, nil); code != http.StatusNotFound {
+		t.Errorf("bob joining the defaulted event: status %d, want %d", code, http.StatusNotFound)
+	}
+	_, lst = h.do(http.MethodGet, "/events", alice, nil)
+	if !idsOf(t, lst)[id] {
+		t.Errorf("alice is the admin of the defaulted event and did not see it")
+	}
+}
+
 // THE CAPACITY RULE, which the ledger's "capacity race" row is about. Sequential
 // joins at the boundary are refused by the honest version AND by the buggy one:
 // the race needs two joins in flight at once, which is R5.3's drill rather than

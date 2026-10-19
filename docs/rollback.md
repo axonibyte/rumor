@@ -68,6 +68,15 @@ server answers. The first alone is satisfied most perfectly when nothing is
 running — a dead application leaves a flawless file — so the second is what
 makes the first mean a world a shrink step can run in.
 
+**Byte-for-byte, and an absent world is dirty.** Two parts of that sentence had
+no arm until a mutation sweep asked for one: a comparison of LENGTHS passed
+every test in the package, because the only moved world any arm built had an
+extra record in it and so differed in length as a side effect; and a missing
+state file reads as an empty world, which is `ErrDirty` against any checkpoint
+that is not itself empty. Both are pinned now —
+`TestVerifyIsDirtyOnADifferenceOfTheSameLength` and
+`TestVerifyIsDirtyWhenTheWorldIsGoneAndTheCheckpointIsNot`.
+
 ## Clone
 
 Not yet written. R13's: a provider that clones a world rather than restoring

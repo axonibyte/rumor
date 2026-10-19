@@ -228,6 +228,83 @@ func TestVerifyRefusesAWorldWhoseFileIsPerfectAndWhoseServerIsDead(t *testing.T)
 	}
 }
 
+// A DIFFERENCE OF THE SAME LENGTH IS STILL A DIFFERENCE, and this arm exists
+// because the battery could not tell a byte comparison from a length one:
+// driven at 2187e7a, replacing `string(got) != string(want)` with
+// `len(got) != len(want)` left every test in this package passing. The reason
+// is that the only moved world any arm built was one with an EXTRA user, which
+// changes the length as a side effect -- so the arm that pins Verify's
+// comparison was true for a reason unrelated to what it asserts.
+//
+// THE EDIT GOES BEHIND THE APPLICATION'S BACK, deliberately, which is the one
+// place in this file that is right: `touch` moves the world the way the
+// application would because the subject there is the world. The subject here is
+// Verify's COMPARISON, and an equal-length change is not something the toy's
+// API can be asked for.
+func TestVerifyIsDirtyOnADifferenceOfTheSameLength(t *testing.T) {
+	p := openProvider(t)
+	ctx := context.Background()
+	touch(t, p, "alice")
+	cp, err := p.Checkpoint(ctx)
+	if err != nil {
+		t.Fatalf("checkpoint: %v", err)
+	}
+	if err := p.Verify(ctx, cp); err != nil {
+		t.Fatalf("verify on a clean world: %v", err)
+	}
+
+	before, err := os.ReadFile(p.StateFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(before, []byte("alice")) {
+		t.Fatalf("the world does not hold the name this arm edits: %s", before)
+	}
+	after := bytes.Replace(before, []byte("alice"), []byte("alicz"), 1)
+	if len(after) != len(before) {
+		t.Fatalf("the edit changed the length, %d to %d, which is the case the "+
+			"other arms already cover", len(before), len(after))
+	}
+	if bytes.Equal(after, before) {
+		t.Fatal("the edit changed nothing")
+	}
+	if err := os.WriteFile(p.StateFile(), after, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := p.Verify(ctx, cp); !errors.Is(err, rollback.ErrDirty) {
+		t.Fatalf("verify over a world that differs by one byte: %v, want ErrDirty", err)
+	}
+}
+
+// A WORLD THAT IS GONE IS DIRTY, not clean, and nothing was asserting it: the
+// absent-file branch reads as an empty world, and with `got = want` substituted
+// there -- driven at 2187e7a -- the whole package stayed green. The branch is
+// reachable in the one case a shrink step cares about most, a restore that
+// removed the file and a checkpoint that was not empty.
+func TestVerifyIsDirtyWhenTheWorldIsGoneAndTheCheckpointIsNot(t *testing.T) {
+	p := openProvider(t)
+	ctx := context.Background()
+	touch(t, p, "alice")
+	cp, err := p.Checkpoint(ctx)
+	if err != nil {
+		t.Fatalf("checkpoint: %v", err)
+	}
+	saved, err := os.ReadFile(p.StateFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved) == 0 {
+		t.Fatal("the checkpoint is empty, so this arm is not the case it names")
+	}
+	if err := os.Remove(p.StateFile()); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Verify(ctx, cp); !errors.Is(err, rollback.ErrDirty) {
+		t.Fatalf("verify with the world removed: %v, want ErrDirty", err)
+	}
+}
+
 // AN EMPTY WORLD IS A WORLD. A checkpoint taken before anything happened has to
 // restore to an ABSENT file, not an empty one: the toy reads an empty file as a
 // fresh start but a zero-byte file written where JSON is expected is the kind of

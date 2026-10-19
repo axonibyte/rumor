@@ -767,6 +767,50 @@ module cache, and one with no requirements at all. The third is the condition
 the arm is shaped around, and it is the one a reading of the exit code alone
 gets wrong.
 
+## A removal finds a missing arm; only a boundary mutant finds a disarmed one
+
+Two sweeps over the same battery (`cmd/toy`, `internal/rollback/toyrestart`)
+answered different questions, and the cheap one answered the easy question.
+
+**Removing a mechanism** — the planted capacity race, the planted count leak,
+the planted stale count, the admin-only check, the capacity check, both
+visibility checks, `Verify`'s server half, the empty-checkpoint branch — killed
+its named arm in all nine cases. That is worth running, and it proves only that
+every mechanism has *an* arm somewhere near it: a removal changes behavior at
+every input that reaches the code at all, so almost any arm on the path reports
+it.
+
+**Making a mechanism subtly wrong** found three holes the removals could not
+see:
+
+- `createEvent` defaults an absent `visible_to` to `{admin, member}`. Every arm
+  passed the field explicitly, so the default branch was exercised by nothing:
+  changing it to `{admin, member, guest}` left the whole package green — the
+  epic's visibility-leak row arriving by accident, on the one axis this system
+  exists to be wrong about.
+- `Verify` comparing LENGTHS instead of bytes left every test in its package
+  passing, because the only moved world any arm built had an extra user in it.
+  The arm that pins the comparison was true for a reason unrelated to what it
+  asserts.
+- `Verify` reading an absent state file as the checkpoint itself — rather than
+  as an empty world — was also invisible.
+
+**The general form, which is the same law twice.** An arm can only see a defect
+its INPUT reaches. A removal is reached by every input; a boundary is reached
+only by an input sitting on it, and a default is reached only by an input that
+does not override it. So: for every value a test may override, one arm must
+assert the default with nothing set; and for every comparison, one arm must
+differ in the way the cheap implementation would miss.
+
+**And the ordering inside an arm decides what it can report.** The default arm
+above checks the echoed field and then the two endpoints that read it. Written
+with `t.Fatalf` on the field, the arm would rest entirely on a string — the
+failure rook found one layer down, where renaming a fixture key disarmed a
+boundary arm and nothing screamed. With `t.Errorf` it reports all three, and
+the mutant that only the field catches (dropping `member` from the default,
+which no endpoint can distinguish, because a defaulted event can never gain a
+member) is visibly the one with a single witness.
+
 ## A check that proves one half can pass over a corpse
 
 R5.2's rollback provider has to answer whether the world is the checkpoint, and
