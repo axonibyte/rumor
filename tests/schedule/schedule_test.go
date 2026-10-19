@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -181,28 +181,91 @@ func TestApplicableAnswersWhatThePreconditionsPermit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Applicable: %v", err)
 	}
-	var names []string
-	for _, a := range got {
-		names = append(names, a.Name)
-	}
-	sort.Strings(names)
 
-	// every returned action's preconditions must be among the two the case
-	// records as true; nothing requiring may_join, may_leave's falsehoods or
-	// may_delete may appear.
-	permitted := map[string]bool{"may_leave": true, "may_create_event": true}
-	for _, a := range got {
+	// BOTH DIRECTIONS, rook coop r5/25. This arm used to check only that
+	// nothing IMPERMISSIBLE was offered, plus len != 0, and to LOG the set as
+	// its proof. A false NEGATIVE was therefore invisible: rook renamed
+	// `may_leave` in statute.rego and rules.json, leave_event dropped out of
+	// every walk, and this arm passed while its own PROOF line printed the
+	// shrunken set. For a walk whose job is exercising actions, an action
+	// silently removed from the draw is the whole defect, so the set is now
+	// ASSERTED -- and asserted as a SEQUENCE in declared order, which also
+	// pins the "in declared order" that Applicable's doc comment promises and
+	// nothing tested.
+	//
+	// THE ORACLE IS THE CORPUS, not a second evaluation: `want` is derived
+	// from honest-count's recorded `expect` verdicts, which ibis checked
+	// against this answer independently (coop r5/19). An evaluation of my own
+	// here would make the arm agree with Applicable by construction.
+	expect := recordedVerdicts(t, "honest-count")
+	var want []string
+	for _, a := range rep.Bindings.Actions {
+		holds := true
 		for _, r := range a.Requires {
-			if !permitted[r] {
-				t.Errorf("Applicable offered %q, which requires %q -- the case records that false",
-					a.Name, r)
+			v, ok := expect[r]
+			if !ok {
+				t.Fatalf("action %q requires %q and honest-count's `expect` records no such "+
+					"verdict: the bindings and the corpus disagree about a rule NAME, which is "+
+					"the defect rook drove at coop r5/22 and the reason this arm reads both "+
+					"documents rather than evaluating the statute twice", a.Name, r)
+			}
+			b, ok := v.(bool)
+			if !ok {
+				t.Fatalf("honest-count records %q as %T (%v); a precondition verdict is a boolean", r, v, v)
+			}
+			if !b {
+				holds = false
+				break
 			}
 		}
+		if holds {
+			want = append(want, a.Name)
+		}
 	}
-	if len(got) == 0 {
-		t.Error("Applicable offered nothing, and honest-count records two preconditions true")
+
+	// THE ARM ASSERTS ITS OWN PRECONDITION. With fewer than two permitted
+	// actions an equality check cannot see a DROP -- an all-false `expect`
+	// would leave both sides empty and this arm would pass with leave_event
+	// missing, which is exactly the defect. honest-count yields two.
+	if len(want) < 2 {
+		t.Fatalf("this arm needs at least two permitted actions to be able to see one go missing; "+
+			"honest-count's recorded verdicts yield %v, so the arm cannot reach the defect it "+
+			"exists for and would pass with it present", want)
 	}
-	t.Logf("PROOF applicable at the seal: %v", names)
+
+	gotNames := make([]string, 0, len(got))
+	for _, a := range got {
+		gotNames = append(gotNames, a.Name)
+	}
+	if !slices.Equal(gotNames, want) {
+		t.Fatalf("Applicable answered %v and honest-count's recorded verdicts permit exactly %v, "+
+			"in declared order: an action in neither list is a silent drop from every walk",
+			gotNames, want)
+	}
+	t.Logf("PROOF applicable at the seal: %v (asserted against the corpus, both directions)", gotNames)
+}
+
+// recordedVerdicts is honest-count's own `expect` block -- the committed
+// corpus's record of what the statute answers at that seal. It is read whole
+// rather than filtered to `preconditions` so that a `requires` naming a rule
+// the case does not record is a LOOKUP MISS the caller can report, instead of
+// silently becoming a false verdict.
+func recordedVerdicts(t *testing.T, name string) map[string]any {
+	t.Helper()
+	craw, err := os.ReadFile(filepath.Join(toy, "cases", name+".json"))
+	if err != nil {
+		t.Fatalf("the toy's %s case: %v", name, err)
+	}
+	var doc struct {
+		Expect map[string]any `json:"expect"`
+	}
+	if err := json.Unmarshal(craw, &doc); err != nil {
+		t.Fatalf("%s case: %v", name, err)
+	}
+	if len(doc.Expect) == 0 {
+		t.Fatalf("%s records no `expect` block, so this arm has no oracle", name)
+	}
+	return doc.Expect
 }
 
 func str(v any) string {

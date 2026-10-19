@@ -914,3 +914,39 @@ mutant died, not only that it did.
 It is the same law as the concurrency arm's one seat, one layer down: an arm can
 only see a defect its INPUT reaches, and a list of length one reaches no
 iteration bug at all.
+## A forbid-only assertion cannot see a disappearance
+
+R5.1's applicability arm asked one question of the action set it was handed:
+does every action offered have its preconditions among the verdicts the case
+records as true. rook renamed `may_leave` in `statute.rego` and `rules.json`,
+left `bindings.toml`'s `requires = ["may_leave"]` alone, and `leave_event`
+dropped out of every walk — the rule was no longer declared, its verdict came
+back absent, and absent is not applicable. The arm passed, and its own `t.Logf`
+printed the shrunken set as the proof.
+
+Nothing the assertion claimed was false; every action offered really was
+permitted. The fault is its direction. "Every element of the answer satisfies
+P" is preserved by **deletion**: it holds for the right answer, for every
+subset of it, and most comfortably for the empty one. An arm of that shape can
+catch an answer that grew and nothing else, which is the wrong half for any
+check whose subject is a set something downstream will draw from.
+
+**The non-emptiness guard is the tell, not the fix.** The arm already carried
+`if len(got) == 0`, written because the empty case was the visible one. That
+turns "passes over nothing" into "passes over anything non-empty" and reads as
+though the hole were closed. Zero is the only case it excluded, and one element
+short of the truth is the defect that matters.
+
+**The general form.** Where what a check protects is *which* elements are
+present, the assertion must be an equality against a set derived from a source
+the subject cannot influence — here `honest-count`'s own `expect` block, read
+as a document rather than evaluated a second time, because a second evaluation
+would agree with the code by construction. Compare it as a sequence, which pins
+the declared order the function promises in the same breath. And the equality
+needs its own reach: with fewer than two permitted elements it cannot see a
+drop either, so the arm asserts that count before trusting itself.
+
+Three layers were innocent alone — a static validator with no arm pairing
+`requires` against the declared rules, a walk layer that cannot tell a missing
+name from a declining rule because it is never given the rule set, and this
+arm. The hole was between them, which is the usual address.
