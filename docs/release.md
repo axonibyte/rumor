@@ -13,10 +13,26 @@ Not yet written.
 ## Versioning
 
 Semantic versioning, and before 1.0 the two parts that move are the minor and
-the patch. A **minor** bump is for a change to the CLI surface — a new or
-changed command, flag, or output contract. Everything else is a **patch**.
-`v0.1.0` is a minor because it introduced the CLI surface; the children that
-followed it are patches.
+the patch. A **minor** bump is for a **breaking** change to the CLI surface — a
+command or flag removed or renamed, or an output contract whose meaning changes
+under something already reading it. Everything else is a **patch**, and that
+includes **additions**: a new command, a new flag, a new output contract of its
+own breaks nothing that exists. `v0.1.0` is a minor because it introduced the
+CLI surface; the children that followed it are patches.
+
+> **This sentence said "a change to the CLI surface" until v0.1.21, and four
+> tags had already read it the other way.** Four documented subcommands shipped
+> as patches: `rumor check` in v0.1.11, `rumor attaint` in v0.1.13, `rumor
+> fake-adapter` in v0.1.19 and `rumor validate` in v0.1.20. Read literally, the
+> old wording made every one of them a minor, so the rule and the practice had
+> disagreed since the second child — and the gate measures neither, so nothing
+> would ever have said so. It surfaced when the author of the v0.1.20 bump read
+> the rule against the number they had been given (ibis, coop thread:r4/83) and
+> fable ruled at /85 that additions are patches until 1.0, the minor being
+> reserved for a change that breaks something already written against the
+> surface. The tags are named here rather than the ruling alone, because the
+> four of them are the evidence that the narrow reading was always the one in
+> use.
 
 `main` is **fast-forward only**, and every bump commit sets the version in the
 root `VERSION` file. Those two together mean the version on `main` can never go
