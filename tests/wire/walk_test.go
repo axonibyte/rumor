@@ -198,3 +198,58 @@ func TestADifferentSeedWalksDifferently(t *testing.T) {
 	t.Errorf("seven seeds all drew %v, so the walk does not depend on the seed and every "+
 		"reproducibility arm here is vacuous", base)
 }
+
+// AN ACTION THAT EMITS NOTHING IS RECORDED AND MINTS NOTHING, ruled at coop
+// r5/62. examples/twin's publish_doc_ui is the live case -- it declares neither
+// `emits` nor `creates`.
+//
+// THE ACTION IS ONE THE FAKE'S SURFACE RECORDS, with its `emits` stripped in
+// this project copy: `emits` is the PROJECT's declaration and the surface is
+// the ADAPTER's, so stripping it makes a recorded action that claims nothing.
+// My first version invented a new action name, and the fake faulted on an
+// action it does not record -- an arm failing for a fixture-pairing reason and
+// saying nothing about the behavior.
+//
+// IT ALSO DECLARES TWO `creates`, which mintKind refuses: ordered the other way
+// round, that refusal would reach a step that was never going to mint a handle
+// at all, which is the defect this arm exists for.
+func TestAnActionThatEmitsNothingIsRecordedAndMintsNothing(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+	p.Actions = []bindings.Action{{
+		Name: "create_event", Context: "api",
+		Requires: []string{"may_create_event"},
+		Creates:  []string{"event", "user"},
+	}}
+
+	sess, err := wire.Open(ctx, fakeSpawn(), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	rec, err := schedule.Walk(ctx, p, sess, 11, 4, 1)
+	if err != nil {
+		t.Fatalf("a step whose action emits nothing must be recorded, not refused: %v", err)
+	}
+
+	drawn := 0
+	for _, s := range rec.Steps {
+		if s.Kind != "create_event" {
+			continue
+		}
+		drawn++
+		if len(s.Handles) != 0 {
+			t.Errorf("step %d emitted nothing and minted %v", s.N, s.Handles)
+		}
+	}
+	// THE ARM ASSERTS ITS OWN REACH: with the action never drawn, "no step
+	// minted a handle" is true of a walk that did nothing.
+	if drawn == 0 {
+		t.Fatalf("the action was never drawn, so this arm never reached the behavior it is "+
+			"about; kinds were %v", rec.KindSequence())
+	}
+	if len(rec.HandleSequence()) != 0 {
+		t.Errorf("the walk minted %v where no action emits anything", rec.HandleSequence())
+	}
+}

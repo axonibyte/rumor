@@ -203,17 +203,21 @@ func honest(ctx context.Context, sess *wire.Session, l *ledger.Ledger, table *ha
 		return fmt.Errorf("executing %s: %w", a.Name, err)
 	}
 
-	kind, err := mintKind(a)
-	if err != nil {
-		return err
-	}
-	// AN ACTION THAT EMITS NOTHING MINTS NOTHING. examples/twin's
-	// publish_doc_ui declares no `emits`, so a step can legitimately append no
-	// claim at all; the step is still recorded, because it happened.
+	// AN ACTION THAT EMITS NOTHING MINTS NOTHING, and this is checked BEFORE
+	// the handle kind is asked for. fable ruled at coop r5/62 that such a step
+	// "appends no claim and mints no handle, recorded as a step" -- so the
+	// handle-kind question never arises for it, and mintKind's refusal of an
+	// action declaring two `creates` must not reach a step that was never
+	// going to mint one. My first version asked in the other order and would
+	// have refused a recorded-and-harmless step.
 	if len(a.Emits) == 0 {
 		return nil
 	}
 
+	kind, err := mintKind(a)
+	if err != nil {
+		return err
+	}
 	h := mint.next(step.Actor, kind)
 	// THE HANDLE IS BOUND ONLY WHERE THE SYSTEM GAVE AN ID FOR WHAT IT
 	// CREATED. An action with no `creates` has no entity behind its claim --
