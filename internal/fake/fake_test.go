@@ -456,3 +456,87 @@ func TestANonStringIDIsRefusedUnderASalt(t *testing.T) {
 		t.Errorf("a numeric id with NO salt must still be answered: %s", line)
 	}
 }
+
+// A REPEAT EXECUTION ANSWERS A DIFFERENT ID.
+//
+// Found by driving the walk: two actors each created an event, this adapter
+// answered "e-1" both times, and internal/handle REFUSED the second binding --
+// "id e-1 is already bound to member_1.event#1, so binding member_2.event#1 to
+// it would make two handles name one entity ... a comparison by handle would
+// then agree about different things." A server that created two things gave
+// them two ids.
+//
+// THE FIRST CALL IS UNCHANGED, which is the half that keeps every existing
+// fixture byte-identical: docs/cli.md's console blocks, the twin's live arms
+// and TestRecordedAnswers above all execute each action once.
+func TestARepeatExecutionAnswersADifferentID(t *testing.T) {
+	ids := func(cfg Config, calls int) []string {
+		t.Helper()
+		var out []string
+		// ONE PROCESS, MANY REQUESTS, because the counter is per-process state:
+		// driving each call through a fresh Run would reset it and the arm
+		// would read "e-1" every time and pass with the defect present.
+		var in strings.Builder
+		for i := 0; i < calls; i++ {
+			raw, err := json.Marshal(request(wire.KindExecute, map[string]any{
+				"action": "create_event", "args": map[string]any{}, "token": "t",
+			}))
+			if err != nil {
+				t.Fatalf("encoding an execute: %v", err)
+			}
+			in.Write(raw)
+			in.WriteString("\n")
+		}
+		var buf strings.Builder
+		if err := Run(cfg, strings.NewReader(in.String()), &buf); err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+			msg, err := wire.DecodeResponse([]byte(line))
+			if err != nil {
+				t.Fatalf("decode %q: %v", line, err)
+			}
+			resp, ok := msg.(wire.ExecuteResponse)
+			if !ok {
+				t.Fatalf("answered %T: %s", msg, line)
+			}
+			id, _ := resp.IDs["event"].(string)
+			out = append(out, id)
+		}
+		return out
+	}
+
+	got := ids(dflt(), 3)
+	if len(got) != 3 {
+		t.Fatalf("three requests answered %d time(s): %v", len(got), got)
+	}
+	if got[0] != "e-1" {
+		t.Errorf("the FIRST call must answer the recorded id unchanged, or every existing fixture "+
+			"moves; got %q", got[0])
+	}
+	seen := map[string]bool{}
+	for i, id := range got {
+		if seen[id] {
+			t.Errorf("call %d answered %q again: two creations with one id cannot both be bound to "+
+				"a handle", i+1, id)
+		}
+		seen[id] = true
+	}
+
+	// DETERMINISTIC: the same sequence of requests gives the same ids, so a
+	// seed still carries the whole run.
+	if again := ids(dflt(), 3); strings.Join(again, ",") != strings.Join(got, ",") {
+		t.Errorf("two identical request sequences answered %v then %v", got, again)
+	}
+
+	// AND THE SALT COMPOSES WITH IT, since an attempt comparison needs both:
+	// different ids within an attempt AND different ids between attempts.
+	salted := dflt()
+	salted.IDSalt = "att2"
+	for i, id := range ids(salted, 3) {
+		if id == got[i] {
+			t.Errorf("call %d answered %q under a salt and without one: the two mechanisms must "+
+				"compose", i+1, id)
+		}
+	}
+}

@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
@@ -146,12 +147,15 @@ func Run(cfg Config, in io.Reader, out io.Writer) error {
 	// a protocol fault. 4 MiB, named here rather than left as a default
 	// nobody chose.
 	scan.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	// HOW MANY TIMES EACH ACTION HAS BEEN EXECUTED, so a repeat answers a
+	// DIFFERENT id -- see `nthID`.
+	calls := map[string]int{}
 	for scan.Scan() {
 		line := strings.TrimSpace(scan.Text())
 		if line == "" {
 			continue
 		}
-		answer := cfg.answer(contract, []byte(line))
+		answer := cfg.answer(contract, []byte(line), calls)
 		if err := write(out, answer); err != nil {
 			return err
 		}
@@ -163,7 +167,7 @@ func Run(cfg Config, in io.Reader, out io.Writer) error {
 }
 
 // answer builds one response as a map, so a required field can be deleted.
-func (cfg Config) answer(contract string, line []byte) map[string]any {
+func (cfg Config) answer(contract string, line []byte, calls map[string]int) map[string]any {
 	msg, err := wire.DecodeRequest(line)
 	if err != nil {
 		return envelope(contract, idOf(line), wire.Fault{
@@ -199,7 +203,8 @@ func (cfg Config) answer(contract string, line []byte) map[string]any {
 				Detail: fmt.Sprintf("%q is not recorded in this surface; it records %s", m.Action, list(keys(cfg.Surface.Execute))),
 			})
 		}
-		ids, serr := salted(rec.IDs, cfg.IDSalt)
+		calls[m.Action]++
+		ids, serr := salted(nthID(rec.IDs, calls[m.Action]), cfg.IDSalt)
 		if serr != nil {
 			return envelope(contract, env.ID, wire.Fault{
 				Kind:   wire.FaultInternal,
@@ -245,6 +250,43 @@ func (cfg Config) answer(contract string, line []byte) map[string]any {
 		delete(obj, field)
 	}
 	return obj
+}
+
+// nthID is the ids for the nth execution of one action: the recorded ones
+// unchanged on the FIRST call, and distinguished by the ordinal after that.
+//
+// WHY A REPEAT MUST ANSWER A DIFFERENT ID. A walk that creates two events asked
+// this adapter twice and got "e-1" both times, and internal/handle REFUSED the
+// second binding -- correctly: "id e-1 is already bound to member_1.event#1, so
+// binding member_2.event#1 to it would make two handles name one entity ... a
+// comparison by handle would then agree about different things." A server that
+// created two things gave them two ids, and a fake that stands in for one has
+// to as well. This is a second limitation and not the salt's: --id-salt moves
+// ids between ATTEMPTS, this moves them between CREATIONS inside one.
+//
+// THE FIRST CALL IS UNCHANGED, deliberately, so every existing fixture stays
+// byte-identical: docs/cli.md's console blocks, the twin's live arms and
+// fake_test's own assertions all execute each action once and must keep reading
+// what they read before. Only the second and later calls carry the ordinal.
+//
+// DETERMINISTIC, like the salt: the same sequence of requests gives the same
+// ids, so a seed still carries the whole run.
+func nthID(ids map[string]any, n int) map[string]any {
+	if n <= 1 || len(ids) == 0 {
+		return ids
+	}
+	out := make(map[string]any, len(ids))
+	for k, v := range ids {
+		if str, ok := v.(string); ok {
+			out[k] = str + "-" + strconv.Itoa(n)
+			continue
+		}
+		// A NON-STRING ID IS LEFT ALONE HERE and refused by `salted` when a
+		// salt is set. Two refusals for one shape would say the same thing
+		// twice, and this function has no error to return.
+		out[k] = v
+	}
+	return out
 }
 
 // salted prefixes every id with the salt, or returns the ids unchanged when
