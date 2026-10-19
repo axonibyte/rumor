@@ -199,10 +199,29 @@ func Input(l *ledger.Ledger, c Check) (map[string]any, error) {
 // value, because "the rule did not hold" and "it holds and its value is empty"
 // are different answers.
 func Evaluate(ctx context.Context, statute string, rules []string, l *ledger.Ledger, c Check) (Finding, error) {
-	var out Finding
 	input, err := Input(l, c)
 	if err != nil {
-		return out, err
+		return Finding{}, err
+	}
+	return EvaluateWith(ctx, statute, rules, input)
+}
+
+// EvaluateWith is Evaluate over an input the caller already built, which is
+// what R5's walk needs: applicability asks a precondition's rules against
+// PreconditionInput, where Evaluate's own Check would mean fabricating an
+// observation a candidate step does not have.
+//
+// THE SPLIT IS A SPLIT AND NOT A SECOND EVALUATOR, which matters more than the
+// convenience: two code paths that run statutes would diverge, and an
+// explanation of a verdict the product did not give is worse than none (fable,
+// thread:adr-regorus-tracing/4, ruling out OPA-beside-Regorus for exactly
+// this). Evaluate is now this function plus Input, so a walk's applicability
+// and a case's finding are computed by one evaluator over two inputs -- which
+// is precisely the premise D14 exists to check.
+func EvaluateWith(ctx context.Context, statute string, rules []string, input map[string]any) (Finding, error) {
+	var out Finding
+	if input == nil {
+		return out, fmt.Errorf("engine: no input, and a statute over nothing has no verdict to give")
 	}
 	out.Input = input
 	out.Rule = StatutePackage + "." + FindingRule
@@ -397,4 +416,57 @@ func Accepts(statute string) error {
 			"diagnostic scaffolding in a statute", strings.Join(hits, ", "))
 	}
 	return nil
+}
+
+// PreconditionInput is what a candidate STEP is shown, as against what an
+// observation is shown by Input above. fable ruled the shape at coop r5/16
+// after ibis measured the only preconditions in the tree (r5/3, /5).
+//
+// `observation` CARRIES ACTOR AND POSITION AND NOTHING ELSE. Every one of the
+// toy's five preconditions reaches `held_claims`, which bounds on
+// `input.observation.position`, and three read `.actor`; so a precondition is
+// not an observation but it needs those two. `of`, `query`, `source`, `value`
+// and `role` are ABSENT rather than empty, which is this package's existing
+// discipline pointed at a new caller: a rule reaching for a field a candidate
+// step cannot have goes UNDEFINED, where "" would be an answer. A role in
+// particular is held per event, which an observation has and a step does not.
+//
+// WHY THE KEY IS STILL `observation` AND NOT `step`: five live rules read
+// `input.observation.position` today, and a new key is a rewrite of every
+// precondition in every project in exchange for nothing.
+//
+// MY OWN FIRST ANSWER WAS WRONG AND THE ORDER MATTERS. I argued for omitting
+// the key entirely, reasoning from absent-versus-empty without reading what a
+// precondition touches. ibis measured: with no `observation`, `held_claims` is
+// empty and the five rules' defaults ANSWER -- may_join, may_leave and
+// may_delete false, may_create_user and may_create_event true, nothing
+// erroring. Omission is not undefined; it is silently wrong in both
+// directions, which is the fault I thought omission prevented.
+func PreconditionInput(l *ledger.Ledger, actor string) (map[string]any, error) {
+	if l == nil {
+		return nil, fmt.Errorf("engine: no ledger")
+	}
+	if actor == "" {
+		return nil, fmt.Errorf("engine: no candidate actor, and applicability is always some actor's")
+	}
+	seal := l.Seal()
+	if seal <= 0 {
+		return nil, fmt.Errorf("engine: the ledger is unsealed: a precondition is evaluated against " +
+			"a sealed prefix, so this is a sequencing error and not an empty result")
+	}
+
+	fl, claims := prefixFacts(l)
+	known, err := flatten.Known(fl, actor, seal, nil)
+	if err != nil {
+		return nil, fmt.Errorf("engine: flattening %s's knowledge at the seal: %w", actor, err)
+	}
+
+	return map[string]any{
+		"observation": map[string]any{
+			"actor":    actor,
+			"position": seal + 1,
+		},
+		"known":  known,
+		"claims": claims,
+	}, nil
 }

@@ -91,6 +91,15 @@ path = "tests/docs/*.go"
 docs = ["docs/cli.md", "docs/release.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# D14 and applicability over the committed corpus (R5.1). Mapped to design.md
+# because the precondition input's shape is stated in its evaluation section
+# (fable, coop r5/16), and to the testing methodology because the ARM's own
+# reach is the transferable part: it drives the shape that was ruled out and
+# requires it to disagree, so the agreement it asserts cannot be a tautology.
+path = "tests/schedule/*.go"
+docs = ["docs/design.md", "docs/testing-methodology.md"]
+
+[[entry]]
 # The run's only source of chance (R5.1). Mapped to design.md because "The
 # engine owns the seed" IS this package's prose -- one generator the walk
 # holds, the seed printed first and accepted back, and nothing else in the
