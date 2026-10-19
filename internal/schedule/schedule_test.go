@@ -132,14 +132,21 @@ func TestMintIsTheOnlyEntropyAndNewDoesNotUseIt(t *testing.T) {
 // a cumulative walk using `<=` instead of `<`, which gives a zero-weighted
 // kind the first slot and makes "never" mean "whenever the draw lands on 0".
 func TestAZeroWeightIsNeverDrawn(t *testing.T) {
+	// THE ZERO KIND MUST SORT FIRST, and my first version had it sorting LAST
+	// ({suborn 0, create_user 3, join_event 1} orders as create_user,
+	// join_event, suborn) so the arm passed with `<=` in place -- rook found it
+	// by mutation at coop r5/6-7. The cumulative walk compares n against the
+	// first candidate's weight before any subtraction, so FIRST POSITION is the
+	// only slot a `<=` boundary can wrongly select, and an arm whose zero sits
+	// anywhere else cannot see it.
 	s := New(11)
-	cands := []Candidate{{"suborn", 0}, {"create_user", 3}, {"join_event", 1}}
+	cands := []Candidate{{"aaa_zero", 0}, {"create_user", 3}, {"join_event", 1}}
 	for i := 0; i < draws; i++ {
 		got, err := s.Pick(cands)
 		if err != nil {
 			t.Fatalf("draw %d refused: %v", i, err)
 		}
-		if got == "suborn" {
+		if got == "aaa_zero" {
 			t.Fatalf("draw %d chose a kind weighted 0: a project that writes 0 has said never", i)
 		}
 	}
