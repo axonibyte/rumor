@@ -36,6 +36,15 @@ leave_event = 1
 delete_event = 1
 join_event_ui = 1
 
+# THE FOUR NEMESIS KINDS, which arm 19 requires a weight for: absent is not
+# zero (fable, coop r4/125 and r5/49). `essoin` abandons a flow mid-way and the
+# engine has no flow state until R9, so it is declared at ZERO -- in the pool,
+# never drawn, and named rather than missing.
+canard = 2
+palter = 2
+suborn = 2
+essoin = 0
+
 [[rollback]]
 # THE PROCESS-RESTART PROVIDER, which C3 implements and R5.3 consumes. It covers
 # `store` -- the component the bindings name on the `direct` observation, and

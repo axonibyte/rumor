@@ -109,27 +109,44 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 	// against the twin with `suborn = 1` added, it refused the documented shape
 	// -- so the cell would have shipped refusing a project this project's own
 	// documentation tells people to write.
-	weighable := func(kind string) bool { return act[kind] || nemesis[kind] }
+	//
+	// THE DEFAULT TABLE ONLY, because the per-stage and per-profile tables
+	// cannot carry a name this cell would catch: internal/platform refuses an
+	// override naming a kind `[weights.default]` does not, so every override
+	// key is a default key before this arm sees it. Driven, on the twin:
+	// `[weights.stage.api] publish_nothing = 2` is could-not-run from the
+	// PARSER, not a refusal from here. Looping over them anyway would be two
+	// checks that cannot fire, which read exactly like checks that can. The
+	// coupling is pinned where it lives -- internal/platform's own test case
+	// "an override naming a kind the default does not" -- so the hole cannot
+	// open quietly if that refusal ever moves.
 	for kind := range p.Weights.Default {
-		if !weighable(kind) {
+		if !act[kind] && !nemesis[kind] {
 			note("platform.toml: [weights.default] names %s: no action of that name in bindings.toml, "+
 				"and it is not a nemesis kind", kind)
 		}
 	}
-	for stage, table := range p.Weights.Stage {
-		for kind := range table {
-			if !weighable(kind) {
-				note("platform.toml: [weights.stage.%s] names %s: no action of that name in bindings.toml, "+
-					"and it is not a nemesis kind", stage, kind)
-			}
+
+	// CELL 2's REVERSE, ruled in at coop r4/125 after quill measured the gap
+	// from the other side (r4/121, r5/47): every action the bindings declare
+	// and every nemesis kind in the pool must HAVE a weight. ABSENT IS NOT
+	// ZERO -- zero means never drawn and the project decided it, while absent
+	// means the walk reaches a kind the project never weighted, which is the
+	// silent-drop class under another name. quill's pool refuses it at the
+	// walk; a project should hear it from here first.
+	//
+	// THE DEFAULT TABLE IS THE COMPLETE ONE, so that is where this looks: the
+	// parser already requires every override key to be a default key, which is
+	// what makes "resolved from platform.toml (profile, stage, default)" the
+	// same question as "is it in the default table".
+	for _, name := range action {
+		if _, ok := p.Weights.Default[name]; !ok {
+			note("bindings.toml: action %s: no weight for it in [weights.default], and absent is not zero", name)
 		}
 	}
-	for profile, table := range p.Weights.Profile {
-		for kind := range table {
-			if !weighable(kind) {
-				note("platform.toml: [weights.profile.%s] names %s: no action of that name in bindings.toml, "+
-					"and it is not a nemesis kind", profile, kind)
-			}
+	for _, kind := range NemesisKinds {
+		if _, ok := p.Weights.Default[kind]; !ok {
+			note("platform.toml: the nemesis kind %s has no weight in [weights.default], and absent is not zero", kind)
 		}
 	}
 

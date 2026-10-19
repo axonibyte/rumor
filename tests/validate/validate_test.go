@@ -23,15 +23,17 @@ import (
 // to eighteen, and fable's r4/113 ruling adds the nineteenth. A fixture
 // directory that vanished would otherwise leave every remaining arm passing and
 // the suite quiet about it.
-const wantFixtures = 25
+const wantFixtures = 26
 
 // ARM 19 IS ONE ARM WITH SEVERAL CELLS, so it is the one arm with more than one
 // fixture -- and the count is declared here for the same reason every count in
-// this project is. fable ruled nine cells at r4/113; two came off by
-// measurement rather than by preference (ibis r4/116, r4/119): the `of` cell is
-// already held by arm 1 and tests/contract between them, and the action-context
-// cell has an unsound referent set, refusing both of our own examples.
-const wantCells19 = 7
+// this project is. fable ruled nine cells at r4/113 and the list settled at
+// EIGHT by measurement rather than preference (r4/125): the `of` cell came off,
+// already held by arm 1 and tests/contract between them; the action-context
+// cell came off, its referent set unsound enough to refuse both of our own
+// examples; and cell 2's REVERSE went in -- an action or nemesis kind with no
+// weight -- after quill measured that gap from the walk's side.
+const wantCells19 = 8
 
 // armOf is the fixture naming convention: <arm>-<slug>, or <arm>/<slug> for an
 // arm with several cells. The arm is the part before the first separator, so
@@ -673,6 +675,7 @@ var changedBy = map[string][]string{
 	// only where a project declares some), so it declares both edits the way
 	// fable's r4/74 rule allows and its README names which is which.
 	"19/requires-unknown-rule":           {"bindings.toml"},
+	"19/action-without-a-weight":         {"platform.toml"},
 	"19/weight-unknown-action":           {"platform.toml"},
 	"19/venire-undeclared-role":          {"bindings.toml", "platform.toml", "WHY-venire-undeclared-role.md"},
 	"19/observe-arg-unknown-handle":      {"bindings.toml"},

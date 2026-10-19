@@ -123,17 +123,21 @@ forced rather than minimal: `tests/contract`'s agreement test refuses an
 no case carries. Each arm's own fixture lives in `tests/validate/fixtures/`, is
 the twin with one change, and trips exactly its own arm.
 
-**Every name a project uses is a name the project declares (arm 19).** Seven
+**Every name a project uses is a name the project declares (arm 19).** Eight
 cells, each pairing one reference against the set it is looked up in, and the
 refusal names all three -- `bindings.toml: requires may_leave: no rule of that
 name in rules.json`. The cells: `requires` against `rules.json`; a weight
-against the declared actions; a `[[venire]]` role against the declared roles,
-where a project declares any; an observation's `args` and a flow's `{handle}`
-against what the actions create; a `[claim.<type>]` table against the emitted
-types; and the bindings' observations against the adapter's `describe`. rook
-found the first against `examples/toy` (coop r5/22) with every one of the
-eighteen arms passing it, and quill's consumer had already assumed the pairing
-existed -- so the hole was load-bearing before anyone noticed it was missing.
+against the declared actions and the nemesis kinds; **every** action and kind
+against the weights, because absent is not zero; a `[[venire]]` role against
+the declared roles, where a project declares any; an observation's `args` and a
+flow's `{handle}` against what the actions create; a `[claim.<type>]` table
+against the emitted types; and the bindings' observations against the adapter's
+`describe`. rook found the first against `examples/toy` (coop r5/22) with every
+one of the eighteen arms passing it, and quill's consumer had already assumed
+the pairing existed -- so the hole was load-bearing before anyone noticed it
+was missing. The weights cell runs both ways for the same reason: a weight for
+nothing is a typo, and a kind with no weight is an action the walk can draw and
+nobody tuned.
 
 **Four arms ask the adapter.** The capability arms (9a, 9b, 9c) pair `[uses]` in
 `bindings.toml` -- the project's ASK -- against `describe`'s `capabilities`,

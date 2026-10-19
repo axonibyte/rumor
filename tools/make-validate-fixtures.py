@@ -203,6 +203,13 @@ contexts = ["browser", "api"]
                        "# action bindings.toml does not declare. The PARSER refuses the same shape for\n"
                        "# an undeclared STAGE and cannot refuse this, being handed one file.\n" + s)
 
+    d = fresh("19/action-without-a-weight")
+    p = os.path.join(d, "platform.toml"); s = open(p).read()
+    s = s.replace("publish_doc_ui = 1\n", "", 1)
+    open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- publish_doc_ui loses its\n"
+                       "# weight, so a declared action the walk can draw has none. ABSENT IS NOT\n"
+                       "# ZERO: zero means never drawn and the project decided it (fable, r4/125).\n" + s)
+
     d = fresh("19/venire-undeclared-role")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
     open(p, "w").write(s + '''

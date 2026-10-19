@@ -34,6 +34,17 @@ browser = { enabled = true }
 
 [weights.default]
 publish_doc = 1
+publish_doc_ui = 1
+
+# THE NEMESIS KINDS ARE ACTION KINDS IN THE SAME POOL (docs/design.md), so arm
+# 19 requires a weight for each: absent is not zero, and a kind the walk can
+# draw with no weight is the silent-drop class (fable, coop r4/125). `essoin`
+# is INAPPLICABLE until R9 gives the engine flow state, so it carries a
+# declared ZERO -- never drawn, and the project said so.
+canard = 1
+palter = 1
+suborn = 1
+essoin = 0
 
 [[rollback]]
 provider = "doc-store-truncate"
