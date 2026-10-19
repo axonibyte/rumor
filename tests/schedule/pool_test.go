@@ -16,6 +16,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
+	"forge.axonibyte.com/axonibyte/rumor/internal/handle"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 )
@@ -82,6 +83,18 @@ func withoutWeight(base platform.Weights, kind string) platform.Weights {
 		return out
 	}
 	return platform.Weights{Default: d, Stage: strip(base.Stage), Profile: strip(base.Profile)}
+}
+
+// tbl is a handle table with nothing bound, which is the state a walk starts
+// in. Pool needs one because RESOLVABILITY IS PART OF APPLICABILITY: an action
+// whose flow names a `{kind}` no bound handle satisfies cannot be taken.
+func tbl(t *testing.T) *handle.Table {
+	t.Helper()
+	table, err := handle.New(1)
+	if err != nil {
+		t.Fatalf("a fresh handle table: %v", err)
+	}
+	return table
 }
 
 func kinds(cs []schedule.Candidate) []string {
@@ -155,7 +168,7 @@ func TestPoolCarriesActionsAndApplicableNemesisKinds(t *testing.T) {
 	l, _, observer := sealedToy(t, "honest-count")
 	w := withNemesis(toyWeights(t), 2)
 
-	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "")
+	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t))
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -218,7 +231,7 @@ func TestCanardEntersThePoolWhereItsPreconditionHolds(t *testing.T) {
 	}
 	w := withNemesis(toyWeights(t), 3)
 
-	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "")
+	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t))
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -253,7 +266,7 @@ func TestAnUndeclaredWeightIsRefusedRatherThanAssumedZero(t *testing.T) {
 			"evidence about suborn in particular")
 	}
 
-	_, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "")
+	_, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t))
 	if err == nil {
 		t.Fatal("a kind the walk will draw with no declared weight must be refused, not invented")
 	}
@@ -272,7 +285,7 @@ func TestAnActionNamedLikeANemesisKindIsRefused(t *testing.T) {
 	l, _, observer := sealedToy(t, "honest-count")
 	acts := append(toyActions(t), bindings.Action{Name: schedule.Suborn, Requires: []string{"may_leave"}})
 
-	_, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 1), "", "")
+	_, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 1), "", "", tbl(t))
 	if err == nil {
 		t.Fatal("an action named `suborn` must be refused: the pool is keyed by kind")
 	}
@@ -307,7 +320,7 @@ func TestSubornAndPalterNeedAnApplicableEmittingAction(t *testing.T) {
 			"cannot reach the precondition it is about")
 	}
 
-	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 2), "", "")
+	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 2), "", "", tbl(t))
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -329,7 +342,7 @@ func TestEssoinIsNeverOfferedBeforeR9(t *testing.T) {
 	for _, name := range []string{"honest-count", "planted-join"} {
 		l, _, observer := sealedToy(t, name)
 		got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer,
-			withNemesis(toyWeights(t), 7), "", "")
+			withNemesis(toyWeights(t), 7), "", "", tbl(t))
 		if err != nil {
 			t.Fatalf("%s: Pool: %v", name, err)
 		}
@@ -339,5 +352,71 @@ func TestEssoinIsNeverOfferedBeforeR9(t *testing.T) {
 					"the engine gains at R9, so it is inapplicable and not merely cheap", name, c.Weight)
 			}
 		}
+	}
+}
+
+// AN ACTION WHOSE FLOW NEEDS AN UNRESOLVABLE HANDLE IS INAPPLICABLE, which is
+// the second half of applicability fable ruled in at coop r5/58 -- the C1
+// refusal one layer earlier, so the walk never asks the wire for a thing that
+// does not exist.
+//
+// THE WORLD IS CONSTRUCTED, and why: the toy's only flow action is
+// join_event_ui, which requires may_join -- false at honest-count, so it is
+// already excluded by its PRECONDITION and could never show this. The arm
+// gives that action a precondition the case records TRUE, so the only thing
+// left that can exclude it is the unresolvable `{event}` in its flow.
+func TestAnActionWhoseFlowHandleCannotResolveIsInapplicable(t *testing.T) {
+	ctx := context.Background()
+	l, _, observer := sealedToy(t, "honest-count")
+	w := withNemesis(toyWeights(t), 2)
+
+	acts := toyActions(t)
+	var flowAction string
+	for i := range acts {
+		if len(schedule.FlowPlaceholders(acts[i])) > 0 {
+			flowAction = acts[i].Name
+			acts[i].Requires = []string{"may_leave"}
+			break
+		}
+	}
+	if flowAction == "" {
+		t.Fatal("no toy action has a flow placeholder, so this arm cannot reach resolvability at " +
+			"all and would pass with the check absent")
+	}
+
+	// NOTHING BOUND: the flow's {event} resolves to no id, so the action is out.
+	empty := tbl(t)
+	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", empty)
+	if err != nil {
+		t.Fatalf("Pool: %v", err)
+	}
+	for _, c := range got {
+		if c.Kind == flowAction {
+			t.Fatalf("%q was offered with no bound handle for its flow's {event}: the walk would "+
+				"ask the wire to navigate to an id that does not exist", flowAction)
+		}
+	}
+
+	// BOUND: the same action, the same precondition, one event handle that
+	// resolves -- and now it must be offered. Without this cell the assertion
+	// above would pass over a Pool that excluded the action for any reason at
+	// all, including a precondition I had got wrong.
+	bound := tbl(t)
+	if err := bound.Bind(observer+".event#1", "e-99"); err != nil {
+		t.Fatalf("binding an event handle: %v", err)
+	}
+	got, err = schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", bound)
+	if err != nil {
+		t.Fatalf("Pool with a bound handle: %v", err)
+	}
+	found := false
+	for _, c := range got {
+		if c.Kind == flowAction {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("%q was excluded even with a resolving event handle, so the arm above proves "+
+			"nothing about resolvability; pool is %v", flowAction, kinds(got))
 	}
 }

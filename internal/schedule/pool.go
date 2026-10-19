@@ -6,6 +6,7 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
+	"forge.axonibyte.com/axonibyte/rumor/internal/handle"
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 )
@@ -56,7 +57,7 @@ var NemesisKinds = []string{Suborn, Canard, Palter, Essoin}
 // validate arm pairing bindings against the vocabulary would be, and the arm
 // count is fable's -- but a silent double-weight is worse than an early error.
 func Pool(ctx context.Context, statute string, actions []bindings.Action, l *ledger.Ledger,
-	actor string, w platform.Weights, stage, profile string) ([]Candidate, error) {
+	actor string, w platform.Weights, stage, profile string, t *handle.Table) ([]Candidate, error) {
 
 	reserved := map[string]bool{}
 	for _, k := range NemesisKinds {
@@ -87,6 +88,23 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 		out = append(out, Candidate{Kind: kind, Weight: v})
 		return nil
 	}
+
+	// RESOLVABILITY IS THE SECOND HALF OF APPLICABILITY (coop r5/58). A
+	// statute precondition says the world permits the action; a resolvable
+	// handle says the walk can actually name what the action acts on. An
+	// action whose flow needs a `{kind}` no bound handle satisfies is
+	// inapplicable, not drawn-and-then-refused -- a suborn mints a handle for
+	// an action that never ran, and the walk must never ask the wire for a
+	// thing that does not exist.
+	usable := make([]bindings.Action, 0, len(app))
+	for _, a := range app {
+		if ok, kind := Resolvable(a, t); !ok {
+			_ = kind
+			continue
+		}
+		usable = append(usable, a)
+	}
+	app = usable
 
 	for _, a := range app {
 		if err := add(a.Name); err != nil {
