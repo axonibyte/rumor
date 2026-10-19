@@ -228,9 +228,16 @@ func honest(ctx context.Context, sess *wire.Session, l *ledger.Ledger, table *ha
 	if len(a.Creates) == 1 {
 		id, ok := resp.IDs[a.Creates[0]]
 		if !ok {
+			// THE ADAPTER'S OWN ANSWER GOES IN THE REFUSAL, because `ids {}` has
+			// more than one cause and they need different fixes. ibis drove both
+			// over the wire (coop r5/64): no session is 401, no args is 400, and
+			// both come back with an empty ids map. A refusal naming only the
+			// empty map would send a reader looking at the wrong half.
 			return fmt.Errorf("%s declares it creates %q and the adapter's execute answered ids %v, "+
-				"which carries no id for it: the handle would resolve to nothing and a later step "+
-				"needing it could not say why", a.Name, a.Creates[0], resp.IDs)
+				"which carries no id for it -- the handle would resolve to nothing and a later step "+
+				"needing it could not say why. The adapter's response was %v; an empty ids map has "+
+				"more than one cause, so read that rather than guessing (401 is no session, 400 is "+
+				"no args, and a walk sends neither today)", a.Name, a.Creates[0], resp.IDs, resp.Response)
 		}
 		str, ok := id.(string)
 		if !ok {

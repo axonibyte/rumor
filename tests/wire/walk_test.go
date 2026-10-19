@@ -253,3 +253,44 @@ func TestAnActionThatEmitsNothingIsRecordedAndMintsNothing(t *testing.T) {
 		t.Errorf("the walk minted %v where no action emits anything", rec.HandleSequence())
 	}
 }
+
+// AN EMPTY `ids` REFUSAL CARRIES THE ADAPTER'S OWN ANSWER.
+//
+// ibis drove both causes over the wire (coop r5/64): no session is 401, no args
+// is 400, and BOTH come back with an empty ids map. A refusal naming only the
+// empty map sends a reader at the wrong half -- and it did: ibis read my walk's
+// step-1 failure as the args case and the response says 401, because a walk
+// sends no session token either. The fix for that is to print what the adapter
+// said, and this arm is what keeps it printed.
+func TestAnEmptyIDsRefusalCarriesTheAdaptersAnswer(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+	p.Actions = []bindings.Action{{
+		Name: "create_event", Context: "api", Emits: []string{"event.created"},
+		Requires: []string{"may_create_event"}, Creates: []string{"event"},
+	}}
+
+	// A canned execute answering NO ids and a recognisable body, which is the
+	// shape both real causes produce.
+	empty := mustJSON(t, wire.ExecuteResponse{
+		Envelope: wire.Envelope{Kind: wire.KindExecute, Contract: wire.ContractVersion, ID: "2"},
+		IDs:      map[string]any{},
+		Response: map[string]any{"status": 401, "body": map[string]any{"error": "needs a session"}},
+	})
+	sess, err := wire.Open(ctx, cannedAdapter(t, realDescribeLine(t), empty), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	_, err = schedule.Walk(ctx, p, sess, 1, 1, 1)
+	if err == nil {
+		t.Fatal("a declared `creates` with no id in the answer must refuse: the handle would " +
+			"resolve to nothing")
+	}
+	for _, want := range []string{"401", "needs a session", "more than one cause"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must carry %q so a reader can tell the causes apart; got %v", want, err)
+		}
+	}
+}
