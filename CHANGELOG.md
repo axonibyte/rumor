@@ -3,6 +3,39 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.24 — 2026-10-19
+
+**Three arms a mutation sweep asked for, over R5.2's own battery** — rook's
+method (coop r5/10-12) turned on the toy and its rollback provider rather than
+on a peer's work. Tests and documents only; no rule, fixture or constant moves.
+
+- **`createEvent`'s default `visible_to` was pinned by nothing.** Every arm
+  passed the field explicitly, so the default branch was exercised by no test:
+  changing it from `{admin, member}` to `{admin, member, guest}` left the whole
+  `cmd/toy` package green — the epic's visibility-leak row arriving by accident,
+  on the one axis this system under test exists to be wrong about. The new arm
+  posts with no `visible_to` key at all and asserts the field, the list and
+  join, so three independent assertions see it.
+- **`Verify` comparing LENGTHS instead of bytes passed every test** in
+  `internal/rollback/toyrestart`, because the only moved world any arm built had
+  an extra user in it and so differed in length as a side effect. A one-byte,
+  same-length edit is now `ErrDirty`, as is an absent state file against a
+  checkpoint that is not empty.
+- **The concurrency arm asserted the race and not the ONE SEAT it needs.** With
+  the fixture's capacity raised to 2, every assertion passed with the window
+  CLOSED — the defect gone and the arm silent. It now reads the created event's
+  capacity back and refuses to run with more seats than claimants, which is
+  fable's r5/16 rule (an arm whose reach depends on a fixture property asserts
+  that property) applied to my own battery.
+- **Nine removals, nine screams**, and that is the weaker half worth recording:
+  a removal is reached by every input, so it proves only that each mechanism has
+  an arm near it. The three holes above were found by making a mechanism subtly
+  wrong, which is reached only by an input sitting on the boundary.
+- **fable's `handles` ruling is recorded where the limit is written**
+  (`docs/design.md`, `examples/toy/statute.rego`): the projection will carry
+  `handles`, the engine does not do it yet, and the toy's rules stay
+  single-subject until it does.
+
 ## 0.1.23 — 2026-10-19
 
 **A path nothing opened is could-not-run** — quill's three findings at coop
