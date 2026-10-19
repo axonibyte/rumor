@@ -100,6 +100,19 @@ func (h *harness) actor(name string) string {
 
 func (h *harness) createEvent(token, title string, capacity int, visibleTo []string) string {
 	h.t.Helper()
+	id, _ := h.createEventFull(token, title, capacity, visibleTo)
+	return id
+}
+
+// createEventFull hands back the created event as well as its id, for an arm
+// that needs to read a field of it. The toy has NO `GET /events/<id>` route --
+// handleEventPath serves delete, join, leave and count and nothing else -- so
+// the create response is the only place a test can read a stored capacity from
+// the application rather than from the literal it typed, and adding a route to
+// the system under test to suit a test would be adding production surface for a
+// test's convenience.
+func (h *harness) createEventFull(token, title string, capacity int, visibleTo []string) (string, map[string]any) {
+	h.t.Helper()
 	code, body := h.do(http.MethodPost, "/events", token, map[string]any{
 		"title": title, "capacity": capacity, "visible_to": visibleTo,
 	})
@@ -110,7 +123,7 @@ func (h *harness) createEvent(token, title string, capacity int, visibleTo []str
 	if id == "" {
 		h.t.Fatalf("creating %q returned no id: %v", title, body)
 	}
-	return id
+	return id, body
 }
 
 func TestAUserIsCreatedOnceAndANameIsNotReused(t *testing.T) {
@@ -376,6 +389,13 @@ func TestOnlyTheAdminDeletesAndTheCountIsLeftStale(t *testing.T) {
 	if code, _ := h.do(http.MethodDelete, "/events/"+id, bob, nil); code != http.StatusForbidden {
 		t.Errorf("bob is a member, not the admin: status %d, want %d", code, http.StatusForbidden)
 	}
+	// THE VALUE BEFORE, so "stale" is about a number that STAYED rather than
+	// about a coincidence: an arm that only read the count after the delete
+	// would pass if the count had been 1 for the wrong reason, or 0 all along.
+	if got := h.count(id, alice); got != 1 {
+		t.Fatalf("the count before the delete is %d, want 1: this arm is about a count the delete "+
+			"LEAVES, which needs a count to leave", got)
+	}
 	if code, _ := h.do(http.MethodDelete, "/events/"+id, alice, nil); code != http.StatusOK {
 		t.Fatalf("alice deleting her own event")
 	}
@@ -587,15 +607,35 @@ func TestTheCapacityRaceIsPresentWhenDrivenConcurrently(t *testing.T) {
 	alice := h.actor("alice")
 	bob := h.actor("bob")
 	carol := h.actor("carol")
-	id := h.createEvent(alice, "one seat, two claimants", 1, []string{roleAdmin, roleMember, roleGuest})
+	id, created := h.createEventFull(alice, "one seat, two claimants", 1,
+		[]string{roleAdmin, roleMember, roleGuest})
+	joiners := []struct{ name, token string }{{"bob", bob}, {"carol", carol}}
+
+	// THE ARM'S OWN REACH, ASSERTED RATHER THAN ASSUMED. This arm can see the
+	// race only while more joins are in flight than there are seats. Driven at
+	// 2187e7a with the fixture's capacity raised from 1 to 2: every assertion
+	// below passed with the window CLOSED -- the defect gone, the arm silent,
+	// and the arm's own message still claiming a one-seat event. That is rook's
+	// r5/11 shape, and fable's r5/16 reading of it is the rule the gate now
+	// applies to every R5 battery: an arm whose reach depends on a fixture
+	// property asserts that property.
+	seats, ok := created["capacity"].(float64)
+	if !ok {
+		t.Fatalf("the created event carries no numeric capacity: %v", created)
+	}
+	if int(seats) >= len(joiners) {
+		t.Fatalf("this arm needs fewer seats than claimants to reach the window: capacity is %d "+
+			"with %d join(s) in flight, so both could land honestly and a CLOSED race would pass "+
+			"here", int(seats), len(joiners))
+	}
 
 	type result struct {
 		who  string
 		code int
 		err  error
 	}
-	results := make(chan result, 2)
-	for _, who := range []struct{ name, token string }{{"bob", bob}, {"carol", carol}} {
+	results := make(chan result, len(joiners))
+	for _, who := range joiners {
 		go func(name, token string) {
 			req, err := http.NewRequest(http.MethodPost, h.ts.URL+"/events/"+id+"/join", nil)
 			if err != nil {
@@ -615,7 +655,7 @@ func TestTheCapacityRaceIsPresentWhenDrivenConcurrently(t *testing.T) {
 	}
 
 	landed := 0
-	for i := 0; i < 2; i++ {
+	for i := 0; i < len(joiners); i++ {
 		r := <-results
 		if r.err != nil {
 			t.Fatalf("%s joining: %v", r.who, r.err)
@@ -625,16 +665,20 @@ func TestTheCapacityRaceIsPresentWhenDrivenConcurrently(t *testing.T) {
 		}
 	}
 
-	if landed != 2 {
-		t.Fatalf("%d of 2 concurrent joins landed, want 2: the capacity race is the epic's R5 "+
-			"ledger row and must be PRESENT in the toy, so a run of two in flight has to overrun "+
-			"the seat. If this fails, the window in joinEvent was closed and R8 has nothing to catch", landed)
+	if landed != len(joiners) {
+		t.Fatalf("%d of %d concurrent joins landed, want all of them: the capacity race is the "+
+			"epic's R5 ledger row and must be PRESENT in the toy, so joins in flight past the "+
+			"seat count have to overrun it. If this fails, the window in joinEvent was closed and "+
+			"R8 has nothing to catch", landed, len(joiners))
 	}
-	if got := h.storeCount(id); got != 2 {
-		t.Errorf("the store holds %d attendee(s) on a one-seat event, want 2: both joins landed but "+
-			"the list did not grow by two", got)
+	if got := h.storeCount(id); got != len(joiners) {
+		t.Errorf("the store holds %d attendee(s) on a %d-seat event, want %d: every join landed "+
+			"but the list did not grow by that many", got, int(seats), len(joiners))
+	} else if got <= int(seats) {
+		t.Errorf("the store holds %d attendee(s) within the %d seat(s) declared: the OVERRUN is "+
+			"the defect, so an arm whose list stays inside capacity has not seen it", got, int(seats))
 	}
-	if got := h.count(id, alice); got != 2 {
-		t.Errorf("the API reports %d on a one-seat event, want 2", got)
+	if got := h.count(id, alice); got != len(joiners) {
+		t.Errorf("the API reports %d on a %d-seat event, want %d", got, int(seats), len(joiners))
 	}
 }

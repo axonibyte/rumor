@@ -802,6 +802,19 @@ does not override it. So: for every value a test may override, one arm must
 assert the default with nothing set; and for every comparison, one arm must
 differ in the way the cheap implementation would miss.
 
+**A fixture property an arm's reach depends on is the arm's own
+precondition.** The concurrency arm drives two joins at a one-seat event and
+asserts that both land. Nothing asserted the *one seat*: with the fixture's
+capacity raised to 2, both joins land honestly, every assertion passes, and the
+arm reports a race that had been closed — while its own message still says
+"one-seat event". The repair is not a better assertion about the result but an
+assertion about the input: more joins in flight than seats, read from the create
+response because the toy has no route that returns an event. The four cells then
+read `seats < claimants` with the race open → pass; with it closed → fail in the
+draw; and either capacity-2 cell → fail at the precondition, which is correct
+because the arm is disarmed. fable made this the gate's reading of every R5
+battery at coop r5/16.
+
 **And the ordering inside an arm decides what it can report.** The default arm
 above checks the echoed field and then the two endpoints that read it. Written
 with `t.Fatalf` on the field, the arm would rest entirely on a string — the
