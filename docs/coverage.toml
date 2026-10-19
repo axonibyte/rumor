@@ -148,6 +148,21 @@ path = "cmd/rumor/**/*.go"
 docs = ["docs/cli.md", "docs/design.md"]
 
 [[entry]]
+# The rollback trait and its registry (R5.2's C3). rollback.md owns the
+# interface and what Verify has to prove; design.md owns why a shrink step runs
+# on a verified clean world at all.
+path = "internal/rollback/*.go"
+docs = ["docs/rollback.md", "docs/design.md"]
+
+[[entry]]
+# The one shipped provider: it restarts cmd/toy and makes the state file
+# authoritative. Mapped to rollback.md's "Shipped providers" and to
+# testing-methodology.md for the corpse case -- a verify that checked only the
+# bytes would pass over a dead application.
+path = "internal/rollback/toyrestart/*.go"
+docs = ["docs/rollback.md", "docs/testing-methodology.md"]
+
+[[entry]]
 # The toy system under test (R5.2). NOT cli.md: this is not part of rumor's
 # command surface -- it is the application the engine is proven against, and a
 # reader looking for what `rumor` does should not find it here. design.md owns

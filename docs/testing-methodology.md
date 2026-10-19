@@ -766,3 +766,30 @@ committed, one with an unused require, one with `GOPROXY=off` over an empty
 module cache, and one with no requirements at all. The third is the condition
 the arm is shaped around, and it is the one a reading of the exit code alone
 gets wrong.
+
+## A check that proves one half can pass over a corpse
+
+R5.2's rollback provider has to answer whether the world is the checkpoint, and
+the obvious check is the one that fails this test: compare the state file,
+byte for byte, against the saved copy. It is exact, it is cheap, and it is
+**most perfectly satisfied when the application is dead** — a process that is
+not running writes nothing, so the file stays flawless. A shrink step would then
+be told it had a verified clean world, and would run its candidate against
+nothing at all.
+
+So `Verify` asks two questions: the file **is** the checkpoint, and the server
+**answers**. The second is not a liveness nicety; it is what makes the first
+mean a world a candidate can run in. The test that pins this kills the process
+and leaves the file untouched — the one state where a one-sided check passes and
+the world is useless — and requires `ErrDirty`.
+
+**The general form.** When a check is a conjunction, ask which conjunct is
+satisfied by the subject's ABSENCE. A path-coverage check passes over an empty
+tree; a count of refusals passes over nothing examined; a byte comparison passes
+over a corpse. Those are the halves that need a second question beside them, and
+the test for them is the state where the cheap half is at its best and the thing
+being checked does not exist.
+
+It is the same fault as a vacuous arm, seen from the other side: a vacuous arm
+has nothing to judge, and a one-sided verify has something to judge and judges
+the wrong half of it.
