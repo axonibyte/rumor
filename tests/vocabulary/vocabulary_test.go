@@ -64,7 +64,14 @@ const root = "../.."
 // 14 -> 15 in R3.2: internal/attaint quotes the `planted` entry's SECOND use,
 // the strip, which is the clause the new arm implements. Same shape as the
 // 13 -> 14 move: the oracle reported 0 absent and refused on the count alone.
-const declaredQuotes = 26
+// 26 -> 28 in R5.1: internal/schedule's pool and internal/engine's
+// CanardSubjects each quote the v1 row's sentence about canard -- "a weight and
+// a precondition over the kinds above, not a fact kind and not a tag" -- which
+// is the clause that decides canard is NOT a fact kind and so has no ledger
+// representation to implement. Same shape as both moves above: the oracle
+// reported 0 absent and refused on the count alone, so the count is what caught
+// the addition and the quotes were already true.
+const declaredQuotes = 28
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would

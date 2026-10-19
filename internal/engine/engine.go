@@ -470,3 +470,65 @@ func PreconditionInput(l *ledger.Ledger, actor string) (map[string]any, error) {
 		"claims": claims,
 	}, nil
 }
+
+// CanardSubjects answers canard's precondition, which docs/design.md states and
+// docs/vocabulary.md's v1 row confirms is "a weight and a precondition over the
+// kinds above, not a fact kind and not a tag". A canard is a tell that PASSES
+// ON a planted claim, "by an actor who is not the claim's author, of a claim the
+// run planted" -- so the kind is applicable to `actor` exactly when it knows
+// such a claim, and inapplicable like any action whose precondition is false
+// where none exists.
+//
+// IT RETURNS THE REFS AND NOT A BOOLEAN because the engine records the hop: R10
+// says who PASSED the lie and not only who made it, which needs the claim that
+// travelled. A caller wanting applicability alone reads len() == 0.
+//
+// AND IT GOES THROUGH prefixFacts AND flatten.Known, the same two steps
+// PreconditionInput takes, for the reason EvaluateWith exists one layer up: a
+// second path computing what an actor knows would be free to disagree with the
+// first, and a walk and a check disagreeing about one world is the fault D14
+// exists to catch.
+//
+// The order is the sealed prefix's, which is position order. It is not sorted:
+// a slice already iterates deterministically, so D1's reason -- Go randomizes
+// MAP iteration on purpose -- does not reach here, and position order carries
+// something ref order would throw away.
+func CanardSubjects(l *ledger.Ledger, actor string) ([]string, error) {
+	if l == nil {
+		return nil, fmt.Errorf("engine: no ledger")
+	}
+	if actor == "" {
+		return nil, fmt.Errorf("engine: no candidate actor, and a canard is always some actor's")
+	}
+	seal := l.Seal()
+	if seal <= 0 {
+		return nil, fmt.Errorf("engine: the ledger is unsealed: a precondition is evaluated against " +
+			"a sealed prefix, so this is a sequencing error and not an empty result")
+	}
+
+	fl, claims := prefixFacts(l)
+	known, err := flatten.Known(fl, actor, seal, nil)
+	if err != nil {
+		return nil, fmt.Errorf("engine: flattening %s's knowledge at the seal: %w", actor, err)
+	}
+	holds := make(map[string]bool, len(known))
+	for _, ref := range known {
+		holds[ref] = true
+	}
+
+	var out []string
+	for _, c := range claims {
+		if c["planted"] != true {
+			continue
+		}
+		if author, _ := c["actor"].(string); author == actor {
+			continue
+		}
+		ref, _ := c["ref"].(string)
+		if ref == "" || !holds[ref] {
+			continue
+		}
+		out = append(out, ref)
+	}
+	return out, nil
+}
