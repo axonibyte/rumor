@@ -793,3 +793,36 @@ being checked does not exist.
 It is the same fault as a vacuous arm, seen from the other side: a vacuous arm
 has nothing to judge, and a one-sided verify has something to judge and judges
 the wrong half of it.
+
+## Two verdicts that cannot be told apart need both halves in one arm
+
+`rumor validate /a/mistyped/path` used to answer `REFUSED no-bindings`, exit 1,
+the project is wrong. An existing project genuinely missing its `bindings.toml`
+answered the same clause, with the same exit, and the two runs differed only in
+the basename printed on the tally line. Neither output was self-evidently
+wrong — each is a sentence the tool is entitled to say — and that is what kept
+the defect alive: the finding is not in either verdict but in the fact that
+**one input's answer is also the other's**.
+
+An arm written for the first half alone does not hold the fix. "An absent path
+is could-not-run" is satisfied by making *both* could-not-run, which erases a
+distinction the project needs: a directory that was read and found wanting is
+the project's verdict, exit 1, and fable ruled that boundary at coop r4/79. So
+the arm asserts the pair — absent path and a path that is a file are 2 and name
+the path; an empty directory is still 1 and names the clause — and a fix that
+collapses them fails the third case.
+
+**The general form.** When two inputs that deserve different verdicts produce
+the same one, the test is one arm over all of them, not one arm each. One arm
+each can be satisfied by moving the collision rather than removing it, and the
+move looks like progress: each half, read alone, now says the right thing about
+its own input.
+
+**The sibling this found.** The same question asked one level in — which
+verdicts here are claims about something nothing read? — turned up a vacuity
+refusal beside a decode failure: an unparsable `rules.json` reported
+`could not run: rules.json: invalid character` AND `REFUSED no-rule-declared:
+rules.json declares no rule`. The status was right, because could-not-run
+outranks refused, so a test reading only the exit code would have passed over
+it. A refusal naming a declaration nobody read is wrong whatever the status
+above it says.

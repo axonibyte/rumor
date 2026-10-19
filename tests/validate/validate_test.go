@@ -254,6 +254,214 @@ func TestAVacuousProjectIsRefusedAndAccountsForEveryArm(t *testing.T) {
 	}
 }
 
+// wantArmCountClaims is how many places under docs/ attribute a COUNT of arms
+// to this command by name. It is DECLARED for the reason every count in this
+// project is: a scan that found nothing would pass, and the sentence it was
+// written to check would have been deleted rather than corrected.
+const wantArmCountClaims = 2
+
+// armCountClaim is the shape quill found wrong twice at coop r4/91:
+// docs/contract.md said "R4.3's thirteen refusals" and "one of validate's
+// thirteen" while the SAME FILE recorded the ruling at eighteen, two hundred
+// lines apart. The number had been right when written -- C2 shipped thirteen
+// arms and C3 brought the count to eighteen -- and prose does not recompute.
+//
+// IT MATCHES THE POSSESSIVE ONLY, deliberately: "four arms ask the adapter" and
+// "the two browser-stage arms" are true statements about SUBSETS, and an oracle
+// that refused every number beside the word "arm" would be refusing correct
+// prose. What cannot be a subset is a count attributed to the command itself.
+var armCountClaim = regexp.MustCompile(`(?i)(validate's|validate has|R4\.3's)\s+(?:own\s+)?` +
+	`(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|` +
+	`fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b`)
+
+// spelled is how this project writes a count in prose. An arm count past twenty
+// fails the test rather than silently stopping being checked.
+var spelled = map[int]string{
+	13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen",
+	17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
+}
+
+func TestTheDocumentedArmCountIsTotalArms(t *testing.T) {
+	want, ok := spelled[validate.TotalArms]
+	if !ok {
+		t.Fatalf("TotalArms is %d and this test does not know how the prose spells it; "+
+			"add it to `spelled` rather than leaving the documents unchecked", validate.TotalArms)
+	}
+	docs, err := filepath.Glob(filepath.Join("..", "..", "docs", "*.md"))
+	if err != nil || len(docs) == 0 {
+		t.Fatalf("no documents to read: %v %v", docs, err)
+	}
+	sort.Strings(docs)
+
+	found := 0
+	for _, d := range docs {
+		raw, rerr := os.ReadFile(d)
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		for _, m := range armCountClaim.FindAllStringSubmatch(string(raw), -1) {
+			found++
+			if !strings.EqualFold(m[2], want) {
+				t.Errorf("%s says %q, and validate.TotalArms is %d (%s)",
+					filepath.Base(d), m[0], validate.TotalArms, want)
+			}
+		}
+	}
+	if found != wantArmCountClaims {
+		t.Errorf("the documents attribute a count to this command %d time(s), want %d: "+
+			"a scan that finds nothing agrees with every number", found, wantArmCountClaims)
+	}
+	t.Logf("PROOF %d documented arm count(s) read, all %s", found, want)
+}
+
+// TestWhatIsNotAProjectCannotRunRatherThanBeingRefused is quill's first finding
+// at coop r4/91, and the arm that would have caught it is the THIRD case below
+// rather than either of the first two.
+//
+// WHAT WAS WRONG: `rumor validate /a/mistyped/path` answered REFUSED
+// no-bindings -- exit 1, "the project is wrong" -- about a directory that was
+// not there to be wrong. An existing project missing its bindings.toml answered
+// the same clause, and the two runs differed only in the basename on the tally
+// line, so neither the status nor the message told a typo from a real vacuity.
+//
+// WHY THE EMPTY DIRECTORY IS IN THE SAME TEST: a fix that made the no-bindings
+// refusal could-not-run as well would have traded one indistinguishable pair
+// for another and still passed an absent-path arm. The pair is the assertion;
+// either half alone is satisfied by collapsing them.
+func TestWhatIsNotAProjectCannotRunRatherThanBeingRefused(t *testing.T) {
+	aFile := filepath.Join(t.TempDir(), "platform.toml")
+	if err := os.WriteFile(aFile, []byte("# a file where a project was named\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		what   string
+		path   string
+		exit   int
+		clause string // the refusal expected, or "" for none
+		names  bool   // the path itself appears in a could-not-run line
+	}{
+		{"a path that is not there", filepath.Join(t.TempDir(), "typo-here"), 2, "", true},
+		{"a file named as a project", aFile, 2, "", true},
+		{"a directory with no bindings.toml", t.TempDir(), 1, "no-bindings", false},
+	}
+	for _, c := range cases {
+		t.Run(c.what, func(t *testing.T) {
+			rep := validate.Run(c.path)
+			if rep.Exit() != c.exit {
+				t.Errorf("%s exits %d, want %d (refusals %v, could-not-run %v)",
+					c.what, rep.Exit(), c.exit, rep.Refusals, rep.CouldNotRun)
+			}
+			var clauses []string
+			for _, r := range rep.Refusals {
+				clauses = append(clauses, r.Arm)
+			}
+			switch {
+			case c.clause == "" && len(clauses) != 0:
+				t.Errorf("%s refused %v: a path that cannot be opened is not a project being wrong",
+					c.what, clauses)
+			case c.clause != "" && (len(clauses) != 1 || clauses[0] != c.clause):
+				t.Errorf("%s refused %v, want exactly [%s]", c.what, clauses, c.clause)
+			}
+			if c.names {
+				// THE PATH, not just the failure: the usual cause is a typo,
+				// and a typo is only visible beside what was typed.
+				joined := strings.Join(rep.CouldNotRun, "\n")
+				if !strings.Contains(joined, c.path) {
+					t.Errorf("%s does not name %q in its could-not-run line(s): %v",
+						c.what, c.path, rep.CouldNotRun)
+				}
+			} else if len(rep.CouldNotRun) != 0 {
+				t.Errorf("%s reported could-not-run %v: a directory that was read is the project's own verdict",
+					c.what, rep.CouldNotRun)
+			}
+			if n := len(rep.Evaluated) + len(rep.Skipped); n != validate.TotalArms {
+				t.Errorf("%s accounts for %d arm(s), want %d: a run that measured nothing must say so "+
+					"beside every arm, not only in the tally", c.what, n, validate.TotalArms)
+			}
+			t.Logf("PROOF %s -> exit %d, %d refusal(s), %d could-not-run, %d arm(s) accounted",
+				c.what, rep.Exit(), len(rep.Refusals), len(rep.CouldNotRun),
+				len(rep.Evaluated)+len(rep.Skipped))
+		})
+	}
+}
+
+// TestAnUnreadableDeclarationIsNotAVacuityRefusal is the sibling of the finding
+// above, found while fixing it and the same mistake one level in: a vacuity
+// clause is a claim about what the project DECLARES, and both counts it reads
+// are zero when the file holding them would not parse.
+//
+// MEASURED BEFORE THE FIX: an unparsable rules.json printed "could not run:
+// rules.json: invalid character" AND "REFUSED no-rule-declared: rules.json
+// declares no rule" -- a verdict about a declaration nobody read. Unparsable
+// cases did it through the no-case clause. The exit status was right either way
+// (2 outranks 1), which is why this needs an arm reading the REFUSALS and not
+// only the status.
+func TestAnUnreadableDeclarationIsNotAVacuityRefusal(t *testing.T) {
+	twin := filepath.Join("..", "..", "examples", "twin")
+	cases := []struct {
+		what string
+		set  func(t *testing.T, dir string)
+	}{
+		// THESE TWO ARE HERE FOR THE ACCOUNTING HALF rather than for a false
+		// refusal: a decode failure in either file returned before any arm, so
+		// the tally read "0 of 18 arm(s) evaluated" with no reason beside a
+		// single arm -- the one place a reader most needs to be told that
+		// nothing was measured.
+		{"bindings.toml that will not parse", func(t *testing.T, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, "bindings.toml"), []byte("this is not toml {{{\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"platform.toml that will not parse", func(t *testing.T, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, "platform.toml"), []byte("this is not toml {{{\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"rules.json that will not parse", func(t *testing.T, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, "rules.json"), []byte("not json\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"every case file unparsable", func(t *testing.T, dir string) {
+			files, err := filepath.Glob(filepath.Join(dir, "cases", "*.json"))
+			if err != nil || len(files) == 0 {
+				t.Fatalf("the twin has no case files to break: %v %v", files, err)
+			}
+			for _, f := range files {
+				if err := os.WriteFile(f, []byte("{\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.what, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "twin")
+			if out, err := exec.Command("cp", "-r", twin, dir).CombinedOutput(); err != nil {
+				t.Fatalf("copying the twin: %v %s", err, out)
+			}
+			c.set(t, dir)
+			rep := validate.Run(dir)
+			if rep.Exit() != 2 {
+				t.Errorf("%s exits %d, want 2 (could-not-run)", c.what, rep.Exit())
+			}
+			if len(rep.CouldNotRun) == 0 {
+				t.Fatalf("%s reported no could-not-run at all", c.what)
+			}
+			if len(rep.Refusals) != 0 {
+				t.Errorf("%s ALSO refused %v: what an unread declaration says is unknown, and a vacuity "+
+					"clause claims to know it", c.what, rep.Refusals)
+			}
+			if n := len(rep.Evaluated) + len(rep.Skipped); n != validate.TotalArms {
+				t.Errorf("%s accounts for %d arm(s), want %d", c.what, n, validate.TotalArms)
+			}
+			t.Logf("PROOF %s -> exit 2, %d could-not-run, 0 refusals, %d arm(s) accounted",
+				c.what, len(rep.CouldNotRun), len(rep.Evaluated)+len(rep.Skipped))
+		})
+	}
+}
+
 // TestTheCasesVacuityGuardFires is the live half of C2's vacuity guard: a
 // project whose bindings parse and whose cases/ is absent would otherwise let
 // arms 1, 12a and 12b pass in silence.
@@ -416,14 +624,21 @@ var allArms = []string{
 // TestEveryArmAccountsForItself is the "18 of 18" invariant, and it is an
 // accounting one rather than a single project's number.
 //
-// WHY NOT SIMPLY THE TWIN: the twin reports SIXTEEN of eighteen, because arms 4
-// and 5 are vacuous unless `stages.browser.enabled` is true and the twin cannot
-// enable them. Making it able to would mean declaring a browser action and a
-// role, and tests/contract's agreement test refuses an examples/* package that
-// declares either with no case carrying it. So the eighteenth arm is reached
-// across the SUITE -- each fixture that enables the browser stage evaluates
-// those two -- and what this test pins is that every arm is evaluated SOMEWHERE
-// and that no run ever both evaluates and skips one.
+// WHY NOT SIMPLY THE TWIN, which is the question this comment got wrong for
+// three releases: it said the twin reports SIXTEEN of eighteen because arms 4
+// and 5 are vacuous without `stages.browser.enabled` and "the twin cannot
+// enable them". The twin has enabled them since 0120352 -- it declares a
+// browser action and its flow to satisfy fable's D9 drill -- and reports 18 of
+// 18 when a `rumor` is on PATH for its `fake-adapter` to spawn. The comment
+// outlived its measurement (quill, coop r4/91).
+//
+// The answer that does not rot: a NUMBER about one project is a claim about
+// that project's declarations and its environment -- four arms need a spawnable
+// adapter -- so what this test pins is the ACCOUNTING, that every arm is
+// evaluated SOMEWHERE across the twin and the fixtures and that no run ever
+// both evaluates and skips one. The twin passing all eighteen is asserted where
+// it belongs, against the documented output in
+// TestTheDocumentedOutputIsTheBinarysOutput.
 func TestEveryArmAccountsForItself(t *testing.T) {
 	seen := map[string]bool{}
 

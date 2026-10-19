@@ -69,7 +69,12 @@ issue 64). PROJECT is a directory holding `bindings.toml`, `platform.toml`,
 |---|---|
 | 0 | passed: every arm that evaluated found nothing |
 | 1 | refused: an arm fired, and the line NAMES it |
-| 2 | could-not-run: a declaration could not be READ, or the adapter did not answer |
+| 2 | could-not-run: PROJECT is not a directory this run can open, a declaration could not be READ, or the adapter did not answer |
+
+**A path that is not a project is 2, not 1.** `rumor validate ./tyop` names
+the path and could-not-run; it does not refuse the project for having no
+`bindings.toml`, because nothing opened the directory to find out (quill, coop
+r4/91).
 
 **2 outranks 1.** If the declarations could not be read, what an arm would have
 said about them is not known -- and a decode refusal is 2 and never 1, because

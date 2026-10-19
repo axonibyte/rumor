@@ -67,6 +67,11 @@ A decode refusal is **could-not-run** (`rumor validate` exit 2), never
 *refused* (exit 1). The project is not wrong; its adapter is. That boundary is
 `rumor attaint`'s (R3) and fable's D7 drill asserts it.
 
+The same boundary runs through the project PATH: a directory that is not there,
+or a path that is not a directory, is **could-not-run** and the line names the
+path. Exit 1 there would be a verdict about declarations nothing opened, and it
+read identically to a real project missing its `bindings.toml`.
+
 ### `describe`
 
 **Request, beyond the envelope:** nothing. There is nothing to ask.
@@ -76,7 +81,7 @@ A decode refusal is **could-not-run** (`rumor validate` exit 2), never
 | field | type | consumer |
 |---|---|---|
 | `actions` | array of `{name, context}` | validate's arm on an action with no UI flow needs the action set; the arm on a browser-stage actor reaching an API action needs each action's `context`, because "could reach" is exactly "its context is one that actor holds a session in" |
-| `observations` | array of `{name, source}` | the engine's pre-run check: a bindings observation the adapter does not declare is could-not-run before any actor moves, rather than mid-run. This is the engine's check and **not** one of R4.3's thirteen refusals |
+| `observations` | array of `{name, source}` | the engine's pre-run check: a bindings observation the adapter does not declare is could-not-run before any actor moves, rather than mid-run. This is the engine's check and **not** one of R4.3's eighteen arms |
 | `contexts` | array of strings | `session`'s `context` must name one of these, and the reachability arm above is computed over them |
 | `components` | array of `{name, stateful}` | the arm on a stateful component no rollback provider covers compares these against `[[rollback]].covers` in `platform.toml`. Without `components` that arm has nothing to compare and would pass vacuously |
 | `capabilities` | object: `{faults, volume, upgrade}`, three arrays of names | the arm on a declared fault, volume target or upgrade with no capability or path behind it. Each array may be empty, and an empty array is the answer that makes the arm fire rather than an omission that makes it vacuous |
@@ -450,7 +455,7 @@ run that silently skipped it would replay less than it reported.
 | `seeds_file` | no, defaults to `seeds.lock` | validate's arm on a missing seeds file or promoted seed; R5 writes promotions into it. Named `seeds_file` and not `seeds` because a profile's `seeds` is a **count** -- one word for a path and a count in one file is a misreading waiting to happen |
 | `[adapter].command` | yes | the engine spawns it. Nothing else in the project says how to reach the system under test |
 | `[adapter].cwd`, `[adapter].env` | no | the spawn; `env` is a list of variable **names** passed through, so a platform's secrets stay out of this file |
-| `[[venire]]` | yes, at least one | the walk draws its actors from these roles and counts. An empty venire can run nothing, which is a parse refusal rather than one of validate's thirteen |
+| `[[venire]]` | yes, at least one | the walk draws its actors from these roles and counts. An empty venire can run nothing, which is a parse refusal rather than one of validate's eighteen |
 | `[stages.<name>].enabled` | yes, at least one enabled | stage selection and skip reasons in the report (R8); `stages.browser.enabled` is what the two browser-stage arms read, and both are vacuous without it |
 | `[weights.default]` | yes | the walk draws from the applicable set by weight (`docs/design.md`, "the engine owns the seed") |
 | `[weights.stage.<stage>]`, `[weights.profile.<profile>]` | no | the same, per stage and per profile, which is the shape design.md already relies on |

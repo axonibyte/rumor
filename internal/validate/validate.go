@@ -20,7 +20,11 @@
 // EXIT STATUSES ARE docs/contract.md:57's, not this package's choice: 0 passed,
 // 1 refused, 2 could-not-run. A document that cannot be READ is could-not-run
 // and arrives before any arm evaluates, so a project that is not a project does
-// not get a refusal naming an arm.
+// not get a refusal naming an arm. THE PATH ITSELF IS THE FIRST OF THOSE
+// DOCUMENTS: a directory that is not there is an unanswerable question, and
+// until quill measured it (coop r4/91) a mistyped path came back as the project
+// being wrong -- `no-bindings`, exit 1 -- which is a verdict about declarations
+// nothing opened.
 package validate
 
 import (
@@ -141,9 +145,24 @@ func (r *Report) skip(arm, f string, a ...any) {
 // unaccounted. The arms did not run, and why they did not run is the finding.
 func (r *Report) vacuous(clause, f string, a ...any) {
 	r.refuse(clause, f, a...)
+	r.unreached("the project declares too little to validate: see the %s refusal", clause)
+}
+
+// unreached accounts for the arms that never ran. It is vacuous's half on the
+// could-not-run side: the same accounting, a different verdict.
+//
+// IT EXISTS BECAUSE THE TALLY LINE IS READ AS A MEASUREMENT, which is the
+// reason TotalArms is declared at all. Every could-not-run return used to leave
+// all eighteen unaccounted and print "0 of 18 arm(s) evaluated" with no reason
+// beside any arm, so the invariant the suite asserts over the vacuity and the
+// live paths -- evaluated plus skipped equals TotalArms -- held everywhere
+// except where a document failed to parse, which is the one place a reader most
+// needs to know that nothing was measured.
+func (r *Report) unreached(f string, a ...any) {
+	reason := fmt.Sprintf(f, a...)
 	for _, arm := range allArmIDs {
 		if _, already := r.Skipped[arm]; !already {
-			r.skip(arm, "the project declares too little to validate: see the %s refusal", clause)
+			r.skip(arm, "%s", reason)
 		}
 	}
 }
@@ -182,6 +201,22 @@ type caseDoc struct {
 func Run(dir string) Report {
 	rep := Report{Project: filepath.Base(dir)}
 
+	// THE PATH IS CHECKED BEFORE ANYTHING IN IT, and the verdict is
+	// could-not-run NAMING THE PATH. A mistyped path and a real project missing
+	// its bindings.toml used to produce the same refusal, differing only in the
+	// project name on the tally line (quill, coop r4/91) -- so the reader was
+	// told their project was wrong when the directory they named was not there
+	// to be wrong. A typo is visible only beside the path.
+	if info, serr := os.Stat(dir); serr != nil {
+		rep.cannot("there is no project to validate: %v", serr)
+		rep.unreached("the path given could not be opened as a project directory")
+		return rep
+	} else if !info.IsDir() {
+		rep.cannot("there is no project to validate: %s is not a directory", dir)
+		rep.unreached("the path given is not a project directory")
+		return rep
+	}
+
 	// A MISSING OR UNREADABLE bindings.toml IS THE PROJECT SAYING NOTHING, and
 	// fable ruled that a refusal rather than could-not-run (r4/79). The
 	// DECODER's own failures stay could-not-run, which is the line fable drew:
@@ -196,6 +231,7 @@ func Run(dir string) Report {
 	brep, err := bindings.Load(bpath, decl.TOML)
 	if err != nil {
 		rep.cannot("bindings.toml: %v", err)
+		rep.unreached("bindings.toml could not be read, so no arm had declarations to read")
 		return rep
 	}
 	if !brep.OK() {
@@ -216,12 +252,14 @@ func Run(dir string) Report {
 	prep, perr := platform.Load(filepath.Join(dir, "platform.toml"), decl.TOML)
 	if perr != nil {
 		rep.cannot("platform.toml: %v", perr)
+		rep.unreached("platform.toml could not be read, so no arm had a platform to read")
 		return rep
 	}
 	if !prep.OK() {
 		for _, ref := range prep.Refusals {
 			rep.cannot("platform.toml: %s", ref.Error())
 		}
+		rep.unreached("platform.toml does not describe a platform: see the could-not-run line(s)")
 		return rep
 	}
 	plat := prep.Platform
@@ -270,6 +308,18 @@ func Run(dir string) Report {
 	// rules.json declares nothing, sixteen arms then evaluated over a statute
 	// whose rules nothing asserts, and the verdict was exit 0. A project with no
 	// rule has no statute worth validating.
+	// COULD-NOT-RUN IS ANSWERED BEFORE VACUITY, because a vacuity refusal is a
+	// claim about what the project DECLARES and both counts below are zero when
+	// the file holding them would not parse. An unreadable rules.json used to
+	// report "rules.json declares no rule" beside the decode failure -- a
+	// verdict about a declaration nobody read, and the same mistake quill found
+	// at the project path one level up. A malformed case file did it too, via
+	// the no-case clause.
+	if len(rep.CouldNotRun) > 0 {
+		rep.unreached("a declaration could not be read, so what it says is unknown: " +
+			"see the could-not-run line(s)")
+		return rep
+	}
 	if rep.Rules == 0 {
 		rep.vacuous("no-rule-declared", "rules.json declares no rule, so there is no statute to hold "+
 			"the bindings to")
@@ -277,9 +327,6 @@ func Run(dir string) Report {
 	}
 	if rep.Cases == 0 {
 		rep.vacuous("no-case", "there is no case under cases/, so no observation exists for an arm to read")
-		return rep
-	}
-	if len(rep.CouldNotRun) > 0 {
 		return rep
 	}
 
