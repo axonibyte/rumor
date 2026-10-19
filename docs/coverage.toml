@@ -148,6 +148,22 @@ path = "cmd/rumor/**/*.go"
 docs = ["docs/cli.md", "docs/design.md"]
 
 [[entry]]
+# The toy system under test (R5.2). NOT cli.md: this is not part of rumor's
+# command surface -- it is the application the engine is proven against, and a
+# reader looking for what `rumor` does should not find it here. design.md owns
+# what the toy is and why it is a process, and testing-methodology.md owns the
+# ledger bugs it carries deliberately.
+path = "cmd/toy/**/*.go"
+docs = ["docs/design.md", "docs/testing-methodology.md"]
+
+[[entry]]
+# The toy's adapter: it speaks R4's wire contract on stdio and drives the toy
+# over HTTP, so contract.md owns the protocol half and design.md the process
+# half. Also not a rumor subcommand, for the reason above.
+path = "cmd/toy-adapter/**/*.go"
+docs = ["docs/contract.md", "docs/design.md"]
+
+[[entry]]
 # `internal/coverage` IS the `docs --check` command, so cli.md describes it and
 # design.md says why the check exists. The other internal packages are NOT
 # mapped here, and that is the correction: a single `internal/**/*.go` entry
