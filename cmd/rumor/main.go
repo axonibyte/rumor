@@ -30,7 +30,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
-const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor validate PROJECT\n       rumor attaint [--examples DIR]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD]"
+const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor validate PROJECT\n       rumor attaint [--examples DIR]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S]"
 
 // coverageCheck is a seam, not indirection for its own sake: it lets a test
 // drive the WRITE handling below -- including the failed-write path -- without
@@ -269,6 +269,8 @@ func fakeConfig(rest []string) (fake.Config, string) {
 			cfg.Surface = s
 		case "--contract":
 			cfg.Contract = value
+		case "--id-salt":
+			cfg.IDSalt = value
 		case "--fail":
 			cfg.Fail = wire.FaultKind(value)
 		case "--omit":

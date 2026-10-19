@@ -350,7 +350,7 @@ go test ./tests/attaint/ -v
 ## `rumor fake-adapter`
 
 ```
-rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD]
+rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S]
 ```
 
 The fake adapter (R4.1, issue 62): it speaks the whole wire protocol

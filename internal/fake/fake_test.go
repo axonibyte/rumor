@@ -349,3 +349,110 @@ func (failingWriter) Write([]byte) (int, error) { return 0, errNoPipe{} }
 type errNoPipe struct{}
 
 func (errNoPipe) Error() string { return "no pipe" }
+
+// --id-salt MOVES EVERY ID AND NOTHING ELSE.
+//
+// The salted sibling of TestRecordedAnswers's id assertion, ruled at coop
+// r5/58. Two salts stand for two attempts: the ids must differ between them and
+// from the unsalted answer, which is what makes issue 72's done-when
+// ("the same handle sequence with different ids") reachable at all.
+func TestTheIDSaltMovesEveryIDAndOnlyIDs(t *testing.T) {
+	exec := func(cfg Config) wire.ExecuteResponse {
+		t.Helper()
+		line := drive(t, cfg, request(wire.KindExecute,
+			map[string]any{"action": "create_event", "args": map[string]any{}, "token": "t"}))
+		msg, err := wire.DecodeResponse(line)
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		resp, ok := msg.(wire.ExecuteResponse)
+		if !ok {
+			t.Fatalf("answered %T: %s", msg, line)
+		}
+		return resp
+	}
+
+	plain := exec(dflt())
+	if plain.IDs["event"] != "e-1" {
+		t.Fatalf("the unsalted answer must be unchanged, so every existing fixture stays "+
+			"byte-identical; got %v", plain.IDs)
+	}
+
+	a := dflt()
+	a.IDSalt = "att1"
+	b := dflt()
+	b.IDSalt = "att2"
+	one, two := exec(a), exec(b)
+
+	if one.IDs["event"] == plain.IDs["event"] {
+		t.Errorf("a salted id must differ from the unsalted one; both are %v", one.IDs["event"])
+	}
+	if one.IDs["event"] == two.IDs["event"] {
+		t.Errorf("two salts must answer two ids, or an attempt comparison cannot see ids move; "+
+			"both are %v", one.IDs["event"])
+	}
+	if one.IDs["event"] != "att1-e-1" || two.IDs["event"] != "att2-e-1" {
+		t.Errorf("the salt is a prefix on the recorded id: got %v and %v", one.IDs["event"], two.IDs["event"])
+	}
+
+	// DETERMINISTIC: the same salt twice is the same id, or a failing attempt
+	// could not replay and the seed would not carry the run.
+	if again := exec(a); again.IDs["event"] != one.IDs["event"] {
+		t.Errorf("the same salt answered %v then %v, so it is not deterministic",
+			one.IDs["event"], again.IDs["event"])
+	}
+
+	// AND ONLY IDS. An observation's value is an arbitrary answer -- this
+	// surface's `attendance` is the number 1 -- so the salt must not reach it.
+	line := drive(t, a, request(wire.KindObserve,
+		map[string]any{"query": "event", "source": "api", "token": "t"}))
+	msg, err := wire.DecodeResponse(line)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	obs, ok := msg.(wire.ObserveResponse)
+	if !ok {
+		t.Fatalf("answered %T", msg)
+	}
+	if obs.Value != "e-1" {
+		t.Errorf("the salt reached an observation value, which was never an id: got %v", obs.Value)
+	}
+}
+
+// A NON-STRING ID IS REFUSED WHEN A SALT IS SET, rather than passed through
+// unmoved -- one id silently staying put is exactly the state the attempt
+// comparison cannot detect.
+func TestANonStringIDIsRefusedUnderASalt(t *testing.T) {
+	cfg := dflt()
+	cfg.IDSalt = "att1"
+	rec := cfg.Surface.Execute["create_event"]
+	rec.IDs = map[string]any{"event": 7}
+	cfg.Surface.Execute["create_event"] = rec
+
+	line := drive(t, cfg, request(wire.KindExecute,
+		map[string]any{"action": "create_event", "args": map[string]any{}, "token": "t"}))
+	msg, err := wire.DecodeResponse(line)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	errResp, ok := msg.(wire.ErrorResponse)
+	if !ok {
+		t.Fatalf("a numeric id under a salt must be an error envelope, not %T: %s", msg, line)
+	}
+	if !strings.Contains(errResp.Error.Detail, "unmoved") {
+		t.Errorf("the fault must say why passing it through is not an option; got %q", errResp.Error.Detail)
+	}
+
+	// WITHOUT A SALT the same surface is answered, since nothing is claimed
+	// about ids moving.
+	cfg.IDSalt = ""
+	line = drive(t, cfg, request(wire.KindExecute,
+		map[string]any{"action": "create_event", "args": map[string]any{}, "token": "t"}))
+	msg, err = wire.DecodeResponse(line)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, ok := msg.(wire.ExecuteResponse); !ok {
+		t.Errorf("a numeric id with NO salt must still be answered: %s", line)
+	}
+}

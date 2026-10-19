@@ -108,6 +108,25 @@ type Config struct {
 	// the decoder must refuse by name and validate must report could-not-run
 	// rather than a refusal.
 	Omit map[wire.Kind]string
+
+	// IDSalt prefixes every id this adapter hands back, so two attempts can be
+	// given two salts and answer DIFFERENT ids for the same action.
+	//
+	// WHY IT EXISTS: issue 72's done-when is that two runs from one seed
+	// produce the same handle SEQUENCE with different ids -- which is the whole
+	// proof that the sequence is over handles and not over ids. Measured, this
+	// adapter answered {"event":"e-1"} on every run, and ibis measured that
+	// cmd/toy is no better: one counter over the operation sequence, so the
+	// same walk gives the same ids on a real server by construction. With an
+	// adapter whose ids never move, that arm would pass over a handle table
+	// that did nothing.
+	//
+	// DETERMINISTIC AND NOT RANDOM, ruled at coop r5/58: a failing attempt has
+	// to replay, and a random id would make the replay depend on something the
+	// seed does not carry -- the same reason the engine owns the generator.
+	//
+	// EMPTY BY DEFAULT, so examples/ and the twin are byte-identical to before.
+	IDSalt string
 }
 
 // Run reads requests until EOF and answers each one.
@@ -180,9 +199,17 @@ func (cfg Config) answer(contract string, line []byte) map[string]any {
 				Detail: fmt.Sprintf("%q is not recorded in this surface; it records %s", m.Action, list(keys(cfg.Surface.Execute))),
 			})
 		}
+		ids, serr := salted(rec.IDs, cfg.IDSalt)
+		if serr != nil {
+			return envelope(contract, env.ID, wire.Fault{
+				Kind:   wire.FaultInternal,
+				Field:  "ids",
+				Detail: fmt.Sprintf("%s for action %q", serr, m.Action),
+			})
+		}
 		typed = wire.ExecuteResponse{
 			Envelope: wire.Envelope{Kind: wire.KindExecute, Contract: contract, ID: env.ID},
-			IDs:      rec.IDs,
+			IDs:      ids,
 			Response: rec.Response,
 		}
 	case wire.ObserveRequest:
@@ -218,6 +245,37 @@ func (cfg Config) answer(contract string, line []byte) map[string]any {
 		delete(obj, field)
 	}
 	return obj
+}
+
+// salted prefixes every id with the salt, or returns the ids unchanged when
+// there is no salt.
+//
+// IT SALTS THE EXECUTE RESPONSE'S `ids` AND NOTHING ELSE, and the reason covers
+// exactly that: `ids` is the declared map of the system's own identifiers for
+// what the action created, so moving them is moving ids. An observation's value
+// is an arbitrary answer -- this surface's default `attendance` is the number 1
+// -- and prefixing that would corrupt an answer that was never an id. A run
+// that wants a salted observation reads it through the handle table, which is
+// where the id it was given lives.
+//
+// A NON-STRING ID IS REFUSED WHEN A SALT IS SET rather than passed through
+// unmoved. The salt exists so that EVERY id differs between two attempts; one
+// id silently staying put is exactly the state the arm it serves could not
+// detect, and a surface declaring a numeric id is a thing to say out loud.
+func salted(ids map[string]any, salt string) (map[string]any, error) {
+	if salt == "" || len(ids) == 0 {
+		return ids, nil
+	}
+	out := make(map[string]any, len(ids))
+	for k, v := range ids {
+		str, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("the surface records a %T id for %q and --id-salt can only move "+
+				"a string: an id left unmoved would defeat the attempt comparison the salt is for", v, k)
+		}
+		out[k] = salt + "-" + str
+	}
+	return out, nil
 }
 
 // object turns a typed message into the map that gets written. The round trip

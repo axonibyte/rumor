@@ -287,7 +287,7 @@ func TestFakeAdapterReportsAFailedWrite(t *testing.T) {
 // TestFakeAdapterUsageIsInTheUsageLine, because a subcommand nobody can
 // discover is a subcommand the agent guide has to carry instead.
 func TestFakeAdapterUsageIsInTheUsageLine(t *testing.T) {
-	for _, want := range []string{"fake-adapter", "--surface", "--contract", "--fail", "--omit"} {
+	for _, want := range []string{"fake-adapter", "--surface", "--contract", "--fail", "--omit", "--id-salt"} {
 		if !strings.Contains(usage, want) {
 			t.Errorf("the usage line omits %q", want)
 		}
