@@ -77,6 +77,7 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 		}
 	}
 	act := declared(action)
+	nemesis := declared(NemesisKinds)
 	role := map[string]bool{}
 	for _, r := range b.Roles {
 		role[r.Name] = true
@@ -100,27 +101,34 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 	// one file, two dangling references of the same kind, opposite answers
 	// (ibis r4/105, rook r4/109). This arm reads both documents, which is why
 	// the pairing lives here and the parser's own refusal stays where it is.
-	for _, w := range []struct {
-		where string
-		table map[string]int
-	}{{"[weights.default]", p.Weights.Default}} {
-		for kind := range w.table {
-			if !act[kind] {
-				note("platform.toml: %s names %s: no action of that name in bindings.toml", w.where, kind)
-			}
+	//
+	// THE REFERENT SET IS ACTIONS PLUS THE NEMESIS KINDS, and the first cut of
+	// this cell got it wrong: it refused a weight for `suborn`, which
+	// docs/contract.md's own `[weights.default]` sample carries beside a
+	// comment saying "nemesis kinds are action kinds in the same pool". Driven
+	// against the twin with `suborn = 1` added, it refused the documented shape
+	// -- so the cell would have shipped refusing a project this project's own
+	// documentation tells people to write.
+	weighable := func(kind string) bool { return act[kind] || nemesis[kind] }
+	for kind := range p.Weights.Default {
+		if !weighable(kind) {
+			note("platform.toml: [weights.default] names %s: no action of that name in bindings.toml, "+
+				"and it is not a nemesis kind", kind)
 		}
 	}
 	for stage, table := range p.Weights.Stage {
 		for kind := range table {
-			if !act[kind] {
-				note("platform.toml: [weights.stage.%s] names %s: no action of that name in bindings.toml", stage, kind)
+			if !weighable(kind) {
+				note("platform.toml: [weights.stage.%s] names %s: no action of that name in bindings.toml, "+
+					"and it is not a nemesis kind", stage, kind)
 			}
 		}
 	}
 	for profile, table := range p.Weights.Profile {
 		for kind := range table {
-			if !act[kind] {
-				note("platform.toml: [weights.profile.%s] names %s: no action of that name in bindings.toml", profile, kind)
+			if !weighable(kind) {
+				note("platform.toml: [weights.profile.%s] names %s: no action of that name in bindings.toml, "+
+					"and it is not a nemesis kind", profile, kind)
 			}
 		}
 	}
@@ -221,6 +229,18 @@ func arm19Observations(rep *Report, b bindings.Bindings, d wire.DescribeResponse
 		rep.refuse("19", "a name the project uses that the adapter does not declare: %s", strings.Join(bad, "; "))
 	}
 }
+
+// NemesisKinds are the four the walk draws from the same pool as a project's own
+// actions: `suborn` feeds an actor a false claim, `canard` is a false tell,
+// `palter` a half-true claim, `essoin` an abandoned flow (docs/design.md).
+//
+// THIS IS A COPY AND IT SAYS SO. The list belongs to the scheduler that draws
+// them -- R5.1's pool, which is not on main yet -- and it is declared here only
+// because arm 19's weight cell cannot otherwise tell a nemesis kind from a
+// typo. tests/validate pins it against docs/design.md's own sentence, so the
+// copy cannot drift from the document while both exist; when the scheduler
+// lands, this reads its list and the oracle moves with it.
+var NemesisKinds = []string{"canard", "essoin", "palter", "suborn"}
 
 // placeholder is `{name}`: the brace form a flow step uses for a handle.
 var placeholder = regexp.MustCompile(`\{([^{}]+)\}`)

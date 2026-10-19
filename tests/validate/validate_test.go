@@ -358,6 +358,80 @@ func TestTheDocumentedArmCountIsTotalArms(t *testing.T) {
 	t.Logf("PROOF %d documented arm count(s) read, all %s", found, want)
 }
 
+// TestANemesisKindMayBeWeighted is arm 19's weight cell's own control, and the
+// test that would have caught the cell's first cut.
+//
+// IT REFUSED THE DOCUMENTED SHAPE. docs/contract.md's `[weights.default]`
+// sample carries `suborn = 1` beside the comment "nemesis kinds are action
+// kinds in the same pool", and the cell's referent set was the declared actions
+// alone -- so the twin with `suborn = 1` added was refused, which is this
+// project's documentation telling a reader to write a project this arm rejects.
+// A cell that pairs against a set needs a positive control for every KIND of
+// member of that set, not only for the one the fixture uses.
+func TestANemesisKindMayBeWeighted(t *testing.T) {
+	twin := filepath.Join("..", "..", "examples", "twin")
+	for _, kind := range validate.NemesisKinds {
+		t.Run(kind, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "twin")
+			if out, err := exec.Command("cp", "-r", twin, dir).CombinedOutput(); err != nil {
+				t.Fatalf("copying the twin: %v %s", err, out)
+			}
+			p := filepath.Join(dir, "platform.toml")
+			raw, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			const anchor = "publish_doc = 1"
+			if !strings.Contains(string(raw), anchor) {
+				t.Fatalf("the twin's [weights.default] no longer carries %q, so this control weights nothing", anchor)
+			}
+			with := strings.Replace(string(raw), anchor, anchor+"\n"+kind+" = 1", 1)
+			if err := os.WriteFile(p, []byte(with), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			rep := validate.Run(dir)
+			for _, r := range rep.Refusals {
+				t.Errorf("a weight for the nemesis kind %s was refused: %s", kind, r)
+			}
+			t.Logf("PROOF %s may be weighted beside the project's own actions", kind)
+		})
+	}
+}
+
+// TestTheNemesisKindsAreTheDocumentsFour pins internal/validate's COPY of a
+// vocabulary it does not own against docs/design.md's own sentence. The list
+// belongs to R5.1's scheduler, which is not on main; until it is, two places
+// name the four and only one of them is executable.
+func TestTheNemesisKindsAreTheDocumentsFour(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "design.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the sentence that introduces them, and nothing else: "The nemesis kinds
+	// are action kinds in the same pool with their own weights: ..." up to the
+	// end of that sentence.
+	window := regexp.MustCompile(`(?s)The nemesis kinds are action kinds in the\s+same pool with their own weights:(.*?)\.\s`)
+	m := window.FindStringSubmatch(string(raw))
+	if m == nil {
+		t.Fatal("docs/design.md no longer introduces the nemesis kinds in the sentence this oracle reads: " +
+			"move the oracle with the document rather than deleting it")
+	}
+	named := map[string]bool{}
+	for _, q := range regexp.MustCompile("`([a-z]+)`").FindAllStringSubmatch(m[1], -1) {
+		named[q[1]] = true
+	}
+	if len(named) != len(validate.NemesisKinds) {
+		t.Fatalf("docs/design.md names %d nemesis kind(s) %v and internal/validate declares %d %v",
+			len(named), named, len(validate.NemesisKinds), validate.NemesisKinds)
+	}
+	for _, k := range validate.NemesisKinds {
+		if !named[k] {
+			t.Errorf("internal/validate declares %q and docs/design.md's sentence does not name it", k)
+		}
+	}
+	t.Logf("PROOF the document and this package name the same %d nemesis kind(s)", len(named))
+}
+
 // TestWhatIsNotAProjectCannotRunRatherThanBeingRefused is quill's first finding
 // at coop r4/91, and the arm that would have caught it is the THIRD case below
 // rather than either of the first two.
