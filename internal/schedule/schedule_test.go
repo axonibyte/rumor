@@ -127,3 +127,88 @@ func TestMintIsTheOnlyEntropyAndNewDoesNotUseIt(t *testing.T) {
 		}
 	}
 }
+
+// D3's LIBRARY HALF: a kind weighted zero is never drawn. What it would catch:
+// a cumulative walk using `<=` instead of `<`, which gives a zero-weighted
+// kind the first slot and makes "never" mean "whenever the draw lands on 0".
+func TestAZeroWeightIsNeverDrawn(t *testing.T) {
+	s := New(11)
+	cands := []Candidate{{"suborn", 0}, {"create_user", 3}, {"join_event", 1}}
+	for i := 0; i < draws; i++ {
+		got, err := s.Pick(cands)
+		if err != nil {
+			t.Fatalf("draw %d refused: %v", i, err)
+		}
+		if got == "suborn" {
+			t.Fatalf("draw %d chose a kind weighted 0: a project that writes 0 has said never", i)
+		}
+	}
+	t.Logf("PROOF %d draws, none of them the zero-weighted kind", draws)
+}
+
+// THE CALLER'S ORDER MUST NOT CHANGE THE RUN, which is fable's D1 reasoning
+// made testable: a draw that trusted slice order (or walked a map) would pass a
+// set comparison and fail D1's sequence comparison, because the applicable set
+// is assembled fresh at every step.
+func TestTheCandidateOrderDoesNotChangeTheDraw(t *testing.T) {
+	forward := []Candidate{{"a", 1}, {"b", 2}, {"c", 3}}
+	reversed := []Candidate{{"c", 3}, {"b", 2}, {"a", 1}}
+	one, two := New(99), New(99)
+	for i := 0; i < draws; i++ {
+		x, err := one.Pick(forward)
+		if err != nil {
+			t.Fatalf("draw %d refused: %v", i, err)
+		}
+		y, err := two.Pick(reversed)
+		if err != nil {
+			t.Fatalf("draw %d refused on the reversed set: %v", i, err)
+		}
+		if x != y {
+			t.Fatalf("draw %d: %q from the forward set, %q from the reversed one -- "+
+				"the caller's assembly order is reaching the run", i, x, y)
+		}
+	}
+	t.Logf("PROOF %d draws identical across two orderings of one set", draws)
+}
+
+// THE WEIGHTS MUST ACTUALLY BIAS, or the arm above passes on a draw that
+// ignores weight entirely. The bound is wide on purpose: this asserts the
+// SHAPE (3:1 lands nearer 3:1 than 1:1), not a distribution.
+func TestTheWeightsBiasTheDraw(t *testing.T) {
+	s := New(2026)
+	cands := []Candidate{{"heavy", 3}, {"light", 1}}
+	heavy := 0
+	for i := 0; i < draws; i++ {
+		got, err := s.Pick(cands)
+		if err != nil {
+			t.Fatalf("draw %d refused: %v", i, err)
+		}
+		if got == "heavy" {
+			heavy++
+		}
+	}
+	// 3:1 over 1,000 draws expects 750; anything under 650 or over 850 means
+	// the weights are not reaching the draw in the shape the project wrote.
+	if heavy < 650 || heavy > 850 {
+		t.Errorf("a 3:1 weighting drew the heavy kind %d of %d times, outside [650,850]", heavy, draws)
+	}
+	t.Logf("PROOF a 3:1 weighting drew heavy %d of %d (expected about 750)", heavy, draws)
+}
+
+// EVERY WEIGHT ZERO IS A REFUSAL, not a uniform fallback: a fallback would run
+// a walk the project asked not to have.
+func TestAllZeroWeightsRefuseRatherThanFallBack(t *testing.T) {
+	if _, err := New(1).Pick([]Candidate{{"a", 0}, {"b", 0}}); err == nil {
+		t.Error("an all-zero candidate set drew a kind: the project said never to each")
+	}
+	if _, err := New(1).Pick(nil); err == nil {
+		t.Error("an empty candidate set drew a kind")
+	}
+	if _, err := New(1).Pick([]Candidate{{"a", -1}}); err == nil {
+		t.Error("a negative weight was drawn from rather than refused")
+	}
+	got, err := New(1).Pick([]Candidate{{"only", 7}})
+	if err != nil || got != "only" {
+		t.Errorf("a single candidate must always be drawn: got %q, %v", got, err)
+	}
+}
