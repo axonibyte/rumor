@@ -480,8 +480,31 @@ files change and the cases do not.
 (R2.3, issue 44). `Input` reads a **sealed** ledger and one check and produces
 the statute's input; `Evaluate` returns the finding with the rule definition
 that produced it, every named sub-rule, and the OPA trace retained whole for
-`rumor explain` (R10). `rumor check` is the same walk over the three worked
-examples, so the claim can be re-run by anyone holding the binary.
+`rumor explain` (R10). `rumor check` is the same walk over **every** worked
+example under `examples/`, so the claim can be re-run by anyone holding the
+binary.
+
+> This said "the three worked examples" until R5.2, and the corpus had been four
+> since the permitted twin landed in v0.1.20 and is five with the toy. A count in
+> prose that nothing checks is a count that rots: the sentence now names the set
+> rather than its size, and the sizes that ARE asserted live in the suites that
+> can fail when they move.
+
+**What a statute receives, and what it does not.** `Input` projects each claim
+in the sealed prefix as `{ref, actor, type, position}`, plus `planted` and
+`visible_to` when present, and the observation as `{actor, position, of, query,
+source, value}` plus `role` when the project has roles. **`handles` is not
+projected**, though `internal/ledger` carries it on every claim — so no rule can
+ask which entity a claim is about, and the only identifying field a statute gets
+is the claim's own `ref`.
+
+Every package under `examples/` is therefore **single-subject**: one event, one
+document, one count per case, and the counts in a statute need no filter because
+there is nothing to filter against. That is a limit on RUNS rather than on cases
+and R5.2 measured it by hitting it — a walk that creates two events writes joins
+for both into one ledger, and a statute that cannot tell them apart would count
+across both. R5.3 needs `handles` in this projection, or an observation that
+names its subject in a field of its own.
 
 **The bound is the seal, and the observation sits at `seal+1`.** The statutes
 bound their claim sets with `c.position <= input.observation.position`. Every

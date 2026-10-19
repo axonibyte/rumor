@@ -3,6 +3,101 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.22 — 2026-10-19
+
+**The toy system under test, and the contract row it forced** — R5.2 of the R5
+call (issue 73).
+
+- **A fifth example, and the first that is a running program** (`examples/toy`,
+  `cmd/toy`, `cmd/toy-adapter`): a JSON API and a server-rendered UI over users,
+  events, roles and capacity, with its own bindings, platform, a nine-rule
+  statute, seven cases and nine mutants. It validates at **18 of 18 arms with no
+  refusals**, the ordinary sweep reads five packages and 29 cases all agreeing,
+  and `rumor attaint` kills all 25 rules with 32 mutants and nothing unmutated.
+- **It is a process, because a restart provider cannot restart a library.** The
+  engine starts the adapter, the adapter starts the toy, and everything the
+  adapter knows about the world it learns over HTTP — the way it would learn
+  about a system it did not ship with. The whole world is one file, sessions
+  included, which is what makes a checkpoint a copy.
+- **`observe` gains `args`, and the contract version goes to 2.** A count is of
+  one event, and an observation had nowhere to say which — so the toy's adapter
+  folded the subject into the query string for one checkpoint, which is a second
+  way of carrying an id in a shape the decoder cannot type, with a separator
+  that becomes contract by accident. `args` is now the row an execute has
+  carried since v1: the system's own ids, never handles, the engine resolving a
+  handle before the message is written. `query` is the observation's name alone.
+  It is optional at the wire because the decoder reads one message without the
+  bindings, and `rumor validate` pairs the declaration against the request.
+  Found by building to the contract rather than by reading it (ibis, coop
+  `r5.toy/7`; ruled by fable at `/8`).
+- **A project version is a patch and the wire version is not.** This release
+  breaks the wire contract — an adapter declaring `"1"` is refused — and that
+  breakage is recorded in `ContractVersion` and `docs/contract.md`'s Revisions,
+  which is what the contract's own version is FOR. `docs/release.md` reserves a
+  minor for a breaking change to the **CLI surface**, and nothing about `rumor`'s
+  commands changed, so this is a patch by the rule as v0.1.21 narrowed it.
+- **The rollback trait and its first provider** (`internal/rollback`,
+  `internal/rollback/toyrestart`): `Describe`, `Checkpoint`, `Restore`, `Verify`,
+  `Discard`, with a provider named in `platform.toml` and resolved against a
+  registry rather than imported. **A verify that checks one half passes over a
+  corpse**: comparing the state file byte for byte is satisfied most perfectly
+  when the application is dead, so `Verify` asks whether the file is the
+  checkpoint *and* whether the server answers, and the test kills the process
+  while leaving the file untouched. Three answers, and the third is not the
+  first: clean, `ErrDirty`, or could-not-tell.
+- **The three R5 ledger bugs are planted, each with its row and a witness.** The
+  capacity race (a check-then-act window in `joinEvent`, with a by-hand test
+  showing two boundary joins both landing), the API visibility leak (`eventCount`
+  answers any session where `listEvents` asks), and the stale count after delete
+  (the denormalized counter left standing while the store's own count goes to
+  nothing). Every one is driven both ways: repairing it fails a test that names
+  the row, so the toy cannot be fixed by accident with the shrinker's fixtures
+  inside it. **R5 plants all three and catches two**: one action at a time cannot
+  race, so the race is R8's to catch, which is the epic's done-when as amended.
+- **The leak was present before it was declared**, and the record says so:
+  `cmd/toy` shipped `eventCount` with no visibility check while its commit called
+  the file "the honest version" the bugs would be introduced into. Nothing was
+  mis-measured — no test pinned the behavior either way — but the claim was
+  wrong, and the correction sits at the handler rather than in a later summary.
+- **Three typed mismatches had quietly become agreements.** The arm-13 fixture
+  wrote `contract = "2"` as "a version nobody declares", `internal/wire`'s table
+  used `"2"` and `"3"`, and `internal/fake`'s D6 bumped an adapter to `"2"` —
+  and the bump turned all three green, the fixture built to trip the version arm
+  included. Each now derives from `ContractVersion`, so a mismatch is spelled
+  "not what the engine says" and survives every later bump.
+- **The drill driver could not fail.** `tools/drive-validate-drills.py` drove a
+  hard-coded path to a binary nobody rebuilt, so the bump made 18 of 23 drills
+  report a staleness in the harness as failing arms; and it printed `MISMATCH`
+  while exiting 0, so every caller reading its status — including this author's
+  own battery — saw green over them. It builds what it drives now and exits
+  non-zero on any mismatch, driven both ways.
+- **Two guards were widened rather than retyped.** `tests/contract`'s agreement
+  test assumed one observation per package and said so in its own message; the
+  toy has two, an `api` count and the `direct` oracle the rollback-coverage arm
+  needs, so it is a set equality in both directions now. Drill D5 strips the
+  corroboration control from **every** package's planted case, which the toy now
+  has — without that it produced zero refusals, passing while testing nothing.
+- **`docs/vocabulary.md`'s corroboration bullet gains the strip's scope** (fable,
+  `breakout-r5/1`): a planted claim an observation tests must produce `bug`, and
+  one no observation tests is counted and printed as unobserved. No term is
+  added, removed or renamed, so `VocabularyVersion` does not move.
+  `internal/attaint`'s quotation was re-anchored — the amendment inserted a
+  sentence inside the passage it quoted, and `tests/vocabulary` caught it as a
+  quote the document no longer says.
+- **What the ledger could not express, recorded rather than worked around.**
+  There is no capacity field on a claim, so an overrun is not nameable from a
+  case — the data model agreeing, independently, with the ruling that R8 catches
+  the race. And a statute never sees `handles`: the engine projects each claim as
+  `{ref, actor, type, position}` plus `planted` and `visible_to`, so no rule can
+  ask which entity a claim is about, and every package under `examples/` is
+  single-subject. That is a limit on runs rather than on cases, and R5.3 needs it
+  lifted to judge a walk that touches two events.
+
+`ci.yml` validates the toy beside the twin, building both binaries onto PATH
+under their own names: it is the only arm that proves the pair end to end on the
+runner, since the twin's adapter answers from a recorded surface and the toy's
+answers by driving an application over HTTP.
+
 ## 0.1.21 — 2026-10-19
 
 **`go.mod` must be accurate, and the gate only ever asserted it existed** — plus
