@@ -274,6 +274,25 @@ path = "internal/handle/*.go"
 docs = ["docs/design.md", "docs/vocabulary.md"]
 
 [[entry]]
+# `rumor run`: the seed printed first and accepted back, and a walk driven end
+# to end through the wire client. cli.md owns the command's surface and
+# design.md owns what a run IS -- the seeded walk, the weighted draw over
+# applicable actions, the sequence over handles.
+path = "tests/run/*.go"
+docs = ["docs/cli.md", "docs/design.md"]
+
+[[entry]]
+# The verb's own walkable project. It is a FIXTURE and not an example: a
+# project whose weight table is complete, which examples/twin and examples/toy
+# were not on 2026-10-19 (the twin weights publish_doc and not publish_doc_ui;
+# the toy weights no nemesis kind), so a verb arm resting on examples/ would
+# have waited on arm 19's cell closing that and would then move whenever those
+# tables did. design.md describes the walk it exercises; contract.md describes
+# the platform and bindings shapes it is written in.
+path = "tests/run/fixtures/**"
+docs = ["docs/design.md", "docs/contract.md"]
+
+[[entry]]
 # The kept session, driven against a real spawned adapter. docs/contract.md's
 # transport section is the subject -- it says the wire client spawns the adapter,
 # sends describe first and keeps the process for the whole run, and these arms

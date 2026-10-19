@@ -1,0 +1,37 @@
+# A project `rumor run` can actually walk, and ONLY that.
+#
+# WHY A FIXTURE RATHER THAN examples/: the verb's arms need a project whose
+# weight table is complete -- every declared action and all four nemesis kinds
+# -- which is the rule fable ruled at coop r5/49 and added to validate as arm
+# 19's new cell at r4/125. Measured 2026-10-19: examples/twin weights
+# publish_doc and NOT publish_doc_ui, and examples/toy weights its six actions
+# and none of the kinds, so `rumor run` refuses both. ibis is closing that on
+# the arm-19 branch; a verb arm resting on examples/ would have to wait for the
+# merge and would then move whenever those tables do.
+#
+# The two actions are the two the fake adapter's DEFAULT surface records, so
+# every honest step reaches a real process and gets a real id back.
+contract = "2"
+
+[adapter]
+command = ["rumor", "fake-adapter"]
+
+[[venire]]
+role = "member"
+count = 2
+
+[stages]
+api = { enabled = true }
+
+[weights.default]
+create_event = 4
+join_event = 1
+# THE NEMESIS KINDS ARE DECLARED AND ZERO. Zero is a decision -- never chosen
+# -- where absent is nobody deciding, which is what Pool refuses. The walk's
+# arms in tests/wire drive the kinds with real weights; this fixture is about
+# the VERB, and a nemesis effect R5.1 has not implemented would refuse the run
+# by name and tell the arms nothing about the command.
+suborn = 0
+canard = 0
+palter = 0
+essoin = 0

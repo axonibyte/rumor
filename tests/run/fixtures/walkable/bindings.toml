@@ -1,0 +1,29 @@
+# The two actions the fake adapter's default surface records.
+[[action]]
+name = "create_event"
+context = "api"
+emits = ["event.created"]
+requires = ["may_create_event"]
+creates = ["event"]
+
+[[action]]
+name = "join_event"
+context = "api"
+emits = ["event.joined"]
+requires = ["may_join"]
+touches = ["store"]
+
+[[observation]]
+name = "event_count"
+source = "api"
+of = "event.created"
+
+[[role]]
+name = "member"
+contexts = ["api"]
+
+[claim.event_created]
+timing = "immediate"
+
+[claim.event_joined]
+timing = "immediate"

@@ -531,6 +531,31 @@ func knownAtSeal(fl flatten.Ledger, actor string, seal int) ([]string, error) {
 	return flatten.Known(fl, actor, seal, nil)
 }
 
+// KnownAt is the claim refs an actor holds at the seal.
+//
+// EXPORTED FOR THE WALK'S CANARD, which has to pick a receiver "among those who
+// do not yet know it" (fable, coop r5/58) -- a question about somebody OTHER
+// than the actor taking the step, which CanardSubjects cannot answer because it
+// is about the teller. It goes through the same prefixFacts and knownAtSeal as
+// every other knowledge question here, for the reason EvaluateWith exists: a
+// second path computing what an actor knows would be free to disagree with the
+// first.
+func KnownAt(l *ledger.Ledger, actor string) ([]string, error) {
+	if l == nil {
+		return nil, fmt.Errorf("engine: no ledger")
+	}
+	seal, err := sealForPrecondition(l)
+	if err != nil {
+		return nil, err
+	}
+	fl, _ := prefixFacts(l)
+	known, err := knownAtSeal(fl, actor, seal)
+	if err != nil {
+		return nil, fmt.Errorf("engine: flattening %s's knowledge at the seal: %w", actor, err)
+	}
+	return known, nil
+}
+
 // CanardSubjects answers canard's precondition, which docs/design.md states and
 // docs/vocabulary.md's v1 row confirms is "a weight and a precondition over the
 // kinds above, not a fact kind and not a tag". A canard is a tell that PASSES

@@ -369,3 +369,14 @@ func TestOpenNamesABinaryItCannotSpawn(t *testing.T) {
 		t.Errorf("the error must name the binary it could not spawn; got %v", err)
 	}
 }
+
+// toyStatute is examples/toy's statute, so the walk arms evaluate applicability
+// by real rules rather than by a permissive stub of my own.
+func toyStatute(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "examples", "toy", "statute.rego"))
+	if err != nil {
+		t.Fatalf("the toy's statute: %v", err)
+	}
+	return string(b)
+}

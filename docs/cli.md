@@ -347,6 +347,58 @@ nobody observes must not read as a statute that stopped attributing.
 go test ./tests/attaint/ -v
 ```
 
+## `rumor run`
+
+```
+rumor run PROJECT [--seed N] [--steps N]
+```
+
+Walks the project: draws an actor, draws what it does from the actions its
+preconditions permit and the nemesis kinds in the same pool, executes the
+honest ones against the project's adapter, and records the sequence over
+run-local handles.
+
+**The seed is the first line of output, always.** One integer, printed before
+the adapter is even spawned, and accepted back by `--seed` to replay the run --
+so a run that dies in the handshake still tells you the one thing you need to
+reproduce it. Without `--seed` one is minted from crypto/rand and printed, and
+that printed number is exactly what `--seed` takes.
+
+`--steps` defaults to 20. Exit 0 on a completed walk, 1 on a project the
+documents refuse, 2 on could-not-run -- an adapter that will not start, a
+weight the project never declared, or a usage error.
+
+```console
+$ rumor run tests/run/fixtures/walkable --seed 42 --steps 5
+run: seed 42
+run:   1 member_1 create_event [member_1.event#1]
+run:   2 member_2 create_event [member_2.event#1]
+run:   3 member_1 join_event [member_1.join_event#1]
+run:   4 member_1 create_event [member_1.event#2]
+run:   5 member_1 join_event [member_1.join_event#2]
+run: walkable -- seed 42, 5 step(s), 5 handle(s); 1 rollback provider(s) registered
+```
+
+`join_event` appears only after a `create_event`: its precondition is that an
+event exists in the sealed prefix, so the pool is a different set at step 3
+than it was at step 1. That is the walk reading the statute rather than
+following a script.
+
+**Why the example walks a test fixture and not `examples/`.** A run needs a
+weight for every action the bindings declare and for all four nemesis kinds --
+an undeclared weight is refused rather than read as zero, since zero means
+never chosen and the project decided it. Measured 2026-10-19: `examples/twin`
+weights `publish_doc` and not `publish_doc_ui`, and `examples/toy` weights its
+six actions and none of the kinds, so `rumor run` refuses both until
+`validate`'s arm 19 weight cell closes that. The block above is held to the
+binary's own output by an arm in `tests/run`, so it cannot drift.
+
+**No `run` block here, deliberately.** An executable one would have to build
+`rumor`, put it on PATH for the fixture's `[adapter].command`, and reach into
+`tests/` from this page -- coupling the docs to a test fixture's layout. The arm
+comparing this console block to the binary is the stronger check, and it lives
+where the fixture does.
+
 ## `rumor fake-adapter`
 
 ```
