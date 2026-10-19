@@ -623,7 +623,26 @@ func (s *server) deleteEvent(w http.ResponseWriter, r *http.Request, id string) 
 	writeJSON(w, http.StatusOK, ev)
 }
 
-// eventCount reports the DENORMALIZED count: this is what an actor sees.
+// eventCount carries the ledger's "API visibility leak" row (epic, R5, caught
+// by api-sim): it asks for a session and then answers ANY caller, without
+// asking whether that caller's role may see the event at all. listEvents asks;
+// this does not, and two endpoints disagreeing about one question is the defect.
+//
+// IT WAS HERE BEFORE IT WAS DECLARED, and that is recorded rather than tidied
+// away: C1 shipped this handler with no visibility check while its commit
+// called the file "the honest version" the bugs would be introduced into. The
+// omission already WAS the leak. Nothing was mis-measured -- no test pinned the
+// behaviour either way -- but the claim was wrong, and the repair is to make the
+// defect deliberate, name its row, and pin it in the suite so it cannot be
+// fixed by accident.
+//
+// WHY A LEAK HERE IS VISIBLE TO v1 AT ALL: docs/vocabulary.md:80 makes a leak a
+// `bug` only when it MOVES the observed value, and this one does. An observer
+// whose role may not see the event should expect nothing of it, and this hands
+// back a number -- the shape examples/toy's visibility-leak case judges.
+//
+// It also reports the DENORMALIZED count, which is what an actor sees and what
+// the store's own count is compared against.
 func (s *server) eventCount(w http.ResponseWriter, r *http.Request, id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

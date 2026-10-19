@@ -326,6 +326,44 @@ func TestOnlyTheAdminDeletesAndTheCountGoesWithIt(t *testing.T) {
 	}
 }
 
+// THE LEAK IS PINNED, not merely present. The epic's "API visibility leak" row
+// lives in eventCount, which answers any session without asking whether its
+// role may see the event -- so a guest reads the attendance of an event the
+// list correctly hides from them. This test asserts the DEFECT, naming the row,
+// because a deliberately buggy application with nothing holding its bugs in
+// place is one somebody repairs by accident, taking the shrinker's fixtures
+// with it.
+//
+// AND IT PINS THE INCONSISTENCY, which is the part a reader needs: the same
+// actor, the same event, two endpoints, two answers. Fixing eventCount would
+// make this fail and say why.
+func TestTheCountLeaksToARoleTheListHidesItFrom(t *testing.T) {
+	h := start(t)
+	alice := h.actor("alice")
+	bob := h.actor("bob")
+	id := h.createEvent(alice, "members only", 2, []string{roleAdmin, roleMember})
+
+	// The list is correct: bob is a guest of this event and cannot see it.
+	code, body := h.do(http.MethodGet, "/events", bob, nil)
+	if code != http.StatusOK {
+		t.Fatalf("bob's list: status %d", code)
+	}
+	if idsOf(t, body)[id] {
+		t.Fatalf("the list leaked %s to a guest; this test is about the COUNT leaking "+
+			"where the list does not", id)
+	}
+
+	// The count is not: it answers him anyway. That is the ledger row.
+	code, body = h.do(http.MethodGet, "/events/"+id+"/count", bob, nil)
+	if code != http.StatusOK {
+		t.Fatalf("the count refused a guest with status %d -- the epic's API visibility leak row "+
+			"requires it to ANSWER, and R5.3 shrinks a seed that finds it", code)
+	}
+	if _, ok := body["count"].(float64); !ok {
+		t.Errorf("the count answered a guest without a count: %v", body)
+	}
+}
+
 func TestThePageRendersTheEventAndItsJoinFormWorks(t *testing.T) {
 	h := start(t)
 	alice := h.actor("alice")
