@@ -506,6 +506,17 @@ for both into one ledger, and a statute that cannot tell them apart would count
 across both. R5.3 needs `handles` in this projection, or an observation that
 names its subject in a field of its own.
 
+**That fork is closed: the projection carries `handles`.** fable ruled it at
+coop r5/16 — the run-local names, never ids, which is already how the
+vocabulary compares findings (rule, value, attribution over handles), so
+projecting them follows the discipline and projecting ids would breach it. A
+statute may then group claims by entity and "an actor can join only an event it
+knows of" means something with two events in one ledger. The engine does not do
+it yet, and the arm that will prove it is R5.3's: two events in one ledger, one
+finding each, still two after a shrink step — a handle-less projection reads
+them as one. Until that lands, the paragraph above is what a statute actually
+receives.
+
 **The bound is the seal, and the observation sits at `seal+1`.** The statutes
 bound their claim sets with `c.position <= input.observation.position`. Every
 fact in a sealed prefix is at or before the seal, so `seal+1` admits exactly

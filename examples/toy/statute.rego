@@ -61,6 +61,12 @@ package rumor.statute
 # for both into one ledger, and a statute that cannot tell them apart would
 # count across both. R5.3 needs `handles` in the projection, or an observation
 # that names its subject in a field of its own.
+#
+# AND THAT IS RULED: fable chose the projection at coop r5/16, so `handles` will
+# be in the input the run-local way, never ids. The engine does not pass them
+# yet, so every rule below still reads as if there were one subject -- when the
+# projection lands, the counts here are the ones that gain a filter, and this
+# comment is the note saying they were written without one on purpose.
 
 # The claims the observer holds at the observation's position: the ones it made
 # and the ones it was told, flattened by the engine and handed in as `known`.
