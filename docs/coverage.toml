@@ -91,6 +91,16 @@ path = "tests/docs/*.go"
 docs = ["docs/cli.md", "docs/release.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# The run's only source of chance (R5.1). Mapped to design.md because "The
+# engine owns the seed" IS this package's prose -- one generator the walk
+# holds, the seed printed first and accepted back, and nothing else in the
+# system drawing randomness -- and that section is what R5 amends with what it
+# measures. No cli.md entry yet: the package has no verb, and the verb is a
+# thread decision rather than something to settle in a coverage table.
+path = "internal/schedule/*.go"
+docs = ["docs/design.md"]
+
+[[entry]]
 # `rumor validate` itself (R4.3). Mapped to contract.md because that document
 # IS this package's prose -- it states what the three declarations must agree
 # on, and the exit statuses 0/1/2 including the rule that a decode refusal is
