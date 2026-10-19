@@ -3,6 +3,83 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.20 — 2026-10-19
+
+**`rumor validate`: eighteen arms over what a project declared** — R4.3 of the
+R4 call (issue 64).
+
+- **A fourth example, and it is the one that passes** (`examples/twin`): a
+  document publisher whose statute has one precondition (`may_publish`), five
+  cases, four mutants and a corroboration control. It sits flat beside the R1
+  three because a project is a directory and the twin is a project rather than a
+  variant of one. Every fixture below is this tree plus one change, so the twin
+  is the control for all eighteen arms: it passes with eighteen of eighteen
+  evaluated and none skipped, which is fable's D9.
+- **`rumor validate PROJECT`, and three exit values** (`docs/cli.md`): `0` every
+  arm held, `1` refused with each arm named, `2` the run could reach no verdict.
+  A decode failure from the adapter is `2` and never `1` — the project is not
+  wrong, its adapter is — which is `docs/contract.md`'s boundary and fable's D7
+  drill.
+- **Eighteen arms, eighteen fixtures, and they live outside `examples/`**
+  (`tests/validate/fixtures`): one per arm — 1, 2, 3, 4, 5, 6, 7a, 7b, 8, 9a,
+  9b, 9c, 10a, 10b, 11, 12a, 12b, 13 — each the twin plus exactly one change,
+  each tripping its own arm and no other. They are outside `examples/` because
+  they are deliberately broken projects and both `rumor check` and `rumor
+  attaint` walk that tree (fable, coop r4/63). They are **generated**
+  (`tools/make-validate-fixtures.py`) and an oracle reads each one back against
+  the twin in both directions, because neither failure is hypothetical: hand
+  copies went stale inside an hour, and giving the twin its `seeds.lock` broke
+  six fixtures silently by making each of them trip arm 10a as well as its own.
+- **One spawner, and it decodes strictly** (`internal/wire/client.go`): the
+  single place a validate run starts an adapter — argv, cwd, an environment
+  built from named variables plus `PATH`, one `describe`, one line read, then
+  kill. It goes through the contract's strict decoder and not `json.Unmarshal`,
+  which is a defect D7 found rather than a precaution: a malformed describe left
+  `contract` empty and arm 13 then refused the project for a version its adapter
+  had never sent.
+- **`seeds.lock`'s minimal format** (`docs/contract.md`): one seed per line, a
+  non-negative integer with an optional `#` comment, and blank or comment-only
+  lines ignored. It is fixed in R4 so arm 10a has something to read, and R5 may
+  extend it and may not contradict it. The twin's own file is comment-only,
+  which is what ignoring such a line is for: a project that has promoted no seed
+  yet still answers the arm. **Arm 10a was nearly narrowed instead** — fire only
+  on a non-default `seeds_file`, so the twin would pass — and a control a project
+  cannot satisfy is an arm the project learns to route around, so the twin
+  earned it.
+- **The gate's literal is 18, and 18 is the accounting rather than the pass**
+  (`.forgejo/workflows/ci.yml`, `validate.TotalArms`,
+  `docs/testing-methodology.md`): CI runs validate on the twin with the adapter
+  reachable, greps `18 of 18 arm(s) evaluated` and `0 refusal(s)`, and fails if
+  `skipped` appears at all. A run that evaluated fourteen arms and a run that
+  evaluated eighteen read identically when only refusals print, so every arm
+  reports itself as evaluated or as skipped-with-its-reason and the two sum to
+  eighteen or the run is wrong about itself.
+- **D5 widened to the whole corpus** (`tests/attaint/drills/d5-no-control`): the
+  overlay removes the corroboration control from the twin as well as from the R1
+  three, so the drill measures the corpus and not the part of it that predates
+  the twin.
+
+- **Two quoted tallies in `docs/cli.md` moved with the corpus**, and only the
+  release gate could see either: `rumor check`'s sample sits in a plain fence
+  nothing executes, and `attaint`'s sits in a `run` block that only
+  `release-gate.py` executes — on a pull request to `main`, which is after every
+  push a branch makes, so the branch tip was green in CI while the gate refused
+  it. Both are now held to the binary by `tests/validate`, which runs on every
+  push, and the attaint sample's line count moved with them (28 to 36).
+
+Driven rather than read: D1–D16 at 23 of 23 cases
+(`tools/drive-validate-drills.py`), and two arms were wrong until they were
+driven. D7 is the decoder above. D8 found a project with **zero rules passing at
+exit 0** — nothing to evaluate read as nothing to refuse — which is now a
+vacuity refusal that also skips all eighteen arms with its clause named; a
+vacuity is a clause and not an arm, and printing it as `arm no-rule-declared`
+was the first cut's error. fable ruled all three D8 cases refusals rather than
+could-not-run.
+
+A version bump and a changelog section ship no test of their own, as
+`docs/release.md` allows; everything the section describes is covered by
+`tests/validate`, the drills, and CI's arm-accounting step.
+
 ## 0.1.19 — 2026-10-18
 
 **The adapter wire contract, the platform declaration and the bindings
