@@ -1,0 +1,38 @@
+# The permitted twin's platform (R4.3, issue 64).
+#
+# THE FIRST platform.toml IN THE TREE. internal/platform has read this shape
+# since R4.1 and nothing committed exercised it, so the required keys here come
+# from the reader rather than from an example: `contract`, `[adapter].command`,
+# every `[stages].*.enabled`, `[weights].default`, and each `[[venire]]` entry's
+# role and count.
+#
+# [[rollback]] IS THE HALF ARM 6 NEEDS NOW. docs/rollback.md defines the
+# provider interface in R13; until then the name is carried as declared and the
+# arm only pairs it with the component the bindings name on a `direct`
+# observation. Removing this table is fable's D11 drill.
+
+contract = "2"
+
+[adapter]
+# THE SURFACE IS NAMED HERE, as a real project configures its own adapter: the
+# fake adapter's DEFAULT surface answers with no capabilities at all, so without
+# this the twin's [uses] would be paired against the wrong adapter's answer and
+# arms 9a/9b/9c would refuse a project that is correct. Found by declaring the
+# ask rather than by reading: an empty [uses] would have passed in silence.
+# The path is relative to the project, which is the cwd the wire client uses.
+command = ["rumor", "fake-adapter", "--surface", "surface.json"]
+
+[[venire]]
+role = "author"
+count = 2
+
+[stages]
+api = { enabled = true }
+browser = { enabled = true }
+
+[weights.default]
+publish_doc = 1
+
+[[rollback]]
+provider = "doc-store-truncate"
+covers = ["doc_store"]

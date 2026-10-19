@@ -81,43 +81,59 @@ said about them is not known -- and a decode refusal is 2 and never 1, because
 "the project is not wrong; its adapter is". fable's D7 drill asserts that
 boundary for the adapter and this command keeps the same one.
 
-**It reports what it EVALUATED, not only what it refused.** Eighteen arms are
+**It reports what it EVALUATED, not only what it refused.** Nineteen arms are
 declared, and an arm whose precondition is absent -- the browser stage off, no
 rule declared, no seeds file -- did not pass, it did not run. Those are named
 with their reason rather than folded into a number:
 
 ```console
 $ rumor validate examples/twin          # with the adapter on PATH
-validate: twin -- 18 of 18 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
+validate: twin -- 19 of 19 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
 ```
 
-Eighteen of eighteen is what a complete small project looks like: fable's D9
+Nineteen of nineteen is what a complete small project looks like: fable's D9
 drill requires the untouched examples to pass with every arm EVALUATED and none
 skipped, which is why the twin enables the browser stage and declares a browser
-action with its flow. **An adapter it cannot reach costs four arms**, and that
+action with its flow. **An adapter it cannot reach costs four arms and one cell**, and that
 is worth showing because the figure depends on it -- the twin's
 `[adapter].command` is `rumor fake-adapter`, so a `rumor` that is not installed
-takes the capability arms and the contract-version arm with it:
+takes the capability arms, the contract-version arm, and arm 19's observations
+cell with it:
 
 ```console
 $ rumor validate examples/twin          # no rumor on PATH
 validate: could not run: asking the adapter to describe itself: spawning "rumor": exec: "rumor": executable file not found in $PATH
+validate: could not run: arm 19's observations cell: the adapter did not answer a describe, so whether it declares the project's observations is unknown
 validate: arm 13 skipped: the adapter did not answer a describe, so what it can do is unknown
 validate: arm 9a skipped: the adapter did not answer a describe, so what it can do is unknown
 validate: arm 9b skipped: the adapter did not answer a describe, so what it can do is unknown
 validate: arm 9c skipped: the adapter did not answer a describe, so what it can do is unknown
-validate: twin -- 14 of 18 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
+validate: twin -- 15 of 19 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
 ```
 
 The run is could-not-run either way -- exit 2, never a refusal, because the
 project is not wrong when its adapter will not start -- and the four arms are
-SKIPPED rather than passed.
+SKIPPED rather than passed. **Arm 19 still EVALUATES**, because eight of its
+nine cells read documents alone; the ninth says could-not-run naming itself,
+which is why the tally moves by one and not by two.
 
 The twin's browser action **emits nothing and names no role**, and that is
 forced rather than minimal: `tests/contract`'s agreement test refuses an
 `examples/*` package emitting a claim type no case carries, or declaring a role
 no case carries. Each arm's own fixture lives in `tests/validate/fixtures/`, is
 the twin with one change, and trips exactly its own arm.
+
+**Every name a project uses is a name the project declares (arm 19).** Seven
+cells, each pairing one reference against the set it is looked up in, and the
+refusal names all three -- `bindings.toml: requires may_leave: no rule of that
+name in rules.json`. The cells: `requires` against `rules.json`; a weight
+against the declared actions; a `[[venire]]` role against the declared roles,
+where a project declares any; an observation's `args` and a flow's `{handle}`
+against what the actions create; a `[claim.<type>]` table against the emitted
+types; and the bindings' observations against the adapter's `describe`. rook
+found the first against `examples/toy` (coop r5/22) with every one of the
+eighteen arms passing it, and quill's consumer had already assumed the pairing
+existed -- so the hole was load-bearing before anyone noticed it was missing.
 
 **Four arms ask the adapter.** The capability arms (9a, 9b, 9c) pair `[uses]` in
 `bindings.toml` -- the project's ASK -- against `describe`'s `capabilities`,

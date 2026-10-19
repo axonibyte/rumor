@@ -135,15 +135,23 @@ def build():
 # THE CONDITION: an actor holding BOTH a browser session and the api context,
 # so it could reach publish_doc from the browser stage. docs/contract.md:69 --
 # "could reach" is "its context is one that actor holds a session in".
+#
+# THE NAME IS THE VENIRE'S OWN, and that is arm 19 talking: it was `editor`
+# until arm 19 landed, and a project declaring SOME role while its [[venire]]
+# draws another is exactly arm 19's venire cell -- so this fixture tripped two
+# arms and the isolation invariant said so. `author` is the role
+# platform.toml already draws, so the only defect here is the reachability.
 [[role]]
-name = "editor"
+name = "author"
 contexts = ["browser", "api"]
 ''')
     open(os.path.join(d, "WHY-browser-reaches-api.md"), "w").write(
         "# FIXTURE for arm 5\n\nONE CHANGE, no setup: the twin already enables the browser stage. This adds a\n"
         "role holding both `browser` and `api`, so a browser-stage actor could take the\n"
         "api action the twin declares.\n\n"
-        "The role is deliberately not in the twin: tests/contract's agreement test\nrefuses a declared role no case carries, and the twin's cases carry none.\n")
+        "The role is deliberately not in the twin: tests/contract's agreement test\nrefuses a declared role no case carries, and the twin's cases carry none.\n\n"
+        "It is named `author` -- the role platform.toml's venire already draws --\nbecause arm 19's venire cell refuses a project that declares some role while\n"
+        "drawing another, and with any other name this fixture would trip two arms.\n")
 
     d = fresh("7b-quiesce-no-probe")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
@@ -176,6 +184,76 @@ contexts = ["browser", "api"]
         open(p, "w").write("# FIXTURE for arm %s: the twin with one change -- [uses] asks for a\n"
                            "# %s the adapter's describe does not offer.\n" % (arm, key.rstrip("s")) + s)
 
+    # ---- arm 19's cells: a name the project uses and does not declare -------
+    # ONE ARM, SEVERAL CELLS (fable, coop r4/113), so these live under 19/ and
+    # tests/validate declares how many there are. Each breaks exactly ONE
+    # reference and must trip arm 19 and nothing else.
+
+    d = fresh("19/requires-unknown-rule")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    s = s.replace('requires = ["may_publish"]', 'requires = ["may_publish_absent"]', 1)
+    open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- publish_doc requires a rule\n"
+                       "# name rules.json does not declare. rook found this one against examples/toy\n"
+                       "# (coop r5/22) and every one of the eighteen arms passed it.\n" + s)
+
+    d = fresh("19/weight-unknown-action")
+    p = os.path.join(d, "platform.toml"); s = open(p).read()
+    s = s.replace("publish_doc = 1", "publish_doc = 1\npublish_nothing = 1", 1)
+    open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- [weights.default] weights an\n"
+                       "# action bindings.toml does not declare. The PARSER refuses the same shape for\n"
+                       "# an undeclared STAGE and cannot refuse this, being handed one file.\n" + s)
+
+    d = fresh("19/venire-undeclared-role")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    open(p, "w").write(s + '''
+# SETUP, not the condition: the twin declares no roles at all, and arm 19's
+# venire cell pairs only where a project declares some -- an absent [[role]]
+# table is a project that does not model roles. `author` is the role the twin's
+# venire already draws, and it holds `api` alone so arm 5 stays quiet.
+[[role]]
+name = "author"
+contexts = ["api"]
+''')
+    p = os.path.join(d, "platform.toml"); s = open(p).read()
+    open(p, "w").write(s + '''
+# THE CONDITION: a venire drawing a role no [[role]] declares.
+[[venire]]
+role = "wizard"
+count = 1
+''')
+    open(os.path.join(d, "WHY-venire-undeclared-role.md"), "w").write(
+        "# FIXTURE for arm 19, venire cell\n\nSETUP: `[[role]] author` in bindings.toml, because the cell pairs only where\n"
+        "the project declares roles AT ALL (ibis, coop r4/116; the twin declares none\n"
+        "and refusing it would refuse an example fable's D9 requires to pass).\n\n"
+        "CONDITION: `[[venire]] role = \"wizard\"`, which no [[role]] declares.\n")
+
+    d = fresh("19/observe-arg-unknown-handle")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    s = s.replace('of = "doc.published"\ncomponent = "doc_store"',
+                  'of = "doc.published"\nargs = ["nonesuch"]\ncomponent = "doc_store"', 1)
+    open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- the observation takes an arg\n"
+                       "# naming a handle no action creates, so the engine would resolve it to nothing.\n" + s)
+
+    d = fresh("19/flow-placeholder-unknown-handle")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    s = s.replace('to = "/docs/new"', 'to = "/docs/{nonesuch}"', 1)
+    open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- a UI flow step names a\n"
+                       "# handle in braces that no action creates.\n" + s)
+
+    d = fresh("19/claim-table-unemitted-type")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    s = s.replace('[claim."doc.published"]', '[claim."doc.archived"]\ntiming = "immediate"\n\n[claim."doc.published"]', 1)
+    open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- a [claim.<type>] table for a\n"
+                       "# type no action emits. Arm 2 holds the other direction, and fable moved this\n"
+                       "# one here rather than widening arm 2 (coop r4/113).\n" + s)
+
+    d = fresh("19/observation-not-in-describe")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    s = s.replace('name = "doc.count"', 'name = "doc.count.absent"', 1)
+    open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- the bindings declare an\n"
+                       "# observation the adapter's surface.json does not. The SURFACE is left alone,\n"
+                       "# as for 9a-9c: the arm is about the project's claim, not the adapter.\n" + s)
+
     # THE MISMATCH IS DERIVED FROM THE ENGINE'S OWN VERSION, not typed. This
     # wrote `contract = "2"` as "a version nobody declares", and the 2026-10-19
     # bump to contract 2 turned the fixture into an AGREEMENT -- arm 13 then
@@ -192,7 +270,17 @@ contexts = ["browser", "api"]
                        "# contract version the engine and the adapter do not. The value is derived\n"
                        "# from internal/wire's own constant, so a bump cannot make it agree.\n" + s)
 
-    return sorted(os.listdir(ROOT))
+    out = []
+    for name in sorted(os.listdir(ROOT)):
+        path = os.path.join(ROOT, name)
+        if os.path.isdir(path) and not os.path.exists(os.path.join(path, "bindings.toml")):
+            # A GROUP, not a fixture: arm 19 carries several cells, so its
+            # fixtures live one level down and a listing that stopped here
+            # would report seven as one.
+            out += ["%s/%s" % (name, child) for child in sorted(os.listdir(path))]
+        else:
+            out.append(name)
+    return out
 
 
 if __name__ == "__main__":

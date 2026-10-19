@@ -87,6 +87,12 @@ touches = ["doc_store"]
 # THE CONDITION: an actor holding BOTH a browser session and the api context,
 # so it could reach publish_doc from the browser stage. docs/contract.md:69 --
 # "could reach" is "its context is one that actor holds a session in".
+#
+# THE NAME IS THE VENIRE'S OWN, and that is arm 19 talking: it was `editor`
+# until arm 19 landed, and a project declaring SOME role while its [[venire]]
+# draws another is exactly arm 19's venire cell -- so this fixture tripped two
+# arms and the isolation invariant said so. `author` is the role
+# platform.toml already draws, so the only defect here is the reachability.
 [[role]]
-name = "editor"
+name = "author"
 contexts = ["browser", "api"]

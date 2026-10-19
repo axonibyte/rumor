@@ -45,7 +45,7 @@ import (
 // and found nothing -- the same reason every count in this project is declared
 // (fable ruled the number at coop breakout-r4/6, and it moves only with a count
 // posted there first).
-const TotalArms = 18
+const TotalArms = 19
 
 // Refusal is one arm firing, named by the arm so a fixture can assert that it
 // tripped ITS arm and no other -- the invariant fable set over the eighteen.
@@ -171,7 +171,7 @@ func (r *Report) unreached(f string, a ...any) {
 // this list against TotalArms so the two cannot drift.
 var allArmIDs = []string{
 	"1", "2", "3", "4", "5", "6", "7a", "7b", "8",
-	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13",
+	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13", "19",
 }
 
 func (r *Report) refuse(arm, f string, a ...any) {
@@ -342,12 +342,22 @@ func Run(dir string) Report {
 	arm10b(&rep, dir, plat)
 	arm11(&rep, dir, rules)
 	arm12(&rep, cases)
+	arm19(&rep, b, plat, rules)
 
 	// THE LIVE ARMS LAST, because they are the only ones that spawn anything and
 	// the static verdict should not depend on whether an adapter started.
 	if d, ok := live(&rep, dir, plat); ok {
 		arm9(&rep, b, d)
 		arm13(&rep, plat, d)
+		arm19Observations(&rep, b, d)
+	} else {
+		// ARM 19 EVALUATED ITS DOCUMENT CELLS and cannot answer its one
+		// adapter cell, which is could-not-run for that cell rather than a
+		// skip for the arm: the eight documents were read and what they say
+		// was checked. The run is already could-not-run for the describe that
+		// failed, so nothing reads this as a clean bill.
+		rep.cannot("arm 19's observations cell: the adapter did not answer a describe, " +
+			"so whether it declares the project's observations is unknown")
 	}
 	return rep
 }

@@ -19,15 +19,30 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/validate"
 )
 
-// THE DECLARED SIZE, which is the claim: C2 ships six arms and C3 brings the
-// count to eighteen. A fixture directory that vanished would otherwise leave
-// every remaining arm passing and the suite quiet about it.
-const wantFixtures = 18
+// THE DECLARED SIZE, which is the claim: C2 ships six arms, C3 brings the count
+// to eighteen, and fable's r4/113 ruling adds the nineteenth. A fixture
+// directory that vanished would otherwise leave every remaining arm passing and
+// the suite quiet about it.
+const wantFixtures = 25
 
-// armOf is the fixture naming convention: <arm>-<slug>. The arm is the part
-// before the first dash, so the directory name IS the expectation and a
-// renamed directory cannot quietly assert something else.
-func armOf(dir string) string { return strings.SplitN(dir, "-", 2)[0] }
+// ARM 19 IS ONE ARM WITH SEVERAL CELLS, so it is the one arm with more than one
+// fixture -- and the count is declared here for the same reason every count in
+// this project is. fable ruled nine cells at r4/113; two came off by
+// measurement rather than by preference (ibis r4/116, r4/119): the `of` cell is
+// already held by arm 1 and tests/contract between them, and the action-context
+// cell has an unsound referent set, refusing both of our own examples.
+const wantCells19 = 7
+
+// armOf is the fixture naming convention: <arm>-<slug>, or <arm>/<slug> for an
+// arm with several cells. The arm is the part before the first separator, so
+// the directory name IS the expectation and a renamed directory cannot quietly
+// assert something else.
+func armOf(dir string) string {
+	if i := strings.IndexByte(dir, '/'); i >= 0 {
+		return dir[:i]
+	}
+	return strings.SplitN(dir, "-", 2)[0]
+}
 
 // TestMain BUILDS THE BINARY ONCE AND PUTS IT ON PATH, which is how the live
 // arms are reachable without anything in the twin being test-shaped (fable,
@@ -75,9 +90,26 @@ func fixtures(t *testing.T) []string {
 	}
 	var names []string
 	for _, e := range entries {
-		if e.IsDir() {
-			names = append(names, e.Name())
+		if !e.IsDir() {
+			continue
 		}
+		// A GROUP, NOT A FIXTURE: an arm with several cells keeps them one
+		// level down, and a group holds no bindings.toml of its own. Reporting
+		// the group as one fixture would make seven cells look like one and
+		// would run validate against a directory that is not a project.
+		if _, err := os.Stat(filepath.Join(fixturesDir(t), e.Name(), "bindings.toml")); err != nil {
+			cells, cerr := os.ReadDir(filepath.Join(fixturesDir(t), e.Name()))
+			if cerr != nil {
+				t.Fatalf("reading the cells of %s: %v", e.Name(), cerr)
+			}
+			for _, c := range cells {
+				if c.IsDir() {
+					names = append(names, e.Name()+"/"+c.Name())
+				}
+			}
+			continue
+		}
+		names = append(names, e.Name())
 	}
 	sort.Strings(names)
 	return names
@@ -91,16 +123,28 @@ func TestTheFixturesAreAllPresent(t *testing.T) {
 	if len(got) != wantFixtures {
 		t.Fatalf("%d fixture(s) under tests/validate/fixtures, want %d: %v", len(got), wantFixtures, got)
 	}
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	for _, f := range got {
 		arm := armOf(f)
 		if arm == f {
 			t.Errorf("%q does not name its arm: the convention is <arm>-<slug>", f)
 		}
-		if seen[arm] {
-			t.Errorf("two fixtures claim arm %s: one fixture per arm is the invariant", arm)
+		seen[arm]++
+	}
+	for arm, n := range seen {
+		// ONE FIXTURE PER ARM, AND ARM 19 IS THE RULED EXCEPTION: it is one arm
+		// with several cells (fable, r4/113), each needing its own broken
+		// reference, so its count is declared instead of being capped at one.
+		if arm == "19" {
+			if n != wantCells19 {
+				t.Errorf("arm 19 has %d cell fixture(s), want %d: a cell that vanished would leave "+
+					"its pairing unchecked and the arm still passing", n, wantCells19)
+			}
+			continue
 		}
-		seen[arm] = true
+		if n > 1 {
+			t.Errorf("%d fixtures claim arm %s: one fixture per arm is the invariant", n, arm)
+		}
 	}
 }
 
@@ -550,6 +594,18 @@ var changedBy = map[string][]string{
 	// THE LIVE ARMS change the project's ASK and never the adapter's surface:
 	// changing what the adapter can do would test the fake adapter, and these
 	// arms are about what the project asks for.
+	// ARM 19's CELLS. Each breaks ONE reference; the venire cell needs the
+	// ground prepared (the twin declares no roles at all, and the cell pairs
+	// only where a project declares some), so it declares both edits the way
+	// fable's r4/74 rule allows and its README names which is which.
+	"19/requires-unknown-rule":           {"bindings.toml"},
+	"19/weight-unknown-action":           {"platform.toml"},
+	"19/venire-undeclared-role":          {"bindings.toml", "platform.toml", "WHY-venire-undeclared-role.md"},
+	"19/observe-arg-unknown-handle":      {"bindings.toml"},
+	"19/flow-placeholder-unknown-handle": {"bindings.toml"},
+	"19/claim-table-unemitted-type":      {"bindings.toml"},
+	"19/observation-not-in-describe":     {"bindings.toml"},
+
 	"9a-fault-unavailable":   {"bindings.toml"},
 	"9b-volume-unavailable":  {"bindings.toml"},
 	"9c-upgrade-unavailable": {"bindings.toml"},
@@ -618,7 +674,7 @@ func TestEveryFixtureIsTheTwinPlusItsOwnChange(t *testing.T) {
 // and it moves only with a count posted in r4 first.
 var allArms = []string{
 	"1", "2", "3", "4", "5", "6", "7a", "7b", "8",
-	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13",
+	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13", "19",
 }
 
 // TestEveryArmAccountsForItself is the "18 of 18" invariant, and it is an

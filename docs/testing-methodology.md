@@ -129,16 +129,19 @@ file, and emptying the recorded knowledge each turn the suite red.
 ## Self-test the oracle
 
 An oracle is checked before it is trusted, in the same run that trusts it.
-`rumor validate` declares **eighteen** arms, and the count is pinned in three
+`rumor validate` declares **nineteen** arms, and the count is pinned in three
 places that move together (`internal/validate.TotalArms`, `ci.yml`'s literal,
 and this sentence), the way the release gate's own case count is. The invariant
 is an ACCOUNTING one rather than a per-project number (fable, coop r4/77): every
-run accounts for all eighteen as evaluated or skipped-with-its-reason, never
+run accounts for all nineteen as evaluated or skipped-with-its-reason, never
 silently and never twice, and across `tests/validate/fixtures/` every arm is
-evaluated at least once. The permitted twin evaluates all eighteen, which is
+evaluated at least once. The permitted twin evaluates all nineteen, which is
 what fable's D9 drill requires of it; a project declaring no browser stage
-honestly reports sixteen, and one whose adapter cannot be reached reports
-fourteen -- the skips named, and could-not-run rather than refused.
+honestly reports **seventeen**, and one whose adapter cannot be reached reports
+**fifteen** -- the skips named, and could-not-run rather than refused. Each of
+those three figures is measured here rather than computed: the nineteenth arm
+evaluates on an unreachable adapter because eight of its nine cells read
+documents alone, so that reading moved by one and not by two.
 
 `tools/release-gate.py --self-test` drives twenty cases, fifteen trailer checks
 and seven docs-verdict checks, and asserts that **each arm fires alone**. Each
@@ -674,7 +677,7 @@ the one nobody runs.
 
 ## A parser must not refuse what a validator is built to refuse
 
-`rumor validate`'s eighteen refusals (R4.3) and the bindings parser (R4.2) read
+`rumor validate`'s nineteen refusals (R4.3) and the bindings parser (R4.2) read
 the same file, and eight of those arms are about bindings that are **well formed
 and wrong**: an action with no precondition, a binding emitting a claim type no
 rule consumes, an eventual claim type with no bound, a browser-stage action with
