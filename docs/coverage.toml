@@ -274,6 +274,18 @@ path = "internal/handle/*.go"
 docs = ["docs/design.md", "docs/vocabulary.md"]
 
 [[entry]]
+# The kept session, driven against a real spawned adapter. docs/contract.md's
+# transport section is the subject -- it says the wire client spawns the adapter,
+# sends describe first and keeps the process for the whole run, and these arms
+# are what hold the code to that sentence rather than to Describe's narrower
+# one-shot shape. testing-methodology.md comes too: the canned-response adapter
+# here exists because the fake's global --fail cannot produce a healthy
+# handshake followed by a fault, which is the "where a fixture is the oracle,
+# read the fixture first" problem one layer out.
+path = "tests/wire/*.go"
+docs = ["docs/contract.md", "docs/testing-methodology.md"]
+
+[[entry]]
 # The adapter contract in code: the messages, the strict decoder, the contract
 # version constant and the three-way version check. docs/contract.md owns the
 # protocol itself, and the two are held to each other by tests/contract rather

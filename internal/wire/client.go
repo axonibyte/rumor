@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,24 +44,16 @@ type Spawn struct {
 	Env     []string // variable NAMES passed through, so secrets stay out of the file
 }
 
-// Describe spawns the adapter, asks it to describe itself, reads one line, and
-// stops it.
+// start spawns one adapter and hands back the process and its two pipes.
 //
-// ONE REQUEST AND ONE LINE, which is the protocol's own rule (one outstanding
-// request per process) applied to the only exchange this needs. The process is
-// killed rather than waited for: an adapter that keeps the connection open for
-// a run it is not going to get would otherwise hold this call to the timeout.
-func Describe(ctx context.Context, s Spawn, timeout time.Duration) (DescribeResponse, error) {
-	var zero DescribeResponse
-	if len(s.Command) == 0 {
-		return zero, fmt.Errorf("the platform declares no [adapter].command, so there is nothing to ask")
-	}
-	if timeout <= 0 {
-		timeout = DefaultDescribeTimeout
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
+// WHY IT IS SHARED BY Describe AND Session: the comment at the top of this file
+// says two spawners would drift and the second would be written by whoever
+// needed it next without the reasons the first had -- and R5's session IS that
+// second caller. So the cwd rule, the named-variables environment and the PATH
+// exception live here once. Everything ABOVE the spawn differs between the two
+// (a probe closes stdin and kills; a run keeps both), which is why only this
+// much is shared and not the exchange.
+func (s Spawn) start(ctx context.Context) (*exec.Cmd, io.WriteCloser, io.ReadCloser, error) {
 	cmd := exec.CommandContext(ctx, s.Command[0], s.Command[1:]...)
 	if s.Cwd != "" {
 		cmd.Dir = s.Cwd
@@ -82,14 +75,39 @@ func Describe(ctx context.Context, s Spawn, timeout time.Duration) (DescribeResp
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return zero, fmt.Errorf("opening the adapter's stdin: %w", err)
+		return nil, nil, nil, fmt.Errorf("opening the adapter's stdin: %w", err)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return zero, fmt.Errorf("opening the adapter's stdout: %w", err)
+		return nil, nil, nil, fmt.Errorf("opening the adapter's stdout: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
-		return zero, fmt.Errorf("spawning %q: %w", filepath.Base(s.Command[0]), err)
+		return nil, nil, nil, fmt.Errorf("spawning %q: %w", filepath.Base(s.Command[0]), err)
+	}
+	return cmd, stdin, stdout, nil
+}
+
+// Describe spawns the adapter, asks it to describe itself, reads one line, and
+// stops it.
+//
+// ONE REQUEST AND ONE LINE, which is the protocol's own rule (one outstanding
+// request per process) applied to the only exchange this needs. The process is
+// killed rather than waited for: an adapter that keeps the connection open for
+// a run it is not going to get would otherwise hold this call to the timeout.
+func Describe(ctx context.Context, s Spawn, timeout time.Duration) (DescribeResponse, error) {
+	var zero DescribeResponse
+	if len(s.Command) == 0 {
+		return zero, fmt.Errorf("the platform declares no [adapter].command, so there is nothing to ask")
+	}
+	if timeout <= 0 {
+		timeout = DefaultDescribeTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	cmd, stdin, stdout, err := s.start(ctx)
+	if err != nil {
+		return zero, err
 	}
 	defer func() {
 		if cmd.Process != nil {
