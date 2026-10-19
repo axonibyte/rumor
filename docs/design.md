@@ -281,7 +281,15 @@ applicable set it draws one by weight. The weights come from the project's
 `platform.toml`, per stage and profile, so a project tunes what its crowd tends
 to do without touching the engine. The nemesis kinds are action kinds in the
 same pool with their own weights: `suborn` feeds an actor a false claim,
-`canard` is a false tell, `palter` a half-true claim, `essoin` an abandoned
+`canard` is a tell that PASSES ON a planted claim -- by an actor who is not
+the claim's author, of a claim the run planted, which is a lie travelling rather
+than a false tell; its precondition is that the teller knows a planted claim it
+did not make, and where none exists the kind is inapplicable like any action
+whose precondition is false. What it buys is a weight and a precondition and not
+a third state: how often lies travel is tuned apart from how often they are told
+(`suborn`) and how often honest claims travel (`tell`), and the engine records
+the hop so R10 can say who passed the lie and not only who made it. `palter` a
+half-true claim, `essoin` an abandoned
 flow. A lie is therefore scheduled exactly the way an honest action is, which is
 why the control in the vocabulary has no trust model to lean on: the engine
 knows which claims it planted because it planted them, and the statute does
@@ -304,13 +312,16 @@ the same finding: length bisection first, then removal of whole action kinds.
 Every candidate trace is run against a verified clean rollback, through the
 rollback trait (`describe`, `checkpoint`, `restore`, `verify`, `discard`; a
 process-restart provider for the toy system under test, the small deliberately
-buggy application in `examples/toy/` whose design is R5's own work in the
+buggy application in `examples/toy/` -- a JSON API AND a server-rendered UI
+over users, events, roles and capacity, which the pointer dropped and both the
+epic's item 9 and issue 73 carry -- whose design is R5's own work in the
 `r5.toy` thread and whose bug ledger is in the epic). The verify step is not
 optional: a shrink step run on a world the previous step dirtied would
 attribute to the trace what the leftover state did, and the "minimal" trace
 would be minimal only in that world. Shrinking respects bounds, so a trace is
 never shrunk to one that could not have produced its finding under an eventual
-type's bound. The result is written as a minimal trace, which names the
+type's bound -- R6 later, since the bound is R6's machinery and the first
+eventual toy bug is R6's too. The result is written as a minimal trace, which names the
 output's shape (the actions, their positions, their handles and the rules that
 fired) and not a property of it; the property R5 is held to is that each of its
 three toy bugs shrinks to under five actions with every step on a verified
