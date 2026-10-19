@@ -71,7 +71,14 @@ const root = "../.."
 // representation to implement. Same shape as both moves above: the oracle
 // reported 0 absent and refused on the count alone, so the count is what caught
 // the addition and the quotes were already true.
-const declaredQuotes = 28
+// 28 -> 29 in R5.1, the nemesis preconditions: internal/schedule quotes the
+// planted-claim entry's "a lie an actor tells about its own action", which is
+// the clause fable's ruling at coop r5/49 rests on -- suborn and palter inherit
+// an honest action's precondition BECAUSE the lie is about the actor's own
+// action, so an action the actor could not take is a lie of a kind this
+// document does not define. Third move of the same shape: 0 absent, refused on
+// the count.
+const declaredQuotes = 29
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would

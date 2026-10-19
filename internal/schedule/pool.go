@@ -94,7 +94,7 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 		}
 	}
 	for _, k := range NemesisKinds {
-		live, err := nemesisApplicable(k, l, actor)
+		live, err := nemesisApplicable(k, app, l, actor)
 		if err != nil {
 			return nil, err
 		}
@@ -108,30 +108,30 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 	return out, nil
 }
 
-// nemesisApplicable is each nemesis kind's precondition.
+// nemesisApplicable is each nemesis kind's precondition, as fable ruled them
+// at coop r5/49 after I built the first three unconditioned and ASKed.
 //
-// ONLY CANARD'S IS SPECIFIED, AND THE OTHER THREE ARE UNCONDITIONED HERE --
-// a gap named rather than filled. docs/design.md states a precondition for
-// canard alone ("the teller knows a planted claim it did not make, and where
-// none exists the kind is inapplicable like any action whose precondition is
-// false") and says nothing about the preconditions of `suborn`, `palter` or
-// `essoin`; docs/vocabulary.md defines what each one IS and not when it may be
-// drawn. Writing three of my own would be making design decisions in the
-// gate's area and calling them implementation, so they enter the pool
-// unconditioned and that is reported, not buried:
+// SUBORN AND PALTER ARE AN HONEST ACTION TAKEN DISHONESTLY, so their
+// precondition is THE HONEST ACTION'S OWN. The vocabulary's planted claim is "a
+// lie an actor tells about its own action", which means the lie needs an action
+// the actor could actually take and that emits something to lie about -- the
+// engine plants the claim that action WOULD have emitted, false in whole for
+// suborn and false in a recorded part for palter (breakout-r5/1). An
+// unconditioned suborn would lie about an action the actor could not take,
+// which is a lie of a kind the vocabulary does not have.
 //
-//	suborn  feeding a false claim plausibly needs an actor to feed, which this
-//	        does not check.
-//	palter  a half-truth plausibly needs something true to be half of.
-//	essoin  abandoning mid-flow needs a flow IN PROGRESS, and no flow state
-//	        exists in the engine yet -- so this one cannot be conditioned in
-//	        R5.1 even if it were ruled today.
+// MY OWN REASONING FOR LEAVING THEM OPEN WAS WRONG IN ITS DIRECTION, and the
+// correction is worth keeping: I argued that over-offering was the safe side,
+// because the class rook found at r5/25 was a permitted action VANISHING. fable:
+// "over-offering is not the safe direction here ... an impossible lie offered is
+// the opposite error." A silent drop and an impossible offer are two faults, not
+// one fault and its safe side.
 //
-// ASKed of fable in thread:r5. Until it is ruled, a run draws these three
-// wherever their weight is non-zero, which over-offers rather than
-// under-offers: the walk sees more than it should, never less, so nothing is
-// silently removed from the draw (rook r5/25's direction).
-func nemesisApplicable(kind string, l *ledger.Ledger, actor string) (bool, error) {
+// ESSOIN IS INAPPLICABLE IN R5, not a gap: abandoning mid-flow needs flow state
+// the engine gains at R9. It keeps a declared weight in platform.toml -- zero in
+// the toy -- so the weight table stays complete and arm 19's new cell can pair
+// it, and it is simply never drawn until R9 gives it something to abandon.
+func nemesisApplicable(kind string, app []bindings.Action, l *ledger.Ledger, actor string) (bool, error) {
 	switch kind {
 	case Canard:
 		subjects, err := engine.CanardSubjects(l, actor)
@@ -139,8 +139,21 @@ func nemesisApplicable(kind string, l *ledger.Ledger, actor string) (bool, error
 			return false, fmt.Errorf("schedule: canard's precondition for %s: %w", actor, err)
 		}
 		return len(subjects) > 0, nil
-	case Suborn, Palter, Essoin:
-		return true, nil
+
+	case Suborn, Palter:
+		// AN APPLICABLE ACTION THAT EMITS SOMETHING. `app` is already the
+		// actions whose preconditions hold for this actor, so the honest half
+		// of the precondition is inherited rather than recomputed; the `emits`
+		// half is what gives the planted claim a type to be.
+		for _, a := range app {
+			if len(a.Emits) > 0 {
+				return true, nil
+			}
+		}
+		return false, nil
+
+	case Essoin:
+		return false, nil
 	}
 	return false, fmt.Errorf("schedule: %q is not a nemesis kind, and this function is the only "+
 		"place that decides applicability for one", kind)
