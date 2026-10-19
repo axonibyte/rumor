@@ -295,9 +295,13 @@ func TestLeavingGivesTheSeatBack(t *testing.T) {
 	}
 }
 
-// THE DELETE RULE, which the ledger's "stale count after delete" row is about.
-// The honest version leaves the API's count and the store's count equal.
-func TestOnlyTheAdminDeletesAndTheCountGoesWithIt(t *testing.T) {
+// THE DELETE RULE, AND THE STALE COUNT THE LEDGER ASKS FOR. The admin-only
+// check and the list exclusion are honest; the COUNT is the epic's "stale count
+// after delete" row, so this test asserts the defect and names it. The two
+// oracles are the point: the API reports the old attendance and the store,
+// computing from the attendee list, reports none. R5.3 finds that disagreement
+// from a seed and shrinks it.
+func TestOnlyTheAdminDeletesAndTheCountIsLeftStale(t *testing.T) {
 	h := start(t)
 	alice := h.actor("alice")
 	bob := h.actor("bob")
@@ -311,11 +315,16 @@ func TestOnlyTheAdminDeletesAndTheCountGoesWithIt(t *testing.T) {
 	if code, _ := h.do(http.MethodDelete, "/events/"+id, alice, nil); code != http.StatusOK {
 		t.Fatalf("alice deleting her own event")
 	}
-	if got := h.count(id, alice); got != 0 {
-		t.Errorf("the API count after delete is %d, want 0: this is the stale-count row's assertion", got)
+	// THE ROW: the API still reports the attendee the deleted event used to have.
+	if got := h.count(id, alice); got != 1 {
+		t.Errorf("the API count after delete is %d, want 1 -- the epic's stale-count row requires "+
+			"the denormalized counter to be LEFT, and R5.3 shrinks a seed that finds it", got)
 	}
+	// AND THE SECOND ORACLE DISAGREES, which is what makes it findable: the
+	// store computes from the attendee list, which the delete did empty.
 	if got := h.storeCount(id); got != 0 {
-		t.Errorf("the store count after delete is %d, want 0", got)
+		t.Errorf("the store count after delete is %d, want 0: without the disagreement there is "+
+			"nothing for a run to see", got)
 	}
 	code, body := h.do(http.MethodGet, "/events", alice, nil)
 	if code != http.StatusOK {

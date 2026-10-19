@@ -594,8 +594,19 @@ func (s *server) leaveEvent(w http.ResponseWriter, r *http.Request, id string) {
 	writeJSON(w, http.StatusOK, ev)
 }
 
-// deleteEvent is the endpoint the ledger's "stale count after delete" row is
-// about. The honest version clears the denormalized count with the event.
+// deleteEvent carries the ledger's "stale count after delete" row (epic, R5,
+// caught by api-sim): it marks the event deleted and empties the attendee list,
+// and LEAVES THE DENORMALIZED COUNT where it was. So the API goes on reporting
+// an attendance for an event that is gone, while the store's own count --
+// computed from the attendee list by /store/events/<id>/count -- says nothing is
+// attending.
+//
+// THE TWO ORACLES ARE WHAT MAKE IT FINDABLE. A count kept in a second place is
+// not a defect by itself; a count kept in a second place that nobody updates is,
+// and the only way to SEE that is to ask both. The direct observation declared
+// in examples/toy/bindings.toml reads the list and the api observation reads the
+// field, so the disagreement between them is the finding -- which is why the
+// second oracle is not optional decoration.
 func (s *server) deleteEvent(w http.ResponseWriter, r *http.Request, id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -615,7 +626,7 @@ func (s *server) deleteEvent(w http.ResponseWriter, r *http.Request, id string) 
 	}
 	ev.Deleted = true
 	ev.Attendees = []string{}
-	ev.Count = 0
+	// THE DEFECT: ev.Count is NOT cleared with the event it counts.
 	if err := s.save(); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
