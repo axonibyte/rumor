@@ -4,7 +4,10 @@
 // against the walk. Each arm here states what it would catch.
 package schedule
 
-import "testing"
+import (
+	"sort"
+	"testing"
+)
 
 // draws is enough to make a coincidence absurd rather than merely unlikely:
 // two different PCG streams agreeing on 1,000 consecutive bounded draws has
@@ -141,6 +144,28 @@ func TestAZeroWeightIsNeverDrawn(t *testing.T) {
 	// anywhere else cannot see it.
 	s := New(11)
 	cands := []Candidate{{"aaa_zero", 0}, {"create_user", 3}, {"join_event", 1}}
+
+	// THE ARM ASSERTS THAT IT IS ARMED, which is rook's repair at coop r5/11
+	// after they broke the fix above by RENAMING the fixture: aaa_zero ->
+	// zzz_zero with `<=` still in place passed silently, the defect present and
+	// the arm quiet. The arm's power rests on sort order, so the order is now
+	// checked rather than assumed -- a rename disarms the arm loudly instead of
+	// turning it into a tautology.
+	order := make([]string, len(cands))
+	for i, c := range cands {
+		order[i] = c.Kind
+	}
+	sort.Strings(order)
+	var zero string
+	for _, c := range cands {
+		if c.Weight == 0 {
+			zero = c.Kind
+		}
+	}
+	if order[0] != zero {
+		t.Fatalf("this arm needs %q to sort FIRST to reach the boundary; sorted order is %v, "+
+			"so the arm cannot see a `<=` defect and would pass with one present", zero, order)
+	}
 	for i := 0; i < draws; i++ {
 		got, err := s.Pick(cands)
 		if err != nil {
