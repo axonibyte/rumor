@@ -566,3 +566,82 @@ finding := "consistent" if input.observation.value == 1
 	}
 	t.Logf("PROOF Says() answers %q undefined and %q defined", f.Says(), g.Says())
 }
+
+// THE EMPTY WORLD IS A SEALED PREFIX, and a run begins there.
+//
+// My first guard refused `seal <= 0` as "the ledger is unsealed", which made
+// PreconditionInput unable to answer the scheduler's own first step --
+// internal/ledger accepts SealAt(0) on an empty ledger and reports Seal() == 0,
+// because the empty prefix is a prefix. `rumor run` found it one layer up.
+func TestTheEmptyWorldIsAPreconditionInput(t *testing.T) {
+	l := ledger.New(false)
+	if l.Len() != 0 || l.Seal() != 0 {
+		t.Fatalf("this arm needs an empty, zero-sealed ledger; got len %d seal %d", l.Len(), l.Seal())
+	}
+
+	in, err := PreconditionInput(l, "member_1")
+	if err != nil {
+		t.Fatalf("the empty world must be a legitimate precondition input: %v", err)
+	}
+	obs, ok := in["observation"].(map[string]any)
+	if !ok {
+		t.Fatalf("no observation in the input: %v", in)
+	}
+	// seal+1: the first action would occupy position 1.
+	if obs["position"] != 1 {
+		t.Errorf("the first step's observation sits at position 1; got %v", obs["position"])
+	}
+	if obs["actor"] != "member_1" {
+		t.Errorf("the observation must carry the candidate actor; got %v", obs["actor"])
+	}
+	if known, _ := in["known"].([]string); len(known) != 0 {
+		t.Errorf("nothing has happened, so nothing is known; got %v", known)
+	}
+	if claims, _ := in["claims"].([]map[string]any); len(claims) != 0 {
+		t.Errorf("an empty prefix holds no claims; got %v", claims)
+	}
+}
+
+// AND THE SEQUENCING ERROR IS STILL REFUSED: a ledger that HOLDS facts with
+// none sealed is the state the old guard was written for, and it must stay
+// refused -- otherwise the fix above would have widened the hole rather than
+// separated two states.
+func TestFactsWithNoSealAreStillRefused(t *testing.T) {
+	l := ledger.New(false)
+	if _, err := l.Append(ledger.Fact{
+		Kind: ledger.KindClaim, Actor: "member_1", Ref: "member_1.event#1",
+		Type: "event.created", Handles: []string{"member_1.event#1"},
+	}); err != nil {
+		t.Fatalf("appending one claim: %v", err)
+	}
+	if l.Len() == 0 || l.Seal() != 0 {
+		t.Fatalf("this arm needs facts with nothing sealed; got len %d seal %d", l.Len(), l.Seal())
+	}
+
+	_, err := PreconditionInput(l, "member_1")
+	if err == nil {
+		t.Fatal("a ledger holding unsealed facts must be refused: a precondition is evaluated " +
+			"against a sealed prefix")
+	}
+	if !strings.Contains(err.Error(), "sequencing error") {
+		t.Errorf("the refusal must name it as a sequencing error; got %v", err)
+	}
+	if !strings.Contains(err.Error(), "1 fact(s)") {
+		t.Errorf("the refusal must say HOW MANY facts are unsealed, which is what separates it "+
+			"from the empty world; got %v", err)
+	}
+}
+
+// THE SECOND CALL SITE, because the guard was copied there. CanardSubjects on
+// the empty world must answer "no subjects" rather than erroring -- a walk's
+// first step asks it before anything has been planted.
+func TestCanardSubjectsAnswersTheEmptyWorld(t *testing.T) {
+	l := ledger.New(false)
+	subjects, err := CanardSubjects(l, "member_1")
+	if err != nil {
+		t.Fatalf("the empty world must be answerable: %v", err)
+	}
+	if len(subjects) != 0 {
+		t.Errorf("nothing has been planted, so canard has no subject; got %v", subjects)
+	}
+}

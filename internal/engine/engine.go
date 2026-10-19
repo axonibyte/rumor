@@ -449,14 +449,13 @@ func PreconditionInput(l *ledger.Ledger, actor string) (map[string]any, error) {
 	if actor == "" {
 		return nil, fmt.Errorf("engine: no candidate actor, and applicability is always some actor's")
 	}
-	seal := l.Seal()
-	if seal <= 0 {
-		return nil, fmt.Errorf("engine: the ledger is unsealed: a precondition is evaluated against " +
-			"a sealed prefix, so this is a sequencing error and not an empty result")
+	seal, err := sealForPrecondition(l)
+	if err != nil {
+		return nil, err
 	}
 
 	fl, claims := prefixFacts(l)
-	known, err := flatten.Known(fl, actor, seal, nil)
+	known, err := knownAtSeal(fl, actor, seal)
 	if err != nil {
 		return nil, fmt.Errorf("engine: flattening %s's knowledge at the seal: %w", actor, err)
 	}
@@ -469,6 +468,67 @@ func PreconditionInput(l *ledger.Ledger, actor string) (map[string]any, error) {
 		"known":  known,
 		"claims": claims,
 	}, nil
+}
+
+// sealForPrecondition is the seal a precondition is evaluated at, and the one
+// place that decides whether a ledger can carry one.
+//
+// THE EMPTY WORLD IS A SEALED PREFIX, and my first version of this refused it.
+// Both callers below had the same guard written out twice -- `seal <= 0` is a
+// sequencing error -- which is true of a ledger that HOLDS facts with none
+// sealed, and false of an empty one: internal/ledger accepts SealAt(0) on an
+// empty ledger and reports Seal() == 0, because the empty prefix is a prefix.
+// A RUN BEGINS THERE. The walk's first step is evaluated against nothing having
+// happened, so refusing seal 0 made the scheduler unable to take its own first
+// step, and `rumor run` found it in the layer underneath.
+//
+// It is the day's distinction one more time, in my own code: 0 because nothing
+// has happened and 0 because nobody has sealed are different states, and a
+// guard reading only the number cannot tell them apart. Len() separates them.
+//
+// ONE DEFINITION BECAUSE IT WAS TWO: the guard was copied into CanardSubjects
+// when I wrote it, so the fix would otherwise have had to be made twice and the
+// second site is the one that would have been missed.
+func sealForPrecondition(l *ledger.Ledger) (int, error) {
+	seal := l.Seal()
+	if seal < 0 {
+		return 0, fmt.Errorf("engine: the ledger reports a seal of %d, which is not a position", seal)
+	}
+	if seal == 0 && l.Len() > 0 {
+		return 0, fmt.Errorf("engine: the ledger holds %d fact(s) and none of them is sealed: a "+
+			"precondition is evaluated against a sealed prefix, so this is a sequencing error and "+
+			"not an empty result", l.Len())
+	}
+	return seal, nil
+}
+
+// knownAtSeal is what an actor knows at the seal, with the empty prefix
+// answered rather than asked about.
+//
+// WHY IT IS NOT A BARE flatten.Known: internal/flatten refuses position 0,
+// since v1 numbers positions from 1 upward, and it is RIGHT to -- 0 is not a
+// position. But the seal of an empty ledger IS 0, and what an actor knows
+// before anything has happened is a question with an answer: nothing. So the
+// engine declines to ask about a position that does not exist instead of
+// asking flatten to soften a guard about v1's numbering.
+//
+// NOT QUOTED, DELIBERATELY. I first wrote flatten's error text here inside
+// quotation marks, and tests/vocabulary refused it: the words are flatten's,
+// not the vocabulary document's, and a quote mark after the token v1 reads as
+// an attribution to that document. Paraphrase is the honest form for another
+// package's reason -- the gate caught a false citation of mine for the second
+// time today, which is twice that it earned its place.
+//
+// There is nothing to flatten in an empty prefix, so the empty answer is by
+// construction and not a default standing in for a computation.
+func knownAtSeal(fl flatten.Ledger, actor string, seal int) ([]string, error) {
+	if actor == "" {
+		return nil, fmt.Errorf("no actor given, and knowledge is always some actor's")
+	}
+	if seal == 0 {
+		return nil, nil
+	}
+	return flatten.Known(fl, actor, seal, nil)
 }
 
 // CanardSubjects answers canard's precondition, which docs/design.md states and
@@ -500,14 +560,13 @@ func CanardSubjects(l *ledger.Ledger, actor string) ([]string, error) {
 	if actor == "" {
 		return nil, fmt.Errorf("engine: no candidate actor, and a canard is always some actor's")
 	}
-	seal := l.Seal()
-	if seal <= 0 {
-		return nil, fmt.Errorf("engine: the ledger is unsealed: a precondition is evaluated against " +
-			"a sealed prefix, so this is a sequencing error and not an empty result")
+	seal, err := sealForPrecondition(l)
+	if err != nil {
+		return nil, err
 	}
 
 	fl, claims := prefixFacts(l)
-	known, err := flatten.Known(fl, actor, seal, nil)
+	known, err := knownAtSeal(fl, actor, seal)
 	if err != nil {
 		return nil, fmt.Errorf("engine: flattening %s's knowledge at the seal: %w", actor, err)
 	}
