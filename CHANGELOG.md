@@ -3,6 +3,63 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.21 — 2026-10-19
+
+**`go.mod` must be accurate, and the gate only ever asserted it existed** — plus
+the Versioning sentence that four tags had already read the narrow way.
+
+- **`go mod tidy -diff` is a CI arm now** (`.forgejo/workflows/ci.yml`). The whole
+  of the manifest's coverage was `test -f go.mod || exit 1` in the fetch step: a
+  wrong-tree guard that reads none of the file's content, with
+  `tag-pipeline.yml` naming the file only in a comment. So an unused `require`, a
+  missing one, or a `go.sum` short an entry could travel to a tag with nothing in
+  the repository to say so, through every release including v0.1.18.
+- **The diff is on stdout and the excuse is on stderr**, which is why they are
+  captured apart. tidy exits non-zero BOTH for "these files are not what tidying
+  would write" and for "I could not read the module graph", and it needs the
+  network to answer at all — it resolves the test-only dependencies of
+  dependencies, 32 modules on a cold cache, measured. A step reading the exit
+  code alone would blame the manifest for an unreachable proxy, which is the
+  misattribution v0.1.18 fixed in the doc blocks and run 192 made visible in the
+  vulnerability step.
+- **The reading is a script with its own battery**
+  (`tools/gomod-accuracy-verdict.sh`): four answers — tidy, inaccurate, step
+  defect, blocked — over nine named clauses, self-tested on the runner with its
+  declared count grepped, 9 clauses over 10 cases. It is a file and not five
+  lines of YAML for the reason `govulncheck-verdict.sh` and
+  `verify-tag-verdict.sh` are: a workflow step is only exercised by pushing. Two
+  of the nine refuse a contradiction rather than acting on one — a clean exit
+  beside a diff means the tool's contract and our reading of it disagree, and
+  acting either way would be acting on a contract we have just been shown we do
+  not understand.
+- **A pass over an empty graph is not a pass.** tidy exits 0 on a module with no
+  requirements at all, so an empty or absent `go.sum` is blocked rather than
+  green — the vacuity guard `rumor validate` carries for a project that declares
+  no rule, at the one place this arm can be vacuous.
+- **The wiring is driven apart from the reading**
+  (`tools/drive-gomod-accuracy.py`). The battery covers what the clauses say and
+  nothing in it covers whether the step captures the two streams into the right
+  files, passes them in order with the real exit status, and propagates the
+  verdict's code. The driver extracts the step from `ci.yml` by its `- name:`
+  line — not a copy that can drift — and runs it over four trees: as committed,
+  an unused require, `GOPROXY=off` over an empty module cache, and no
+  requirements at all. 4 of 4, and the third is the condition the arm is shaped
+  around. Measured under both go1.27.2 and go1.26.8, the runner's minor, so
+  tidiness is not version-dependent between this author's box and CI.
+- **A minor is a BREAKING change to the CLI surface** (`docs/release.md`). The
+  Versioning sentence said "a change to the CLI surface — a new or changed
+  command, flag, or output contract", which read literally makes every new
+  subcommand a minor; four had already shipped as patches (`rumor check`
+  v0.1.11, `rumor attaint` v0.1.13, `rumor fake-adapter` v0.1.19, `rumor
+  validate` v0.1.20). Additions are patches until 1.0, the minor being reserved
+  for a change that breaks something already written against the surface. The
+  ruling is fable's (coop `thread:r4/85`); the four tags are its evidence and are
+  named in the document because they outlive the thread.
+
+The arm is new coverage and not a repair: the tree passes it as committed, which
+is what `CLAUSE tidy` on this release's own CI run says. The version bump and the
+changelog section ship no test of their own, as this document allows.
+
 ## 0.1.20 — 2026-10-19
 
 **`rumor validate`: eighteen arms over what a project declared** — R4.3 of the
