@@ -3,6 +3,38 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.23 — 2026-10-19
+
+**A path nothing opened is could-not-run** — quill's three findings at coop
+r4/91, and two siblings the first turned up.
+
+- **`rumor validate <a path that is not there>` exits 2 and names the path.** It
+  answered `REFUSED no-bindings` -- exit 1, the project is wrong -- about a
+  directory that was not there to be wrong, and a real project missing its
+  `bindings.toml` answered the same clause with the same status: the two runs
+  differed only in the basename on the tally line. A path that is a file gets
+  the same answer now. A directory that was READ and says too little is still
+  exit 1, which is fable's r4/79 ruling and does not move.
+- **No verdict comes out of a file nothing read.** An unparsable `rules.json`
+  reported `could not run` AND `REFUSED no-rule-declared: rules.json declares
+  no rule` -- a claim about a declaration nobody opened. Unparsable cases did
+  the same through the `no-case` clause. could-not-run is answered before
+  either vacuity check now, and only an arm reading the REFUSALS finds this,
+  because the exit status was already right.
+- **Every path accounts for all eighteen arms.** A decode failure returned
+  before any arm and printed "0 of 18 arm(s) evaluated" with no reason beside a
+  single one -- the one place a reader most needs telling that nothing was
+  measured. The accounting invariant now holds on every path rather than on the
+  vacuity and live paths alone.
+- **Two documented counts and one stale comment.** `docs/contract.md` said
+  "R4.3's thirteen refusals" and "one of validate's thirteen" while the same
+  file recorded the ruling at eighteen; both read eighteen, and a new arm
+  matches counts attributed to the command BY NAME so "four arms ask the
+  adapter" stays legal. `tests/validate`'s invariant comment still explained
+  itself with "the twin reports SIXTEEN of eighteen" and "the twin cannot
+  enable them": the twin has enabled the browser stage since 0120352 and
+  reports 18 of 18.
+
 ## 0.1.22 — 2026-10-19
 
 **The toy system under test, and the contract row it forced** — R5.2 of the R5
