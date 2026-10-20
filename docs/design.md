@@ -281,19 +281,82 @@ applicable set it draws one by weight. The weights come from the project's
 `platform.toml`, per stage and profile, so a project tunes what its crowd tends
 to do without touching the engine. The nemesis kinds are action kinds in the
 same pool with their own weights: `suborn` feeds an actor a false claim,
-`canard` is a tell that PASSES ON a planted claim -- by an actor who is not
-the claim's author, of a claim the run planted, which is a lie travelling rather
-than a false tell; its precondition is that the teller knows a planted claim it
-did not make, and where none exists the kind is inapplicable like any action
-whose precondition is false. What it buys is a weight and a precondition and not
-a third state: how often lies travel is tuned apart from how often they are told
-(`suborn`) and how often honest claims travel (`tell`), and the engine records
-the hop so R10 can say who passed the lie and not only who made it. `palter` a
-half-true claim, `essoin` an abandoned
-flow. A lie is therefore scheduled exactly the way an honest action is, which is
-why the control in the vocabulary has no trust model to lean on: the engine
-knows which claims it planted because it planted them, and the statute does
-not.
+`canard` passes one on, `palter` tells a half-truth, `essoin` abandons a flow.
+A lie is therefore scheduled exactly the way an honest action is, which is why
+the control in the vocabulary has no trust model to lean on: the engine knows
+which claims it planted because it planted them, and the statute does not.
+
+That sentence names all four in one breath deliberately: `tests/validate` reads
+it as the oracle for `internal/validate`'s declared set, and R5.1 split it in
+two for a while, which left the arm reading `suborn` and `canard` and calling
+the document two short.
+
+**A canard is a lie travelling rather than a lie told.** It is a tell that
+PASSES ON a planted claim -- by an actor that is not the claim's author, of a
+claim the run planted -- so what it buys is a weight and a precondition and not
+a third state: how often lies travel is tuned apart from how often they are
+made (`suborn`) and how often honest claims travel (`tell`), and the engine
+records the hop so R10 can say who passed the lie and not only who made it.
+
+**Each kind's precondition, ruled at coop r5/49.** `canard`'s is that the
+teller knows a planted claim it did not make, and where none exists the kind is
+inapplicable like any action whose precondition is false. `suborn` and `palter`
+are an honest action taken dishonestly -- the vocabulary's planted claim is a
+lie an actor tells about its own action -- so their precondition is THE HONEST
+ACTION'S OWN: an applicable action that emits something to lie about. An
+unconditioned `suborn` would lie about an action the actor could not take,
+which is a lie of a kind the vocabulary does not have. `essoin` is
+INAPPLICABLE until R9: abandoning mid-flow needs flow state the engine does not
+carry yet, so it keeps a declared weight and is never drawn.
+
+**What a drawn kind DOES, ruled at coop r5/58.** A lie is about acting, and the
+three differ in whether the system moved. `canard` appends a `told` from the
+drawn actor to a receiver the seed picks among those who do not yet know the
+claim, and the system never moves. `suborn` does NOT execute: it appends a
+planted claim of the type the chosen honest action would have emitted, with the
+handles minted as if it had -- and a handle a suborn minted resolves to no id,
+so any later step needing it is inapplicable and the walk never asks the wire
+for a thing that does not exist. `palter` EXECUTES the honest action and then
+appends its claim with exactly one recorded field false, the field named under
+the tag; in v1 that field is one a statute READS -- `visible_to` where the
+action's claim carries it, else `expect` -- and a kind whose action's claim
+carries neither is inapplicable for that action. So a palter is an action that
+happened described wrongly, and a suborn is a description with no action under
+it.
+
+**An undeclared weight is refused, not read as zero.** Zero means never chosen
+and the project decided it; absent means nobody did. Defaulting either way
+would stop the walk's composition being a function of the weight file, and
+`validate`'s nineteenth arm pairs every declared action and every nemesis kind
+against the table so a project hears it before a run.
+
+**The run names its own actors, `<role>_<n>`.** `[[venire]]` carries a role
+and a count and nothing else, so the engine mints `admin_1`, `member_1`,
+`member_2` in venire order, n from 1 per role (coop r5/58). Venire order rather
+than the draw's, because HANDLES EMBED THE ACTOR and two attempts from one seed
+must agree on who `member_2` is before either draws anything. The hyphen is not
+available: the vocabulary's handle shape is `actor.type#n` with the actor
+lowercase alphanumeric and underscores, so `member-1` could not carry a handle
+at all.
+
+**Resolvability is the second half of applicability.** A precondition says the
+world permits the action; a resolvable handle says the walk can name what the
+action acts on. An action whose UI flow refers to a `{kind}` no bound handle
+satisfies is INAPPLICABLE rather than drawn and then refused -- which is the
+same refusal `observe`'s args already make, arriving one layer earlier so the
+walk never asks the wire for a thing that does not exist. The handle table is
+the whole mechanism: it holds only handles something bound to an id, so
+"resolves" and "is in the table" are one question.
+
+**A claim's handle is the single `creates` entry, else the action's own name**
+(coop r5/62): `member_1.event#1` for `create_event`, `member_1.join_event#1`
+for `join_event`. An action declaring more than one `creates` or more than one
+`emits` is REFUSED by name until a project needs it, at which point the primary
+is declared and not guessed. A step whose action emits nothing appends no claim
+and mints no handle, and is recorded as a step -- examples/twin's
+`publish_doc_ui` is the live case. The hand-written refs in `examples/`
+(`bob.join#1`, `alice.del#1`) are a case's own names and no precedent for what
+a run mints; a run compares findings over its own handles.
 
 **The sequence is over handles, not ids.** The walk names entities by run-local
 handles (`alice.event#1`), and the handle table maps each to whatever id the
@@ -527,6 +590,33 @@ it yet, and the arm that will prove it is R5.3's: two events in one ledger, one
 finding each, still two after a shrink step — a handle-less projection reads
 them as one. Until that lands, the paragraph above is what a statute actually
 receives.
+
+**What a PRECONDITION is shown is a partial observation** (coop r5/16).
+`input.observation` carries `actor` and `position` -- `seal+1`, the position the
+action would occupy -- and nothing else: `of`, `query`, `source`, `value` and
+`role` are ABSENT, never empty, so a rule reaching for a field a candidate step
+cannot have goes undefined rather than reading `""`. `known` and `claims` are
+exactly as a check sees them. The key stays `observation` because live rules
+read `input.observation.position`, and a new key would rewrite every
+precondition in every project for nothing. Omitting the key entirely was
+considered and died on measurement: with no `observation` the held claims are
+empty and the rules' DEFAULTS answer, which is silently wrong in both
+directions rather than undefined.
+
+One evaluator serves both, by construction rather than by care: the walk's
+applicability and a case's finding go through the same `EvaluateWith`, because
+two code paths running statutes would be free to diverge and an explanation of
+a verdict the product did not give is worse than none. D14 is the drill that
+reads it -- the toy's preconditions agree rule by rule across both inputs, with
+the ruled-out shape driven in the same suite and required to DISAGREE, so the
+agreement cannot pass on an input unable to tell the two apart.
+
+**The empty world is a sealed prefix.** A run's first step is evaluated against
+nothing having happened: an empty ledger sealed at 0 is a prefix, and a
+precondition asked there sees no claims, no knowledge, and an observation at
+position 1. A guard reading only the number cannot tell that from a ledger
+holding facts with none sealed, which is a sequencing error; the count
+separates them.
 
 **The bound is the seal, and the observation sits at `seal+1`.** The statutes
 bound their claim sets with `c.position <= input.observation.position`. Every
