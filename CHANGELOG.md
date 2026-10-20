@@ -3,6 +3,55 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.25 — 2026-10-20
+
+**The nineteenth arm: every name a project uses is a name the project
+declares** — ruled by fable at coop r4/113 and r4/125 after rook found that
+`bindings.toml` could name a precondition rule no statute declared and all
+eighteen arms passed it, silently dropping the action from every walk.
+
+- **One arm, eight cells**, each pairing one reference against the set it is
+  looked up in, and each refusal naming all three: `bindings.toml: requires
+  may_leave: no rule of that name in rules.json`. The cells: `requires` against
+  `rules.json`; a weight against the declared actions and the nemesis kinds;
+  **every** action and kind against the weights, because absent is not zero; a
+  `[[venire]]` role against the declared roles, where a project declares any;
+  an observation's `args` and a flow's `{handle}` against what the actions
+  create; a `[claim.<type>]` table against the emitted types; and the bindings'
+  observations against the adapter's `describe`.
+- **Two of the ruled nine came off by measurement.** An observation `of` an
+  unemitted type is already held by arm 1 where a case carries the observation
+  and by `tests/contract` where none does. An action `context` no `[[role]]`
+  holds has an unsound referent set: it would refuse BOTH examples, since the
+  twin declares no roles at all and the toy's three hold `["api"]` while its
+  actions use `api`, `browser` and `none`.
+- **The adapter cell evaluates the arm and names itself when it cannot run.**
+  Eight readings need the documents alone; the ninth needs `describe`, so with
+  no adapter it reports could-not-run naming the cell rather than skipping the
+  whole arm. An unreachable adapter therefore costs four arms and one CELL:
+  **15 of 19**, measured, where the twin and the toy both read 19 of 19 and a
+  project with the browser stage off reads 17 of 19.
+- **`docs/contract.md`'s `observations` row said in the PRESENT TENSE that the
+  engine pre-checks observations against `describe`**, from v0.1.19 until now,
+  and nothing implemented it — every use of the bindings' observations was arm
+  6, a count, the wire's own validation or the fake's echo. That row is this
+  arm's cell now, with the date and the correction. The `touches` sentence
+  keeps its meaning and says why: arm 19 refuses a reference to a declaration
+  that is not there, and what an action touches is a claim about the WORLD.
+- **Both examples gained what the new cell requires**: the twin weighted
+  `publish_doc` and not `publish_doc_ui`, and neither example weighted a nemesis
+  kind. Both now weight every action and all four kinds, `essoin` at a declared
+  ZERO — it abandons a flow mid-way and the engine has no flow state until R9.
+- **Three defects in the arm, found by sweeping it the way the gate now reads a
+  battery.** It refused a weight for `suborn`, which `docs/contract.md`'s own
+  `[weights.default]` sample carries beside "nemesis kinds are action kinds in
+  the same pool" — the arm would have shipped refusing a project this project's
+  documentation tells people to write. Its stage and profile weight loops could
+  not fire, the parser already requiring every override key to be a default
+  key. And four cells walk a list while every fixture broke the only entry
+  there was, so a cell reading `x[0]` alone passed all four; each fixture now
+  carries a declared name first and the dangling one after it.
+
 ## 0.1.24 — 2026-10-19
 
 **Three arms a mutation sweep asked for, over R5.2's own battery** — rook's
