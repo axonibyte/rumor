@@ -3,6 +3,60 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.26 — 2026-10-20
+
+**R5.1, the scheduler: a run is a seeded walk** — issue 72, every bullet. One
+integer decides everything a run does by chance, is printed before the adapter
+is even spawned, and is accepted back by `--seed` to replay it.
+
+- **`rumor run PROJECT [--seed N] [--steps N]`.** At each step the engine draws
+  an actor, computes which of its actions the statute permits against the
+  sealed prefix, draws one by weight from that set, executes it against the
+  project's adapter and records what it emitted. The ledger grows and is
+  resealed each step, so a precondition about what an actor knows can become
+  true as the walk proceeds — `join_event` appears only after a
+  `create_event`, which is the walk reading the statute rather than a script.
+- **The sequence is over handles, never ids**, which is the whole of issue 72's
+  done-when and is driven both ways: two attempts from one seed produce an
+  identical handle sequence while every id behind it differs, `--seed` replays
+  a run whole, and a different seed walks differently — the control without
+  which the first two would be true and empty.
+- **The nemesis kinds draw from the same pool as honest actions.** A lie is
+  scheduled exactly the way an action is, with its own weight and its own
+  precondition: `canard` needs a planted claim its teller knows and did not
+  make, `suborn` and `palter` inherit an applicable emitting action's own
+  precondition, and `essoin` waits on R9's flow state. An undeclared weight is
+  REFUSED rather than read as zero — zero means never chosen and the project
+  decided it.
+- **Resolvability is the second half of applicability.** An action whose UI
+  flow names a `{kind}` no bound handle satisfies is inapplicable rather than
+  drawn and then refused, so the walk never asks the adapter for a thing that
+  does not exist.
+- **The wire client keeps the adapter for the whole run**, which
+  `docs/contract.md` has specified since v0.1.19 while only a one-shot probe
+  existed. The session bounds each exchange rather than the run, refuses an
+  answer carrying another request's id naming both, and stays usable after a
+  fault envelope — which is an answer, not a transport failure.
+- **`rumor fake-adapter --id-salt S`** so two attempts can answer different
+  ids, deterministic and empty by default; and a repeat execution of one
+  action now answers a different id, because `internal/handle` refused the
+  second binding when two actors each created an event and the same id came
+  back twice. The table was right.
+- **The empty world is a sealed prefix.** A run's first step is evaluated
+  against nothing having happened, which the precondition guard had refused as
+  "unsealed" — a defect the walk found in R5.1's own earlier work, where 0
+  because nothing has happened and 0 because nobody has sealed were one number
+  to it.
+- **`rumor run` imports the one shipped rollback provider**, because nothing in
+  the binary did: `rollback.Registered()` was empty everywhere but those
+  packages' own test binaries, so R5.3's shrink step could not have opened a
+  provider at all.
+- **Not in this release, and named rather than left to be discovered:** a walk
+  reaches the FAKE adapter end to end, which is what issue 72 asks for, and
+  cannot yet reach a real one — the bindings schema declares no action `args`
+  and the engine acquires no session, so `cmd/toy-adapter` refuses at step one.
+  That is R5.4, issue 78, with the four argument sources already ruled.
+
 ## 0.1.25 — 2026-10-20
 
 **The nineteenth arm: every name a project uses is a name the project
