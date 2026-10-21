@@ -6,12 +6,43 @@ emits = ["event.created"]
 requires = ["may_create_event"]
 creates = ["event"]
 
+  # ALL FOUR SOURCES IN ONE ACTION, so the verb drives the whole composition
+  # and not one branch of it. The fake adapter ignores `args`, which is the
+  # point here: this fixture is about the ENGINE building them, and the arms in
+  # tests/wire read what reaches the wire.
+  [[action.args]]
+  name = "name"
+  source = "actor"             # the step's own actor, consuming no draw
+  [[action.args]]
+  name = "title"
+  source = "literal"
+  value = "Standup"
+  [[action.args]]
+  name = "capacity"
+  source = "draw"
+  from = [1, 2, 5]
+  [[action.args]]
+  name = "visible_to"
+  source = "draw"              # role SUBSETS, which is what the claim carries
+  from = [["member"], ["member", "admin"]]
+
 [[action]]
 name = "join_event"
 context = "api"
 emits = ["event.joined"]
 requires = ["may_join"]
 touches = ["store"]
+
+  # A HANDLE ARGUMENT, which is the second way an action names a handle: the
+  # engine resolves a bound `event` handle to the id the adapter gave it, so
+  # this action is inapplicable until some create_event has bound one. Its
+  # precondition says the same thing from the statute's side, and the two
+  # agreeing is not redundancy -- one is the world's permission and the other
+  # is the walk being able to name what it acts on.
+  [[action.args]]
+  name = "event"
+  source = "handle"
+  of = "event"
 
 [[observation]]
 name = "event_count"

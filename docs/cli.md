@@ -372,17 +372,28 @@ weight the project never declared, or a usage error.
 $ rumor run tests/run/fixtures/walkable --seed 42 --steps 5
 run: seed 42
 run:   1 member_1 create_event [member_1.event#1]
-run:   2 member_2 create_event [member_2.event#1]
-run:   3 member_1 join_event [member_1.join_event#1]
+run:   2 member_1 join_event [member_1.join_event#1] <- [member_1.event#1]
+run:   3 member_2 create_event [member_2.event#1]
 run:   4 member_1 create_event [member_1.event#2]
-run:   5 member_1 join_event [member_1.join_event#2]
+run:   5 member_1 create_event [member_1.event#3]
 run: walkable -- seed 42, 5 step(s), 5 handle(s), 2 session(s); 1 rollback provider(s) registered
 ```
 
-`join_event` appears only after a `create_event`: its precondition is that an
-event exists in the sealed prefix, so the pool is a different set at step 3
-than it was at step 1. That is the walk reading the statute rather than
+`join_event` cannot appear at step 1, and two separate things say so: its
+precondition is that an event exists in the sealed prefix, and it declares an
+argument naming a handle of kind `event`, which nothing has bound yet. The
+first is the world's permission and the second is the walk being able to name
+what it acts on -- both are applicability, and an action failing either is never
+drawn rather than drawn and then refused. So the pool is a different set at step
+2 than it was at step 1, which is the walk reading the statute rather than
 following a script.
+
+**The arrow is what the step consumed.** `[minted] <- [consumed]`: a trace
+showing only what a step created cannot tell two joins of different events
+apart, which is the distinction a reader wants when a walk goes wrong. It is
+omitted where a step consumed nothing. Both halves are run-local HANDLES and
+never ids, so two attempts from one seed print the same trace while every id
+behind it differs.
 
 **Two sessions for five steps, and that is the property.** Both of the
 fixture's actions declare `context = "api"`, so a token is acquired before each
@@ -398,11 +409,11 @@ acquired for it either.
 **What an action sends is declared, not inferred.** `[[action.args]]` names
 each argument and where the walk gets it: a `handle` kind the engine resolves
 to an id, a `literal`, a `draw` from a declared list, or the step's own `actor`
-name. The fixture's actions declare none, which is why `args` is `{}` in every
-request this run sends -- an execute always carries the field. A `handle`
-argument is resolved against the attempt's handle table, so an action naming a
-kind nothing has bound is inapplicable for the same reason an unresolvable UI
-flow placeholder is.
+name. The fixture's `create_event` declares one of each, so the run above
+composes all four, and its `join_event` declares the `handle` whose arrow you
+can see. An execute always carries `args`, `{}` included, for an action that
+declares none. A drawn `visible_to` is also what the emitted claim carries,
+since that is a field a statute reads.
 
 **Why the example walks a test fixture and not `examples/`.** A run needs a
 weight for every action the bindings declare and for all four nemesis kinds --

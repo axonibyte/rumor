@@ -275,3 +275,59 @@ func TestTheDocumentedRunIsTheBinarysRun(t *testing.T) {
 		t.Errorf("docs/cli.md claims:\n%s\n\nthe binary prints:\n%s", want, got)
 	}
 }
+
+// THE TRACE NAMES WHAT A STEP CONSUMED, AND IT IS A HANDLE THE RUN ALREADY
+// MINTED.
+//
+// This is the only place a `handle` argument is visible from outside the walk,
+// and the fixture now declares all four sources -- so a run reaching exit 0 at
+// all is also the end-to-end check that the engine composes `args` from the
+// bindings and the adapter accepts the request. The arrow alone would be
+// decoration; what makes it an assertion is that the consumed handle must
+// appear as a MINTED handle on an earlier line, which an invented or
+// misresolved name could not.
+func TestTheTraceNamesTheConsumedHandle(t *testing.T) {
+	out, errb, code := run(t, "run", fixture, "--seed", "42", "--steps", "8")
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	}
+
+	minted := map[string]int{}
+	consumed := 0
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.HasPrefix(line, "run: ") {
+			continue
+		}
+		n := 0
+		if _, err := fmt.Sscanf(strings.TrimPrefix(line, "run: "), "%d", &n); err != nil {
+			continue // the seed line and the verdict, which carry no step number
+		}
+		left, right, hasArrow := strings.Cut(line, " <- ")
+		if hasArrow {
+			for _, h := range strings.Fields(strings.Trim(right, "[]")) {
+				consumed++
+				at, ok := minted[h]
+				if !ok {
+					t.Errorf("step %d consumed %q, which no earlier step minted: the handle was "+
+						"invented or resolved from somewhere the walk did not bind\n%s", n, h, out)
+					continue
+				}
+				if at >= n {
+					t.Errorf("step %d consumed %q, minted at step %d: a step cannot consume a "+
+						"handle from its own step or later", n, h, at)
+				}
+			}
+		}
+		if i := strings.Index(left, " ["); i >= 0 {
+			for _, h := range strings.Fields(strings.Trim(left[i+1:], "[]")) {
+				if _, seen := minted[h]; !seen {
+					minted[h] = n
+				}
+			}
+		}
+	}
+	if consumed == 0 {
+		t.Fatalf("no step in eight consumed a handle, so this arm is reading nothing -- the "+
+			"fixture's join_event declares a `handle` argument and should have been drawn:\n%s", out)
+	}
+}

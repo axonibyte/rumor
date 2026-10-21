@@ -126,7 +126,17 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		if s.Planted {
 			mark = " PLANTED"
 		}
-		if _, err := fmt.Fprintf(stdout, "run: %3d %s %s%s %v\n", s.N, s.Actor, kind, mark, s.Handles); err != nil {
+		// WHAT THE STEP WAS ABOUT, where it consumed anything. A trace showing
+		// only what a step CREATED cannot tell two joins of different events
+		// apart, which is exactly the difference a reader is looking for when a
+		// walk goes wrong. Omitted where nothing was consumed rather than
+		// printed empty, so the common line stays short.
+		used := ""
+		if len(s.Used) > 0 {
+			used = fmt.Sprintf(" <- %v", s.Used)
+		}
+		if _, err := fmt.Fprintf(stdout, "run: %3d %s %s%s %v%s\n",
+			s.N, s.Actor, kind, mark, s.Handles, used); err != nil {
 			_, _ = fmt.Fprintf(stderr, "run: writing the trace: %v\n", err)
 			return 2
 		}
