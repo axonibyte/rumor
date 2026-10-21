@@ -43,6 +43,21 @@ type Step struct {
 	// Handles are the run-local handles this step minted, in creation order.
 	Handles []string
 
+	// Used are the handles this step CONSUMED as arguments, in the order the
+	// action declares them.
+	//
+	// IT IS RECORDED FOR Handles' REASON RUN THE OTHER WAY: Handles is what the
+	// step created, Used is what it was ABOUT. A choice that appears nowhere in
+	// the record cannot be compared between two attempts, and cannot be
+	// checked for being a choice at all -- a mutant replacing the draw in
+	// chooseHandles with "take the first candidate" survived the entire suite
+	// until this field existed, because nothing downstream could tell the two
+	// apart.
+	//
+	// HANDLES AND NOT IDS, like everything else in a Step: two attempts from
+	// one seed consume the same handles while the ids behind them differ.
+	Used []string
+
 	// Planted says the step appended a planted claim -- a lie the engine knows
 	// it told, because it told it.
 	Planted bool
@@ -67,6 +82,16 @@ type Record struct {
 	// A handle a suborn minted is absent from this map, because nothing bound
 	// it: the lie has no id under it.
 	IDs map[string]string
+
+	// Sessions is how many `session` requests the attempt sent.
+	//
+	// IT IS HERE BECAUSE THE PROPERTY IS OTHERWISE UNOBSERVABLE. A token is
+	// acquired at first use and reused after, and every token the fake adapter
+	// issues is the same string -- so "held and reused" and "asked for again"
+	// produce identical requests downstream, and a cache that never cached
+	// would be invisible from outside the walk. The count is also what a
+	// verdict reports, the way the registered-provider count is.
+	Sessions int
 }
 
 // HandleSequence is the record's handles in order, flattened across steps. It
@@ -121,6 +146,11 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		return rec, fmt.Errorf("schedule: the attempt's handle table: %w", err)
 	}
 	mint := &minter{counts: map[string]int{}}
+	// ONE HOLDER FOR THE WHOLE ATTEMPT, so a token acquired at step 2 is still
+	// held at step 9. It is per ATTEMPT and not per run: a second attempt is a
+	// second world with its own ids, and reusing the first attempt's tokens
+	// would carry one attempt's state into another.
+	sessions := NewSessions(sess)
 
 	for n := 1; n <= steps; n++ {
 		// SEAL EVERYTHING SO FAR. The seal is the prefix a precondition is
@@ -150,12 +180,13 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		}
 
 		step := Step{N: n, Actor: actor, Kind: kind}
-		if err := take(ctx, p, sess, l, table, mint, src, &step); err != nil {
+		if err := take(ctx, p, sess, sessions, l, table, mint, src, &step); err != nil {
 			return rec, fmt.Errorf("schedule: step %d: %s taking %s: %w", n, actor, kind, err)
 		}
 		rec.Steps = append(rec.Steps, step)
 	}
 
+	rec.Sessions = sessions.Acquired()
 	rec.IDs = map[string]string{}
 	for _, h := range table.Handles() {
 		if id, ok := table.ID(h); ok {
@@ -166,8 +197,8 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 }
 
 // take performs one drawn kind: the honest action, or the lie.
-func take(ctx context.Context, p Project, sess *wire.Session, l *ledger.Ledger,
-	table *handle.Table, mint *minter, src *Source, step *Step) error {
+func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions,
+	l *ledger.Ledger, table *handle.Table, mint *minter, src *Source, step *Step) error {
 
 	switch step.Kind {
 	case Canard:
@@ -189,16 +220,47 @@ func take(ctx context.Context, p Project, sess *wire.Session, l *ledger.Ledger,
 		return fmt.Errorf("%q is neither a declared action nor a nemesis kind, and the pool it "+
 			"came from is built from those two sets alone", step.Kind)
 	}
-	return honest(ctx, sess, l, table, mint, a, step)
+	return honest(ctx, sess, sessions, l, table, mint, src, a, step)
 }
 
 // honest executes the action against the system under test and records what it
 // emitted.
-func honest(ctx context.Context, sess *wire.Session, l *ledger.Ledger, table *handle.Table,
-	mint *minter, a bindings.Action, step *Step) error {
+func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledger.Ledger,
+	table *handle.Table, mint *minter, src *Source, a bindings.Action, step *Step) error {
 	_ = ctx
 
-	resp, err := sess.Execute(wire.ExecuteRequest{Action: a.Name, Args: map[string]any{}})
+	// THE HANDLE CHOICES ARE DRAWN FIRST AND THE REST COMPOSED AFTER, and that
+	// order is fixed rather than incidental: both consume the generator, so a
+	// run that composed in the other order would walk differently from the same
+	// seed. Stated here because it is the kind of thing a later edit reorders
+	// without noticing.
+	chosen, err := chooseHandles(a, src, table)
+	if err != nil {
+		return err
+	}
+	args, err := ExecuteArgs(a, step.Actor, chosen, src, table)
+	if err != nil {
+		return err
+	}
+	// RECORDED IN DECLARATION ORDER, read off the declaration rather than off
+	// the map: a map's order is its own, and a record whose order moved between
+	// two attempts would fail the comparison for a reason that is not a
+	// difference.
+	for _, arg := range a.Args {
+		if arg.Source == bindings.ArgHandle {
+			step.Used = append(step.Used, chosen[arg.Name])
+		}
+	}
+	// THE TOKEN IS ACQUIRED FOR THIS ACTION'S CONTEXT, which is the engine-side
+	// half of the pairing internal/wire's semantics() declines to check. An
+	// action whose context is "none" gets the empty token and omitempty leaves
+	// the field out.
+	token, err := sessions.Token(step.Actor, a.Context)
+	if err != nil {
+		return err
+	}
+
+	resp, err := sess.Execute(wire.ExecuteRequest{Action: a.Name, Token: token, Args: args})
 	if err != nil {
 		return fmt.Errorf("executing %s: %w", a.Name, err)
 	}
@@ -445,4 +507,66 @@ func (m *minter) next(actor, kind string) string {
 	key := actor + "." + kind
 	m.counts[key]++
 	return key + "#" + strconv.Itoa(m.counts[key])
+}
+
+// chooseHandles draws, for each `handle` argument the action declares, one of
+// the bound handles of that kind.
+//
+// IT DRAWS RATHER THAN TAKING THE FIRST, and the distinction is not symmetry
+// for its own sake: a walk that always joined the oldest event would never
+// reach a second one, and a fuzzer whose choices are fixed explores one path
+// however many seeds it is given. The draw is the generator's, so it replays:
+// two attempts from one seed choose the same handles.
+//
+// WHY THIS IS NOT THE EXCEPTION fable NAMED AT r5/72. The ruling there was that
+// an `actor` argument consumes NO draw, because its value is DETERMINED -- the
+// step's own actor -- so drawing for it would make the generator's consumption
+// depend on how many arguments an action declares while changing nothing about
+// the result. A `handle` argument's value is not determined: several handles of
+// one kind can be bound, and something has to pick. That is the same position
+// a `draw` argument is in, and `draw` consumes.
+//
+// THE CANDIDATES ARE SORTED, because handle.Table's order is its own business
+// and a draw over an unordered set is not reproducible.
+//
+// AN EMPTY CANDIDATE SET IS A DEFECT IN THE POOL AND SAYS SO. Resolvable holds
+// an action out of the pool until every kind it names has a bound handle, so
+// reaching here with none means applicability and composition disagree -- which
+// is worth a refusal naming both halves rather than a step that merely fails.
+func chooseHandles(a bindings.Action, src *Source, table *handle.Table) (map[string]string, error) {
+	var chosen map[string]string
+	for _, arg := range a.Args {
+		if arg.Source != bindings.ArgHandle {
+			continue
+		}
+		var candidates []string
+		if table != nil {
+			for _, h := range table.Handles() {
+				if kind, ok := handleKind(h); ok && kind == arg.Of {
+					candidates = append(candidates, h)
+				}
+			}
+		}
+		if len(candidates) == 0 {
+			return nil, fmt.Errorf("schedule: %s declares argument %q as a handle of kind %q and "+
+				"no handle of that kind is bound: Resolvable should have held this action out of "+
+				"the pool, so applicability and composition disagree", a.Name, arg.Name, arg.Of)
+		}
+		sort.Strings(candidates)
+		if src == nil {
+			return nil, fmt.Errorf("schedule: choosing a %q handle for %s's argument %q needs the "+
+				"run's generator: a choice made some other way would not replay from the seed",
+				arg.Of, a.Name, arg.Name)
+		}
+		i, err := src.IntN(len(candidates))
+		if err != nil {
+			return nil, fmt.Errorf("schedule: choosing a %q handle for %s's argument %q: %w",
+				arg.Of, a.Name, arg.Name, err)
+		}
+		if chosen == nil {
+			chosen = map[string]string{}
+		}
+		chosen[arg.Name] = candidates[i]
+	}
+	return chosen, nil
 }

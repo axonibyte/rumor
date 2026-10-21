@@ -11,6 +11,9 @@ package wire_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -270,14 +273,25 @@ func TestAnEmptyIDsRefusalCarriesTheAdaptersAnswer(t *testing.T) {
 		Requires: []string{"may_create_event"}, Creates: []string{"event"},
 	}}
 
+	// A CANNED SESSION COMES FIRST AS OF R5.4, and the ids say why: the canned
+	// lines are answered in request order, and create_event's context is "api",
+	// so the walk now acquires a token before it executes anything. Before
+	// this, describe was 1 and the execute was 2; now the session is 2 and the
+	// execute is 3. The arm failed on exactly that when sessions landed, which
+	// is the fixture's premise moving and not the walk's refusal changing.
+	token := mustJSON(t, wire.SessionResponse{
+		Envelope: wire.Envelope{Kind: wire.KindSession, Contract: wire.ContractVersion, ID: "2"},
+		Token:    "canned-token",
+	})
+
 	// A canned execute answering NO ids and a recognisable body, which is the
 	// shape both real causes produce.
 	empty := mustJSON(t, wire.ExecuteResponse{
-		Envelope: wire.Envelope{Kind: wire.KindExecute, Contract: wire.ContractVersion, ID: "2"},
+		Envelope: wire.Envelope{Kind: wire.KindExecute, Contract: wire.ContractVersion, ID: "3"},
 		IDs:      map[string]any{},
 		Response: map[string]any{"status": 401, "body": map[string]any{"error": "needs a session"}},
 	})
-	sess, err := wire.Open(ctx, cannedAdapter(t, realDescribeLine(t), empty), 20*time.Second)
+	sess, err := wire.Open(ctx, cannedAdapter(t, realDescribeLine(t), token, empty), 20*time.Second)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -292,5 +306,447 @@ func TestAnEmptyIDsRefusalCarriesTheAdaptersAnswer(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal must carry %q so a reader can tell the causes apart; got %v", want, err)
 		}
+	}
+}
+
+// ONE SESSION PER ACTOR PER CONTEXT, ACQUIRED AT FIRST USE AND REUSED AFTER.
+//
+// THE COUNT IS THE ONLY OBSERVABLE, which is why Record carries it: every token
+// the fake issues is the same string, so a holder that re-acquired on every
+// step would send requests indistinguishable from one that cached. The arm
+// therefore compares the count against the number of steps that actually
+// executed an action -- reuse is the count being SMALLER, and an arm that only
+// checked "at least one" would pass on a holder with no cache at all.
+func TestASessionIsAcquiredOncePerActorPerContext(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+
+	sess, err := wire.Open(ctx, fakeSpawn(), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	rec, err := schedule.Walk(ctx, p, sess, 7, 10, 1)
+	if err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+
+	// THE DENOMINATOR IS MEASURED FROM THE RECORD, not assumed from the seed:
+	// a stalled step draws no action and acquires nothing.
+	executed := 0
+	actors := map[string]bool{}
+	for _, st := range rec.Steps {
+		switch st.Kind {
+		case "", schedule.Suborn, schedule.Canard, schedule.Palter, schedule.Essoin:
+			continue
+		}
+		executed++
+		actors[st.Actor] = true
+	}
+	if executed < 2 {
+		t.Fatalf("only %d step(s) executed an action, so this arm cannot tell a reused session "+
+			"from a re-acquired one:\n%v", executed, rec.Steps)
+	}
+	if rec.Sessions == 0 {
+		t.Errorf("%d action(s) in context api executed and no session was acquired", executed)
+	}
+	if rec.Sessions > len(actors) {
+		t.Errorf("acquired %d session(s) for %d actor(s) in ONE context: a token is held per actor "+
+			"per context, so this is a cache that is not caching", rec.Sessions, len(actors))
+	}
+	if rec.Sessions >= executed {
+		t.Errorf("acquired %d session(s) across %d executed step(s): first use means the count is "+
+			"smaller than the number of steps, or nothing is being reused", rec.Sessions, executed)
+	}
+
+	// AND THE COUNT REPLAYS. A session acquired at first use is acquired at a
+	// step the seed chose, so two attempts from one seed must agree on how many
+	// there were.
+	again, err := schedule.Walk(ctx, p, sess, 7, 10, 2)
+	if err != nil {
+		t.Fatalf("Walk again: %v", err)
+	}
+	if again.Sessions != rec.Sessions {
+		t.Errorf("one seed acquired %d session(s) then %d", rec.Sessions, again.Sessions)
+	}
+}
+
+// AN ACTION TAKEN OUTSIDE A SESSION ACQUIRES NONE, driven through a real walk
+// and not only against the holder: the project declares context "none" and the
+// run must send no `session` request at all.
+func TestAWalkOfContextFreeActionsAcquiresNoSession(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+	for i := range p.Actions {
+		p.Actions[i].Context = "none"
+	}
+
+	sess, err := wire.Open(ctx, fakeSpawn(), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	rec, err := schedule.Walk(ctx, p, sess, 7, 10, 1)
+	if err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+	executed := 0
+	for _, st := range rec.Steps {
+		if st.Kind == "create_event" || st.Kind == "join_event" {
+			executed++
+		}
+	}
+	if executed == 0 {
+		t.Fatalf("no action executed, so an acquisition count of zero says nothing:\n%v", rec.Steps)
+	}
+	if rec.Sessions != 0 {
+		t.Errorf("acquired %d session(s) for %d action(s) whose context is none", rec.Sessions, executed)
+	}
+}
+
+// AN EMPTY TOKEN IS REFUSED RATHER THAN HELD. omitempty would omit it, so an
+// action whose context is NOT "none" would go out looking exactly like one
+// taken outside a session, and the adapter's 401 would send a reader looking at
+// the wrong half.
+func TestAnEmptyTokenIsRefused(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+	p.Actions = []bindings.Action{{
+		Name: "create_event", Context: "api", Emits: []string{"event.created"},
+		Requires: []string{"may_create_event"}, Creates: []string{"event"},
+	}}
+
+	blank := mustJSON(t, wire.SessionResponse{
+		Envelope: wire.Envelope{Kind: wire.KindSession, Contract: wire.ContractVersion, ID: "2"},
+		Token:    "",
+	})
+	sess, err := wire.Open(ctx, cannedAdapter(t, realDescribeLine(t), blank), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	_, err = schedule.Walk(ctx, p, sess, 1, 1, 1)
+	if err == nil {
+		t.Fatal("a session answered with an empty token was accepted")
+	}
+	if !strings.Contains(err.Error(), "empty token") {
+		t.Errorf("the refusal must name the empty token; got %v", err)
+	}
+}
+
+// TWO CONTEXTS, ONE ACTOR, TWO SESSIONS. Without this arm the per-CONTEXT half
+// of "one per actor per context" is unmeasured: every other arm here uses a
+// project with a single context, so a holder keyed on the actor alone would
+// pass all of them. An actor's api token reused for its ui actions would be a
+// token the adapter issued for something else, and the two contexts would be
+// indistinguishable from the engine's side.
+func TestOneActorInTwoContextsHoldsTwoSessions(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+	p.Venire = []platform.Member{{Role: "member", Count: 1}}
+	p.Actions[0].Context = "api"
+	p.Actions[1].Context = "ui"
+
+	sess, err := wire.Open(ctx, fakeSpawn(), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	rec, err := schedule.Walk(ctx, p, sess, 7, 12, 1)
+	if err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+
+	// BOTH CONTEXTS MUST HAVE BEEN REACHED or the count proves nothing: a walk
+	// that only ever took create_event would hold one session correctly.
+	kinds := map[string]bool{}
+	for _, st := range rec.Steps {
+		kinds[st.Kind] = true
+	}
+	if !kinds["create_event"] || !kinds["join_event"] {
+		t.Fatalf("the walk did not reach both contexts (%v), so the session count says nothing "+
+			"about per-context holding:\n%v", kinds, rec.Steps)
+	}
+	if rec.Sessions != 2 {
+		t.Errorf("one actor acting in two contexts acquired %d session(s), want 2: the token is "+
+			"held per actor per CONTEXT, and one token for both would be a token the adapter "+
+			"issued for something else", rec.Sessions)
+	}
+}
+
+// capturingAdapter answers from canned lines AND keeps every request it was
+// sent, so an arm can read what the engine actually wrote.
+//
+// WHY IT EXISTS: cannedAdapter discards its stdin, and internal/fake ignores an
+// execute's token entirely -- so "the engine attaches the token" had no oracle
+// in this tree at all, and a mutant that dropped the token from every execute
+// survived the whole suite. The real enforcement is cmd/toy answering 401
+// without a session (R5.4's done-when drives that), but a done-when against
+// another process is not a check on this one, and the engine's own half
+// deserves an arm here.
+//
+// The background `cat` is what consumes stdin; the foreground one emits the
+// canned responses. Only one reader touches stdin, so there is no race over it.
+func capturingAdapter(t *testing.T, lines ...string) (wire.Spawn, string) {
+	t.Helper()
+	dir := t.TempDir()
+	canned := filepath.Join(dir, "canned.jsonl")
+	seen := filepath.Join(dir, "seen.jsonl")
+	body := ""
+	for _, l := range lines {
+		body += l + "\n"
+	}
+	if err := os.WriteFile(canned, []byte(body), 0o600); err != nil {
+		t.Fatalf("writing the canned responses: %v", err)
+	}
+	// THE CAPTURE IS WRITTEN BEFORE THE RESPONSE IS SENT, which is what makes
+	// this race-free rather than nearly so. Three measured facts shaped it,
+	// each found by the arms failing on their own no-subject guard rather than
+	// on the property they are about:
+	//
+	// `cat > file` block-buffers when its output is a regular file, so the
+	// requests sat in cat's buffer and were lost when the adapter was killed.
+	//
+	// POSIX has a non-interactive shell redirect an ASYNCHRONOUS list's
+	// standard input to /dev/null, so a BACKGROUNDED reader saw EOF at once
+	// and never created the file at all.
+	//
+	// And emitting the canned lines up front (which is what cannedAdapter
+	// does) leaves the last request on the wrong side of the kill: the engine
+	// wrote the execute, Walk returned, and Close killed the shell before the
+	// reader was scheduled. Answering per request inverts that -- the engine
+	// cannot have read a response without this loop having already appended
+	// the request that earned it, so when Walk returns the capture is complete
+	// by construction.
+	script := "exec 3< " + canned + "\n" +
+		"while IFS= read -r l; do\n" +
+		"  printf '%s\\n' \"$l\" >> " + seen + "\n" +
+		"  IFS= read -r r <&3 && printf '%s\\n' \"$r\"\n" +
+		"done\n"
+	return wire.Spawn{Command: []string{"sh", "-c", script}}, seen
+}
+
+// THE TOKEN REACHES THE EXECUTE, and the engine is what put it there. Driven by
+// reading the bytes the walk wrote rather than by trusting that a field set in
+// one function arrives in another.
+func TestTheAcquiredTokenIsOnTheExecute(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+	p.Actions = []bindings.Action{{
+		Name: "create_event", Context: "api", Emits: []string{"event.created"},
+		Requires: []string{"may_create_event"}, Creates: []string{"event"},
+	}}
+
+	token := mustJSON(t, wire.SessionResponse{
+		Envelope: wire.Envelope{Kind: wire.KindSession, Contract: wire.ContractVersion, ID: "2"},
+		Token:    "the-one-token",
+	})
+	done := mustJSON(t, wire.ExecuteResponse{
+		Envelope: wire.Envelope{Kind: wire.KindExecute, Contract: wire.ContractVersion, ID: "3"},
+		IDs:      map[string]any{"event": "e-1"},
+		Response: map[string]any{"status": 201},
+	})
+	spawn, seen := capturingAdapter(t, realDescribeLine(t), token, done)
+	sess, err := wire.Open(ctx, spawn, 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if _, err := schedule.Walk(ctx, p, sess, 1, 1, 1); err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+	// THE PROCESS IS STOPPED BEFORE THE CAPTURE IS READ, so the background cat
+	// has flushed: reading a file another process still holds open is how a
+	// capture reads short and the arm passes on nothing.
+	if err := sess.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	raw, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("reading what the engine sent: %v", err)
+	}
+	var sessionLine, executeLine string
+	for _, l := range strings.Split(string(raw), "\n") {
+		switch {
+		case strings.Contains(l, `"kind":"session"`):
+			sessionLine = l
+		case strings.Contains(l, `"kind":"execute"`):
+			executeLine = l
+		}
+	}
+	if sessionLine == "" || executeLine == "" {
+		t.Fatalf("the capture holds no session and/or no execute, so this arm is reading "+
+			"nothing:\n%s", raw)
+	}
+	if !strings.Contains(sessionLine, `"actor":"member_1"`) && !strings.Contains(sessionLine, `"actor":"member_2"`) {
+		t.Errorf("the session request names no actor: %s", sessionLine)
+	}
+	if !strings.Contains(executeLine, `"token":"the-one-token"`) {
+		t.Errorf("the execute carries no token, or not the acquired one: %s", executeLine)
+	}
+}
+
+// AND AN ACTION OUTSIDE A SESSION CARRIES NO TOKEN FIELD AT ALL, the other side
+// of the contract row: "present exactly when the action's context is not none".
+// An arm asserting only the presence would pass on an engine that always sent
+// one.
+func TestAnActionOutsideASessionCarriesNoToken(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+	p.Actions = []bindings.Action{{
+		Name: "create_event", Context: "none", Emits: []string{"event.created"},
+		Requires: []string{"may_create_event"}, Creates: []string{"event"},
+	}}
+
+	done := mustJSON(t, wire.ExecuteResponse{
+		Envelope: wire.Envelope{Kind: wire.KindExecute, Contract: wire.ContractVersion, ID: "2"},
+		IDs:      map[string]any{"event": "e-1"},
+		Response: map[string]any{"status": 201},
+	})
+	spawn, seen := capturingAdapter(t, realDescribeLine(t), done)
+	sess, err := wire.Open(ctx, spawn, 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if _, err := schedule.Walk(ctx, p, sess, 1, 1, 1); err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+	if err := sess.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	raw, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("reading what the engine sent: %v", err)
+	}
+	if !strings.Contains(string(raw), `"kind":"execute"`) {
+		t.Fatalf("the capture holds no execute, so this arm is reading nothing:\n%s", raw)
+	}
+	if strings.Contains(string(raw), `"kind":"session"`) {
+		t.Errorf("a session was acquired for an action whose context is none:\n%s", raw)
+	}
+	if strings.Contains(string(raw), `"token"`) {
+		t.Errorf("the execute carries a token field for an action taken outside a session:\n%s", raw)
+	}
+}
+
+// A HANDLE ARGUMENT IS DRAWN FROM THE BOUND HANDLES OF ITS KIND, AND THE DRAW
+// IS A DRAW.
+//
+// THE ORACLE IS RECONSTRUCTED FROM THE RECORD rather than asserted loosely: for
+// each consuming step the candidate set is the event handles bound by earlier
+// steps, so "it chose other than the minimum at least once" is checkable. A
+// weaker arm -- that two runs used different handles -- would pass on a
+// chooser that always takes the first, because which handle sorts first depends
+// on who created one first.
+//
+// IT ALSO DRIVES AN ORDERING I SAID I WOULD DRIVE AND NOT ASSUME (coop r5/71):
+// an action needing a handle cannot precede the action that binds one. Nothing
+// here arranges that; Resolvable holds join_event out of the pool until an
+// event exists, and the walk below would refuse if it did not.
+func TestAHandleArgumentIsDrawnFromTheBoundHandles(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+	// join_event now NEEDS an event, declared the way a project declares it.
+	p.Actions[1].Args = []bindings.Arg{
+		{Name: "event", Source: bindings.ArgHandle, Of: "event"},
+	}
+
+	sess, err := wire.Open(ctx, fakeSpawn(), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	nonMinimum := false
+	sawTwoCandidates := false
+	consuming := 0
+	for _, seed := range []uint64{1, 2, 3, 4, 5, 6, 7, 8} {
+		rec, err := schedule.Walk(ctx, p, sess, seed, 14, 1)
+		if err != nil {
+			t.Fatalf("seed %d: %v", seed, err)
+		}
+		var bound []string
+		for _, st := range rec.Steps {
+			if len(st.Used) > 0 {
+				consuming++
+				var cands []string
+				for _, h := range bound {
+					if strings.Contains(h, ".event#") {
+						cands = append(cands, h)
+					}
+				}
+				sort.Strings(cands)
+				if len(cands) > 1 {
+					sawTwoCandidates = true
+				}
+				if len(cands) == 0 {
+					t.Errorf("seed %d: a step consumed %v with no event bound before it: the "+
+						"action should have been inapplicable", seed, st.Used)
+				} else if st.Used[0] != cands[0] {
+					nonMinimum = true
+				}
+			}
+			for _, h := range st.Handles {
+				if _, ok := rec.IDs[h]; ok {
+					bound = append(bound, h)
+				}
+			}
+		}
+	}
+	if consuming == 0 {
+		t.Fatal("no step consumed a handle across eight seeds, so this arm is measuring nothing")
+	}
+	if !sawTwoCandidates {
+		t.Fatalf("no consuming step ever had two candidates (%d consuming step(s)), so a chooser "+
+			"that always takes the first could not be told from one that draws", consuming)
+	}
+	if !nonMinimum {
+		t.Errorf("across eight seeds and %d consuming step(s), every chosen handle was the "+
+			"first of its candidate set: the choice is not a draw", consuming)
+	}
+}
+
+// AND THE CHOICE REPLAYS: two attempts from one seed consume the same handles.
+// Issue 72's done-when compares what the steps CREATED; this is the same
+// property over what they were ABOUT, which a drawn choice makes a separate
+// question.
+func TestTwoAttemptsConsumeTheSameHandles(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+	p.Actions[1].Args = []bindings.Arg{
+		{Name: "event", Source: bindings.ArgHandle, Of: "event"},
+	}
+
+	sess, err := wire.Open(ctx, fakeSpawn(), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	used := func(r schedule.Record) []string {
+		var out []string
+		for _, st := range r.Steps {
+			out = append(out, st.Used...)
+		}
+		return out
+	}
+	a, err := schedule.Walk(ctx, p, sess, 11, 14, 1)
+	if err != nil {
+		t.Fatalf("attempt 1: %v", err)
+	}
+	b, err := schedule.Walk(ctx, p, sess, 11, 14, 2)
+	if err != nil {
+		t.Fatalf("attempt 2: %v", err)
+	}
+	ua, ub := used(a), used(b)
+	if len(ua) == 0 {
+		t.Fatal("neither attempt consumed a handle, so comparing them says nothing")
+	}
+	if strings.Join(ua, " ") != strings.Join(ub, " ") {
+		t.Errorf("one seed consumed two different handle sequences:\n%v\n%v", ua, ub)
 	}
 }
