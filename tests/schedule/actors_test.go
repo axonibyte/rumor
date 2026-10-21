@@ -109,13 +109,92 @@ func TestFlowPlaceholdersComeOffTheCorpus(t *testing.T) {
 	}
 }
 
-// AN ACTION WITH NO PLACEHOLDERS NEEDS NOTHING, which is every toy action but
-// one -- the bindings schema gives actions `creates` and a `flow` and never
-// declared args, so a flow reference is the only way an action names a handle.
+// AN ACTION THAT NAMES NO HANDLE NEEDS NOTHING. This arm's comment used to say
+// a flow reference was the ONLY way an action names a handle, which R5.4's
+// `[[action.args]]` made false: an argument with `source = "handle"` is the
+// other way, and the arm below drives it.
 func TestResolvableIsTrueWhereNothingIsNeeded(t *testing.T) {
 	ok, kind := schedule.Resolvable(bindings.Action{Name: "create_event"}, nil)
 	if !ok {
-		t.Errorf("an action with no flow needs no handle; got a complaint about %q", kind)
+		t.Errorf("an action with no flow and no arguments needs no handle; got a complaint "+
+			"about %q", kind)
+	}
+
+	// AND AN ARGUMENT THAT IS NOT A HANDLE STILL NEEDS NOTHING: a literal, a
+	// draw and the acting actor's name are all available at every step, so an
+	// action declaring only those must not be held out of the pool.
+	only := bindings.Action{Name: "create_event", Args: []bindings.Arg{
+		{Name: "title", Source: bindings.ArgLiteral, Value: "Standup"},
+		{Name: "capacity", Source: bindings.ArgDraw, From: []any{int64(1)}},
+		{Name: "name", Source: bindings.ArgActor},
+	}}
+	if ok, kind := schedule.Resolvable(only, nil); !ok {
+		t.Errorf("literal, draw and actor arguments need no handle; got a complaint about %q", kind)
+	}
+}
+
+// A `handle` ARGUMENT IS THE SECOND WAY AN ACTION NAMES A HANDLE, and it is
+// counted. Before R5.4 an action declaring one and no flow read as needing
+// nothing, so the walk would draw it and ExecuteArgs would then refuse the
+// step -- the very "drawn and then refused" shape Resolvable exists to prevent
+// (coop r5/58).
+func TestResolvableCountsAHandleArgument(t *testing.T) {
+	a := bindings.Action{Name: "join_event", Args: []bindings.Arg{
+		{Name: "event", Source: bindings.ArgHandle, Of: "event"},
+	}}
+
+	if ok, kind := schedule.Resolvable(a, nil); ok || kind != "event" {
+		t.Errorf("with no table: ok=%v kind=%q, want false and event", ok, kind)
+	}
+
+	tab, err := handle.New(1)
+	if err != nil {
+		t.Fatalf("handle.New: %v", err)
+	}
+	if err := tab.Bind("member_1.user#1", "u-1"); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	// A BOUND HANDLE OF ANOTHER KIND DOES NOT SATISFY IT, the control that
+	// keeps this from passing on any non-empty table.
+	if ok, kind := schedule.Resolvable(a, tab); ok || kind != "event" {
+		t.Errorf("a bound USER handle must not satisfy an argument needing an event: ok=%v kind=%q",
+			ok, kind)
+	}
+	if err := tab.Bind("member_2.event#1", "e-1"); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	if ok, kind := schedule.Resolvable(a, tab); !ok {
+		t.Errorf("a bound event handle must satisfy it; got a complaint about %q", kind)
+	}
+}
+
+// THE ARGUMENT IS NAMED BEFORE THE FLOW when both are unresolved, because an
+// unwritable request stops the step sooner than an unnavigable page.
+func TestAnArgumentsKindIsNamedBeforeAFlows(t *testing.T) {
+	a := bindings.Action{
+		Name: "join_event_ui",
+		Args: []bindings.Arg{{Name: "user", Source: bindings.ArgHandle, Of: "user"}},
+		Flow: []bindings.Step{{Step: "navigate", To: "/ui/events/{event}"}},
+	}
+	if got := schedule.HandleKindsNeeded(a); len(got) != 2 || got[0] != "user" || got[1] != "event" {
+		t.Errorf("HandleKindsNeeded = %v, want [user event]", got)
+	}
+	if ok, kind := schedule.Resolvable(a, nil); ok || kind != "user" {
+		t.Errorf("ok=%v kind=%q, want false and the argument's kind user", ok, kind)
+	}
+}
+
+// AND A KIND NAMED TWICE IS NEEDED ONCE: an action whose argument and whose
+// flow both refer to `event` must not report it twice, or a caller listing what
+// is missing would say the same thing twice.
+func TestAKindNeededTwiceIsListedOnce(t *testing.T) {
+	a := bindings.Action{
+		Name: "join_event_ui",
+		Args: []bindings.Arg{{Name: "event", Source: bindings.ArgHandle, Of: "event"}},
+		Flow: []bindings.Step{{Step: "navigate", To: "/ui/events/{event}"}},
+	}
+	if got := schedule.HandleKindsNeeded(a); len(got) != 1 || got[0] != "event" {
+		t.Errorf("HandleKindsNeeded = %v, want [event] exactly once", got)
 	}
 }
 

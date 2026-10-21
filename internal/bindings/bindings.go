@@ -403,6 +403,30 @@ func Parse(doc map[string]any) Report {
 		seenRole[role.Name] = true
 	}
 
+	// AN ARGUMENT DECLARED TWICE, the same rule one level down and in the same
+	// place as its three siblings. ExecuteArgs and ObserveArgs both build a map
+	// keyed by the argument's NAME, so a second entry would silently overwrite
+	// the first and the request would carry whichever the file happened to put
+	// last. It is refused here, at load, because it is a defect in the
+	// declaration: a walk-time check would make a project error look like a
+	// could-not-run halfway through a run.
+	for _, act := range b.Actions {
+		seenArg := map[string]bool{}
+		for _, ar := range act.Args {
+			if ar.Name == "" {
+				// `name` is required and arg() has already recorded its
+				// absence; counting the blanks as duplicates of each other
+				// would name one defect twice.
+				continue
+			}
+			if seenArg[ar.Name] {
+				r.Refuse("action", fmt.Sprintf("%q declares argument %q twice: the second entry "+
+					"would overwrite the first where the request is built", act.Name, ar.Name))
+			}
+			seenArg[ar.Name] = true
+		}
+	}
+
 	if found := r.Refusals(); len(found) > 0 {
 		return Report{Refusals: found}
 	}

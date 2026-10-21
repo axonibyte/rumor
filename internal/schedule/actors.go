@@ -93,6 +93,35 @@ func FlowPlaceholders(a bindings.Action) []string {
 	return out
 }
 
+// HandleKindsNeeded is every handle KIND an action needs before it can be
+// taken: the kinds its `handle` arguments declare, then the kinds its UI flow
+// refers to, first appearance first and duplicates removed.
+//
+// THE ARGUMENTS COME FIRST because their failure is earlier: an unresolvable
+// argument means the execute request cannot be composed at all, while an
+// unresolvable flow placeholder means it cannot be navigated. A refusal naming
+// the first missing kind should name the one that stops the step soonest.
+func HandleKindsNeeded(a bindings.Action) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(kind string) {
+		if kind == "" || seen[kind] {
+			return
+		}
+		seen[kind] = true
+		out = append(out, kind)
+	}
+	for _, arg := range a.Args {
+		if arg.Source == bindings.ArgHandle {
+			add(arg.Of)
+		}
+	}
+	for _, kind := range FlowPlaceholders(a) {
+		add(kind)
+	}
+	return out
+}
+
 // Resolvable reports whether every handle kind this action needs has a handle
 // that resolves to an id, and names the first kind that does not.
 //
@@ -109,13 +138,26 @@ func FlowPlaceholders(a bindings.Action) []string {
 // "resolves" and "is in the table" are the same question, and there is no
 // second bookkeeping of unresolvable handles to drift from the first.
 //
-// An action with no flow placeholders needs nothing, which is every action in
-// the toy but join_event_ui: the bindings schema gives actions `creates` and a
-// `flow`, never declared args, so a flow reference is the only way an action
-// names a handle today. An observation's `args` is the other half and
-// ObserveArgs holds it.
+// THERE ARE TWO WAYS AN ACTION NAMES A HANDLE AND THIS COUNTS BOTH, which is
+// R5.4's correction to this function. Until the argument schema landed, a flow
+// placeholder was the only one -- the comment here said so, and said it as the
+// reason the check was complete -- and `[[action.args]]` with `source =
+// "handle"` is now the second and the more direct: the request cannot be
+// WRITTEN without it, while a flow placeholder cannot be NAVIGATED without it.
+// Both are counted by HandleKindsNeeded, and an action needing neither needs
+// nothing.
+//
+// WHAT THIS DOES NOT ASK, stated rather than left to be discovered: whether the
+// handle belongs to a kind the ACTOR knows of. The table is global to the
+// attempt, so a kind bound by anybody satisfies this, while
+// `[[action.args]]`'s `of` is documented as resolving to "an id the ACTOR knows
+// of". Knowledge is the ledger's and the statute's answer (engine.KnownAt), not
+// the table's, and asking it needs a ledger this function is not given.
+// Narrowing stated so it is not read as covered: an action whose argument names
+// an event only somebody else can see is applicable here and would be filtered
+// one layer up.
 func Resolvable(a bindings.Action, t *handle.Table) (bool, string) {
-	needs := FlowPlaceholders(a)
+	needs := HandleKindsNeeded(a)
 	if len(needs) == 0 {
 		return true, ""
 	}

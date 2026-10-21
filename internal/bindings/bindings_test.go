@@ -489,6 +489,26 @@ func TestAnActionsArgumentsAreReadBySource(t *testing.T) {
 		}
 	}
 
+	// AN ARGUMENT DECLARED TWICE IS REFUSED, with its control beside it: two
+	// arguments with DIFFERENT names are the ordinary case, so a check that
+	// fired on both would be refusing the plural rather than the collision.
+	// The composer builds a map keyed by name, so the second entry would
+	// silently win and the request would carry whichever the file put last.
+	if dup := Parse(withArgs(
+		map[string]any{"name": "title", "source": "literal", "value": "a"},
+		map[string]any{"name": "title", "source": "literal", "value": "b"},
+	)); dup.OK() {
+		t.Error("`title` declared twice was accepted: the second entry would overwrite the first")
+	} else if !names(dup.Refusals, "action", `declares argument "title" twice`) {
+		t.Errorf("the duplicate must be named: %v", dup.Refusals)
+	}
+	if two := Parse(withArgs(
+		map[string]any{"name": "title", "source": "literal", "value": "a"},
+		map[string]any{"name": "other", "source": "literal", "value": "b"},
+	)); !two.OK() {
+		t.Errorf("two differently named arguments must parse: %v", two.Refusals)
+	}
+
 	// AND NO ARGS AT ALL IS STILL A BINDING. An action the system takes with
 	// no arguments declares none, so the optional half needs its own cell --
 	// otherwise every existing example would have to gain an empty table.
