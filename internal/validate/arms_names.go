@@ -177,6 +177,38 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 		}
 	}
 
+	// CELL 4's SIBLING, for an ACTION's declared arguments (R5.4, issue 78):
+	// a `handle` argument whose `of` names a kind no action creates. The engine
+	// resolves `of` against the run's handle table before the request is
+	// written, exactly as it does an observation's args, so a kind nothing
+	// binds resolves to nothing.
+	//
+	// THE PARSER CANNOT HOLD THIS ONE, which is why it is here and not a
+	// refusal in internal/bindings: `arg()` reads ONE [[action.args]] table and
+	// the created set spans every action in the document, so the pairing needs
+	// both halves at once -- the same reason cell 2 lives here rather than in
+	// internal/platform. Measured before writing it: nothing else in the tree
+	// pairs Arg.Of against Creates; internal/schedule/actors.go reads it only
+	// to decide APPLICABILITY, which makes a dangling kind a step that never
+	// runs rather than a declaration anyone refuses.
+	//
+	// AND INAPPLICABLE IS NOT A REFUSAL, which is the whole reason this cell
+	// earns its place: docs/contract.md's own row says a kind nothing has bound
+	// makes the action inapplicable. A walk would therefore skip the action in
+	// silence for the life of the project, and "my action never fires" is the
+	// quietest defect this validator can be asked to catch.
+	for _, a := range b.Actions {
+		for _, arg := range a.Args {
+			if arg.Source != bindings.ArgHandle {
+				continue
+			}
+			if !created[arg.Of] {
+				note("bindings.toml: action %s takes arg %s of kind %s: no action creates a handle of that name",
+					a.Name, arg.Name, arg.Of)
+			}
+		}
+	}
+
 	// CELL 5: a UI flow placeholder naming a handle no action creates. EVERY
 	// STRING FIELD OF A STEP IS SCANNED, which is a superset of what a driver
 	// would substitute and is stated rather than narrowed: `{...}` is not legal

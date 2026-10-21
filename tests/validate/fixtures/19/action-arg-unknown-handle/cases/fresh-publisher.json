@@ -1,0 +1,30 @@
+{
+  "why": "dana was told of alice's one published doc and counts one. dana has published nothing, so the precondition holds for dana -- which is the arm-3 material: an action may name `may_publish` in `requires` because there is a rule here that answers it.",
+  "expect": {
+    "believed": 1,
+    "may_publish": true,
+    "finding": "consistent"
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "position": 2,
+      "of": "doc.published",
+      "query": "doc.count",
+      "source": "direct",
+      "value": 1
+    },
+    "known": [
+      "alice.doc#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.published",
+        "position": 1,
+        "handle": "alice.doc#1"
+      }
+    ]
+  }
+}

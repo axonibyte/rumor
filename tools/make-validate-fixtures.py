@@ -247,6 +247,22 @@ count = 1
                        "# `doc` IS created by publish_doc and comes first: the dangling name is SECOND\n"
                        "# so a cell reading only Args[0] cannot pass this fixture (measured -- it did).\n" + s)
 
+    d = fresh("19/action-arg-unknown-handle")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    # AFTER `response`, not before it: [[action.args]] is a sub-table, so every
+    # scalar key of the action has to precede it or TOML reads the scalar as
+    # the sub-table's. Caught by generating it the wrong way round first.
+    s = s.replace('touches = ["doc_store"]\nresponse = { status = 201 }',
+                  'touches = ["doc_store"]\nresponse = { status = 201 }\n\n'
+                  '  [[action.args]]\n  name = "doc"\n  source = "handle"\n  of = "doc"\n\n'
+                  '  [[action.args]]\n  name = "parent"\n  source = "handle"\n  of = "nonesuch"', 1)
+    open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- an action takes a handle\n"
+                       "# argument whose `of` names a kind no action creates, so the walk could only\n"
+                       "# resolve it to nothing and the action would sit inapplicable in silence.\n"
+                       "# `doc` IS created by publish_doc and comes FIRST: the dangling name is second,\n"
+                       "# so a cell reading only Args[0] cannot pass this fixture -- the same control\n"
+                       "# the observation-arg cell needed, and for the same reason.\n" + s)
+
     d = fresh("19/flow-placeholder-unknown-handle")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
     s = s.replace('to = "/docs/new"', 'to = "/docs/{doc}/{nonesuch}"', 1)

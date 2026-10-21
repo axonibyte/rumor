@@ -9,6 +9,7 @@ package schedule_test
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -179,17 +180,42 @@ func TestPoolCarriesActionsAndApplicableNemesisKinds(t *testing.T) {
 		t.Fatalf("Pool: %v", err)
 	}
 
-	// create_event and leave_event are what honest-count's verdicts permit --
-	// the pair the applicability arm asserts against the corpus -- plus suborn
-	// and palter, which inherit an applicable emitting action's precondition
-	// (fable coop r5/49). TWO kinds are excluded and for DIFFERENT reasons,
-	// which is what makes this a set assertion and not a count: canard has no
-	// planted claim to pass on here, and essoin waits on R9's flow state. Both
-	// carry weight 2 in this table, so neither is absent for want of a weight.
-	want := []string{"create_event", "leave_event", "palter", "suborn"}
+	// create_event is what honest-count's verdicts permit with NOTHING BOUND,
+	// plus suborn and palter, which inherit an applicable emitting action's
+	// precondition (fable coop r5/49). THREE kinds are excluded and for THREE
+	// DIFFERENT reasons, which is what makes this a set assertion and not a
+	// count: canard has no planted claim to pass on here, essoin waits on
+	// R9's flow state -- both weighted 2 in this table, so neither is absent
+	// for want of a weight -- and leave_event is out on RESOLVABILITY.
+	//
+	// leave_event LEFT THIS SET IN R5.4 (issue 78) and the change is the
+	// principle this file already states at tbl(): resolvability is part of
+	// applicability. It now declares `[[action.args]] of = "event"`, tbl() is
+	// a fresh table, and docs/contract.md's own row says a kind nothing has
+	// bound makes the action inapplicable, exactly as an unresolvable {kind}
+	// in a flow does. The cell below binds one and watches it come back, so
+	// this is an assertion about resolvability rather than a shrunken want.
+	want := []string{"create_event", "palter", "suborn"}
 	if strings.Join(kinds(got), ",") != strings.Join(want, ",") {
 		t.Fatalf("the pool at honest-count's seal is %v; want %v (canard out on its precondition, "+
-			"essoin out until R9, both weighted 2 here)", kinds(got), want)
+			"essoin out until R9, both weighted 2 here; leave_event out until an event handle "+
+			"resolves its declared arg)", kinds(got), want)
+	}
+
+	// THE CONTROL FOR THAT EXCLUSION, without which the want above would pass
+	// over a Pool that dropped leave_event for any reason at all: bind one
+	// event handle and the action must return.
+	withEvent := tbl(t)
+	if err := withEvent.Bind(observer+".event#1", "e-99"); err != nil {
+		t.Fatalf("binding an event handle: %v", err)
+	}
+	back, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", withEvent, nil)
+	if err != nil {
+		t.Fatalf("Pool with a bound event handle: %v", err)
+	}
+	if !slices.Contains(kinds(back), "leave_event") {
+		t.Errorf("with an event handle bound the pool is %v; leave_event must be in it, or its "+
+			"absence above was not about resolvability", kinds(back))
 	}
 	// EACH CANDIDATE CARRIES THE TABLE'S WEIGHT, asserted as equality against
 	// the table. My first version of this read `!= 2 && != w.Default[kind]`,

@@ -24,6 +24,15 @@ creates = ["user"]
 touches = ["store"]
 response = { status = 201 }
 
+  # THE NAME IS THE ACTOR'S OWN, and that is the whole reason `actor` is one of
+  # the four sources (r5/70, ruled r5/72): cmd/toy keys a session by user NAME,
+  # so a session for member_1 exists only if some create_user made a user
+  # called member_1. A literal or a draw here would mint users nobody can hold
+  # a session as, and the session half of this child would have nothing to key.
+  [[action.args]]
+  name = "name"
+  source = "actor"
+
 [[action]]
 name = "create_event"
 context = "api"
@@ -32,6 +41,36 @@ requires = ["may_create_event"]
 creates = ["event"]
 touches = ["store"]
 response = { status = 201 }
+
+  # A LITERAL, NOT A DRAW: the title is the one field of this action cmd/toy
+  # never reads back and no statute judges, so drawing it would spend the
+  # generator on a choice nothing can observe -- and two runs of one seed would
+  # still agree, which is the property the draw exists to put at risk.
+  [[action.args]]
+  name = "title"
+  source = "literal"
+  value = "Standup"
+
+  # SMALL ON PURPOSE. cmd/toy refuses capacity < 1 (main.go:400), and its
+  # capacity RACE is the ledger row a walk is meant to be able to reach: the
+  # window between the check and the insert only opens when an event is at or
+  # near its limit, so 1 and 2 put the boundary within a few steps where 50
+  # would hide it behind arithmetic no walk will do.
+  [[action.args]]
+  name = "capacity"
+  source = "draw"
+  from = [1, 2, 3]
+
+  # A LIST OF LISTS, because the claim carries a LIST and the statute reads it
+  # (quill r5/80); a bare role name is refused. Every subset names admin so the
+  # creator can always see its own event, and guest is present in exactly one:
+  # the API visibility leak is about what a GUEST is shown, so the subsets
+  # WITHOUT guest are the ones that can expose it and the one with guest is the
+  # control that keeps the arm from being true and empty.
+  [[action.args]]
+  name = "visible_to"
+  source = "draw"
+  from = [["admin"], ["admin", "member"], ["admin", "member", "guest"]]
 
 [[action]]
 # THE PRECONDITION, and the only `requires` in this package: `may_join` is the
@@ -46,6 +85,13 @@ requires = ["may_join"]
 touches = ["store"]
 response = { status = 200 }
 
+  # THE HANDLE KIND, never a run's handle: the walk picks WHICH event this
+  # actor knows of, and `event` is created by create_event above.
+  [[action.args]]
+  name = "event"
+  source = "handle"
+  of = "event"
+
 [[action]]
 name = "leave_event"
 context = "api"
@@ -54,6 +100,13 @@ requires = ["may_leave"]
 touches = ["store"]
 response = { status = 200 }
 
+  # THE HANDLE KIND, never a run's handle: the walk picks WHICH event this
+  # actor knows of, and `event` is created by create_event above.
+  [[action.args]]
+  name = "event"
+  source = "handle"
+  of = "event"
+
 [[action]]
 name = "delete_event"
 context = "api"
@@ -61,6 +114,13 @@ emits = ["event.deleted"]
 requires = ["may_delete"]
 touches = ["store"]
 response = { status = 200 }
+
+  # THE HANDLE KIND, never a run's handle: the walk picks WHICH event this
+  # actor knows of, and `event` is created by create_event above.
+  [[action.args]]
+  name = "event"
+  source = "handle"
+  of = "event"
 
 # A BROWSER-STAGE ACTION WITH ITS FLOW, so arms 4 and 5 EVALUATE rather than
 # skipping: both are vacuous unless stages.browser.enabled is true, and arm 4
@@ -75,6 +135,15 @@ context = "browser"
 emits = ["event.joined"]
 requires = ["may_join"]
 touches = ["store"]
+
+  # THE SAME EVENT HANDLE THE API ACTION TAKES, and the flow's `{event}`
+  # placeholder below names the same kind: the browser action reaches the same
+  # entity by a different context, which is what makes arm 5's "a browser
+  # action that could reach the api" question answerable at all.
+  [[action.args]]
+  name = "event"
+  source = "handle"
+  of = "event"
 
   [[action.flow]]
   step = "navigate"
