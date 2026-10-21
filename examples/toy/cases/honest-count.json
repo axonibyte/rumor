@@ -8,6 +8,7 @@
     "may_join": false,
     "may_leave": true,
     "may_create_user": false,
+    "has_user": true,
     "may_create_event": true,
     "may_delete": false
   },

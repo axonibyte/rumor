@@ -241,7 +241,7 @@ planted-lie      m1-ignores-position        alive from the cases only (the seal 
 planted-lie      bug                        reached by stripped-tag
 planted-lie      with-planted               cleared by removing 1 planted claim(s)
 transitive-count charlie-own-lie            planted but not a control: the strip clause is not applied
-attaint: 5 package(s), 29 case(s), 25 rule(s), 32 mutant(s); 3 planted lie(s) corroborated of 6, 3 cleared by removal, 3 planted-not-control; 25 rule(s) killed, 0 unmutated; 0 refusal(s)
+attaint: 5 package(s), 29 case(s), 26 rule(s), 33 mutant(s); 3 planted lie(s) corroborated of 6, 3 cleared by removal, 3 planted-not-control; 26 rule(s) killed, 0 unmutated; 0 refusal(s)
 LINES
 
 # BOTH GUARDS BELOW ARE UNCONDITIONAL, which the first cut got wrong: the total

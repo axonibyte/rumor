@@ -463,12 +463,16 @@ func TestAnActionWhoseFlowHandleCannotResolveIsInapplicable(t *testing.T) {
 // and would not say that the ROLES were what removed the action.
 func TestAnActionInAnUnheldContextIsInapplicable(t *testing.T) {
 	ctx := context.Background()
-	l, _, _ := sealedToy(t, "honest-count")
-	w := withNemesis(toyWeights(t), 2)
 
 	// The actor must be a name Actors() could mint, since the role is read off
 	// it. honest-count's own actor is `observer`, which is not one.
 	const actor = "member_1"
+
+	// AND IT MUST HOLD A USER, because `has_user` gates every `api` action
+	// since R5.4: honest-count's ledger alone leaves a minted actor with an
+	// empty pool and this differential nothing to subtract from.
+	l := sealedToyWithUserFor(t, actor)
+	w := withNemesis(toyWeights(t), 2)
 
 	// ONE ACTION MOVED TO A SECOND CONTEXT, and the corpus is read rather than
 	// assumed: if the toy stopped declaring the action this picks, the guard
@@ -536,7 +540,12 @@ func TestAnActionInAnUnheldContextIsInapplicable(t *testing.T) {
 // permits nothing.
 func TestAnUndeclaredRoleRefusesRatherThanEmptyingThePool(t *testing.T) {
 	ctx := context.Background()
-	l, _, _ := sealedToy(t, "honest-count")
+
+	// THE ACTOR HOLDS A USER for the reason the arm above gives: the role
+	// lookup is reached only for an action that is already applicable, so an
+	// actor `has_user` gates out would produce an empty pool and no refusal --
+	// and this arm exists to prove the refusal happens.
+	l := sealedToyWithUserFor(t, "member_1")
 	w := withNemesis(toyWeights(t), 2)
 	other := []bindings.Role{{Name: "admin", Contexts: []string{"api"}}}
 

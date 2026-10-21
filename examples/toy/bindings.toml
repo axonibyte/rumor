@@ -34,10 +34,23 @@ response = { status = 201 }
   source = "actor"
 
 [[action]]
+# `has_user` IS ON EVERY `api` ACTION BUT create_user, and this is the one place
+# the reason is written. cmd/toy keys a session by user NAME, so an actor can
+# act in context `api` only after its own `user.created` claim; guest_1 was
+# refused outright at step 3 of seed 4242 for having no user (quill, coop
+# r5/89), and fable ruled the ledger-expressible form a precondition rather than
+# a fault the walk catches (r5/92). The engine then never asks for a session an
+# actor cannot hold, and the weights make create_user early by construction
+# because nothing else is applicable to a fresh actor.
+#
+# create_user ITSELF CANNOT CARRY IT: its context is `none`, it is what produces
+# the claim, and requiring the claim to make it would be unsatisfiable. The
+# browser action does not carry it either -- the ruling is about `api`, and
+# `join_event_ui`'s context is `browser`.
 name = "create_event"
 context = "api"
 emits = ["event.created"]
-requires = ["may_create_event"]
+requires = ["may_create_event", "has_user"]
 creates = ["event"]
 touches = ["store"]
 response = { status = 201 }
@@ -73,15 +86,15 @@ response = { status = 201 }
   from = [["admin"], ["admin", "member"], ["admin", "member", "guest"]]
 
 [[action]]
-# THE PRECONDITION, and the only `requires` in this package: `may_join` is the
-# ledger-expressible half of what cmd/toy enforces -- the actor knows of the
+# THE PRECONDITION: `may_join` is the ledger-expressible half of what cmd/toy
+# enforces -- the actor knows of the
 # event and has not already joined. The capacity half is NOT here, because
 # capacity is not a ledger fact (see statute.rego) and a `requires` naming a
 # rule the ledger cannot support would be a precondition in name only.
 name = "join_event"
 context = "api"
 emits = ["event.joined"]
-requires = ["may_join"]
+requires = ["may_join", "has_user"]
 touches = ["store"]
 response = { status = 200 }
 
@@ -96,7 +109,7 @@ response = { status = 200 }
 name = "leave_event"
 context = "api"
 emits = ["event.left"]
-requires = ["may_leave"]
+requires = ["may_leave", "has_user"]
 touches = ["store"]
 response = { status = 200 }
 
@@ -111,7 +124,7 @@ response = { status = 200 }
 name = "delete_event"
 context = "api"
 emits = ["event.deleted"]
-requires = ["may_delete"]
+requires = ["may_delete", "has_user"]
 touches = ["store"]
 response = { status = 200 }
 

@@ -57,7 +57,7 @@ const statutePackage = "data.rumor.statute"
 const (
 	wantPackages = 5
 	wantCases    = 29
-	wantMutants  = 32
+	wantMutants  = 33
 )
 
 type observation struct {

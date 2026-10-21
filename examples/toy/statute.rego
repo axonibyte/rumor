@@ -200,6 +200,29 @@ made_user if {
 	c.actor == input.observation.actor
 }
 
+# THE SESSION ORDERING, which every `api` action but create_user requires.
+#
+# WHY IT IS A PRECONDITION AND NOT A 401. cmd/toy keys a session by user NAME,
+# so an actor can speak through the API only after some create_user made a user
+# of its own name. Driving seed 4242 to step 3, guest_1 was refused outright
+# because it had no user (quill, coop r5/89). The walk could have caught that as
+# a fault, but an action the actor cannot take is an action that was never
+# applicable: applicability is where this belongs, and fable ruled it so at
+# r5/92. The engine then never asks for a session an actor cannot hold.
+#
+# IT IS `made_user` READ ON THE PRECONDITION PATH, and a listed rule of its own
+# rather than a second use of the helper, for two reasons that both come from
+# other files: `requires` may only name a rule rules.json declares
+# (internal/validate arm 19, cell 1), and the helpers are deliberately unlisted
+# so attaint does not demand a mutant restating a listed rule's reading. This
+# one is listed, so examples/toy/mutants carries m10 for it.
+#
+# DEFAULTED, like the five around it: an undefined rule and a false one must not
+# be the same answer to the scheduler.
+default has_user := false
+
+has_user if made_user
+
 # One event per actor. The same shape as the twin's `may_publish`, and for the
 # same reason: a precondition has to be false SOMETIMES or the arm that reads it
 # is decoration.

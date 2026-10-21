@@ -78,7 +78,13 @@ const root = "../.."
 // action, so an action the actor could not take is a lie of a kind this
 // document does not define. Third move of the same shape: 0 absent, refused on
 // the count.
-const declaredQuotes = 29
+// 29 -> 31 in R5.4, and NOT a new quotation: examples/toy/mutants gained
+// m10-has-user-always, and a mutant is a COPY of its statute, so the two quotes
+// examples/toy/statute.rego already carried are now counted twice. The count is
+// of quotes this tree makes, not of distinct sentences, because the sweep's job
+// is to notice a document that stopped saying something -- and it reported 0
+// absent here, as at every move above, refusing on the count alone.
+const declaredQuotes = 31
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would

@@ -9,6 +9,7 @@ package schedule_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,10 +23,14 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 )
 
-// the five rules every toy action's `requires` names, which ibis measured as
-// the only preconditions in the tree (coop r5/3).
+// the six rules the toy's actions name in `requires` -- five measured as the
+// only preconditions in the tree (coop r5/3), and `has_user` added in R5.4 when
+// the session ordering became a precondition (fable, coop r5/92). D14's
+// agreement arm below is where a new precondition earns its coverage, so the
+// list moves with the bindings: a rule in `requires` and absent here would be
+// one the walk reads and this drill never holds to the case path.
 var preconditions = []string{
-	"may_create_event", "may_create_user", "may_delete", "may_join", "may_leave",
+	"has_user", "may_create_event", "may_create_user", "may_delete", "may_join", "may_leave",
 }
 
 const toy = "../../examples/toy"
@@ -78,6 +83,43 @@ func statute(t *testing.T) string {
 		t.Fatalf("the toy's statute: %v", err)
 	}
 	return string(b)
+}
+
+// sealedToyWithUserFor is honest-count's ledger plus a `user.created` claim for
+// a MINTED actor, sealed over it.
+//
+// WHY IT EXISTS. R5.4 made `has_user` a precondition of every `api` action
+// (fable, coop r5/92), so an actor holding no user of its own has nothing
+// applicable. That is the rule working, and it is also fatal to any arm whose
+// subject is something else: the role-and-context arms mint `member_1` because
+// HoldsContext reads a role off the actor's NAME, and `member_1` appears in no
+// committed ledger. Without a user for it those arms measure an empty pool --
+// which their own guards reported rather than passing, and this is the fixture
+// that answers them.
+//
+// THE CLAIM IS THE MINIMUM THAT CLEARS has_user AND NOTHING MORE: no event, so
+// may_create_event stays true and may_join, may_leave and may_delete stay
+// false, exactly as for any fresh actor. An arm about roles must not be handed
+// a world that has also moved the other five verdicts.
+func sealedToyWithUserFor(t *testing.T, actor string) *ledger.Ledger {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(toy, "ledger", "honest-count.jsonl"))
+	if err != nil {
+		t.Fatalf("the toy's honest-count ledger: %v", err)
+	}
+	lines := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+	pos := len(lines) + 1
+	lines = append(lines, fmt.Sprintf(
+		`{"kind":"claim","position":%d,"actor":%q,"type":"user.created","ref":"%s.user#1","handles":["%s.user#1"]}`,
+		pos, actor, actor, actor))
+	l, err := ledger.Load(strings.NewReader(strings.Join(lines, "\n")+"\n"), false)
+	if err != nil {
+		t.Fatalf("honest-count plus a user for %s does not load: %v", actor, err)
+	}
+	if err := l.SealAt(pos); err != nil {
+		t.Fatalf("sealing at %d: %v", pos, err)
+	}
+	return l
 }
 
 // D14 (fable, coop r5/16): the preconditions evaluated under the PRECONDITION

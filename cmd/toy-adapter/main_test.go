@@ -76,6 +76,16 @@ func stub(t *testing.T, answers map[string]answer) (*adapter, *[]seen) {
 
 // ask hands one request to the adapter and returns the answer as a map, which
 // is how a fault and a typed response can be read by one helper.
+//
+// AND IT HOLDS EVERY ANSWER TO THE CONTRACT, not only the ones a test reads a
+// field out of. A map read cannot notice a field the contract does not declare:
+// the adapter emitted the error envelope's body as `fault` where contract.md and
+// wire.ErrorResponse both say `error`, and this file asserted `out["fault"]`, so
+// the suite agreed with the deviation rather than catching it -- quill's client
+// found it instead (coop r5/89). wire.DecodeResponse sets
+// DisallowUnknownFields, which is the instrument that client refused the message
+// with, so running it over every answer here fails on ANY such divergence and
+// not only on the one now fixed.
 func ask(t *testing.T, a *adapter, msg map[string]any) map[string]any {
 	t.Helper()
 	msg["contract"] = wire.ContractVersion
@@ -90,6 +100,9 @@ func ask(t *testing.T, a *adapter, msg map[string]any) map[string]any {
 	if err != nil {
 		t.Fatalf("the answer does not marshal: %v", err)
 	}
+	if _, err := wire.DecodeResponse(raw); err != nil {
+		t.Fatalf("the answer is not a contract response: %v\n%s", err, raw)
+	}
 	out := map[string]any{}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("the answer is not an object: %v", err)
@@ -97,18 +110,27 @@ func ask(t *testing.T, a *adapter, msg map[string]any) map[string]any {
 	return out
 }
 
+// faultOf reads the error envelope through the DECODER rather than out of the
+// map, for the reason ask's comment gives: the field names then come from
+// wire.ErrorResponse, so the contract names them in one place.
 func faultOf(t *testing.T, out map[string]any) (string, string) {
 	t.Helper()
 	if out["kind"] != string(wire.KindError) {
 		t.Fatalf("not a fault: %v", out)
 	}
-	f, ok := out["fault"].(map[string]any)
-	if !ok {
-		t.Fatalf("a fault with no fault object: %v", out)
+	raw, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("the answer does not marshal: %v", err)
 	}
-	kind, _ := f["kind"].(string)
-	detail, _ := f["detail"].(string)
-	return kind, detail
+	msg, err := wire.DecodeResponse(raw)
+	if err != nil {
+		t.Fatalf("the error envelope is not a contract response: %v\n%s", err, raw)
+	}
+	resp, ok := msg.(wire.ErrorResponse)
+	if !ok {
+		t.Fatalf("the error envelope decoded as %T, want wire.ErrorResponse: %v", msg, out)
+	}
+	return string(resp.Error.Kind), resp.Error.Detail
 }
 
 func TestDescribeReportsTheDeclaredSurfaceAndTheContract(t *testing.T) {

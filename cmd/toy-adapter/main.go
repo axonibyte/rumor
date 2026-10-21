@@ -186,7 +186,7 @@ func fault(id string, kind wire.FaultKind, field, detail string) any {
 		"kind":     string(wire.KindError),
 		"contract": wire.ContractVersion,
 		"id":       id,
-		"fault": map[string]any{
+		"error": map[string]any{
 			"kind":   string(kind),
 			"field":  field,
 			"detail": detail,

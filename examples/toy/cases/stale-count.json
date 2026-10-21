@@ -8,6 +8,7 @@
     "rests_on_planted": false,
     "may_leave": false,
     "may_create_user": true,
+    "has_user": false,
     "may_create_event": false,
     "may_delete": false
   },
