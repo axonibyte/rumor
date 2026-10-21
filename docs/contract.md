@@ -176,6 +176,24 @@ report would name a stage that never ran.
 token instead, which is what makes the browser stage's one-isolated-context-per-actor
 rule (R9) a property of this exchange rather than an honor system.
 
+**When the engine acquires one.** Before an actor's first action in a context,
+and not before that: a run with four actors and three contexts would otherwise
+open twelve sessions before its first step, most of them never used, and the
+adapter's session count would be a function of the project rather than of the
+walk. First use is also the only order a system under test need support -- where
+sessions are keyed by user name, a session for `member_1` can exist only once
+some action has created a user called `member_1`, so acquiring every session up
+front would ask for all of them before anybody existed. The token is then held
+**per actor per context** for the rest of the attempt, because the context is
+what the token is for: reusing an actor's `api` token for its `ui` actions would
+send a token the adapter issued for something else. A new attempt acquires its
+own, since a second attempt is a second world. An empty `token` in the response
+is a could-not-run rather than a held session: an omitted token and an empty one
+are the same bytes on an execute, so the request would be indistinguishable from
+one taken outside a session. And an action whose context the actor's role may not
+hold -- `[[role]].contexts` -- is INAPPLICABLE rather than attempted, so no
+session is acquired for it at all.
+
 ### The error envelope
 
 Any response may be replaced by `kind: "error"`.
@@ -256,6 +274,15 @@ requires = ["can_create"]      # preconditions AS STATUTE REFERENCES: rule names
 creates = ["user"]             # the keys `execute`'s `ids` comes back under
 response = { status = 201 }    # the expected response shape
 
+  [[action.args]]              # one per argument `execute`'s `args` carries
+  name = "name"                #   the key in `args`
+  source = "actor"             #   handle | literal | draw | actor
+                               #   `actor` takes no further field
+  [[action.args]]
+  name = "visible_to"
+  source = "draw"              #   the seed draws one element of `from`
+  from = [["host"], ["host", "guest"]]
+
 [[observation]]
 name = "user.count"            # `observe`'s `query`
 source = "api"                 # api | ui | direct
@@ -280,6 +307,11 @@ contexts = ["api"]             # the session contexts an actor of this role may 
 | `[[action]].creates` | no | the keys of `execute`'s `ids`. Absent for an action that creates nothing |
 | `[[action]].touches` | no | the stateful components this action MUTATES, which is the other half of the rollback-coverage arm. ibis found the hole (coop r4/23): a component was nameable only on a `direct` observation, so an action that dirties an uncovered component and is never read directly fell outside an arm whose wording is about bindings that TOUCH one -- and the arm then passed a project it should refuse |
 | `[[action]].response` | no | the response shape an `api` observation reads back |
+| `[[action.args]].name` | yes, per argument | the key this argument takes in `execute`'s `args`. Declared twice in one action is refused: the request is built as a map keyed by name, so the second would silently win |
+| `[[action.args]].source` | yes, per argument | where the walk gets the value, and the only four it can: `handle` (a handle KIND the engine resolves to an id), `literal` (a fixed value), `draw` (the seed draws from a declared list), `actor` (the step's own actor name). EXACTLY ONE FIELD BESIDE `name` AND `source` IS ACCEPTED, the one this source uses -- a `from` on a literal is a project saying two things about one argument, and the strict decoder refuses the unread key by name |
+| `[[action.args]].of` | only for `source = "handle"` | the handle KIND, `event` and never `member_1.event#1`: a declaration naming one run's handle could not survive a second run. It is also the second way an action names a handle, so a kind nothing has bound makes the action INAPPLICABLE, exactly as an unresolvable `{kind}` in a flow does |
+| `[[action.args]].value` | only for `source = "literal"` | the value, carried as decoded including `false`, `0` and `""` |
+| `[[action.args]].from` | only for `source = "draw"` | the list drawn from. A LIST is required and a single-element list is accepted but a scalar is not: one value is a literal and should say so, since a draw of one spends the generator on a choice that is not one. An empty `from` is refused -- there is nothing to draw and a drawn argument cannot be omitted |
 | `[[observation]].name` | yes | `observe`'s `query` |
 | `[[observation]].source` | yes | one of the vocabulary's three |
 | `[[observation]].of` | yes | the claim type the observation is judged against -- the cases carry `of` in the observation, and `internal/ledger` puts `Of` beside Query, Source and Value on the `observed` fact (ibis, coop r4/20) |

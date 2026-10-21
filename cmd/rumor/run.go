@@ -135,10 +135,15 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		_, _ = fmt.Fprintf(stderr, "run: could not run: %v\n", werr)
 		return 2
 	}
+	// THE SESSION COUNT IS IN THE VERDICT for the provider count's reason: a
+	// token is acquired at first use and reused after, so a holder that
+	// re-acquired every step would send identical requests and the difference
+	// would be invisible to a reader. The number makes it readable.
 	if _, err := fmt.Fprintf(stdout,
-		"run: %s -- seed %d, %d step(s), %d handle(s); %d rollback provider(s) registered\n",
+		"run: %s -- seed %d, %d step(s), %d handle(s), %d session(s); "+
+			"%d rollback provider(s) registered\n",
 		filepath.Base(dir), rec.Seed, len(rec.Steps), len(rec.HandleSequence()),
-		len(rollback.Registered())); err != nil {
+		rec.Sessions, len(rollback.Registered())); err != nil {
 		_, _ = fmt.Fprintf(stderr, "run: writing the verdict: %v\n", err)
 		return 2
 	}

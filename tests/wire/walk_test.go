@@ -804,3 +804,55 @@ func TestAnActionInAnUnheldContextIsNeverDrawn(t *testing.T) {
 			"the context")
 	}
 }
+
+// THE CLAIM IN THE LEDGER CARRIES THE DRAWN VISIBILITY, read off the record
+// rather than off the function that computes it. A mutant dropping VisibleTo
+// from the appended fact survives every unit arm over that function, because
+// the fact is what the statute reads and the function is not.
+func TestTheClaimCarriesTheDrawnVisibility(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+	p.Actions[0].Args = []bindings.Arg{
+		// TWO SUBSETS, NOT ONE, so the arm also shows the value is DRAWN: with
+		// a single subset any chooser would produce it.
+		{Name: "visible_to", Source: bindings.ArgDraw, From: []any{
+			[]any{"member"},
+			[]any{"member", "admin"},
+		}},
+	}
+
+	sess, err := wire.Open(ctx, fakeSpawn(), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	seen := map[string]int{}
+	claims := 0
+	for _, seed := range []uint64{1, 2, 3, 4, 5, 6} {
+		rec, werr := schedule.Walk(ctx, p, sess, seed, 10, 1)
+		if werr != nil {
+			t.Fatalf("seed %d: %v", seed, werr)
+		}
+		for _, f := range rec.Facts {
+			if f.Type != "event.created" {
+				continue
+			}
+			claims++
+			if len(f.VisibleTo) == 0 {
+				t.Fatalf("seed %d: claim %s carries no visible_to, so the drawn subset never "+
+					"reached the fact a statute reads", seed, f.Ref)
+			}
+			seen[strings.Join(f.VisibleTo, ",")]++
+		}
+	}
+	if claims == 0 {
+		t.Fatal("no create_event claim was appended across six seeds, so this arm is reading nothing")
+	}
+	// BOTH SUBSETS MUST APPEAR, which is what separates a drawn value from a
+	// constant one the arm would accept either way.
+	if len(seen) < 2 {
+		t.Errorf("six seeds produced %d distinct visibility subset(s) over %d claim(s) (%v): the "+
+			"value is not being drawn", len(seen), claims, seen)
+	}
+}

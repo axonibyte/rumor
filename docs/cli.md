@@ -376,13 +376,33 @@ run:   2 member_2 create_event [member_2.event#1]
 run:   3 member_1 join_event [member_1.join_event#1]
 run:   4 member_1 create_event [member_1.event#2]
 run:   5 member_1 join_event [member_1.join_event#2]
-run: walkable -- seed 42, 5 step(s), 5 handle(s); 1 rollback provider(s) registered
+run: walkable -- seed 42, 5 step(s), 5 handle(s), 2 session(s); 1 rollback provider(s) registered
 ```
 
 `join_event` appears only after a `create_event`: its precondition is that an
 event exists in the sealed prefix, so the pool is a different set at step 3
 than it was at step 1. That is the walk reading the statute rather than
 following a script.
+
+**Two sessions for five steps, and that is the property.** Both of the
+fixture's actions declare `context = "api"`, so a token is acquired before each
+actor's FIRST action in that context and reused for the rest -- two actors, one
+context, two sessions, where a run acquiring one per step would report five.
+The count is in the verdict because every token the fake issues is the same
+string: without the number, a holder that re-acquired every step would be
+indistinguishable from one that caches. An action declaring `context = "none"`
+acquires none at all, and an action whose context the actor's role may not hold
+(`[[role]].contexts`) is inapplicable rather than attempted, so no session is
+acquired for it either.
+
+**What an action sends is declared, not inferred.** `[[action.args]]` names
+each argument and where the walk gets it: a `handle` kind the engine resolves
+to an id, a `literal`, a `draw` from a declared list, or the step's own `actor`
+name. The fixture's actions declare none, which is why `args` is `{}` in every
+request this run sends -- an execute always carries the field. A `handle`
+argument is resolved against the attempt's handle table, so an action naming a
+kind nothing has bound is inapplicable for the same reason an unresolvable UI
+flow placeholder is.
 
 **Why the example walks a test fixture and not `examples/`.** A run needs a
 weight for every action the bindings declare and for all four nemesis kinds --

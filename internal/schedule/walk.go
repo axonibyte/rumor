@@ -88,6 +88,19 @@ type Record struct {
 	// it: the lie has no id under it.
 	IDs map[string]string
 
+	// Facts is the attempt's ledger as it stood at the end.
+	//
+	// IT IS HERE FOR Used's AND Sessions' REASON: what the walk RECORDED is
+	// otherwise unobservable from outside, and a claim's `visible_to` -- the
+	// field a statute reads and palter falsifies -- had no oracle at all. A
+	// mutant dropping it from the appended fact survived every unit arm over
+	// the function that computes it, because nothing downstream could see the
+	// fact.
+	//
+	// IT IS A COPY, taken through Facts(), so a reader cannot append to the
+	// attempt's ledger through the record it was handed.
+	Facts []ledger.Fact
+
 	// Sessions is how many `session` requests the attempt sent.
 	//
 	// IT IS HERE BECAUSE THE PROPERTY IS OTHERWISE UNOBSERVABLE. A token is
@@ -193,6 +206,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	}
 
 	rec.Sessions = sessions.Acquired()
+	rec.Facts = l.Facts()
 	rec.IDs = map[string]string{}
 	for _, h := range table.Handles() {
 		if id, ok := table.ID(h); ok {
@@ -317,12 +331,17 @@ func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledg
 		}
 	}
 
+	seen, err := visibleTo(a, args)
+	if err != nil {
+		return err
+	}
 	if _, err := l.Append(ledger.Fact{
-		Kind:    ledger.KindClaim,
-		Actor:   step.Actor,
-		Ref:     h,
-		Type:    a.Emits[0],
-		Handles: []string{h},
+		Kind:      ledger.KindClaim,
+		Actor:     step.Actor,
+		Ref:       h,
+		Type:      a.Emits[0],
+		Handles:   []string{h},
+		VisibleTo: seen,
 	}); err != nil {
 		return fmt.Errorf("recording %s's %s claim: %w", step.Actor, a.Emits[0], err)
 	}
@@ -575,4 +594,68 @@ func chooseHandles(a bindings.Action, src *Source, table *handle.Table) (map[str
 		chosen[arg.Name] = candidates[i]
 	}
 	return chosen, nil
+}
+
+// argVisibleTo is the argument name whose value the claim carries.
+//
+// THE NAME IS THE CONTRACT HERE, not the source: `visible_to` is one of the
+// vocabulary's own words (docs/contract.md names `of`, `role` and `visible_to`
+// as the schema's names), and a statute READS it off the claim -- which is why
+// an action declaring it must put the drawn value on the fact rather than only
+// in the request. It is palter's first live field (coop r5/58): a half-true
+// claim falsifies a recorded field a statute reads, and until an action
+// declared this one there was no such field in a walk.
+const argVisibleTo = "visible_to"
+
+// visibleTo is the drawn `visible_to` an action declares, as the claim carries
+// it, or nil where the action declares none.
+//
+// ABSENT AND EMPTY ARE DIFFERENT TO A STATUTE and the ledger's `omitempty`
+// cannot tell them apart: an empty list would be dropped from the fact and the
+// claim would reach the statute looking exactly like one that never declared
+// visibility. So an action that declares the argument and draws an empty list
+// is REFUSED rather than quietly recorded as unrestricted -- the same rule as
+// an undeclared weight, one field over.
+//
+// THE VALUE MUST BE A LIST OF STRINGS, checked rather than asserted: a project
+// drawing `visible_to` from a list of role NAMES rather than role SUBSETS is a
+// plausible mistake, and it would otherwise reach the statute as a string where
+// a list belongs and fail inside the policy with nothing naming the cause.
+func visibleTo(a bindings.Action, args map[string]any) ([]string, error) {
+	declared := false
+	for _, arg := range a.Args {
+		if arg.Name == argVisibleTo {
+			declared = true
+			break
+		}
+	}
+	if !declared {
+		return nil, nil
+	}
+	raw, ok := args[argVisibleTo]
+	if !ok {
+		return nil, fmt.Errorf("schedule: %s declares a %s argument and the composed args carry "+
+			"none: the claim would reach the statute with no visibility at all", a.Name, argVisibleTo)
+	}
+	list, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("schedule: %s's %s drew %T (%v) and a claim's %s is a list of "+
+			"roles: a role NAME where a role SUBSET belongs would reach the statute as the wrong "+
+			"shape and fail inside the policy", a.Name, argVisibleTo, raw, raw, argVisibleTo)
+	}
+	if len(list) == 0 {
+		return nil, fmt.Errorf("schedule: %s's %s drew an empty list: the ledger omits an empty "+
+			"%s, so the claim would be indistinguishable from one that declares no visibility, "+
+			"and those are different statements to a statute", a.Name, argVisibleTo, argVisibleTo)
+	}
+	out := make([]string, 0, len(list))
+	for _, v := range list {
+		role, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("schedule: %s's %s drew a list holding a %T (%v) and a role is "+
+				"a string", a.Name, argVisibleTo, v, v)
+		}
+		out = append(out, role)
+	}
+	return out, nil
 }
