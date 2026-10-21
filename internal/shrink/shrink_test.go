@@ -251,3 +251,77 @@ func TestShrinkRefusals(t *testing.T) {
 		}
 	}
 }
+
+// THE GATE'S VERDICT IS WHAT DECIDES WHETHER ANYTHING IS SHRUNK, driven BOTH
+// WAYS from one request shape (fable, coop r5/86). This is the sentence in the
+// epic the orchestrator exists for: "replay the whole failure once on a
+// verified clean rollback. If it does not reproduce, the seed is marked
+// unstable and is not shrunk."
+//
+// IT IS DIFFERENTIAL ON PURPOSE. Two separate arms -- one that shrinks and one
+// that does not -- can both pass on a composition that ignores the gate and
+// happens to agree with it, because each reads a different world. Here the
+// request is identical and the ONLY difference is whether the failure comes
+// back, so the pair isolates the gate as the cause of the difference.
+func TestOnlyAReproducedFailureIsShrunk(t *testing.T) {
+	const n = 12
+	request := func(w *world, seeds string) Request {
+		return Request{
+			Seed: 99, Steps: steps(n),
+			Kinds: []string{"create_event", "join_event", "leave_event"},
+			Want:  bug(), Provider: &fake{}, Checkpoint: cp,
+			SeedsFile: seeds, Replay: w.replay,
+		}
+	}
+
+	// REPRODUCES: the failure needs four steps, so the gate passes and the
+	// reduction runs.
+	dirA := t.TempDir()
+	seedsA := filepath.Join(dirA, "seeds.lock")
+	live, err := Shrink(context.Background(),
+		request(&world{needSteps: 4, needKinds: []string{"create_event"}, all: steps(n)}, seedsA))
+	if err != nil {
+		t.Fatalf("the reproducing side: %v", err)
+	}
+
+	// DOES NOT REPRODUCE: the same request, the same trace length, and a world
+	// whose failure never returns.
+	dirB := t.TempDir()
+	seedsB := filepath.Join(dirB, "seeds.lock")
+	dead, err := Shrink(context.Background(),
+		request(&world{needSteps: n + 1, all: steps(n)}, seedsB))
+	if err != nil {
+		t.Fatalf("the unstable side is a verdict, not an error: %v", err)
+	}
+
+	if !live.Stable || dead.Stable {
+		t.Fatalf("the gate did not separate them: reproducing Stable=%v, unstable Stable=%v",
+			live.Stable, dead.Stable)
+	}
+
+	// AND THE DIFFERENCE IS THE WHOLE REDUCTION, not just the flag.
+	if live.Reduction.Steps == 0 {
+		t.Error("the reproducing side shortened nothing")
+	}
+	if dead.Reduction.Steps != 0 || len(dead.Kinds.Removed) != 0 || len(dead.Trace.Steps) != 0 {
+		t.Errorf("the unstable side was shrunk anyway: reduction %+v, kinds %v, trace %d step(s)",
+			dead.Reduction, dead.Kinds.Removed, len(dead.Trace.Steps))
+	}
+	if !live.Promoted {
+		t.Error("the reproducing side promoted nothing")
+	}
+	if dead.Promoted {
+		t.Error("the unstable side promoted a seed")
+	}
+	if _, serr := os.Stat(seedsB); serr == nil {
+		t.Error("the unstable side created a seeds file")
+	}
+	if dead.Probes != 1 {
+		t.Errorf("the unstable side spent %d probe(s), want the gate's one: a reduction it did not "+
+			"do cannot have rebuilt a world", dead.Probes)
+	}
+	if live.Probes <= dead.Probes {
+		t.Errorf("the reproducing side spent %d probe(s) and the unstable one %d: the reduction "+
+			"did no work", live.Probes, dead.Probes)
+	}
+}
