@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
@@ -225,13 +226,21 @@ func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions
 		return canard(l, src, p, step)
 	case Suborn:
 		return suborn(ctx, p, l, mint, src, step)
-	case Palter, Essoin:
-		// UNREACHABLE WHILE THEIR PRECONDITIONS HOLD THEM OUT, and a refusal
-		// rather than a skip: fable ruled at coop r5/58 that a drawn kind whose
-		// effect is unimplemented is refused BY NAME, because a skip is the
-		// silent-drop class. palter needs a claim field to falsify and nothing
-		// in R5.1 populates one; essoin needs R9's flow state.
-		return fmt.Errorf("the %s effect is not implemented in R5.1, and a drawn kind is refused "+
+	case Palter:
+		// IMPLEMENTED IN R5.4, because that is when the field arrived. The
+		// refusal that stood here said palter "needs a claim field to falsify
+		// and nothing in R5.1 populates one" -- true then, and R5.4's
+		// `visible_to` argument is that field. ibis hit the refusal from the
+		// other end driving the toy (coop r5/88): seed 4242 reaches step 3 and
+		// step 3 draws palter.
+		return palter(ctx, p, sess, sessions, l, table, mint, src, step)
+	case Essoin:
+		// STILL UNREACHABLE AND STILL A REFUSAL rather than a skip: fable ruled
+		// at coop r5/58 that a drawn kind whose effect is unimplemented is
+		// refused BY NAME, because a skip is the silent-drop class. essoin
+		// needs R9's flow state, so it keeps a declared weight and is never
+		// drawn until R9 gives it something to abandon.
+		return fmt.Errorf("the %s effect is not implemented before R9, and a drawn kind is refused "+
 			"rather than skipped: a skip would drop a draw silently", step.Kind)
 	}
 
@@ -245,9 +254,29 @@ func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions
 
 // honest executes the action against the system under test and records what it
 // emitted.
-func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledger.Ledger,
-	table *handle.Table, mint *minter, src *Source, a bindings.Action, step *Step) error {
+// performed is what executing one action left behind, for the two kinds that
+// execute: the args that actually went out, the handle minted for the claim,
+// and whether a claim is owed at all.
+type performed struct {
+	Args   map[string]any
+	Handle string
+	Emits  bool
+}
+
+// perform executes an action and does everything that is true of BOTH an honest
+// step and a palter: compose the args, acquire the token, send the execute,
+// mint the claim's handle and bind it to the id the system gave.
+//
+// IT EXISTS BECAUSE PALTER EXECUTES THE SAME WAY honest DOES. design.md:
+// "`palter` EXECUTES the honest action and then appends its claim with exactly
+// one recorded field false". The only difference is the claim, so the execution
+// is one function and the two callers differ in what they record -- a second
+// copy would be free to drift in the token, the arg order or the binding, which
+// are exactly the parts a reader would assume identical.
+func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
+	table *handle.Table, mint *minter, src *Source, a bindings.Action, step *Step) (performed, error) {
 	_ = ctx
+	var out performed
 
 	// THE HANDLE CHOICES ARE DRAWN FIRST AND THE REST COMPOSED AFTER, and that
 	// order is fixed rather than incidental: both consume the generator, so a
@@ -256,12 +285,13 @@ func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledg
 	// without noticing.
 	chosen, err := chooseHandles(a, src, table)
 	if err != nil {
-		return err
+		return out, err
 	}
 	args, err := ExecuteArgs(a, step.Actor, chosen, src, table)
 	if err != nil {
-		return err
+		return out, err
 	}
+	out.Args = args
 	// RECORDED IN DECLARATION ORDER, read off the declaration rather than off
 	// the map: a map's order is its own, and a record whose order moved between
 	// two attempts would fail the comparison for a reason that is not a
@@ -277,12 +307,12 @@ func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledg
 	// the field out.
 	token, err := sessions.Token(step.Actor, a.Context)
 	if err != nil {
-		return err
+		return out, err
 	}
 
 	resp, err := sess.Execute(wire.ExecuteRequest{Action: a.Name, Token: token, Args: args})
 	if err != nil {
-		return fmt.Errorf("executing %s: %w", a.Name, err)
+		return out, fmt.Errorf("executing %s: %w", a.Name, err)
 	}
 
 	// AN ACTION THAT EMITS NOTHING MINTS NOTHING, and this is checked BEFORE
@@ -293,14 +323,16 @@ func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledg
 	// going to mint one. My first version asked in the other order and would
 	// have refused a recorded-and-harmless step.
 	if len(a.Emits) == 0 {
-		return nil
+		return out, nil
 	}
+	out.Emits = true
 
 	kind, err := mintKind(a)
 	if err != nil {
-		return err
+		return out, err
 	}
 	h := mint.next(step.Actor, kind)
+	out.Handle = h
 	// THE HANDLE IS BOUND ONLY WHERE THE SYSTEM GAVE AN ID FOR WHAT IT
 	// CREATED. An action with no `creates` has no entity behind its claim --
 	// the toy's join_event is a claim about having joined, not a new thing --
@@ -315,7 +347,7 @@ func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledg
 			// over the wire (coop r5/64): no session is 401, no args is 400, and
 			// both come back with an empty ids map. A refusal naming only the
 			// empty map would send a reader looking at the wrong half.
-			return fmt.Errorf("%s declares it creates %q and the adapter's execute answered ids %v, "+
+			return out, fmt.Errorf("%s declares it creates %q and the adapter's execute answered ids %v, "+
 				"which carries no id for it -- the handle would resolve to nothing and a later step "+
 				"needing it could not say why. The adapter's response was %v; an empty ids map has "+
 				"more than one cause, so read that rather than guessing (401 is no session, 400 is "+
@@ -323,29 +355,42 @@ func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledg
 		}
 		str, ok := id.(string)
 		if !ok {
-			return fmt.Errorf("%s's %q id came back as %T (%v) and a handle resolves to a string id",
+			return out, fmt.Errorf("%s's %q id came back as %T (%v) and a handle resolves to a string id",
 				a.Name, a.Creates[0], id, id)
 		}
 		if err := table.Bind(h, str); err != nil {
-			return fmt.Errorf("binding %s to the id the adapter gave: %w", h, err)
+			return out, fmt.Errorf("binding %s to the id the adapter gave: %w", h, err)
 		}
 	}
+	return out, nil
+}
 
-	seen, err := visibleTo(a, args)
+// honest executes the action against the system under test and records what it
+// emitted, truthfully.
+func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledger.Ledger,
+	table *handle.Table, mint *minter, src *Source, a bindings.Action, step *Step) error {
+	done, err := perform(ctx, sess, sessions, table, mint, src, a, step)
+	if err != nil {
+		return err
+	}
+	if !done.Emits {
+		return nil
+	}
+	seen, err := visibleTo(a, done.Args)
 	if err != nil {
 		return err
 	}
 	if _, err := l.Append(ledger.Fact{
 		Kind:      ledger.KindClaim,
 		Actor:     step.Actor,
-		Ref:       h,
+		Ref:       done.Handle,
 		Type:      a.Emits[0],
-		Handles:   []string{h},
+		Handles:   []string{done.Handle},
 		VisibleTo: seen,
 	}); err != nil {
 		return fmt.Errorf("recording %s's %s claim: %w", step.Actor, a.Emits[0], err)
 	}
-	step.Handles = append(step.Handles, h)
+	step.Handles = append(step.Handles, done.Handle)
 	return nil
 }
 
@@ -356,7 +401,7 @@ func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledg
 // BOUND, so they resolve to no id and any later step needing one is
 // inapplicable -- the walk never asks the wire for a thing that does not exist.
 func suborn(ctx context.Context, p Project, l *ledger.Ledger, mint *minter, src *Source, step *Step) error {
-	a, err := lieAbout(ctx, p, l, src, step.Actor)
+	a, err := lieAbout(ctx, p, l, src, step.Actor, nil)
 	if err != nil {
 		return err
 	}
@@ -456,7 +501,14 @@ func canard(l *ledger.Ledger, src *Source, p Project, step *Step) error {
 // The precondition for suborn and palter is the honest action's own, so the set
 // here is the same set Pool consulted: the actions whose preconditions hold for
 // this actor and which emit something to lie about.
-func lieAbout(ctx context.Context, p Project, l *ledger.Ledger, src *Source, actor string) (bindings.Action, error) {
+// A PREDICATE RATHER THAN A SECOND CHOOSER. suborn needs an applicable emitting
+// action and nothing more; palter needs one whose claim carries a field it can
+// falsify. The shared half -- applicability, the emits filter, the sorted draw
+// -- is one function because two would be free to disagree about which actions
+// a lie may be about, which is the precondition fable ruled at coop r5/49.
+// `extra` is nil for suborn.
+func lieAbout(ctx context.Context, p Project, l *ledger.Ledger, src *Source, actor string,
+	extra func(bindings.Action) bool) (bindings.Action, error) {
 	var zero bindings.Action
 	app, err := Applicable(ctx, p.Statute, p.Actions, l, actor)
 	if err != nil {
@@ -464,13 +516,18 @@ func lieAbout(ctx context.Context, p Project, l *ledger.Ledger, src *Source, act
 	}
 	var emitting []bindings.Action
 	for _, a := range app {
-		if len(a.Emits) > 0 {
-			emitting = append(emitting, a)
+		if len(a.Emits) == 0 {
+			continue
 		}
+		if extra != nil && !extra(a) {
+			continue
+		}
+		emitting = append(emitting, a)
 	}
 	if len(emitting) == 0 {
-		return zero, fmt.Errorf("no applicable action of %s's emits anything, so there is nothing "+
-			"to lie about: the precondition held when the pool was built and does not now", actor)
+		return zero, fmt.Errorf("no applicable action of %s's emits anything this kind can lie "+
+			"about, so there is nothing to lie about: the precondition held when the pool was "+
+			"built and does not now", actor)
 	}
 	sort.Slice(emitting, func(i, j int) bool { return emitting[i].Name < emitting[j].Name })
 	i, err := src.IntN(len(emitting))
@@ -658,4 +715,135 @@ func visibleTo(a bindings.Action, args map[string]any) ([]string, error) {
 		out = append(out, role)
 	}
 	return out, nil
+}
+
+// palterable reports whether a palter can be told about this action: its claim
+// must carry a field a statute READS, and the walk must be able to record a
+// value for it that is false.
+//
+// docs/design.md fixes both halves: the field "is one a statute READS --
+// `visible_to` where the action's claim carries it, else `expect` -- and a kind
+// whose action's claim carries neither is inapplicable for that action".
+//
+// `expect` IS NOT REACHABLE FROM A WALK TODAY, measured rather than assumed:
+// ledger.Fact carries Expect, and nothing in internal/schedule sets it -- a
+// claim's expect comes from a hand-written case. So visible_to is the only
+// falsifiable field a walk produces, and an action not declaring it leaves
+// palter inapplicable, which is the document's own clause rather than a gap.
+//
+// AND A DRAW OF ONE VALUE IS NOT FALSIFIABLE. "Exactly one recorded field
+// false" needs a false value to exist, and the only values this engine may
+// invent are ones the PROJECT declared -- a subset of its own `from` list.
+// With one element there is no other subset to record, so the kind is
+// inapplicable for that action rather than lied about with a value no project
+// ever named.
+func palterable(a bindings.Action) bool {
+	for _, arg := range a.Args {
+		if arg.Name == argVisibleTo && arg.Source == bindings.ArgDraw && len(arg.From) > 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// palter executes the honest action and then records its claim with exactly one
+// field false.
+//
+// THE ACTION HAPPENS. That is the whole difference from suborn, which is "a
+// description with no action under it": a palter is "an action that happened
+// described wrongly", so the system DOES move, the handle IS bound to a real
+// id, and only the claim lies. A later step needing that handle is therefore
+// applicable, where a suborn's is not.
+//
+// THE LIE IS A VALUE THE PROJECT DECLARED. The recorded subset is drawn from
+// the action's own `from` list, excluding the one that actually went out -- so
+// the falsehood is a thing the system could plausibly have done, which is what
+// makes it a lie rather than a corruption. Inventing a role nobody declared
+// would be caught by the statute as malformed instead of as a visibility
+// defect.
+func palter(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions,
+	l *ledger.Ledger, table *handle.Table, mint *minter, src *Source, step *Step) error {
+
+	a, err := lieAbout(ctx, p, l, src, step.Actor, palterable)
+	if err != nil {
+		return err
+	}
+	done, err := perform(ctx, sess, sessions, table, mint, src, a, step)
+	if err != nil {
+		return err
+	}
+	if !done.Emits {
+		// UNREACHABLE WHILE lieAbout FILTERS ON emits, and a refusal rather
+		// than a silent return: a palter that executed and recorded nothing
+		// would be a step the ledger cannot show as planted.
+		return fmt.Errorf("palter chose %s, which emits nothing, so there is no claim to make "+
+			"false: lieAbout's filter and this check disagree", a.Name)
+	}
+
+	truth, err := visibleTo(a, done.Args)
+	if err != nil {
+		return err
+	}
+	lie, err := falsifyVisibleTo(a, truth, src)
+	if err != nil {
+		return err
+	}
+	if _, err := l.Append(ledger.Fact{
+		Kind:      ledger.KindClaim,
+		Actor:     step.Actor,
+		Ref:       done.Handle,
+		Type:      a.Emits[0],
+		Handles:   []string{done.Handle},
+		VisibleTo: lie,
+		Planted:   true,
+	}); err != nil {
+		return fmt.Errorf("recording %s's half-true %s claim: %w", step.Actor, a.Emits[0], err)
+	}
+	step.Handles = append(step.Handles, done.Handle)
+	step.Planted = true
+	return nil
+}
+
+// falsifyVisibleTo draws a subset the action did NOT use, from its own list.
+func falsifyVisibleTo(a bindings.Action, truth []string, src *Source) ([]string, error) {
+	var from []any
+	for _, arg := range a.Args {
+		if arg.Name == argVisibleTo && arg.Source == bindings.ArgDraw {
+			from = arg.From
+		}
+	}
+	if len(from) == 0 {
+		return nil, fmt.Errorf("%s declares no drawn %s, so a palter has no field to falsify: "+
+			"palterable and this function disagree", a.Name, argVisibleTo)
+	}
+	was := strings.Join(truth, ",")
+	var others [][]string
+	for _, v := range from {
+		list, ok := v.([]any)
+		if !ok {
+			return nil, fmt.Errorf("%s's %s draws from a %T and a subset is a list of roles",
+				a.Name, argVisibleTo, v)
+		}
+		subset := make([]string, 0, len(list))
+		for _, r := range list {
+			role, ok := r.(string)
+			if !ok {
+				return nil, fmt.Errorf("%s's %s holds a %T where a role name belongs", a.Name,
+					argVisibleTo, r)
+			}
+			subset = append(subset, role)
+		}
+		if strings.Join(subset, ",") != was {
+			others = append(others, subset)
+		}
+	}
+	if len(others) == 0 {
+		return nil, fmt.Errorf("every subset %s declares for %s equals the one it used (%v), so "+
+			"there is no false value to record", a.Name, argVisibleTo, truth)
+	}
+	i, err := src.IntN(len(others))
+	if err != nil {
+		return nil, fmt.Errorf("drawing the false %s for %s: %w", argVisibleTo, a.Name, err)
+	}
+	return others[i], nil
 }

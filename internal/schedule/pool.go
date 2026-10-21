@@ -173,13 +173,33 @@ func nemesisApplicable(kind string, app []bindings.Action, l *ledger.Ledger, act
 		}
 		return len(subjects) > 0, nil
 
-	case Suborn, Palter:
+	case Suborn:
 		// AN APPLICABLE ACTION THAT EMITS SOMETHING. `app` is already the
 		// actions whose preconditions hold for this actor, so the honest half
 		// of the precondition is inherited rather than recomputed; the `emits`
 		// half is what gives the planted claim a type to be.
 		for _, a := range app {
 			if len(a.Emits) > 0 {
+				return true, nil
+			}
+		}
+		return false, nil
+
+	case Palter:
+		// PALTER NEEDS SUBORN'S PRECONDITION AND ONE CLAUSE MORE, which is
+		// design.md's own: the field it falsifies "is one a statute READS --
+		// `visible_to` where the action's claim carries it, else `expect` --
+		// and a kind whose action's claim carries neither is INAPPLICABLE for
+		// that action". So an emitting action is not enough; the action must
+		// carry a falsifiable field.
+		//
+		// WITHOUT THIS CLAUSE THE POOL OFFERS WHAT THE WALK CANNOT DO. Measured
+		// 2026-10-21 against the toy: the pool held palter applicable for every
+		// emitting action, the walk drew it at step 3, and the step died --
+		// which is the drawn-and-then-refused shape Resolvable exists to
+		// prevent, arriving by the other door (ibis, coop r5/88).
+		for _, a := range app {
+			if len(a.Emits) > 0 && palterable(a) {
 				return true, nil
 			}
 		}

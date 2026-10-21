@@ -509,8 +509,19 @@ func TestAnActionInAnUnheldContextIsInapplicable(t *testing.T) {
 		t.Errorf("%s needs context ui and the role holds only api, so it must be inapplicable; "+
 			"the pool is %v", moved, kinds(after))
 	}
+	// NOTHING ELSE GOES -- OVER THE PROJECT'S ACTIONS, AND THAT BOUND IS THE
+	// POINT. My first version of this loop asserted it over every KIND in the
+	// pool, and R5.4's palter broke it honestly: a nemesis kind RIDES an
+	// applicable action's precondition (fable r5/49), so gating the only
+	// palterable action out legitimately takes palter with it. The assertion
+	// was wrong about the system's structure rather than about the gate --
+	// nemesis kinds are derived from the action set, so they are not
+	// independent of it, and an arm demanding they survive would be demanding
+	// that a lie outlive the action it is about.
+	nemesis := map[string]bool{schedule.Suborn: true, schedule.Canard: true,
+		schedule.Palter: true, schedule.Essoin: true}
 	for _, k := range kinds(before) {
-		if k == moved {
+		if k == moved || nemesis[k] {
 			continue
 		}
 		if !strings.Contains(strings.Join(kinds(after), ","), k) {
