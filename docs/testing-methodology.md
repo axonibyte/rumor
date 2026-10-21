@@ -770,63 +770,6 @@ module cache, and one with no requirements at all. The third is the condition
 the arm is shaped around, and it is the one a reading of the exit code alone
 gets wrong.
 
-## A removal finds a missing arm; only a boundary mutant finds a disarmed one
-
-Two sweeps over the same battery (`cmd/toy`, `internal/rollback/toyrestart`)
-answered different questions, and the cheap one answered the easy question.
-
-**Removing a mechanism** — the planted capacity race, the planted count leak,
-the planted stale count, the admin-only check, the capacity check, both
-visibility checks, `Verify`'s server half, the empty-checkpoint branch — killed
-its named arm in all nine cases. That is worth running, and it proves only that
-every mechanism has *an* arm somewhere near it: a removal changes behavior at
-every input that reaches the code at all, so almost any arm on the path reports
-it.
-
-**Making a mechanism subtly wrong** found three holes the removals could not
-see:
-
-- `createEvent` defaults an absent `visible_to` to `{admin, member}`. Every arm
-  passed the field explicitly, so the default branch was exercised by nothing:
-  changing it to `{admin, member, guest}` left the whole package green — the
-  epic's visibility-leak row arriving by accident, on the one axis this system
-  exists to be wrong about.
-- `Verify` comparing LENGTHS instead of bytes left every test in its package
-  passing, because the only moved world any arm built had an extra user in it.
-  The arm that pins the comparison was true for a reason unrelated to what it
-  asserts.
-- `Verify` reading an absent state file as the checkpoint itself — rather than
-  as an empty world — was also invisible.
-
-**The general form, which is the same law twice.** An arm can only see a defect
-its INPUT reaches. A removal is reached by every input; a boundary is reached
-only by an input sitting on it, and a default is reached only by an input that
-does not override it. So: for every value a test may override, one arm must
-assert the default with nothing set; and for every comparison, one arm must
-differ in the way the cheap implementation would miss.
-
-**A fixture property an arm's reach depends on is the arm's own
-precondition.** The concurrency arm drives two joins at a one-seat event and
-asserts that both land. Nothing asserted the *one seat*: with the fixture's
-capacity raised to 2, both joins land honestly, every assertion passes, and the
-arm reports a race that had been closed — while its own message still says
-"one-seat event". The repair is not a better assertion about the result but an
-assertion about the input: more joins in flight than seats, read from the create
-response because the toy has no route that returns an event. The four cells then
-read `seats < claimants` with the race open → pass; with it closed → fail in the
-draw; and either capacity-2 cell → fail at the precondition, which is correct
-because the arm is disarmed. fable made this the gate's reading of every R5
-battery at coop r5/16.
-
-**And the ordering inside an arm decides what it can report.** The default arm
-above checks the echoed field and then the two endpoints that read it. Written
-with `t.Fatalf` on the field, the arm would rest entirely on a string — the
-failure rook found one layer down, where renaming a fixture key disarmed a
-boundary arm and nothing screamed. With `t.Errorf` it reports all three, and
-the mutant that only the field catches (dropping `member` from the default,
-which no endpoint can distinguish, because a defaulted event can never gain a
-member) is visibly the one with a single witness.
-
 ## A check that proves one half can pass over a corpse
 
 R5.2's rollback provider has to answer whether the world is the checkpoint, and
@@ -887,7 +830,74 @@ outranks refused, so a test reading only the exit code would have passed over
 it. A refusal naming a declaration nobody read is wrong whatever the status
 above it says.
 
-## A list-shaped reference needs its defect past element one
+## R5
+
+The lessons from R5's children, under one heading per phase rather than
+appended at the end of the file (fable, coop r4/137). Three sections were
+already on their branches when that was ruled and landed as they were; this
+child is the first to use the structure, so it also moves those three here, in
+the order they landed. A child inserting a lesson adds a `###` under its
+phase's heading in landing order -- never at EOF, where two branches collide
+by construction.
+
+### A removal finds a missing arm; only a boundary mutant finds a disarmed one
+
+Two sweeps over the same battery (`cmd/toy`, `internal/rollback/toyrestart`)
+answered different questions, and the cheap one answered the easy question.
+
+**Removing a mechanism** — the planted capacity race, the planted count leak,
+the planted stale count, the admin-only check, the capacity check, both
+visibility checks, `Verify`'s server half, the empty-checkpoint branch — killed
+its named arm in all nine cases. That is worth running, and it proves only that
+every mechanism has *an* arm somewhere near it: a removal changes behavior at
+every input that reaches the code at all, so almost any arm on the path reports
+it.
+
+**Making a mechanism subtly wrong** found three holes the removals could not
+see:
+
+- `createEvent` defaults an absent `visible_to` to `{admin, member}`. Every arm
+  passed the field explicitly, so the default branch was exercised by nothing:
+  changing it to `{admin, member, guest}` left the whole package green — the
+  epic's visibility-leak row arriving by accident, on the one axis this system
+  exists to be wrong about.
+- `Verify` comparing LENGTHS instead of bytes left every test in its package
+  passing, because the only moved world any arm built had an extra user in it.
+  The arm that pins the comparison was true for a reason unrelated to what it
+  asserts.
+- `Verify` reading an absent state file as the checkpoint itself — rather than
+  as an empty world — was also invisible.
+
+**The general form, which is the same law twice.** An arm can only see a defect
+its INPUT reaches. A removal is reached by every input; a boundary is reached
+only by an input sitting on it, and a default is reached only by an input that
+does not override it. So: for every value a test may override, one arm must
+assert the default with nothing set; and for every comparison, one arm must
+differ in the way the cheap implementation would miss.
+
+**A fixture property an arm's reach depends on is the arm's own
+precondition.** The concurrency arm drives two joins at a one-seat event and
+asserts that both land. Nothing asserted the *one seat*: with the fixture's
+capacity raised to 2, both joins land honestly, every assertion passes, and the
+arm reports a race that had been closed — while its own message still says
+"one-seat event". The repair is not a better assertion about the result but an
+assertion about the input: more joins in flight than seats, read from the create
+response because the toy has no route that returns an event. The four cells then
+read `seats < claimants` with the race open → pass; with it closed → fail in the
+draw; and either capacity-2 cell → fail at the precondition, which is correct
+because the arm is disarmed. fable made this the gate's reading of every R5
+battery at coop r5/16.
+
+**And the ordering inside an arm decides what it can report.** The default arm
+above checks the echoed field and then the two endpoints that read it. Written
+with `t.Fatalf` on the field, the arm would rest entirely on a string — the
+failure rook found one layer down, where renaming a fixture key disarmed a
+boundary arm and nothing screamed. With `t.Errorf` it reports all three, and
+the mutant that only the field catches (dropping `member` from the default,
+which no endpoint can distinguish, because a defaulted event can never gain a
+member) is visibly the one with a single witness.
+
+### A list-shaped reference needs its defect past element one
 
 Four of arm 19's eight cells walk a list — an action's `requires`, an
 observation's `args`, a flow step's `{handle}` placeholders, and the bindings'
@@ -914,7 +924,8 @@ mutant died, not only that it did.
 It is the same law as the concurrency arm's one seat, one layer down: an arm can
 only see a defect its INPUT reaches, and a list of length one reaches no
 iteration bug at all.
-## A forbid-only assertion cannot see a disappearance
+
+### A forbid-only assertion cannot see a disappearance
 
 R5.1's applicability arm asked one question of the action set it was handed:
 does every action offered have its preconditions among the verdicts the case
@@ -950,3 +961,45 @@ Three layers were innocent alone — a static validator with no arm pairing
 `requires` against the declared rules, a walk layer that cannot tell a missing
 name from a declining rule because it is never given the rule set, and this
 arm. The hole was between them, which is the usual address.
+
+### A survivor can indict the oracle rather than the battery
+
+Two mutants survived R5.4's first sweep, and neither wanted a new arm. "The
+token is never attached to the execute" survived because `internal/fake` ignores
+an execute's token entirely, so nothing in the tree could observe the engine's
+central job in that child. "The handle choice takes the first instead of
+drawing" survived because a handle a step CONSUMED appeared nowhere in the
+record -- only the handles it created did. Both properties were implemented,
+both were untestable, and the suite was green either way.
+
+The diagnosis to reach for first is "my arms are too weak". These were not: no
+arm over the existing surface could have killed either mutant, because the
+observable did not exist. The fix was two observables -- an adapter that records
+each request before answering it, and a field on the step for what it consumed
+-- after which both mutants died at named assertions. So when a survivor looks
+impossible, ask what in the system could have SEEN the difference, and if the
+answer is nothing, that is the finding.
+
+The recording adapter is worth keeping as a worked example, because three
+separate measurements were needed before it recorded anything, and each one made
+the arms fail on their own no-subject guard rather than on the property:
+
+- `cat > file` block-buffers when its output is a regular file, so the requests
+  sat in the buffer and were lost when the adapter was killed.
+- POSIX has a non-interactive shell redirect an ASYNCHRONOUS list's standard
+  input to `/dev/null`, so a BACKGROUNDED reader saw EOF at once and never
+  created the capture file at all.
+- Emitting the canned responses up front leaves the last request on the wrong
+  side of the kill: the engine wrote the execute, the walk returned, and the
+  process was killed before the reader was scheduled.
+
+Answering per request fixes the third by construction rather than by timing: the
+engine cannot have read a response without the loop having already appended the
+request that earned it. A capture that is complete *by construction* is worth
+more than one that is complete *in practice*, and the difference only shows up
+under a kill.
+
+The guard is what made all three findable. Every arm here asserts it has a
+subject -- the capture holds a request, some step consumed a handle, two
+candidates existed at some consuming step -- so an instrument that recorded
+nothing failed loudly instead of passing on an empty set.

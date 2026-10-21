@@ -341,12 +341,62 @@ at all.
 
 **Resolvability is the second half of applicability.** A precondition says the
 world permits the action; a resolvable handle says the walk can name what the
-action acts on. An action whose UI flow refers to a `{kind}` no bound handle
-satisfies is INAPPLICABLE rather than drawn and then refused -- which is the
-same refusal `observe`'s args already make, arriving one layer earlier so the
-walk never asks the wire for a thing that does not exist. The handle table is
-the whole mechanism: it holds only handles something bound to an id, so
-"resolves" and "is in the table" are one question.
+action acts on. An action that names a handle no bound handle satisfies is
+INAPPLICABLE rather than drawn and then refused -- which is the same refusal
+`observe`'s args already make, arriving one layer earlier so the walk never asks
+the wire for a thing that does not exist. The handle table is the whole
+mechanism: it holds only handles something bound to an id, so "resolves" and "is
+in the table" are one question. There are TWO ways an action names a handle and
+both count: an argument declared with `source = "handle"`, whose kind the
+request cannot be written without, and a `{kind}` in a UI flow, which the flow
+cannot be navigated without. The argument is reported first where both are
+missing, because an unwritable request stops the step sooner than an
+unnavigable page.
+
+**An action's arguments come from four declared sources.** `[[action.args]]`
+gives each argument a name, a source, and that source's one field: `handle`
+with `of` (a handle KIND, which the engine resolves to an id), `literal` with
+`value`, `draw` with `from`, and `actor` with nothing else. Exactly one field
+beside `name` and `source` is accepted, so a project saying two things about one
+argument is refused rather than guessed at. The fourth source exists because the
+wire carries no actor field -- `token` is who acts -- and a system that keys its
+sessions by user name still needs the name in the request; it consumes NO draw,
+because a source drawing from the generator would make the sequence depend on
+how many arguments an action declares, and two projects with one seed would walk
+apart for a schema reason. A `handle` argument DOES draw, among the bound
+handles of its kind: its value is not determined, several can be bound, and
+something has to pick -- the same position a `draw` argument is in. The handle
+choices are drawn before the other arguments are composed, and a step records
+what it consumed as well as what it created, so a drawn choice can be compared
+between two attempts.
+
+**A session per actor per context, acquired at first use.** `token` is present
+exactly when the action's context is not `"none"`, and the engine acquires it
+for that context -- which is how the engine holds a pairing the wire decoder
+deliberately leaves to it. First use rather than up front is what the system
+under test allows, not an optimization: where sessions are keyed by user name, a
+session for `member_1` can exist only once some action has made a user called
+`member_1`, so acquiring every session before the first step would ask for all
+of them before the walk had created anybody. One per actor per CONTEXT and not
+one per actor: the context is what the token is for, and reusing an actor's
+`api` token for its `ui` actions would send a token the adapter issued for
+something else. An empty token is refused rather than held, because an omitted
+token and an empty one are the same bytes, so the execute would be
+indistinguishable from one taken outside a session.
+
+**An action in a context the actor's role may not hold is inapplicable.** The
+third half of applicability, and inapplicable rather than attempted for the
+reason the other two are: the engine would otherwise acquire a session in a
+context the project says this role never has, and an adapter that answered
+successfully would make the project's role model unfalsifiable from a walk.
+Context `"none"` is held by everybody, because it is not a context -- there is
+no session for a role to be entitled to. An absent role and a role holding
+nothing are different statements, as with weights: a declaration that exists and
+omits the actor's role is REFUSED, since reading it as holding nothing would
+make every context-bearing action inapplicable and a walk stalling for a missing
+`[[role]]` would look exactly like a walk whose world permits nothing. A project
+declaring no roles at all is not gated here; pairing a context against the roles
+that hold it needs the bindings alone, so it belongs in `validate`.
 
 **A claim's handle is the single `creates` entry, else the action's own name**
 (coop r5/62): `member_1.event#1` for `create_event`, `member_1.join_event#1`
