@@ -750,3 +750,57 @@ func TestTwoAttemptsConsumeTheSameHandles(t *testing.T) {
 		t.Errorf("one seed consumed two different handle sequences:\n%v\n%v", ua, ub)
 	}
 }
+
+// AN ACTION IN AN UNHELD CONTEXT IS NEVER DRAWN, driven through a whole walk
+// rather than through Pool alone: the gate exists so the engine never acquires
+// a session in a context the project says this role never has, and "never
+// drawn" is the observable form of that.
+//
+// THE CONTROL IS THE SAME WALK WITH THE CONTEXT HELD. Without it the arm would
+// pass on a walk that never drew join_event for any reason at all -- a weight
+// of zero, an unsatisfied precondition, or a gate that removed everything.
+func TestAnActionInAnUnheldContextIsNeverDrawn(t *testing.T) {
+	ctx := context.Background()
+	sess, err := wire.Open(ctx, fakeSpawn(), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	drew := func(roles []bindings.Role) (bool, bool) {
+		t.Helper()
+		p := walkProject(t)
+		p.Actions[1].Context = "ui"
+		p.Roles = roles
+		sawUI, sawAPI := false, false
+		for _, seed := range []uint64{1, 2, 3, 4, 5} {
+			rec, werr := schedule.Walk(ctx, p, sess, seed, 12, 1)
+			if werr != nil {
+				t.Fatalf("seed %d: %v", seed, werr)
+			}
+			for _, st := range rec.Steps {
+				switch st.Kind {
+				case "join_event":
+					sawUI = true
+				case "create_event":
+					sawAPI = true
+				}
+			}
+		}
+		return sawUI, sawAPI
+	}
+
+	held, api := drew([]bindings.Role{{Name: "member", Contexts: []string{"api", "ui"}}})
+	if !held {
+		t.Fatalf("the control never drew the ui action even with ui held, so this arm cannot tell "+
+			"a gate from an absence (api drawn: %v)", api)
+	}
+	gated, apiStillDrawn := drew([]bindings.Role{{Name: "member", Contexts: []string{"api"}}})
+	if gated {
+		t.Error("an action needing ui was drawn by a role holding only api")
+	}
+	if !apiStillDrawn {
+		t.Error("gating ui also stopped the api action being drawn, so the gate is not gating on " +
+			"the context")
+	}
+}

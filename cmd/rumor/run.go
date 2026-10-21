@@ -97,6 +97,7 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		Actions: brep.Bindings.Actions,
 		Weights: prep.Platform.Weights,
 		Venire:  prep.Platform.Venire,
+		Roles:   brep.Bindings.Roles,
 	}
 
 	ctx := context.Background()

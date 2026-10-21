@@ -23,6 +23,11 @@ type Project struct {
 	Venire  []platform.Member
 	Stage   string
 	Profile string
+
+	// Roles are the bindings' [[role]] entries, which decide whether an
+	// actor's role holds the context an action needs. A project declaring none
+	// gets no role gate; HoldsContext states what that does and does not cover.
+	Roles []bindings.Role
 }
 
 // Step is one step of a walk, RECORDED OVER HANDLES AND NEVER OVER IDS. That is
@@ -166,7 +171,8 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		}
 		actor := actors[ai]
 
-		pool, err := Pool(ctx, p.Statute, p.Actions, l, actor, p.Weights, p.Stage, p.Profile, table)
+		pool, err := Pool(ctx, p.Statute, p.Actions, l, actor, p.Weights, p.Stage, p.Profile, table,
+			p.Roles)
 		if err != nil {
 			return rec, fmt.Errorf("schedule: step %d: the pool for %s: %w", n, actor, err)
 		}

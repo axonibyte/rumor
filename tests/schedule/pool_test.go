@@ -21,6 +21,12 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 )
 
+// WHY EVERY Pool CALL BELOW PASSES NO ROLES. These arms are about weights and
+// the nemesis preconditions, and they predate the role-and-context gate; their
+// actor is `observer`, which is not a name Actors() could mint (<role>_<n>), so
+// a declared role list could not be matched to it anyway. Passing none means the
+// gate is not exercised HERE -- it has its own arms, named for it, below.
+
 // toyActions is the toy's declared actions, loaded the way the walk would.
 func toyActions(t *testing.T) []bindings.Action {
 	t.Helper()
@@ -168,7 +174,7 @@ func TestPoolCarriesActionsAndApplicableNemesisKinds(t *testing.T) {
 	l, _, observer := sealedToy(t, "honest-count")
 	w := withNemesis(toyWeights(t), 2)
 
-	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t))
+	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil)
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -231,7 +237,7 @@ func TestCanardEntersThePoolWhereItsPreconditionHolds(t *testing.T) {
 	}
 	w := withNemesis(toyWeights(t), 3)
 
-	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t))
+	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil)
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -266,7 +272,7 @@ func TestAnUndeclaredWeightIsRefusedRatherThanAssumedZero(t *testing.T) {
 			"evidence about suborn in particular")
 	}
 
-	_, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t))
+	_, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil)
 	if err == nil {
 		t.Fatal("a kind the walk will draw with no declared weight must be refused, not invented")
 	}
@@ -285,7 +291,7 @@ func TestAnActionNamedLikeANemesisKindIsRefused(t *testing.T) {
 	l, _, observer := sealedToy(t, "honest-count")
 	acts := append(toyActions(t), bindings.Action{Name: schedule.Suborn, Requires: []string{"may_leave"}})
 
-	_, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 1), "", "", tbl(t))
+	_, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 1), "", "", tbl(t), nil)
 	if err == nil {
 		t.Fatal("an action named `suborn` must be refused: the pool is keyed by kind")
 	}
@@ -320,7 +326,7 @@ func TestSubornAndPalterNeedAnApplicableEmittingAction(t *testing.T) {
 			"cannot reach the precondition it is about")
 	}
 
-	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 2), "", "", tbl(t))
+	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 2), "", "", tbl(t), nil)
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -342,7 +348,7 @@ func TestEssoinIsNeverOfferedBeforeR9(t *testing.T) {
 	for _, name := range []string{"honest-count", "planted-join"} {
 		l, _, observer := sealedToy(t, name)
 		got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer,
-			withNemesis(toyWeights(t), 7), "", "", tbl(t))
+			withNemesis(toyWeights(t), 7), "", "", tbl(t), nil)
 		if err != nil {
 			t.Fatalf("%s: Pool: %v", name, err)
 		}
@@ -386,7 +392,7 @@ func TestAnActionWhoseFlowHandleCannotResolveIsInapplicable(t *testing.T) {
 
 	// NOTHING BOUND: the flow's {event} resolves to no id, so the action is out.
 	empty := tbl(t)
-	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", empty)
+	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", empty, nil)
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -405,7 +411,7 @@ func TestAnActionWhoseFlowHandleCannotResolveIsInapplicable(t *testing.T) {
 	if err := bound.Bind(observer+".event#1", "e-99"); err != nil {
 		t.Fatalf("binding an event handle: %v", err)
 	}
-	got, err = schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", bound)
+	got, err = schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", bound, nil)
 	if err != nil {
 		t.Fatalf("Pool with a bound handle: %v", err)
 	}
@@ -418,5 +424,90 @@ func TestAnActionWhoseFlowHandleCannotResolveIsInapplicable(t *testing.T) {
 	if !found {
 		t.Errorf("%q was excluded even with a resolving event handle, so the arm above proves "+
 			"nothing about resolvability; pool is %v", flowAction, kinds(got))
+	}
+}
+
+// AN ACTION IN A CONTEXT THE ACTOR'S ROLE DOES NOT HOLD IS INAPPLICABLE, which
+// is issue 78's third clause and the one that keeps the engine from acquiring a
+// session in a context the project says this role never has.
+//
+// IT IS A DIFFERENTIAL ARM: the same statute, ledger, actor, weights and table
+// are used twice and ONLY the role declaration changes. An arm that asserted a
+// fixed expected set would move whenever the toy's statute or weights moved,
+// and would not say that the ROLES were what removed the action.
+func TestAnActionInAnUnheldContextIsInapplicable(t *testing.T) {
+	ctx := context.Background()
+	l, _, _ := sealedToy(t, "honest-count")
+	w := withNemesis(toyWeights(t), 2)
+
+	// The actor must be a name Actors() could mint, since the role is read off
+	// it. honest-count's own actor is `observer`, which is not one.
+	const actor = "member_1"
+
+	// ONE ACTION MOVED TO A SECOND CONTEXT, and the corpus is read rather than
+	// assumed: if the toy stopped declaring the action this picks, the guard
+	// below fails loudly instead of the arm passing on an empty difference.
+	acts := toyActions(t)
+	moved := ""
+	for i := range acts {
+		if acts[i].Context == "api" && len(acts[i].Emits) > 0 {
+			acts[i].Context = "ui"
+			moved = acts[i].Name
+			break
+		}
+	}
+	if moved == "" {
+		t.Fatal("no toy action declares context api, so there is nothing to move to a second " +
+			"context and this arm cannot reach the gate")
+	}
+
+	// BASELINE: the role holds BOTH contexts, so nothing is gated out.
+	both := []bindings.Role{{Name: "member", Contexts: []string{"api", "ui"}}}
+	before, err := schedule.Pool(ctx, statute(t), acts, l, actor, w, "", "", tbl(t), both)
+	if err != nil {
+		t.Fatalf("Pool with both contexts held: %v", err)
+	}
+	if !strings.Contains(strings.Join(kinds(before), ","), moved) {
+		t.Fatalf("%s is not in the pool even when its context is held (%v), so removing it proves "+
+			"nothing", moved, kinds(before))
+	}
+
+	// AND THE SAME CALL WITH ui NOT HELD: the moved action is gone and the
+	// others are untouched.
+	apiOnly := []bindings.Role{{Name: "member", Contexts: []string{"api"}}}
+	after, err := schedule.Pool(ctx, statute(t), acts, l, actor, w, "", "", tbl(t), apiOnly)
+	if err != nil {
+		t.Fatalf("Pool with ui unheld: %v", err)
+	}
+	if strings.Contains(strings.Join(kinds(after), ","), moved) {
+		t.Errorf("%s needs context ui and the role holds only api, so it must be inapplicable; "+
+			"the pool is %v", moved, kinds(after))
+	}
+	for _, k := range kinds(before) {
+		if k == moved {
+			continue
+		}
+		if !strings.Contains(strings.Join(kinds(after), ","), k) {
+			t.Errorf("gating ui also removed %q, which needs no ui: before %v, after %v",
+				k, kinds(before), kinds(after))
+		}
+	}
+}
+
+// AND A ROLE THE DECLARATION OMITS IS A REFUSAL, not an empty pool: a walk that
+// stalled for a missing [[role]] would look exactly like a walk whose world
+// permits nothing.
+func TestAnUndeclaredRoleRefusesRatherThanEmptyingThePool(t *testing.T) {
+	ctx := context.Background()
+	l, _, _ := sealedToy(t, "honest-count")
+	w := withNemesis(toyWeights(t), 2)
+	other := []bindings.Role{{Name: "admin", Contexts: []string{"api"}}}
+
+	_, err := schedule.Pool(ctx, statute(t), toyActions(t), l, "member_1", w, "", "", tbl(t), other)
+	if err == nil {
+		t.Fatal("a declaration naming only `admin` was read as `member` holding no context")
+	}
+	if !strings.Contains(err.Error(), "member") {
+		t.Errorf("the refusal must name the role it could not find; got %v", err)
 	}
 }

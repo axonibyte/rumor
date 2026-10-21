@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
@@ -57,7 +58,8 @@ var NemesisKinds = []string{Suborn, Canard, Palter, Essoin}
 // validate arm pairing bindings against the vocabulary would be, and the arm
 // count is fable's -- but a silent double-weight is worse than an early error.
 func Pool(ctx context.Context, statute string, actions []bindings.Action, l *ledger.Ledger,
-	actor string, w platform.Weights, stage, profile string, t *handle.Table) ([]Candidate, error) {
+	actor string, w platform.Weights, stage, profile string, t *handle.Table,
+	roles []bindings.Role) ([]Candidate, error) {
 
 	reserved := map[string]bool{}
 	for _, k := range NemesisKinds {
@@ -100,6 +102,19 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 	for _, a := range app {
 		if ok, kind := Resolvable(a, t); !ok {
 			_ = kind
+			continue
+		}
+		// AND THE THIRD HALF: AN ACTOR WHOSE ROLE DOES NOT HOLD THE ACTION'S
+		// CONTEXT IS INAPPLICABLE, NOT ATTEMPTED (issue 78). The engine would
+		// otherwise acquire a session in a context the project says this role
+		// never has, and the adapter would answer about an actor it should
+		// never have been asked about -- or worse, answer successfully, which
+		// would make the project's role model unfalsifiable from a walk.
+		held, err := HoldsContext(roles, a.Name, actor, a.Context)
+		if err != nil {
+			return nil, err
+		}
+		if !held {
 			continue
 		}
 		usable = append(usable, a)
@@ -175,4 +190,75 @@ func nemesisApplicable(kind string, app []bindings.Action, l *ledger.Ledger, act
 	}
 	return false, fmt.Errorf("schedule: %q is not a nemesis kind, and this function is the only "+
 		"place that decides applicability for one", kind)
+}
+
+// RoleOf is the role an actor's name was built from: the `member` of
+// `member_2`.
+//
+// IT STRIPS THE TRAILING `_<n>` AND NOT EVERYTHING AFTER THE FIRST UNDERSCORE,
+// because Actors() builds `<role>_<n>` from a role that may itself contain one
+// -- `super_admin_1` is role `super_admin`, not role `super`. The ordinal is
+// digits by construction there, so an actor name that does not end in one is
+// not a name this run minted and says so.
+func RoleOf(actor string) (string, bool) {
+	i := strings.LastIndexByte(actor, '_')
+	if i <= 0 || i == len(actor)-1 {
+		return "", false
+	}
+	for _, c := range actor[i+1:] {
+		if c < '0' || c > '9' {
+			return "", false
+		}
+	}
+	return actor[:i], true
+}
+
+// HoldsContext reports whether this actor's role holds the context an action
+// needs, and refuses where the question cannot be answered.
+//
+// CONTEXT "none" IS HELD BY EVERYBODY, because it is not a context: the
+// contract calls it "an action taken outside a session" (docs/contract.md:89),
+// so there is no session for a role to be entitled to. Gating it on a role's
+// list would make an action nobody needs a session for unreachable to an actor
+// whose role declares no contexts at all.
+//
+// THE NARROWING, AND EXACTLY WHAT IT COVERS: a project that declares NO roles
+// gets no gate here. That is not "absent means permitted" applied to one role
+// -- a declaration that exists and omits this actor's role IS refused below,
+// for the reason an undeclared weight is refused one function up. It is that a
+// project modelling no roles at all cannot have this question asked of it, and
+// the pairing that catches a context no role holds is static: it needs the
+// bindings alone, so it belongs in `rumor validate` beside the arms that
+// already pair declarations against each other, and the arm count is fable's.
+// Said here so a reader does not take the silence for a check.
+func HoldsContext(roles []bindings.Role, action, actor, ctxName string) (bool, error) {
+	if ctxName == contextNone {
+		return true, nil
+	}
+	if len(roles) == 0 {
+		return true, nil
+	}
+	role, ok := RoleOf(actor)
+	if !ok {
+		return false, fmt.Errorf("schedule: %q is not an actor name this run could have minted "+
+			"(<role>_<n>), so the role whose contexts gate %q cannot be named", actor, action)
+	}
+	for _, r := range roles {
+		if r.Name != role {
+			continue
+		}
+		for _, c := range r.Contexts {
+			if c == ctxName {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	// A DECLARATION THAT EXISTS AND OMITS THIS ROLE IS REFUSED, not read as
+	// holding nothing: reading it as nothing would make every context-bearing
+	// action inapplicable to this actor, and a walk that stalled for a missing
+	// [[role]] would look exactly like a walk whose world permits nothing.
+	return false, fmt.Errorf("schedule: the bindings declare %d role(s) and none of them is %q, "+
+		"which is actor %s's: an absent role is not a role holding no context, and %q needs "+
+		"context %q", len(roles), role, actor, action, ctxName)
 }
