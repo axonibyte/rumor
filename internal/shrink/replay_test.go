@@ -192,3 +192,80 @@ func TestOnceRefusals(t *testing.T) {
 		}
 	}
 }
+
+// ATTRIBUTION IS THE THIRD PART OF "THE SAME FINDING", and this is the arm for
+// the hazard the CHANGELOG names at 0.1.17: a shrinker must not "drift from a
+// `bug` resting on a planted claim to one resting on none". Rule and value are
+// identical in both findings here -- only the attribution moves -- so a gate
+// comparing two of the three reads this as a reproduction and shrinks the trace
+// against a different defect.
+func TestADriftInAttributionIsNotAReproduction(t *testing.T) {
+	planted := engine.Finding{Defined: true, Value: "bug", Rule: "data.rumor.statute.finding",
+		Rules: map[string]any{"rests_on_planted": true}}
+	honest := engine.Finding{Defined: true, Value: "bug", Rule: "data.rumor.statute.finding",
+		Rules: map[string]any{"rests_on_planted": false}}
+
+	v, err := Once(context.Background(), &fake{}, cp, planted,
+		func(context.Context) (engine.Finding, error) { return honest, nil })
+	if err != nil {
+		t.Fatalf("Once: %v", err)
+	}
+	if v.Reproduced {
+		t.Error("a bug that stopped resting on the planted claim was read as the same finding")
+	}
+	if !strings.Contains(v.Why, "rests_on_planted") {
+		t.Errorf("Why must name the attribution that moved; got %q", v.Why)
+	}
+	if !v.AttributionCompared {
+		t.Error("AttributionCompared is false though both findings carried the rule")
+	}
+
+	// AND THE OTHER DIRECTION: identical attribution reproduces, without which
+	// the arm above would pass on a gate that called everything different.
+	same, err := Once(context.Background(), &fake{}, cp, planted,
+		func(context.Context) (engine.Finding, error) { return planted, nil })
+	if err != nil {
+		t.Fatalf("Once: %v", err)
+	}
+	if !same.Reproduced {
+		t.Errorf("two identical findings did not reproduce: %s", same.Why)
+	}
+}
+
+// AN ATTRIBUTION THAT BECOMES UNDEFINED IS A DIFFERENCE, because the Rules map
+// is "absent when undefined" -- so one side carrying it and the other not is a
+// finding that no longer rests on what it rested on.
+func TestAnAttributionGoingAbsentIsADifference(t *testing.T) {
+	planted := engine.Finding{Defined: true, Value: "bug", Rule: "data.rumor.statute.finding",
+		Rules: map[string]any{"rests_on_planted": true}}
+	bare := engine.Finding{Defined: true, Value: "bug", Rule: "data.rumor.statute.finding"}
+
+	v, err := Once(context.Background(), &fake{}, cp, planted,
+		func(context.Context) (engine.Finding, error) { return bare, nil })
+	if err != nil {
+		t.Fatalf("Once: %v", err)
+	}
+	if v.Reproduced {
+		t.Error("a finding that lost its attribution was read as the same one")
+	}
+	if !strings.Contains(v.Why, "carried no") {
+		t.Errorf("Why should say the replay carried no attribution; got %q", v.Why)
+	}
+}
+
+// AND A PROJECT WITH NO ATTRIBUTION RULE IS NOT SILENTLY AGREED WITH: the
+// verdict says the third part was not available, so a reader can tell "all
+// three agreed" from "two were".
+func TestAProjectWithoutTheAttributionRuleSaysSo(t *testing.T) {
+	v, err := Once(context.Background(), &fake{}, cp, bug(),
+		func(context.Context) (engine.Finding, error) { return bug(), nil })
+	if err != nil {
+		t.Fatalf("Once: %v", err)
+	}
+	if !v.Reproduced {
+		t.Errorf("identical findings did not reproduce: %s", v.Why)
+	}
+	if v.AttributionCompared {
+		t.Error("AttributionCompared is true though neither finding carries the rule")
+	}
+}

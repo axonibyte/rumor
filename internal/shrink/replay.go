@@ -37,7 +37,19 @@ type Verdict struct {
 	// Why names, in one sentence, what separated Got from the original. Empty
 	// when they matched.
 	Why string
+
+	// AttributionCompared says the third part of the vocabulary's comparison
+	// actually happened. It is false when neither finding carries the
+	// attribution rule -- a project with no planted claims need not define one
+	// -- and a reader should know that "the same finding" was then established
+	// on rule and value alone rather than assume all three agreed.
+	AttributionCompared bool
 }
+
+// attributionRule is the attribution the vocabulary names: "the attribution
+// beside a finding (`rests_on_planted`)". It is a rule the project's statute
+// defines, so it reaches a Finding through Rules when the caller asks for it.
+const attributionRule = "rests_on_planted"
 
 // ErrDirty is returned when the world is provably not the checkpoint, so no
 // replay run in it could be attributed. It wraps rollback.ErrDirty so a caller
@@ -60,12 +72,20 @@ var ErrDirty = fmt.Errorf("shrink: refusing to replay: %w", rollback.ErrDirty)
 // Collapsing the last two into one is the failure the sentinel exists to
 // prevent -- it would read an unanswerable question as a passing one.
 //
-// WHAT "REPRODUCED" MEANS IS THE VOCABULARY'S, NOT A STRING COMPARE: findings
-// are compared by rule and value (docs/vocabulary.md fixes the four values, and
-// a finding "names the rule that produced it"). Attribution over handles is the
-// third part and it compares TRACES rather than one finding, so it belongs to
-// the reduction steps that follow, not to this gate. Said here so the gate is
-// not read as doing the whole comparison.
+// WHAT "REPRODUCED" MEANS IS THE VOCABULARY'S, AND IT HAS THREE PARTS: rule,
+// value AND ATTRIBUTION. The CHANGELOG fixed that at 0.1.17 with the reason --
+// "'the same finding' is rule, value and attribution agreeing, so a shrinker
+// cannot drift from a `bug` resting on a planted claim to one resting on none"
+// -- and my first version of this gate compared two of the three, with a
+// comment claiming attribution "compares TRACES rather than one finding". That
+// was wrong on its own terms: the attribution the vocabulary names sits BESIDE
+// A FINDING (`rests_on_planted`) and reaches this function through Rules, so it
+// is comparable here and the hazard it guards is precisely a one-finding drift.
+//
+// A FINDING THAT DOES NOT CARRY THE RULE IS NOT SILENTLY AGREED WITH: when
+// neither side has it the verdict says AttributionCompared is false, because a
+// project with no planted claims need not define the rule and a reader must be
+// able to tell "all three agreed" from "two were available".
 func Once(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
 	want engine.Finding, replay func(context.Context) (engine.Finding, error)) (Verdict, error) {
 
@@ -101,12 +121,32 @@ func Once(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
 		return Verdict{}, fmt.Errorf("shrink: replaying the failure on the clean world: %w", err)
 	}
 
-	v := Verdict{Got: got}
+	wantAttr, wantHas := want.Rules[attributionRule]
+	gotAttr, gotHas := got.Rules[attributionRule]
+
+	v := Verdict{Got: got, AttributionCompared: wantHas || gotHas}
 	switch {
 	case want.Defined != got.Defined:
 		v.Why = fmt.Sprintf("the original %s and the replay %s", defined(want.Defined), defined(got.Defined))
 	case want.Defined && want.Value != got.Value:
 		v.Why = fmt.Sprintf("the original found %v and the replay found %v", want.Value, got.Value)
+	case wantHas != gotHas:
+		// THE RULE BECOMING UNDEFINED IS A DIFFERENCE, not an absence to pass
+		// over: engine.Finding's Rules is documented there as carrying every
+		// rule the caller named and being absent when undefined, so one side
+		// having an attribution and the other not is a finding that no longer
+		// rests on what it rested on.
+		//
+		// THE ATTRIBUTION OF THAT PHRASE IS internal/engine's AND NOT THE
+		// VOCABULARY'S. My first version credited it to the vocabulary, which
+		// does not say it, and tests/vocabulary's sweep refused by name: "1
+		// absent". Citing the document that happens to be nearby is the same
+		// defect as citing a guarantee by line number.
+		v.Why = fmt.Sprintf("the original %s an attribution and the replay %s one",
+			had(wantHas), had(gotHas))
+	case wantHas && gotHas && wantAttr != gotAttr:
+		v.Why = fmt.Sprintf("both found %v, but the original rests_on_planted %v and the replay %v",
+			want.Value, wantAttr, gotAttr)
 	case want.Rule != got.Rule:
 		// A FINDING NAMES THE RULE THAT PRODUCED IT, so one value reached by a
 		// different rule is a different finding. Without this clause a statute
@@ -124,4 +164,11 @@ func defined(ok bool) string {
 		return "found a finding"
 	}
 	return "found none"
+}
+
+func had(ok bool) string {
+	if ok {
+		return "carried"
+	}
+	return "carried no"
 }
