@@ -137,6 +137,16 @@ path = "tests/validate/*.go"
 docs = ["docs/contract.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# The shrinker's PAIRING suite: a seeds file written by internal/shrink.Promote,
+# read by internal/validate's arm 10b. Mapped to contract.md because the seed
+# grammar is that document's ("The seeds file", fixed in R4, which R5 may extend
+# and may not contradict), and to the testing methodology because the method is
+# the transferable part -- two copies of one schema need a check that reads
+# BOTH, so the authority is the arm and never a third reading of the format.
+path = "tests/shrink/*.go"
+docs = ["docs/contract.md", "docs/testing-methodology.md"]
+
+[[entry]]
 path = "tests/licences/*.go"
 docs = ["docs/testing-methodology.md", "docs/release.md"]
 
