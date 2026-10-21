@@ -110,7 +110,20 @@ const root = "../.."
 // absent. The count and the membership test catch different halves of one
 // mistake: the count says a quote moved, the membership says it was never the
 // document's.
-const declaredQuotes = 32
+//
+// AND 32 -> 33 IN R5.3's RE-CUT ONTO v0.1.28, which is the resolution the
+// paragraph above asked for: the third reason, kept rather than folded into a
+// number. R5.3's own reason stands unchanged -- internal/shrink quotes the
+// Findings entry's "names the rule that produced it", which is why the
+// clean-world replay gate compares a replayed finding by RULE as well as by
+// value: one value reached by a different clause is a different finding, so two
+// distinct failures would otherwise read as one reproduction and the seed would
+// be shrunk against the wrong one. The moves are ADDITIVE and none cancels
+// another: R5.4's came from a mutant copying a statute, R5.5's from the observe
+// step quoting the sealing rule, R5.3's from a new quotation in a new package.
+// The number is the sweep's and not my arithmetic -- it refuses on the count and
+// names the actual, which is how this value was settled.
+const declaredQuotes = 33
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would
