@@ -406,3 +406,95 @@ func TestLoadKeepsTheTwoErrorShapesApart(t *testing.T) {
 		t.Fatal("an absent file was accepted")
 	}
 }
+
+// TestAnActionsArgumentsAreReadBySource: the four sources fable ruled at coop
+// r5/68 and r5/72, each reading exactly one field, and every refusal the
+// schema promises ibis at r5/78 driven here rather than discovered by their
+// declarations.
+func TestAnActionsArgumentsAreReadBySource(t *testing.T) {
+	withArgs := func(args ...any) map[string]any {
+		doc := wellFormed()
+		doc["action"].([]any)[0].(map[string]any)["args"] = args
+		return doc
+	}
+
+	// ALL FOUR AT ONCE, because a per-source arm cannot see one source reading
+	// another's field: the four are only separable together.
+	rep := Parse(withArgs(
+		map[string]any{"name": "event", "source": "handle", "of": "event"},
+		map[string]any{"name": "title", "source": "literal", "value": "Standup"},
+		map[string]any{"name": "capacity", "source": "draw", "from": []any{int64(1), int64(5)}},
+		map[string]any{"name": "who", "source": "actor"},
+	))
+	if !rep.OK() {
+		t.Fatalf("the four sources refused: %v", rep.Refusals)
+	}
+	got := rep.Bindings.Actions[0].Args
+	if len(got) != 4 {
+		t.Fatalf("read %d argument(s), want 4: %+v", len(got), got)
+	}
+	if got[0].Source != ArgHandle || got[0].Of != "event" {
+		t.Errorf("handle: %+v", got[0])
+	}
+	if got[1].Source != ArgLiteral || got[1].Value != "Standup" {
+		t.Errorf("literal: %+v", got[1])
+	}
+	if got[2].Source != ArgDraw || len(got[2].From) != 2 {
+		t.Errorf("draw: %+v", got[2])
+	}
+	// AN ACTOR ARGUMENT CARRIES NOTHING, and that is the assertion: if it
+	// picked up a value from somewhere the project could name who acts.
+	if got[3].Source != ArgActor || got[3].Of != "" || got[3].Value != nil || got[3].From != nil {
+		t.Errorf("actor must carry no value of its own: %+v", got[3])
+	}
+
+	for _, c := range []struct {
+		label string
+		arg   map[string]any
+		key   string
+		says  string
+	}{
+		{"an unknown source", map[string]any{"name": "x", "source": "guess"},
+			"source", "not an argument source"},
+		{"a handle with no kind", map[string]any{"name": "x", "source": "handle"},
+			"of", "missing"},
+		{"a literal with no value", map[string]any{"name": "x", "source": "literal"},
+			"value", "needs a `value`"},
+		{"a draw with no list", map[string]any{"name": "x", "source": "draw"},
+			"from", "needs a `from` list"},
+		{"a draw of one value", map[string]any{"name": "x", "source": "draw", "from": "only"},
+			"from", "needs a LIST"},
+		{"a draw of nothing", map[string]any{"name": "x", "source": "draw", "from": []any{}},
+			"from", "is empty"},
+		// THE STRICT DECODER IS THE FOURTH REFUSAL I PROMISED: a field the
+		// source does not use is never read, so Done() names it. Driven
+		// because "the decoder will catch it" is a claim about the decoder.
+		{"a literal carrying a draw's list", map[string]any{
+			"name": "x", "source": "literal", "value": "v", "from": []any{"a"}},
+			"from", "unknown key"},
+		{"a handle carrying a value", map[string]any{
+			"name": "x", "source": "handle", "of": "event", "value": "v"},
+			"value", "unknown key"},
+		{"an actor carrying anything", map[string]any{
+			"name": "x", "source": "actor", "value": "v"},
+			"value", "unknown key"},
+	} {
+		rep := Parse(withArgs(c.arg))
+		if rep.OK() {
+			t.Errorf("%s: accepted", c.label)
+			continue
+		}
+		if !names(rep.Refusals, "action[0].args[0]."+c.key, c.says) {
+			t.Errorf("%s: refusals %v", c.label, rep.Refusals)
+		}
+	}
+
+	// AND NO ARGS AT ALL IS STILL A BINDING. An action the system takes with
+	// no arguments declares none, so the optional half needs its own cell --
+	// otherwise every existing example would have to gain an empty table.
+	if rep := Parse(wellFormed()); !rep.OK() {
+		t.Errorf("an action with no args must still parse: %v", rep.Refusals)
+	} else if n := len(rep.Bindings.Actions[0].Args); n != 0 {
+		t.Errorf("an action declaring no args has %d", n)
+	}
+}

@@ -21,6 +21,7 @@ package bindings
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
@@ -85,6 +86,12 @@ type Action struct {
 	Response map[string]any
 	Flow     []Step
 
+	// Args are the arguments this action needs and where the walk gets each.
+	// Optional: an action the system takes with no arguments declares none,
+	// and an adapter that needs one the bindings do not declare is a pairing
+	// `rumor validate` reads, not something a run should discover.
+	Args []Arg
+
 	// Touches names the stateful components this action MUTATES, which is the
 	// other half of the rollback-coverage arm: a component is otherwise
 	// nameable only on a `direct` observation, so an action that dirties an
@@ -100,6 +107,54 @@ type Action struct {
 }
 
 // Step is one step of a UI flow.
+// The four argument sources, ruled by fable at coop r5/68 and r5/72. They are
+// the only things a WALK can supply: it knows the run's handles, the literals
+// the project wrote down, the draw it owns, and whose step this is.
+//
+// WHY `actor` IS THE FOURTH AND WHY IT TAKES NO DRAW: ibis found the need
+// (r5/70) -- cmd/toy keys sessions by user NAME, so a session for member_1
+// exists only if some create_user made a user called member_1, and
+// wire.ExecuteRequest carries no `actor` field at all, which I had hit
+// independently as "unknown field actor". A drawn or literal name breaks the
+// SESSION half of this same child. It consumes no draw because a source that
+// took from the generator would make the sequence depend on how many arguments
+// an action declares, and two projects with one seed would walk apart for a
+// schema reason.
+const (
+	ArgHandle  = "handle"
+	ArgLiteral = "literal"
+	ArgDraw    = "draw"
+	ArgActor   = "actor"
+)
+
+// ArgSources in declaration order, for a refusal that can name the set.
+var ArgSources = []string{ArgHandle, ArgLiteral, ArgDraw, ArgActor}
+
+// Arg is one argument an action needs, and where the walk gets it.
+//
+// EXACTLY ONE FIELD BESIDE name AND source IS ACCEPTED, the one that source
+// uses: `of` for a handle KIND, `value` for a literal, `from` for a draw's
+// list, and nothing for `actor`. The others are refused by name rather than
+// ignored -- a `from` on a literal is a project saying two things about one
+// argument, and guessing which it meant is how a walk sends something nobody
+// declared.
+type Arg struct {
+	Name   string
+	Source string
+
+	// Of is the handle KIND a `handle` argument names -- `event`, not
+	// `member_1.event#1`. The engine resolves it to an id the ACTOR knows of,
+	// because an id is what crosses the wire and a handle never does.
+	Of string
+
+	// Value is a `literal` argument's value, carried as decoded.
+	Value any
+
+	// From is a `draw` argument's list, carried as decoded so a project can
+	// draw numbers, strings or lists of roles.
+	From []any
+}
+
 type Step struct {
 	Step   string
 	To     string
@@ -204,6 +259,9 @@ func Parse(doc map[string]any) Report {
 				action.Response[k] = t.Any(k)
 			}
 			t.Done()
+		}
+		for _, g := range a.Tables("args") {
+			action.Args = append(action.Args, arg(g))
 		}
 		for _, s := range a.Tables("flow") {
 			action.Flow = append(action.Flow, step(s))
@@ -356,6 +414,61 @@ func Parse(doc map[string]any) Report {
 // EACH KIND'S OWN FIELDS AND NO OTHERS, because a `click` carrying a `value` is
 // either a step written for the wrong kind or a field the driver will ignore,
 // and an ignored field in a flow is a flow that does not do what it says.
+// arg reads one `[[action.args]]` entry.
+//
+// THE SOURCE DECIDES WHICH FIELD IS READ, and `Done()` refuses every key this
+// does not read -- so a `from` on a literal, or an `of` on a draw, is refused
+// by name without a check of its own. That is the strict decoder doing the
+// work, and it is why this reads exactly one field per source rather than
+// reading all four and validating afterwards.
+func arg(g *decl.Reader) Arg {
+	a := Arg{
+		Name:   g.Str("name", true),
+		Source: g.Str("source", true),
+	}
+	switch a.Source {
+	case ArgHandle:
+		// A KIND, NOT A HANDLE. `of = "event"` and never
+		// `of = "member_1.event#1"`: the walk picks WHICH event this actor
+		// knows of, and a declaration naming one run's handle could not
+		// survive a second run.
+		a.Of = g.Str("of", true)
+	case ArgLiteral:
+		if !g.Has("value") {
+			g.Refuse("value", "a literal argument needs a `value`: the source says the project "+
+				"supplies it and then nothing does")
+		}
+		a.Value = g.Any("value")
+	case ArgDraw:
+		raw := g.Any("from")
+		switch typed := raw.(type) {
+		case []any:
+			a.From = typed
+		case nil:
+			g.Refuse("from", "a draw argument needs a `from` list to draw out of")
+		default:
+			g.Refuse("from", fmt.Sprintf("`from` is %T and a draw needs a LIST: one value is a "+
+				"literal and should say so, since a draw of one would spend the generator on a "+
+				"choice that is not one", raw))
+		}
+		if raw != nil && len(a.From) == 0 {
+			g.Refuse("from", "a draw argument's `from` is empty: there is nothing to draw, and a "+
+				"walk that drew from it could only refuse mid-step")
+		}
+	case ArgActor:
+		// NOTHING ELSE TO READ, and that is the point: the value is the step's
+		// own actor, so the project does not get to say what it is.
+	case "":
+		// `source` was required above and its refusal is already recorded;
+		// adding a second here would name one defect twice.
+	default:
+		g.Refuse("source", fmt.Sprintf("%q is not an argument source; the four a walk can supply "+
+			"are %s", a.Source, strings.Join(ArgSources, ", ")))
+	}
+	g.Done()
+	return a
+}
+
 func step(s *decl.Reader) Step {
 	out := Step{Step: s.Str("step", true)}
 	switch out.Step {
