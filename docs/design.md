@@ -714,10 +714,9 @@ binary.
 **What a statute receives, and what it does not.** `Input` projects each claim
 in the sealed prefix as `{ref, actor, type, position}`, plus `planted` and
 `visible_to` when present, and the observation as `{actor, position, of, query,
-source, value}` plus `role` when the project has roles. **`handles` is not
-projected**, though `internal/ledger` carries it on every claim — so no rule can
-ask which entity a claim is about, and the only identifying field a statute gets
-is the claim's own `ref`.
+source, value}` plus `role` when the project has roles, and **`handles` when the
+claim carries any** — the run-local names, so a rule can ask which entity a
+claim is about.
 
 Every package under `examples/` is therefore **single-subject**: one event, one
 document, one count per case, and the counts in a statute need no filter because
@@ -727,16 +726,31 @@ for both into one ledger, and a statute that cannot tell them apart would count
 across both. R5.3 needs `handles` in this projection, or an observation that
 names its subject in a field of its own.
 
-**That fork is closed: the projection carries `handles`.** fable ruled it at
-coop r5/16 — the run-local names, never ids, which is already how the
+**That fork is closed and the projection now carries `handles`.** fable ruled it
+at coop r5/16 — the run-local names, never ids, which is already how the
 vocabulary compares findings (rule, value, attribution over handles), so
 projecting them follows the discipline and projecting ids would breach it. A
-statute may then group claims by entity and "an actor can join only an event it
-knows of" means something with two events in one ledger. The engine does not do
-it yet, and the arm that will prove it is R5.3's: two events in one ledger, one
-finding each, still two after a shrink step — a handle-less projection reads
-them as one. Until that lands, the paragraph above is what a statute actually
-receives.
+statute may then group claims by entity, and "an actor can join only an event it
+knows of" means something with two events in one ledger.
+
+**A claim's `handles` are its own name plus what it is ABOUT**, and that is the
+corpus's convention rather than a new rule: measured over `examples/*/cases`,
+ten claim objects carry more than one handle with the extra one naming the
+subject (`bob.join#1` carries `["bob.join#1", "alice.event#1"]`), nine carry
+exactly `[ref]`, and forty-three carry none. The key is therefore present only
+when the claim has one, which is also `ledger.Fact`'s own `omitempty` — a claim
+with no handle has nothing to say about its subject, and giving it an empty list
+would make the engine's input differ from the committed file for no gain.
+
+The arm is R5.3's and it is driven: two events in one ledger, one finding each.
+Event A has two joins and B has one, so the three counts 2, 1 and 3 separate a
+per-entity statute from a spanning one — and with the projection removed the
+statute knows of no events at all, so every count reads as spanning and BOTH
+clean cases turn into bugs. **The WALK does not follow the convention yet**:
+`internal/schedule`'s honest() appends only the minted handle, so a walked join
+names no event. R5.4 already computes the consumed handles as `Step.Used`;
+putting them on the fact is one line in R5.4's files and lands after the re-cut,
+which is why the done-when's toy third waits on it.
 
 **What a PRECONDITION is shown is a partial observation** (coop r5/16).
 `input.observation` carries `actor` and `position` -- `seal+1`, the position the

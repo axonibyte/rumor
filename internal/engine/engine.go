@@ -375,6 +375,29 @@ func prefixFacts(l *ledger.Ledger) (flatten.Ledger, []map[string]any) {
 			if len(f.VisibleTo) > 0 {
 				m["visible_to"] = f.VisibleTo
 			}
+			// HANDLES, so a rule can ask WHICH ENTITY a claim is about. fable
+			// ruled this at coop r5/16 and design.md carried the fork until
+			// now: the run-local NAMES and never ids, which is already how the
+			// vocabulary compares findings, so projecting them follows the
+			// discipline where projecting ids would breach it.
+			//
+			// WHY THIS CLOSES A REAL LIMIT: every package under examples/ is
+			// single-subject, and a walk that creates two events writes joins
+			// for both into ONE ledger. A statute with no identifying field but
+			// `ref` counts across both and reads two findings as one -- which
+			// R5.2 hit (ibis, coop r5.toy/18) rather than predicted.
+			//
+			// PRESENT ONLY WHEN NON-EMPTY, for the reason the two keys above
+			// are: measured 2026-10-21 over the committed corpus, 19 of 62
+			// claim objects in examples/*/cases carry `handles` and 43 do not,
+			// and ledger.Fact's own tag is `handles,omitempty`. Emitting it
+			// unconditionally would give 43 hand-written claims a key their
+			// file does not have, for no gain -- a claim with no handle has
+			// nothing to say about its subject, and `not c.handles` reads the
+			// same as an absent one in Rego.
+			if len(f.Handles) > 0 {
+				m["handles"] = f.Handles
+			}
 			claims = append(claims, m)
 			fl.Claims = append(fl.Claims, flatten.Claim{
 				Ref:      f.Ref,
