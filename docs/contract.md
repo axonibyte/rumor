@@ -46,6 +46,21 @@ never parsed; a diagnosis reads it (R10, R11) and no decision turns on it.
 EOF on stdout, or a process exit, before the run ends is **could-not-run**,
 with the exit status in the detail. It is never a refusal and never a finding.
 
+**EOF on the adapter's STDIN is the stop signal, and the client waits a bounded
+grace before killing.** An adapter that has work to do on the way out -- a child
+process to reap, a temporary directory to remove -- does it when its stdin
+closes, and R5.4 is where that became a promise rather than a hope. The client
+had closed stdin and killed at once, so whether an adapter's teardown ran was a
+race it usually lost: an adapter's cleanup is its own `defer`, and a defer does
+not run under `SIGKILL`. Measured 2026-10-22 against `cmd/toy-adapter`, which
+spawns the toy and reaps it on EOF -- four of eight runs orphaned the toy, and
+with `timeout(1)` in front the run then hung to its bound having already printed
+a complete result. The grace is `internal/wire.StopGrace`, two seconds: orders
+of magnitude over what an honest teardown needs, and the kill still arrives
+after it, so an adapter that ignores EOF cannot hold a run's teardown open.
+An adapter may therefore rely on reaching its cleanup, and must not rely on
+having longer than the grace to finish it.
+
 ### Fields every message carries
 
 | field | type | consumer |

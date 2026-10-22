@@ -295,10 +295,17 @@ func (s *Session) poison(err error) error {
 
 // Close stops the adapter.
 //
-// IT KILLS RATHER THAN WAITS, for Describe's reason one scope wider: an adapter
-// holding its side open would otherwise hold the run's teardown, and by the
-// time a run is closing there is nothing left to say to it. Closing stdin first
-// gives a well-behaved adapter its EOF.
+// IT GIVES EOF A BOUNDED CHANCE BEFORE KILLING, through stopAdapter -- see its
+// comment for the race this had and for why the kill is kept. Closing stdin is
+// not a courtesy to a well-behaved adapter, it is the stop signal: the
+// adapter's own teardown is a `defer`, and a defer does not run under SIGKILL,
+// so killing at once made whether it cleaned up a coin flip.
+//
+// THE CANCEL COMES LAST AND THAT ORDER IS THE FIX. `s.cancel()` is the cancel
+// of an exec.CommandContext, so calling it IS a kill -- it was running before
+// the wait, which meant the grace this function now takes could never have been
+// taken. Nothing is lost by moving it: the process is already reaped by then,
+// and the call still releases the context.
 func (s *Session) Close() error {
 	select {
 	case <-s.done:
@@ -306,15 +313,7 @@ func (s *Session) Close() error {
 	default:
 		close(s.done)
 	}
-	if s.stdin != nil {
-		_ = s.stdin.Close()
-	}
+	stopAdapter(s.cmd, s.stdin)
 	s.cancel()
-	if s.cmd != nil && s.cmd.Process != nil {
-		_ = s.cmd.Process.Kill()
-	}
-	if s.cmd != nil {
-		_ = s.cmd.Wait()
-	}
 	return nil
 }

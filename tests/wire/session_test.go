@@ -19,7 +19,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -379,4 +381,164 @@ func toyStatute(t *testing.T) string {
 		t.Fatalf("the toy's statute: %v", err)
 	}
 	return string(b)
+}
+
+// CLOSE LETS THE ADAPTER CLEAN UP AFTER ITSELF, which is R5.4's exit defect:
+// fable measured it at coop r5/100 and ruled the fix the session's.
+//
+// WHAT WAS WRONG. Close closed stdin and killed AT ONCE, and an adapter's
+// cleanup is its own `defer` -- which does not run under SIGKILL. So whether
+// cmd/toy-adapter reaped the toy it had spawned was a race. Reproduced here
+// 2026-10-22 before the fix: `rumor run` hung to a 15s bound in 4 of 8 runs and
+// `rumor validate` in 2 of 3, each having already printed a complete result,
+// because timeout(1) waits for the orphan it inherits.
+//
+// THE FAKE SPAWNS A CHILD AND REMOVES ITS DIRECTORY, in that order, which is
+// what makes one observable stand for both halves of "no child alive and no
+// state dir behind": the `rm -rf` is reachable only after `wait` has reaped the
+// child, so a missing directory is proof the adapter's teardown ran to
+// completion. The directory is the proxy and the script's ORDER is what closes
+// the distance -- stated because a proxy whose distance is not named is the
+// defect one layer up.
+//
+// THE CHILD'S PID IS CHECKED TOO, and it cannot be fooled by a zombie here for
+// the same reason: the fake `wait`s, so there is nothing left to be a zombie of.
+//
+// TWO CELLS. The honest adapter must get its EOF and clean up; the MUTANT
+// ignores EOF entirely and must still be stopped, bounded, because the kill is
+// what Describe's comment keeps and a grace that became a wait would hand any
+// wedged adapter the run's teardown.
+//
+// NOT BACKGROUNDED, NOT `cat`: this reuses what walk_test.go's fixture comment
+// paid for -- a backgrounded reader has its stdin redirected to /dev/null by
+// POSIX and sees EOF at once, and `cat > file` block-buffers to a regular file.
+// The reader loop is the foreground process and answers per request.
+func TestCloseLetsTheAdapterCleanUpBeforeKilling(t *testing.T) {
+	describe := mustJSON(t, wire.DescribeResponse{
+		Envelope:     wire.Envelope{Kind: wire.KindDescribe, Contract: wire.ContractVersion, ID: "1"},
+		Actions:      []wire.Action{},
+		Observations: []wire.Observation{},
+		Contexts:     []string{},
+		Components:   []wire.Component{},
+	})
+
+	// `honest` reaps its child and removes its directory when stdin closes;
+	// `mutant` answers and then ignores EOF forever.
+	adapter := func(t *testing.T, honest bool) (wire.Spawn, string, string) {
+		t.Helper()
+		dir := filepath.Join(t.TempDir(), "state")
+		pidFile := filepath.Join(t.TempDir(), "child.pid")
+		// THE KILL IS PART OF THE CLEANUP AND I LEFT IT OUT FIRST: `wait` alone
+		// waits for `sleep 300` to finish on its own, so the honest cell failed
+		// against a correct fix and said the fix was broken. No `set -e`
+		// either, since `wait` on a killed child answers non-zero and would
+		// abort the shell before the `rm`.
+		tail := "kill $child 2>/dev/null\nwait $child 2>/dev/null\nrm -rf " + dir + "\n"
+		if !honest {
+			tail = "while :; do sleep 1; done\n"
+		}
+		script := "mkdir -p " + dir + "\n" +
+			"sleep 300 &\n" +
+			"child=$!\n" +
+			"printf '%s\\n' \"$child\" > " + pidFile + "\n" +
+			"while IFS= read -r l; do\n" +
+			"  printf '%s\\n' '" + describe + "'\n" +
+			"done\n" +
+			tail
+		return wire.Spawn{Command: []string{"sh", "-c", script}}, dir, pidFile
+	}
+
+	// gone reports whether a pid is no longer a process at all. Signal 0 is the
+	// existence test and never delivered.
+	gone := func(pid int) bool {
+		return syscall.Kill(pid, 0) != nil
+	}
+	childOf := func(t *testing.T, pidFile string) int {
+		t.Helper()
+		raw, err := os.ReadFile(pidFile)
+		if err != nil {
+			t.Fatalf("the fake adapter wrote no child pid: %v", err)
+		}
+		pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+		if err != nil {
+			t.Fatalf("the child pid %q does not parse: %v", raw, err)
+		}
+		return pid
+	}
+
+	t.Run("honest adapter cleans up", func(t *testing.T) {
+		spawn, dir, pidFile := adapter(t, true)
+		sess, err := wire.Open(context.Background(), spawn, 5*time.Second)
+		if err != nil {
+			t.Fatalf("opening a session against the spawning fake: %v", err)
+		}
+		pid := childOf(t, pidFile)
+		if gone(pid) {
+			t.Fatalf("the fake's child %d was already gone before Close, so this arm has no "+
+				"subject", pid)
+		}
+		if _, err := os.Stat(dir); err != nil {
+			t.Fatalf("the fake made no state directory, so its removal proves nothing: %v", err)
+		}
+
+		start := time.Now()
+		if err := sess.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+		took := time.Since(start)
+
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("the adapter's state directory survived Close (%v), so its teardown did not "+
+				"run: Close killed it before EOF could reach it", err)
+		}
+		if !gone(pid) {
+			t.Errorf("the child %d the adapter spawned is still alive after Close, so the adapter "+
+				"never reaped it", pid)
+		}
+		// AND IT DID NOT SPEND THE GRACE: an honest adapter exits on EOF, so
+		// the whole point is that this costs nothing. A Close that took the
+		// full bound would mean the EOF never arrived and the kill did the
+		// work -- passing the two assertions above by accident is not possible,
+		// but passing them slowly would mean something else was fixed.
+		if took >= wire.StopGrace {
+			t.Errorf("Close took %v, which is the whole grace: the adapter exited on the kill "+
+				"rather than on EOF", took)
+		}
+		// THE PROOF LINE READS THE WORLD rather than restating the intent: a
+		// log that says "directory gone" beside an assertion that just failed
+		// is a verdict written next to its own test, and this one printed
+		// exactly that while the cell was red.
+		_, statErr := os.Stat(dir)
+		t.Logf("PROOF honest adapter: directory exists=%v, child %d alive=%v, Close took %v of a "+
+			"%v grace", statErr == nil, pid, !gone(pid), took, wire.StopGrace)
+	})
+
+	t.Run("an adapter ignoring EOF is still stopped", func(t *testing.T) {
+		spawn, _, pidFile := adapter(t, false)
+		sess, err := wire.Open(context.Background(), spawn, 5*time.Second)
+		if err != nil {
+			t.Fatalf("opening a session against the EOF-ignoring fake: %v", err)
+		}
+		pid := childOf(t, pidFile)
+
+		start := time.Now()
+		if err := sess.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+		took := time.Since(start)
+
+		if took < wire.StopGrace {
+			t.Errorf("Close returned in %v against an adapter that never exits, which is under "+
+				"the %v grace: it cannot have waited", took, wire.StopGrace)
+		}
+		if took > 4*wire.StopGrace {
+			t.Errorf("Close took %v against an adapter that ignores EOF: the grace is a bound and "+
+				"this is not bounded by it", took)
+		}
+		// The child is NOT asserted dead here, and that is the honest reading:
+		// this adapter was killed, so its own cleanup could not run, which is
+		// exactly the state the honest cell exists to contrast with.
+		t.Logf("PROOF EOF-ignoring adapter: stopped in %v against a %v grace (child %d was never "+
+			"reaped by it, which is what being killed means)", took, wire.StopGrace, pid)
+	})
 }
