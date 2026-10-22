@@ -334,10 +334,13 @@ description with no action under it.
 > toy for a session it answered 404 to. The walk died where the design says it
 > cannot. Two layers can carry such a dependency and only one of them is the
 > engine's: a handle is the engine's own bookkeeping, and a session's key is the
-> project's. So the engine's guard stays what it is, and a precondition that
-> models the STORE rather than a belief must discount planted claims itself --
-> which it can, because the projection carries `planted` to a precondition as
-> well as to an observation.
+> project's. I wrote that the engine's guard therefore stays what it is and a
+> precondition modeling the STORE must discount planted claims itself. fable
+> ruled otherwise at coop r5/97 and placed it in the engine: a precondition is
+> shown the honest claims only, so no statute writes `not c.planted` and the
+> latent class above is unreachable rather than avoidable. See "**`claims` is
+> NOT as a check sees them**" below. The measurement stands; the remedy was
+> mine and wrong.
 
 **An undeclared weight is refused, not read as zero.** Zero means never chosen
 and the project decided it; absent means nobody did. Defaulting either way
@@ -673,13 +676,42 @@ receives.
 `input.observation` carries `actor` and `position` -- `seal+1`, the position the
 action would occupy -- and nothing else: `of`, `query`, `source`, `value` and
 `role` are ABSENT, never empty, so a rule reaching for a field a candidate step
-cannot have goes undefined rather than reading `""`. `known` and `claims` are
-exactly as a check sees them. The key stays `observation` because live rules
+cannot have goes undefined rather than reading `""`. `known` is exactly as a
+check sees it. The key stays `observation` because live rules
 read `input.observation.position`, and a new key would rewrite every
 precondition in every project for nothing. Omitting the key entirely was
 considered and died on measurement: with no `observation` the held claims are
 empty and the rules' DEFAULTS answer, which is silently wrong in both
 directions rather than undefined.
+
+**`claims` is NOT as a check sees them: a precondition is shown the HONEST
+claims only** -- fable's amendment to r5/16 at coop r5/97, after R5.4 drove the
+hole. The two inputs ask different questions. A precondition asks what the
+system can be asked to do next, and a suborn never moved the system: the lie is
+the claim (r5/58), so a planted claim is a description with no action under it
+and the wire knows nothing of it. A check asks whether an observer's belief
+agrees with what the store holds, and it MUST see the planted claim or the
+defect the `planted-lie` example exists to carry would be invisible. So the
+engine strips what it planted before it asks a precondition, and keeps every
+claim when it asks for a finding.
+
+The engine is the only layer that can do it, which is the design's own sentence
+read forward: the engine knows which claims it planted because it planted them,
+and the statute does not. The projection does carry `planted`, so a statute
+COULD write `not c.planted` into a precondition -- and R5.4 measured what that
+costs. `has_user` satisfied by a planted `user.created` took seed 4242's step 7
+to a session the toy answered 404 to; the one-line statute repair worked, and
+`made_event`, `already_joined` and `deleted` were three more of the toy's own
+rules with the same defect latent in them, none exercised by that seed. A trap
+with four instances in the first project to meet it belongs in the engine, not
+in a lesson every project learns once each.
+
+`known` is deliberately untouched on both paths, because it is BELIEF: an actor
+fed a lie does know the claim. So `knows_of_subject` reads as it always did, and
+an actor told of a planted event is stopped one layer down by resolvability --
+the handle a suborn minted resolves to no id. A planted ref may therefore appear
+in `known` with no claim beside it in `claims`, which is the intent: every
+statute in the corpus intersects the two, so the claim simply is not held.
 
 One evaluator serves both, by construction rather than by care: the walk's
 applicability and a case's finding go through the same `EvaluateWith`, because
@@ -687,7 +719,12 @@ two code paths running statutes would be free to diverge and an explanation of
 a verdict the product did not give is worse than none. D14 is the drill that
 reads it -- the toy's preconditions agree rule by rule across both inputs, with
 the ruled-out shape driven in the same suite and required to DISAGREE, so the
-agreement cannot pass on an input unable to tell the two apart.
+agreement cannot pass on an input unable to tell the two apart. The agreement
+has exactly one exception and D14 carries it as a cell: with one planted
+`user.created` in the world, `has_user` is false to a precondition and true to a
+check at the same position, and `may_create_user` is the reverse. The honest
+claim is the control beside it, so the difference is attributable to `planted`
+and not to the fixture.
 
 **The empty world is a sealed prefix.** A run's first step is evaluated against
 nothing having happened: an empty ledger sealed at 0 is a prefix, and a

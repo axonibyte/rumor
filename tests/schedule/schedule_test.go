@@ -103,15 +103,32 @@ func statute(t *testing.T) string {
 // a world that has also moved the other five verdicts.
 func sealedToyWithUserFor(t *testing.T, actor string) *ledger.Ledger {
 	t.Helper()
+	return sealedToyPlusUser(t, actor, false)
+}
+
+// sealedToyWithPlantedUserFor is the same world with the claim PLANTED, which
+// is the only difference the arms below may lean on. One body for both so the
+// honest and planted fixtures cannot drift apart in anything else.
+func sealedToyWithPlantedUserFor(t *testing.T, actor string) *ledger.Ledger {
+	t.Helper()
+	return sealedToyPlusUser(t, actor, true)
+}
+
+func sealedToyPlusUser(t *testing.T, actor string, planted bool) *ledger.Ledger {
+	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(toy, "ledger", "honest-count.jsonl"))
 	if err != nil {
 		t.Fatalf("the toy's honest-count ledger: %v", err)
 	}
 	lines := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
 	pos := len(lines) + 1
+	mark := ""
+	if planted {
+		mark = `,"planted":true`
+	}
 	lines = append(lines, fmt.Sprintf(
-		`{"kind":"claim","position":%d,"actor":%q,"type":"user.created","ref":"%s.user#1","handles":["%s.user#1"]}`,
-		pos, actor, actor, actor))
+		`{"kind":"claim","position":%d,"actor":%q,"type":"user.created","ref":"%s.user#1","handles":["%s.user#1"]%s}`,
+		pos, actor, actor, actor, mark))
 	l, err := ledger.Load(strings.NewReader(strings.Join(lines, "\n")+"\n"), false)
 	if err != nil {
 		t.Fatalf("honest-count plus a user for %s does not load: %v", actor, err)
@@ -163,6 +180,104 @@ func TestThePreconditionInputAgreesWithARealObservation(t *testing.T) {
 		}
 	}
 	t.Logf("PROOF %d precondition(s) agree rule by rule across both inputs", len(preconditions))
+}
+
+// AND THE AGREEMENT HAS EXACTLY ONE EXCEPTION, which is fable's amendment to
+// r5/16 at coop r5/97 and the cell that makes it visible: a claim the RUN
+// PLANTED is in the check's input and not in the precondition's, so the two
+// inputs MUST disagree where one exists.
+//
+// WHY THAT IS NOT A HOLE IN THE DRILL ABOVE. The drill asks whether a walk and
+// a case describe one world. A planted claim is not a fact about the world: the
+// system never moved (r5/58), so the wire knows nothing of it, while the
+// observer does believe it -- and a check whose whole subject is that gap must
+// see it. The disagreement is therefore the design, and an arm asserting
+// agreement over a planted world would be asserting that the engine acts on its
+// own fabrications.
+//
+// TWO WORLDS, DIFFERING IN ONE FIELD. The honest cell is the control, and it is
+// what makes the planted cell attributable: the same actor, the same claim at
+// the same position, `planted` the only difference. Without it this arm would
+// also pass if `member_1` or the appended claim were what moved the verdicts.
+//
+// AND IT IS BY CONSTRUCTION. `has_user if made_user` reads the claim set, so
+// stripping the claim is the whole mechanism; `may_create_user if not
+// made_user` reads the same set the other way, and is asserted here because a
+// strip that moved only one of the two would mean something narrower than what
+// was ruled.
+func TestAPlantedClaimIsInvisibleToAPreconditionAndVisibleToACheck(t *testing.T) {
+	ctx := context.Background()
+	src := statute(t)
+	const actor = "member_1"
+
+	// the observation is this actor's own, at the same position both paths read
+	check := engine.Check{
+		Actor:  actor,
+		Of:     "user.created",
+		Query:  "user.count",
+		Source: ledger.SourceAPI,
+		Value:  1,
+		Role:   "member",
+	}
+
+	verdicts := func(l *ledger.Ledger, world string) (map[string]any, map[string]any) {
+		t.Helper()
+		full, err := engine.Evaluate(ctx, src, preconditions, l, check)
+		if err != nil {
+			t.Fatalf("%s world, real observation: %v", world, err)
+		}
+		pin, err := engine.PreconditionInput(l, actor)
+		if err != nil {
+			t.Fatalf("%s world, precondition input: %v", world, err)
+		}
+		part, err := engine.EvaluateWith(ctx, src, preconditions, pin)
+		if err != nil {
+			t.Fatalf("%s world, evaluating the precondition input: %v", world, err)
+		}
+		return full.Rules, part.Rules
+	}
+
+	// THE CONTROL: an HONEST user claim, where the two inputs must still agree
+	// rule by rule -- the drill above over a world holding this actor's claim.
+	honestObs, honestPre := verdicts(sealedToyWithUserFor(t, actor), "honest")
+	for _, rule := range preconditions {
+		if honestObs[rule] != honestPre[rule] {
+			t.Fatalf("%s: an HONEST claim already splits the two inputs (observation %v, "+
+				"precondition %v), so the planted cell below cannot attribute its difference "+
+				"to `planted`", rule, honestObs[rule], honestPre[rule])
+		}
+	}
+	if honestPre["has_user"] != true || honestPre["may_create_user"] != false {
+		t.Fatalf("the control world does not hold the verdicts this arm subtracts from: "+
+			"has_user %v, may_create_user %v", honestPre["has_user"], honestPre["may_create_user"])
+	}
+
+	// AND THE SAME WORLD WITH THE CLAIM PLANTED.
+	plantedObs, plantedPre := verdicts(sealedToyWithPlantedUserFor(t, actor), "planted")
+
+	if plantedObs["has_user"] != true {
+		t.Errorf("a check must SEE the planted claim: has_user under a real observation is %v, "+
+			"and a statute that cannot see a lie cannot find one", plantedObs["has_user"])
+	}
+	if plantedPre["has_user"] != false {
+		t.Errorf("a precondition must NOT see the planted claim: has_user under the precondition "+
+			"input is %v, so the walk would ask the wire for a session no create_user earned",
+			plantedPre["has_user"])
+	}
+	if plantedObs["may_create_user"] != false {
+		t.Errorf("may_create_user under a real observation is %v; the check's world holds the "+
+			"claim, so the actor has made its user", plantedObs["may_create_user"])
+	}
+	if plantedPre["may_create_user"] != true {
+		t.Errorf("may_create_user under the precondition input is %v; the store holds no user, "+
+			"so the actor must still be able to create one -- a strip that left this false "+
+			"would brick every actor a suborn touched", plantedPre["may_create_user"])
+	}
+
+	t.Logf("PROOF one planted claim: has_user is %v to a check and %v to a precondition, "+
+		"may_create_user %v and %v, over %d rules whose honest verdicts agree",
+		plantedObs["has_user"], plantedPre["has_user"],
+		plantedObs["may_create_user"], plantedPre["may_create_user"], len(preconditions))
 }
 
 // AND THE ARM REACHES THE DEFECT IT EXISTS FOR, which fable now reads every R5

@@ -466,8 +466,56 @@ func PreconditionInput(l *ledger.Ledger, actor string) (map[string]any, error) {
 			"position": seal + 1,
 		},
 		"known":  known,
-		"claims": claims,
+		"claims": honestOnly(claims),
 	}, nil
+}
+
+// honestOnly drops the claims the RUN PLANTED, and it is the whole of fable's
+// amendment to r5/16 at coop r5/97.
+//
+// THE TWO INPUTS ASK DIFFERENT QUESTIONS, which is why one strips and the other
+// must not. A precondition asks what the system can be asked to do next, and a
+// suborn never moved the system -- "the lie is the claim" (r5/58), so a planted
+// claim is a description with no action under it and the wire knows nothing of
+// it. A check asks whether an observer's belief agrees with what the store
+// holds, and it MUST see the planted claim or the bug the planted-lie example
+// exists to carry would be invisible. So `Input` keeps every claim and this one
+// keeps the honest ones.
+//
+// THE ENGINE IS THE ONLY LAYER THAT CAN DO IT, which is the design's own
+// sentence read the useful way: "the engine knows which claims it planted
+// because it planted them, and the statute does not". The projection does carry
+// `planted`, so a statute COULD write `not c.planted` into a precondition --
+// and R5.4 measured what that costs. `has_user` satisfied by a planted
+// `user.created` took seed 4242's step 7 to a session the toy answered 404 to;
+// the one-line statute repair would have worked, and `made_event`,
+// `already_joined` and `deleted` were three more rules of the toy's own with
+// the same defect latent in them, none of them exercised by that seed. A trap
+// with four instances in the first project to meet it is a trap in the engine,
+// not a lesson for every project to learn once each. Stripping here makes it
+// unreachable.
+//
+// `known` IS DELIBERATELY UNTOUCHED, on both paths: it is belief, and an actor
+// fed a lie does know the claim. So `knows_of_subject` reads as it always did,
+// and an actor told of a planted event is stopped one layer down by
+// resolvability -- the handle a suborn minted resolves to no id (r5/58). A
+// planted ref may therefore appear in `known` with no claim beside it in
+// `claims`, which is exactly the intent: `held_claims` in every statute of the
+// corpus intersects the two, so the claim simply is not held.
+//
+// A NEW SLICE AND NOT A FILTER IN PLACE: prefixFacts' result is also what
+// Input and CanardSubjects read, and CanardSubjects' whole subject is the
+// planted claims. Reusing the backing array would make this function's caller
+// decide what another's sees.
+func honestOnly(claims []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(claims))
+	for _, c := range claims {
+		if c["planted"] == true {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 // sealForPrecondition is the seal a precondition is evaluated at, and the one
