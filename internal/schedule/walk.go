@@ -385,7 +385,7 @@ func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledg
 		Actor:     step.Actor,
 		Ref:       done.Handle,
 		Type:      a.Emits[0],
-		Handles:   []string{done.Handle},
+		Handles:   claimHandles(done.Handle, step.Used),
 		VisibleTo: seen,
 	}); err != nil {
 		return fmt.Errorf("recording %s's %s claim: %w", step.Actor, a.Emits[0], err)
@@ -591,6 +591,48 @@ func (m *minter) next(actor, kind string) string {
 	return key + "#" + strconv.Itoa(m.counts[key])
 }
 
+// claimHandles is a claim's `handles`: the handle it MINTED first, then the
+// handles the step consumed as arguments.
+//
+// THE LEDGER'S SHAPE IS THE CONVENTION, and the walk was the one writer not
+// following it -- ruled by fable at coop r5/105 after I measured the corpus.
+// 62 committed claims: 52 carry `handles == [ref]`, 10 carry a subject beside
+// it, none carry no key at all. The ten are the joins and leaves, written by
+// hand: `event.joined` with ref `bob.join#1` carries
+// `["bob.join#1", "alice.event#1"]`. Every claim this walk wrote carried the
+// minted handle alone, so the first WALKED join would have been a claim of a
+// shape the corpus does not contain.
+//
+// WHY IT BELONGS HERE AND NOT IN THE SHRINKER. R5.3's grouping reads `handles`
+// to say which entity a claim is about -- that is what the projection was
+// ruled for at r5/16 -- and a walked join naming no event is a claim that
+// grouping cannot read. fable: it belongs with the walk, not with the shrinker
+// that would otherwise have to special-case it.
+//
+// `step.Used` IS ALREADY THE LIST and in declaration order, which perform()
+// records off the declaration rather than off the args map for the reason
+// stated there: a map's order is its own. So an action with no handle argument
+// -- `create_event`, `create_user` -- yields the minted handle alone, which is
+// the 52-claim shape, and nothing here special-cases it.
+//
+// SUBORN IS DELIBERATELY NOT CHANGED, and the reason is not that it was
+// overlooked. A suborn does not execute and never calls chooseHandles, so its
+// `step.Used` is empty and this would return the minted handle alone anyway --
+// but a planted `event.joined` naming no event is unreadable to the same
+// grouping. Giving it a subject means DRAWING one, which consumes the
+// generator and would change every walk from every seed, so it is a ruling and
+// not a line. Raised rather than taken: fable r5/105 ruled the honest and
+// palter cases and said nothing of this one.
+//
+// A NEW SLICE, not an append onto `Used`: the step keeps its own record and a
+// caller that aliased it would be deciding what the step reports.
+func claimHandles(minted string, used []string) []string {
+	out := make([]string, 0, 1+len(used))
+	out = append(out, minted)
+	out = append(out, used...)
+	return out
+}
+
 // chooseHandles draws, for each `handle` argument the action declares, one of
 // the bound handles of that kind.
 //
@@ -793,7 +835,7 @@ func palter(ctx context.Context, p Project, sess *wire.Session, sessions *Sessio
 		Actor:     step.Actor,
 		Ref:       done.Handle,
 		Type:      a.Emits[0],
-		Handles:   []string{done.Handle},
+		Handles:   claimHandles(done.Handle, step.Used),
 		VisibleTo: lie,
 		Planted:   true,
 	}); err != nil {

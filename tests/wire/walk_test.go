@@ -11,6 +11,7 @@ package wire_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
@@ -855,4 +857,113 @@ func TestTheClaimCarriesTheDrawnVisibility(t *testing.T) {
 		t.Errorf("six seeds produced %d distinct visibility subset(s) over %d claim(s) (%v): the "+
 			"value is not being drawn", len(seen), claims, seen)
 	}
+}
+
+// A WALKED CLAIM CARRIES THE HANDLES IT NAMES, which is the convention the
+// LEDGER already had and the walk was the one writer not following it. fable
+// ruled it into R5.4 at coop r5/105 after I measured the corpus: 62 committed
+// claims, 52 carrying `handles == [ref]` and 10 carrying a subject beside it --
+// `event.joined` with ref `bob.join#1` carries `["bob.join#1","alice.event#1"]`
+// -- and none carrying no key at all. Every claim the walk wrote carried the
+// minted handle alone, so the first WALKED join was a claim of a shape the
+// corpus does not contain, and R5.3's grouping reads `handles` to say which
+// entity a claim is about.
+//
+// THE FIXTURE DECLARES join_event's HANDLE ARGUMENT, as examples/toy does. That
+// is what makes this arm about the convention rather than about the fixture: an
+// action with no `handle` argument consumes nothing, so it would carry the
+// minted handle alone and the arm would pass against the defect.
+//
+// TWO SHAPES IN ONE WALK, which is why both are asserted off one record rather
+// than from two runs: `create_event` consumes no handle and must carry exactly
+// its own, `join_event` consumes the event and must carry both in that order.
+// An arm reading only the join would pass against a walk that appended every
+// bound handle to every claim.
+func TestAWalkedClaimCarriesTheHandlesItNames(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+	for i := range p.Actions {
+		if p.Actions[i].Name == "join_event" {
+			p.Actions[i].Args = []bindings.Arg{{Name: "event", Source: bindings.ArgHandle, Of: "event"}}
+		}
+	}
+
+	sess, err := wire.Open(ctx, fakeSpawn("--id-salt", "handles"), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	rec, err := schedule.Walk(ctx, p, sess, 20261019, 8, 1)
+	if err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+
+	// THE REACH IS ASSERTED FIRST. With no join drawn there is no two-handle
+	// claim in the ledger and every assertion below is true of the remaining
+	// ones, which is exactly the state this arm must not pass in.
+	var joins, creates []ledger.Fact
+	for _, f := range rec.Facts {
+		if f.Kind != ledger.KindClaim {
+			continue
+		}
+		switch f.Type {
+		case "event.joined":
+			joins = append(joins, f)
+		case "event.created":
+			creates = append(creates, f)
+		}
+	}
+	if len(joins) == 0 {
+		t.Fatalf("the walk drew no join in 8 steps (kinds %v), so there is no consuming claim to "+
+			"read and this arm proves nothing", rec.KindSequence())
+	}
+	if len(creates) == 0 {
+		t.Fatalf("the walk created no event (kinds %v), so the no-argument shape is unmeasured",
+			rec.KindSequence())
+	}
+
+	for _, f := range creates {
+		if len(f.Handles) != 1 || f.Handles[0] != f.Ref {
+			t.Errorf("event.created %q carries handles %v: an action consuming no handle names "+
+				"only what it minted, which is the 52-claim shape in the corpus", f.Ref, f.Handles)
+		}
+	}
+	for _, f := range joins {
+		if len(f.Handles) != 2 {
+			t.Errorf("event.joined %q carries handles %v: a join names the join it minted AND the "+
+				"event it consumed, so R5.3's grouping can say which entity it is about",
+				f.Ref, f.Handles)
+			continue
+		}
+		if f.Handles[0] != f.Ref {
+			t.Errorf("event.joined %q carries %v: the MINTED handle comes first, which is the "+
+				"corpus's order (`bob.join#1` before `alice.event#1`)", f.Ref, f.Handles)
+		}
+		// AND THE SECOND IS AN EVENT THE WALK ACTUALLY MINTED, not any string:
+		// a claim naming a handle no step produced would be unreadable in a
+		// different way, and `rec.IDs` is the walk's own record of what it bound.
+		subject := f.Handles[1]
+		if _, bound := rec.IDs[subject]; !bound {
+			t.Errorf("event.joined %q names subject %q, which this walk never bound (%v)",
+				f.Ref, subject, rec.IDs)
+		}
+		if !strings.Contains(subject, ".event#") {
+			t.Errorf("event.joined %q names subject %q, which is not an event handle", f.Ref, subject)
+		}
+	}
+	// THE PROOF LINE REPORTS THE SHAPES IT READ and does not name the shape it
+	// wanted: I wrote "carrying [join, event]" here first, and the mutation
+	// control printed that sentence under two failing assertions. The second
+	// time in one session, so the rule is now mechanical -- a PROOF line
+	// contains measurements and no adjectives.
+	shapes := func(fs []ledger.Fact) []string {
+		var out []string
+		for _, f := range fs {
+			out = append(out, fmt.Sprint(f.Handles))
+		}
+		return out
+	}
+	t.Logf("PROOF %d join(s) %v; %d create(s) %v",
+		len(joins), shapes(joins), len(creates), shapes(creates))
 }
