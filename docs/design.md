@@ -316,13 +316,28 @@ claim, and the system never moves. `suborn` does NOT execute: it appends a
 planted claim of the type the chosen honest action would have emitted, with the
 handles minted as if it had -- and a handle a suborn minted resolves to no id,
 so any later step needing it is inapplicable and the walk never asks the wire
-for a thing that does not exist. `palter` EXECUTES the honest action and then
-appends its claim with exactly one recorded field false, the field named under
-the tag; in v1 that field is one a statute READS -- `visible_to` where the
-action's claim carries it, else `expect` -- and a kind whose action's claim
-carries neither is inapplicable for that action. So a palter is an action that
-happened described wrongly, and a suborn is a description with no action under
-it.
+for a thing that does not exist *by that route*. `palter` EXECUTES the honest
+action and then appends its claim with exactly one recorded field false, the
+field named under the tag; in v1 that field is one a statute READS --
+`visible_to` where the action's claim carries it, else `expect` -- and a kind
+whose action's claim carries neither is inapplicable for that action. So a
+palter is an action that happened described wrongly, and a suborn is a
+description with no action under it.
+
+> That clause said "never asks the wire for a thing that does not exist", full
+> stop, and R5.4 measured it false: the guard is `Resolvable` reading the handle
+> table, so it covers a dependency a handle CARRIES and nothing else. Seed 4242
+> at 990b3ac plants `member_1.user#1` with a suborn of `create_user`, and
+> `create_event` names no user handle -- its dependency on that user is the
+> SESSION, which the toy keys by user name. So the handle guard saw nothing, the
+> statute's `has_user` was satisfied by the planted claim, and step 7 asked the
+> toy for a session it answered 404 to. The walk died where the design says it
+> cannot. Two layers can carry such a dependency and only one of them is the
+> engine's: a handle is the engine's own bookkeeping, and a session's key is the
+> project's. So the engine's guard stays what it is, and a precondition that
+> models the STORE rather than a belief must discount planted claims itself --
+> which it can, because the projection carries `planted` to a precondition as
+> well as to an observation.
 
 **An undeclared weight is refused, not read as zero.** Zero means never chosen
 and the project decided it; absent means nobody did. Defaulting either way
@@ -397,6 +412,19 @@ make every context-bearing action inapplicable and a walk stalling for a missing
 `[[role]]` would look exactly like a walk whose world permits nothing. A project
 declaring no roles at all is not gated here; pairing a context against the roles
 that hold it needs the bindings alone, so it belongs in `validate`.
+
+**And it is the FIRST half rather than the third, over the project's actions
+rather than the applicable ones** -- ibis found the ordering at coop r5/93 and
+fable placed it in the engine at r5/95. The refusal above is a fault in the
+PROJECT, so it must not depend on what the statute says this actor may do right
+now: reached only for an already-applicable action, it could never fire for an
+actor nothing is applicable to, and R5.4's own `has_user` makes that actor
+ordinary rather than exotic. A minted actor holding no user has no `api` action
+applicable, and `create_user`'s context is `"none"`, which returns before the
+role is looked up -- so a missing `[[role]]` and a world permitting nothing were
+the same answer again, which is the fault the refusal exists to prevent. Running
+the gate first also narrows honestly: a precondition is no longer evaluated for
+an action this role could never take.
 
 **A claim's handle is the single `creates` entry, else the action's own name**
 (coop r5/62): `member_1.event#1` for `create_event`, `member_1.join_event#1`

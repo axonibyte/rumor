@@ -73,7 +73,44 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 		}
 	}
 
-	app, err := Applicable(ctx, statute, actions, l, actor)
+	// THE ROLE GATE RUNS FIRST, AND OVER THE PROJECT'S ACTIONS RATHER THAN THE
+	// APPLICABLE ONES: AN ACTOR WHOSE ROLE DOES NOT HOLD THE ACTION'S CONTEXT
+	// IS INAPPLICABLE, NOT ATTEMPTED (issue 78). The engine would otherwise
+	// acquire a session in a context the project says this role never has, and
+	// the adapter would answer about an actor it should never have been asked
+	// about -- or worse, answer successfully, which would make the project's
+	// role model unfalsifiable from a walk.
+	//
+	// IT WAS INSIDE THE RESOLVABILITY LOOP BELOW AND THAT WAS A DEFECT, found
+	// by ibis at coop r5/93 and placed here by fable at r5/95. A role the
+	// declaration omits is a REFUSAL rather than an empty pool, and the refusal
+	// lives in HoldsContext -- but reached only for an action the statute had
+	// already called applicable, it could not fire for an actor nothing is
+	// applicable to. R5.4's own `has_user` makes that actor ordinary: a minted
+	// actor with no user has no `api` action applicable, so a missing
+	// `[[role]]` and a world permitting nothing were the same answer again,
+	// which is the fault the refusal exists to prevent. The arm that should
+	// have caught it had ARRANGED a user to reach the gate, and said so in a
+	// comment: a harness that sets up the premise cannot test it.
+	//
+	// OVER `actions` AND NOT OVER `app` for the same reason: an undeclared role
+	// is a fault in the PROJECT, not a condition of one step, so it must not
+	// depend on what the statute says this actor may do right now. The
+	// narrowing that remains is the honest one -- preconditions are no longer
+	// evaluated for actions this role could never take.
+	gated := make([]bindings.Action, 0, len(actions))
+	for _, a := range actions {
+		held, err := HoldsContext(roles, a.Name, actor, a.Context)
+		if err != nil {
+			return nil, err
+		}
+		if !held {
+			continue
+		}
+		gated = append(gated, a)
+	}
+
+	app, err := Applicable(ctx, statute, gated, l, actor)
 	if err != nil {
 		return nil, err
 	}
@@ -102,19 +139,6 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 	for _, a := range app {
 		if ok, kind := Resolvable(a, t); !ok {
 			_ = kind
-			continue
-		}
-		// AND THE THIRD HALF: AN ACTOR WHOSE ROLE DOES NOT HOLD THE ACTION'S
-		// CONTEXT IS INAPPLICABLE, NOT ATTEMPTED (issue 78). The engine would
-		// otherwise acquire a session in a context the project says this role
-		// never has, and the adapter would answer about an actor it should
-		// never have been asked about -- or worse, answer successfully, which
-		// would make the project's role model unfalsifiable from a walk.
-		held, err := HoldsContext(roles, a.Name, actor, a.Context)
-		if err != nil {
-			return nil, err
-		}
-		if !held {
 			continue
 		}
 		usable = append(usable, a)

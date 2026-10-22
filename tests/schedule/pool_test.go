@@ -538,20 +538,71 @@ func TestAnActionInAnUnheldContextIsInapplicable(t *testing.T) {
 // AND A ROLE THE DECLARATION OMITS IS A REFUSAL, not an empty pool: a walk that
 // stalled for a missing [[role]] would look exactly like a walk whose world
 // permits nothing.
+//
+// TWO CELLS, AND THE SECOND IS THE ONE THAT MATTERS. This arm first held only
+// the first, and ARRANGED a user to reach the gate -- saying so in a comment
+// that described the defect as a premise: "the role lookup is reached only for
+// an action that is already applicable, so an actor `has_user` gates out would
+// produce an empty pool and no refusal". That sentence is the bug ibis reported
+// at coop r5/93 and fable placed in the engine at r5/95, and the arm could not
+// see it because the arm had removed the condition. A harness that sets up the
+// premise cannot test it.
+//
+// Cell 2 drives the arranged state deliberately wrong: the actor holds NO user,
+// so no `api` action is applicable and the only applicable action is
+// `create_user`, whose context is `none` and which therefore returns from
+// HoldsContext before the role is ever looked up. Under the old ordering the
+// pool came back POPULATED and silent. The refusal now fires because the gate
+// runs over the project's actions.
 func TestAnUndeclaredRoleRefusesRatherThanEmptyingThePool(t *testing.T) {
 	ctx := context.Background()
 
-	// THE ACTOR HOLDS A USER for the reason the arm above gives: the role
-	// lookup is reached only for an action that is already applicable, so an
-	// actor `has_user` gates out would produce an empty pool and no refusal --
-	// and this arm exists to prove the refusal happens.
-	l := sealedToyWithUserFor(t, "member_1")
 	w := withNemesis(toyWeights(t), 2)
 	other := []bindings.Role{{Name: "admin", Contexts: []string{"api"}}}
 
-	_, err := schedule.Pool(ctx, statute(t), toyActions(t), l, "member_1", w, "", "", tbl(t), other)
+	// CELL 1: the actor holds a user, so `api` actions are applicable.
+	withUser := sealedToyWithUserFor(t, "member_1")
+	_, err := schedule.Pool(ctx, statute(t), toyActions(t), withUser, "member_1", w, "", "", tbl(t), other)
 	if err == nil {
 		t.Fatal("a declaration naming only `admin` was read as `member` holding no context")
+	}
+	if !strings.Contains(err.Error(), "member") {
+		t.Errorf("the refusal must name the role it could not find; got %v", err)
+	}
+
+	// CELL 2: the same actor with no user of its own.
+	noUser, _, _ := sealedToy(t, "honest-count")
+
+	// THE PREMISE IS MEASURED AND NOT ASSUMED. With a role that IS declared,
+	// this world must give a pool that holds `create_user` and no `api` action
+	// -- otherwise an applicable `api` action is present and cell 2 would reach
+	// the gate the old way, proving nothing about the ordering.
+	member := []bindings.Role{{Name: "member", Contexts: []string{"api"}}}
+	ok, err := schedule.Pool(ctx, statute(t), toyActions(t), noUser, "member_1", w, "", "", tbl(t), member)
+	if err != nil {
+		t.Fatalf("Pool for an actor with no user and a declared role: %v", err)
+	}
+	api := map[string]bool{}
+	for _, a := range toyActions(t) {
+		if a.Context == "api" {
+			api[a.Name] = true
+		}
+	}
+	got := kinds(ok)
+	if !strings.Contains(strings.Join(got, ","), "create_user") {
+		t.Fatalf("an actor with no user must still be able to create one; pool is %v", got)
+	}
+	for _, k := range got {
+		if api[k] {
+			t.Fatalf("%q is an api action and was applicable to an actor with no user, so "+
+				"`has_user` is not gating and cell 2 cannot test the ordering; pool is %v", k, got)
+		}
+	}
+
+	_, err = schedule.Pool(ctx, statute(t), toyActions(t), noUser, "member_1", w, "", "", tbl(t), other)
+	if err == nil {
+		t.Fatal("an actor nothing `api` is applicable to got a pool and no refusal, so a missing " +
+			"[[role]] and a world permitting nothing are still the same answer")
 	}
 	if !strings.Contains(err.Error(), "member") {
 		t.Errorf("the refusal must name the role it could not find; got %v", err)
