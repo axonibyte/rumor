@@ -26,23 +26,52 @@ api = { enabled = true }
 browser = { enabled = true }
 
 [weights.default]
-# JOINING IS THE COMMON ACTION and the weights say so: a walk that created as
-# many events as it joined would rarely put two actors on one event, which is
-# the shape both api-sim rows and R8's race need.
-create_user = 1
-create_event = 1
-join_event = 4
-leave_event = 1
-delete_event = 1
-join_event_ui = 1
+# RETUNED IN R5.4 (fable, coop r5/99) BECAUSE THE WALK WAS ALL LIES. At the old
+# table -- honest actions summing to 9 against three live nemesis kinds at 2
+# each -- a nemesis kind took 6 of every 15 draws, and quill measured the
+# consequence on seed 4242: six of ten steps were suborns of create_user, so one
+# session and no join (r5/98). A walk that mostly lies about one action exercises
+# nothing, which is what D15's reach half now refuses.
+#
+# THE RULE IS A NEMESIS KIND ABOUT ONE STEP IN TEN, and it is a property of the
+# DRAW, which the table's own arithmetic does not predict. fable's sketch of
+# "honest 3 to 6 against the kinds at 1" reads as 3 in 29; I measured it at 27%
+# over 20 seeds and 200 steps. The gap is applicability: early in a walk most
+# honest actions are inapplicable -- `has_user` leaves a fresh actor only
+# create_user -- while suborn rides whatever IS applicable, so the pool it
+# competes in is two entries wide and not seven. canard needs a planted claim
+# told onward and palter a palterable action, so suborn is usually the only live
+# kind, which is why the share tracks create_user's weight alone.
+#
+# So the band is scaled, not reordered: the same ordering fable gave, 9 to 18
+# against the kinds at 1. MEASURED at 9% over the same 20 seeds and 200 steps,
+# with 9 of the 20 reaching a join by an actor that did not create the event --
+# the shape D15's reach half asks for.
+#
+# JOINING IS STILL THE COMMON ACTION, which the old table was right about: a
+# walk that created as many events as it joined would rarely put two actors on
+# one event, the shape both api-sim rows and R8's race need.
+#
+# create_user IS THE LIGHTEST HONEST ACTION and the reason is applicability, not
+# taste: `may_create_user` is false for any actor that already has one, so its
+# weight is only ever contested by FRESH actors. It does not need help to be
+# drawn early -- `has_user` makes it the only applicable api action for an actor
+# with no user -- and a heavy weight would spend the walk minting users it has
+# no steps left to use.
+create_user = 9
+create_event = 15
+join_event = 18
+leave_event = 12
+delete_event = 12
+join_event_ui = 12
 
 # THE FOUR NEMESIS KINDS, which arm 19 requires a weight for: absent is not
 # zero (fable, coop r4/125 and r5/49). `essoin` abandons a flow mid-way and the
 # engine has no flow state until R9, so it is declared at ZERO -- in the pool,
 # never drawn, and named rather than missing.
-canard = 2
-palter = 2
-suborn = 2
+canard = 1
+palter = 1
+suborn = 1
 essoin = 0
 
 [[rollback]]
