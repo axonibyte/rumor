@@ -20,6 +20,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -440,4 +442,106 @@ func TestPruneDropsNilsAndKeepsEverythingElse(t *testing.T) {
 			t.Errorf("prune dropped %q, which is not nil: %v", key, got)
 		}
 	}
+}
+
+// fakeToy writes an executable that prints the one line open() parses and then
+// sleeps, so the adapter has a live child to kill. A SCRIPT RATHER THAN THE
+// REAL TOY because the subject here is the adapter's own housekeeping: a real
+// toy would make the arm depend on cmd/toy building and binding a port, and
+// neither is what leaked.
+func fakeToy(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "faketoy")
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		t.Fatalf("writing the fake toy: %v", err)
+	}
+	return path
+}
+
+// THE STATE DIRECTORY THE ADAPTER MAKES IS THE ADAPTER'S TO REMOVE.
+//
+// quill measured the leak at coop r5/102: open() made the directory with
+// MkdirTemp and close() only killed the child, so every run left one behind --
+// 11 of 11, clean runs included, which is why nothing failed and nobody saw it.
+// fable placed the fix at r5/103.
+//
+// TMPDIR IS REDIRECTED INTO THE TEST'S OWN SANDBOX so the assertion can be
+// about the COUNT of directories and not only about the one path we were handed
+// back. That is what lets the failing-open cell below say anything at all: when
+// open() returns an error it returns no adapter, so there is no name to check
+// and only the census can see a leak.
+func TestTheAdapterRemovesTheStateDirectoryItMade(t *testing.T) {
+	sandbox := t.TempDir()
+	t.Setenv("TMPDIR", sandbox)
+	t.Setenv("TOY_ADDR", "")
+
+	// COUNTED BY THE ADAPTER'S OWN PREFIX, not by everything in TMPDIR. My
+	// first version counted every entry and failed on its own fixture:
+	// t.TempDir() honors TMPDIR too, so fakeToy's directory landed in the
+	// sandbox and read as a leak. The census has to name what it is about.
+	entries := func(where string) int {
+		t.Helper()
+		got, err := filepath.Glob(filepath.Join(where, "toy-adapter-*"))
+		if err != nil {
+			t.Fatalf("globbing %s: %v", where, err)
+		}
+		return len(got)
+	}
+
+	t.Run("a clean open and close leaves nothing", func(t *testing.T) {
+		before := entries(sandbox)
+		a, err := open(fakeToy(t, "#!/bin/sh\necho 'toy: listening on 127.0.0.1:65000 state=x'\nexec sleep 60\n"), "")
+		if err != nil {
+			t.Fatalf("open: %v", err)
+		}
+		if a.stateDir == "" {
+			t.Fatal("open made no state directory, so this arm proves nothing about removing one")
+		}
+		if _, err := os.Stat(a.stateDir); err != nil {
+			t.Fatalf("the state directory open reported does not exist: %v", err)
+		}
+		dir := a.stateDir
+		a.close()
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("close left %s behind (stat err %v)", dir, err)
+		}
+		if got := entries(sandbox); got != before {
+			t.Errorf("the sandbox holds %d entrie(s), started at %d", got, before)
+		}
+	})
+
+	// THE CONTROL, and it is the half a blanket RemoveAll would break: a
+	// --state path is the CALLER'S directory and close() must not touch it.
+	t.Run("a caller-supplied state path is left alone", func(t *testing.T) {
+		mine := t.TempDir()
+		a, err := open(fakeToy(t, "#!/bin/sh\necho 'toy: listening on 127.0.0.1:65001 state=x'\nexec sleep 60\n"),
+			filepath.Join(mine, "state.json"))
+		if err != nil {
+			t.Fatalf("open: %v", err)
+		}
+		if a.stateDir != "" {
+			t.Errorf("open claimed %q as its own, but the caller named the state path", a.stateDir)
+		}
+		a.close()
+		if _, err := os.Stat(mine); err != nil {
+			t.Errorf("close removed the caller's directory: %v", err)
+		}
+	})
+
+	// AND AN open THAT FAILS AFTER MkdirTemp: the toy exits without printing an
+	// address, so open errors on the read -- the path that used to leak with
+	// nothing to name.
+	t.Run("a failed open leaves nothing", func(t *testing.T) {
+		before := entries(sandbox)
+		a, err := open(fakeToy(t, "#!/bin/sh\nexit 3\n"), "")
+		if err == nil {
+			t.Fatal("open succeeded against a toy that prints no address, so this arm cannot reach the leak")
+		}
+		if a != nil {
+			t.Errorf("open returned an adapter alongside an error: %+v", a)
+		}
+		if got := entries(sandbox); got != before {
+			t.Errorf("a failed open left %d entrie(s) in the sandbox, started at %d", got, before)
+		}
+	})
 }

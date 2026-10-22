@@ -80,6 +80,10 @@ type adapter struct {
 	base   string // http://host:port of the toy
 	client *http.Client
 	child  *exec.Cmd
+	// stateDir is the temp directory this adapter MADE, and only that. A
+	// --state path the caller supplied is the caller's to remove, so this
+	// stays empty there and close() has nothing to delete.
+	stateDir string
 }
 
 func main() {
@@ -100,14 +104,40 @@ func main() {
 
 	if err := a.serve(os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "toy-adapter: %v\n", err)
+		// CLOSED BY HAND because os.Exit runs no deferred function: the defer
+		// above never fires on this path, so without this the toy AND its
+		// directory leak on exactly the runs that went wrong.
+		a.close()
 		os.Exit(1)
 	}
 }
 
+// open starts a toy unless TOY_ADDR names a running one.
+//
+// A DEFERRED CLEANUP ON THE FAILURE PATHS, so the temp directory cannot
+// outlive a failed open. Every return below MkdirTemp is an error path and each
+// one used to leave a directory behind; one deferred close covers them together
+// and covers whatever path is added next, which naming them one at a time would
+// not. On the happy path the caller's own close() does it (quill, coop r5/102:
+// the leak was on every run, clean ones included -- 11 of 11).
+//
+// THE FLAG RATHER THAN A NAMED RETURN, and my first version got this wrong.
+// With `(a *adapter, err error)` the deferred function reads `a` AFTER
+// `return nil, fmt.Errorf(...)` has already assigned nil to it, so the cleanup
+// called close() on a nil adapter and panicked -- caught by the failing-open
+// cell in the test beside this, which is the cell that exists for this path.
+// A local flag reads nothing the returns have touched.
 func open(toyBin, state string) (*adapter, error) {
 	a := &adapter{client: &http.Client{Timeout: 10 * time.Second}}
+	opened := false
+	defer func() {
+		if !opened {
+			a.close()
+		}
+	}()
 	if addr := os.Getenv("TOY_ADDR"); addr != "" {
 		a.base = "http://" + strings.TrimPrefix(strings.TrimPrefix(addr, "http://"), "https://")
+		opened = true
 		return a, nil
 	}
 	if state == "" {
@@ -115,6 +145,7 @@ func open(toyBin, state string) (*adapter, error) {
 		if err != nil {
 			return nil, fmt.Errorf("making a state directory: %w", err)
 		}
+		a.stateDir = dir
 		state = filepath.Join(dir, "state.json")
 	}
 	cmd := exec.Command(toyBin, "--addr", "127.0.0.1:0", "--state", state)
@@ -138,6 +169,7 @@ func open(toyBin, state string) (*adapter, error) {
 		return nil, fmt.Errorf("%s printed %q, which names no address", toyBin, strings.TrimSpace(line))
 	}
 	a.base = "http://" + addr
+	opened = true
 	return a, nil
 }
 
@@ -152,10 +184,19 @@ func addressOf(line string) string {
 	return ""
 }
 
+// close stops the toy this adapter started and removes the directory it made.
+//
+// THE CHILD DIES FIRST, which is the order and not an accident: the toy holds
+// state.json open and writes it, so removing the directory under a live toy
+// would race its last write. Kill then Wait then RemoveAll.
 func (a *adapter) close() {
 	if a.child != nil && a.child.Process != nil {
 		_ = a.child.Process.Kill()
 		_ = a.child.Wait()
+	}
+	if a.stateDir != "" {
+		_ = os.RemoveAll(a.stateDir)
+		a.stateDir = ""
 	}
 }
 
