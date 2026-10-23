@@ -1084,3 +1084,171 @@ func TestASubornedClaimLooksLikeTheHonestOne(t *testing.T) {
 	t.Logf("PROOF %d planted join(s) %v; %d honest %v", len(planted), planted[0].Handles,
 		len(honest), honest[0].Handles)
 }
+
+// THE WALK OBSERVES AFTER EVERY STEP, AND OBSERVING MOVES NOTHING. R5.5's two
+// halves (fable, coop r5/152): "after EVERY step, every declared observation
+// whose actor can make it", and "nothing drawn for it, so the handle sequence
+// and D1 are untouched".
+//
+// THE SECOND HALF IS THE ONE WORTH THE ARM. A walk that observed by DRAWING --
+// a handle, a receiver, anything off the Source -- would replay differently
+// from the same seed the moment observations were declared, and every seeded
+// arm written across R5.1 to R5.4 would quietly mean something else. So this
+// drives the same seed twice over two projects differing ONLY in whether
+// observations are declared, and requires the handle and kind sequences to be
+// identical.
+//
+// `event` AND `direct` BECAUSE THE SURFACE RECORDS IT: the fake's default
+// surface answers `event`, and a direct observation is the engine's own so it
+// needs no session -- which keeps this arm about the walk rather than about
+// token routing. An observation declaring no args is supportable at every step,
+// so the count is the step count exactly.
+func TestTheWalkObservesAfterEveryStepAndMovesNothing(t *testing.T) {
+	ctx := context.Background()
+	const seed = 20261023
+	const steps = 6
+
+	// A STATUTE THAT JUDGES THE OBSERVATION CONSISTENT, because this arm is
+	// about DRIFT and not about findings. The toy's statute defaults `finding`
+	// to `bug` for a query it does not recognise -- which is the statute working
+	// -- and a bug ENDS a walk (r5/152 ruling 2), so against it the observing
+	// run stops at step 1 and there are no two full sequences to compare. The
+	// preconditions are the ones walkProject's two actions name.
+	const quiet = `package rumor.statute
+
+default finding := "consistent"
+
+default may_create_event := true
+
+default may_join := true
+`
+	run := func(obs []bindings.Observation, salt string) schedule.Record {
+		t.Helper()
+		p := walkProject(t)
+		p.Statute = quiet
+		p.Observations = obs
+		sess, err := wire.Open(ctx, fakeSpawn("--id-salt", salt), 20*time.Second)
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		defer func() { _ = sess.Close() }()
+		rec, err := schedule.Walk(ctx, p, sess, seed, steps, 1)
+		if err != nil {
+			t.Fatalf("Walk (observations=%d): %v", len(obs), err)
+		}
+		return rec
+	}
+
+	without := run(nil, "noobs")
+	with := run([]bindings.Observation{{Name: "event", Source: wire.SourceDirect}}, "withobs")
+
+	// THE REACH FIRST: the observing run must actually have observed, or the
+	// equality below is two identical walks that both did nothing.
+	// THE FINDING GUARD COMES FIRST, because a stopped walk EXPLAINS a short
+	// count and the count alone reads as the observe step being broken. My
+	// first ordering reported "1 observation over 6 steps" when what had
+	// happened was a bug at step 1 ending the run exactly as ruled.
+	if with.Finding != nil {
+		t.Fatalf("the observing run found %v at step %d, so it stopped early: this arm needs a "+
+			"statute that judges the observation consistent", with.Finding.Says(), with.FoundAt)
+	}
+	if len(with.Steps) != steps {
+		t.Fatalf("the observing run took %d of %d step(s)", len(with.Steps), steps)
+	}
+	if with.Observations != steps {
+		t.Fatalf("the walk made %d observation(s) over %d step(s); one declared observation with "+
+			"no arguments is supportable at every step, so this arm has no subject",
+			with.Observations, steps)
+	}
+	if without.Observations != 0 {
+		t.Fatalf("a project declaring no observations made %d: the control is not a control",
+			without.Observations)
+	}
+
+	// AND NOTHING WAS APPENDED, which is r5/155's amendment driven rather than
+	// trusted: an observation is the check's INPUT and not a fact in the sealed
+	// prefix (vocabulary v1, ratified breakout-r2/13), so a walk that observed
+	// six times must leave ZERO `observed` facts behind. My first cut appended
+	// them and the ledger refused it; this arm is what stops that returning.
+	for _, f := range with.Facts {
+		if f.Kind == ledger.KindObserved {
+			t.Fatalf("the walk appended an `observed` fact at position %d: an observation is the "+
+				"check's input and not a fact in the sealed prefix", f.Position)
+		}
+	}
+
+	// THE PROPERTY: one seed, two projects, identical walks.
+	if strings.Join(with.HandleSequence(), ",") != strings.Join(without.HandleSequence(), ",") {
+		t.Errorf("declaring an observation moved the HANDLE sequence:\n  without %v\n  with    %v",
+			without.HandleSequence(), with.HandleSequence())
+	}
+	if strings.Join(with.KindSequence(), ",") != strings.Join(without.KindSequence(), ",") {
+		t.Errorf("declaring an observation moved the KIND sequence:\n  without %v\n  with    %v",
+			without.KindSequence(), with.KindSequence())
+	}
+	t.Logf("PROOF %d step(s), %d observation(s) with and %d without, one kind sequence %v",
+		steps, with.Observations, without.Observations, with.KindSequence())
+}
+
+// THE FIRST BUG ENDS THE WALK AND IS CARRIED, which is R5.5's ruling (2)
+// (fable, coop r5/152): "the first bug ends the run as a failure and is Shrink's
+// Want; consistent and explained walk on".
+//
+// I MET THIS BY ACCIDENT BEFORE I ARMED IT. The no-drift arm above first ran
+// against the toy's statute, which defaults `finding` to `bug` for a query it
+// does not recognise, and the observing run stopped at step 1 -- reported to me
+// as "1 observation over 6 steps", because that arm checked the COUNT before
+// the FINDING. The behaviour was right and the reading was wrong, which is why
+// it now has an arm of its own rather than a comment.
+//
+// THE BUG IS THE PRODUCT, NOT A COULD-NOT-RUN: Walk returns no error, the
+// Record carries the Finding whole -- because shrink.Request.Want takes a
+// Finding and not a value -- and FoundAt names the step after which it arrived.
+// A trace a shrink reads must INCLUDE that step, so the check happens after the
+// step is appended to the record.
+func TestTheFirstBugEndsTheWalkAndIsCarried(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+	// The toy's statute with an observation it does not recognise: `finding`
+	// falls to its default, which is `bug`.
+	p.Observations = []bindings.Observation{{Name: "event", Source: wire.SourceDirect}}
+
+	sess, err := wire.Open(ctx, fakeSpawn("--id-salt", "firstbug"), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	rec, err := schedule.Walk(ctx, p, sess, 20261023, 6, 1)
+	if err != nil {
+		t.Fatalf("a bug is the tool's product and must not be an error from Walk: %v", err)
+	}
+
+	if rec.Finding == nil {
+		t.Fatalf("no finding over %d step(s) and %d observation(s): this arm needs a statute whose "+
+			"finding is `bug`, and the toy's default is one", len(rec.Steps), rec.Observations)
+	}
+	if got := rec.Finding.Says(); got != "bug" {
+		t.Errorf("the walk stopped on %q; only `bug` ends a walk, and consistent and explained "+
+			"walk on", got)
+	}
+	if rec.FoundAt != len(rec.Steps) {
+		t.Errorf("FoundAt is %d and the trace holds %d step(s): the step that produced the finding "+
+			"must be IN the trace a shrink reads", rec.FoundAt, len(rec.Steps))
+	}
+	if len(rec.Steps) >= 6 {
+		t.Errorf("the walk took all %d step(s) despite a bug at step %d: the first bug ends it",
+			len(rec.Steps), rec.FoundAt)
+	}
+	// AND THE RECORD IS COMPLETE AT THE STOP, not half-built: a shrink reads
+	// Facts and IDs off it, and a walk that returned early without filling them
+	// would hand the shrinker an empty world.
+	if len(rec.Facts) == 0 {
+		t.Error("the record carries no facts, so a shrink has no world to replay")
+	}
+	if len(rec.IDs) == 0 {
+		t.Error("the record carries no ids, so nothing the walk bound can be resolved")
+	}
+	t.Logf("PROOF %q at step %d of a 6-step walk; %d step(s) in the trace, %d fact(s), %d id(s)",
+		rec.Finding.Says(), rec.FoundAt, len(rec.Steps), len(rec.Facts), len(rec.IDs))
+}

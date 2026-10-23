@@ -98,6 +98,10 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		Weights: prep.Platform.Weights,
 		Venire:  prep.Platform.Venire,
 		Roles:   brep.Bindings.Roles,
+		// THE OBSERVATIONS THE WALK MAKES (R5.5). A project declaring none is
+		// walked as before, which is what keeps every pre-R5.5 fixture's
+		// meaning.
+		Observations: brep.Bindings.Observations,
 	}
 
 	ctx := context.Background()
@@ -164,11 +168,15 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 	// token is acquired at first use and reused after, so a holder that
 	// re-acquired every step would send identical requests and the difference
 	// would be invisible to a reader. The number makes it readable.
+	// AND THE OBSERVATION COUNT, for the same reason one layer on (R5.5): a
+	// walk that observed NOTHING and a walk whose observations all agreed are
+	// the same five lines of trace, and the first has asked the system no
+	// question at all. A reader cannot tell them apart without this number.
 	if _, err := fmt.Fprintf(stdout,
-		"run: %s -- seed %d, %d step(s), %d handle(s), %d session(s); "+
-			"%d rollback provider(s) registered\n",
+		"run: %s -- seed %d, %d step(s), %d handle(s), %d session(s), "+
+			"%d observation(s); %d rollback provider(s) registered\n",
 		filepath.Base(dir), rec.Seed, len(rec.Steps), len(rec.HandleSequence()),
-		rec.Sessions, len(rollback.Registered())); err != nil {
+		rec.Sessions, rec.Observations, len(rollback.Registered())); err != nil {
 		_, _ = fmt.Fprintf(stderr, "run: writing the verdict: %v\n", err)
 		return 2
 	}

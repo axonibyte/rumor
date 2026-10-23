@@ -542,3 +542,62 @@ func TestCloseLetsTheAdapterCleanUpBeforeKilling(t *testing.T) {
 			"reaped by it, which is what being killed means)", took, wire.StopGrace, pid)
 	})
 }
+
+// SESSION.OBSERVE, DRIVEN AT ALL FOR THE FIRST TIME. rook measured it at
+// coop r5/153: the method is defined at internal/wire/session.go:168 and called
+// by NOTHING -- zero matches for `.Observe(` across both trees, tests included
+// -- so R5.5's ruling (1), an `api` observation through the acting actor's
+// session, had no coverage to extend. Their zeros are evidence rather than
+// silence because they carried known positives beside them (`.Pick(` in three
+// files, ObserveArgs seven calls in its own test).
+//
+// WHAT THIS DRIVES is the exchange and nothing above it: that an observe goes
+// out on a KEPT session, that the answer comes back decoded as an
+// ObserveResponse carrying the surface's value, that the id check holds across
+// an observe as it does across an execute, and that a fault envelope is an
+// ANSWER rather than a poison. Whether the walk composes the right request is
+// internal/schedule's, and whether the toy answers it is the toy's.
+func TestTheKeptSessionObserves(t *testing.T) {
+	sess := open(t, fakeSpawn())
+
+	// THE DEFAULT SURFACE IS THE ORACLE, not a number I chose: it records
+	// `event` and `attendance`, so an observation of `event` must come back
+	// with whatever that surface says and an unrecorded name must fault.
+	resp, err := sess.Observe(wire.ObserveRequest{Query: "event", Source: wire.SourceDirect})
+	if err != nil {
+		t.Fatalf("observing `event` through direct: %v", err)
+	}
+	if resp.Value == nil {
+		t.Errorf("the surface records `event`, so its value must come back; got nil")
+	}
+	first := resp.Value
+
+	// AND THE SESSION IS KEPT: a second observe on the same process answers
+	// again. Without this the arm above would pass against a client that
+	// spawned one adapter per request, which is the property Session exists for.
+	again, err := sess.Observe(wire.ObserveRequest{Query: "event", Source: wire.SourceDirect})
+	if err != nil {
+		t.Fatalf("second observe on the same session: %v", err)
+	}
+	if fmt.Sprint(again.Value) != fmt.Sprint(first) {
+		t.Errorf("one surface answered %v then %v for the same query", first, again.Value)
+	}
+
+	// AN UNRECORDED QUERY IS A FAULT AND NOT A POISON, which is the rule at the
+	// top of client.go: the session stays usable and the caller decides. Driven
+	// because an observation the project declares and the adapter does not is
+	// exactly what R5.5's walk will meet in the wild.
+	if _, err := sess.Observe(wire.ObserveRequest{Query: "no-such-observation",
+		Source: wire.SourceDirect}); err == nil {
+		t.Error("an observation this surface does not record must come back a fault")
+	}
+	after, err := sess.Observe(wire.ObserveRequest{Query: "event", Source: wire.SourceDirect})
+	if err != nil {
+		t.Fatalf("the session was poisoned by a FAULT, which is an answer and not a poison: %v", err)
+	}
+	if after.Value == nil {
+		t.Error("the session answered nil after a fault")
+	}
+	t.Logf("PROOF observe on a kept session: `event` -> %v twice, an unrecorded query faults, "+
+		"and the session still answers %v after it", first, after.Value)
+}

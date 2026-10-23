@@ -84,7 +84,19 @@ const root = "../.."
 // of quotes this tree makes, not of distinct sentences, because the sweep's job
 // is to notice a document that stopped saying something -- and it reported 0
 // absent here, as at every move above, refusing on the count alone.
-const declaredQuotes = 31
+// 31 -> 32 in R5.5: internal/schedule's observe step quotes the sealing rule,
+// "A ledger is sealed at a position before any check runs; the check reads the
+// sealed prefix", because the walk must seal before it evaluates an observation
+// as a check. Fifth move of the same shape: 0 absent, refused on the count.
+//
+// AND THE MOVE CAME WITH A CORRECTED ATTRIBUTION. The first version of that
+// comment credited this document with engine.Input's REFUSAL TEXT -- "seals a
+// prefix before any check runs, so this is a sequencing error and not an empty
+// result" -- and the sweep reported 32 against 31 with that line named and 1
+// absent. The count and the membership test catch different halves of one
+// mistake: the count says a quote moved, the membership says it was never the
+// document's.
+const declaredQuotes = 32
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would

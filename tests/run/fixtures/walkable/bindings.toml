@@ -44,10 +44,24 @@ touches = ["store"]
   source = "handle"
   of = "event"
 
+# THE NAME IS THE FAKE ADAPTER'S OWN, and it has to be. Until R5.5 a declared
+# observation was never MADE, so this fixture could name one its adapter does
+# not record and nothing noticed; the moment the walk began observing, every
+# arm here failed with "event_count is not recorded in this surface; it records
+# attendance, event". That is the adapter answering correctly -- a fault is
+# could-not-run (docs/contract.md) -- and an inconsistent fixture, not a reason
+# to let the walk skip an observation it cannot make.
+#
+# `attendance` AND `direct`: the fake's default surface records `event` through
+# api and `attendance` direct, and a direct observation needs no session, which
+# keeps this fixture about the `run` VERB rather than about token routing. The
+# statute here declares no `finding` rule, so the finding is UNDEFINED and no
+# walk stops on it -- which is what keeps these arms about the verb too.
 [[observation]]
-name = "event_count"
-source = "api"
+name = "attendance"
+source = "direct"
 of = "event.created"
+component = "store"
 
 [[role]]
 name = "member"

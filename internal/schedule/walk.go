@@ -29,6 +29,12 @@ type Project struct {
 	// actor's role holds the context an action needs. A project declaring none
 	// gets no role gate; HoldsContext states what that does and does not cover.
 	Roles []bindings.Role
+
+	// Observations are the bindings' [[observation]] entries, which the walk
+	// makes AFTER EVERY STEP (R5.5, issue 83; fable, coop r5/152). A project
+	// declaring none is walked exactly as before, which is how every suite
+	// written against R5.1-R5.4 keeps its meaning.
+	Observations []bindings.Observation
 }
 
 // Step is one step of a walk, RECORDED OVER HANDLES AND NEVER OVER IDS. That is
@@ -67,6 +73,13 @@ type Step struct {
 	// Planted says the step appended a planted claim -- a lie the engine knows
 	// it told, because it told it.
 	Planted bool
+
+	// Observed is how many declared observations this step supported. It is a
+	// COUNT and not the facts: the facts are in the ledger at this step's
+	// position, and a record carrying them twice would be two answers to one
+	// question. Zero is the ordinary case for a step whose subject no
+	// observation declares.
+	Observed int
 
 	// Hop is the tell this step made, where it made one: the receiver and the
 	// claim that travelled, as "guest_1 <- alice.event#1".
@@ -112,6 +125,25 @@ type Record struct {
 	// IT IS A COPY, taken through Facts(), so a reader cannot append to the
 	// attempt's ledger through the record it was handed.
 	Facts []ledger.Fact
+
+	// Observations is how many declared observations the attempt EVALUATED,
+	// across every step. It is here for Sessions' reason: otherwise a walk that
+	// observed NOTHING and a walk whose observations all agreed are the same
+	// record, and the first is a project the engine never asked a question of.
+	Observations int
+
+	// Finding is the first `bug` an observation yielded, and FoundAt is the
+	// step after which it did. Both zero means no observation found one.
+	//
+	// THE FIRST BUG ENDS THE WALK (fable, coop r5/152 ruling 2) and `consistent`
+	// or `explained` walk on. It is held here rather than returned as an error
+	// because a bug is the tool's PRODUCT and not a failure to run: the run did
+	// exactly what it is for, and `rumor run` reports it and exits non-zero
+	// while a could-not-run is a different thing entirely. It is also what
+	// shrink.Request.Want takes, which is why the whole Finding is kept and not
+	// its value.
+	Finding *engine.Finding
+	FoundAt int
 
 	// Sessions is how many `session` requests the attempt sent.
 	//
@@ -233,7 +265,37 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		if err := take(ctx, p, sess, sessions, l, table, mint, src, known, &step); err != nil {
 			return rec, fmt.Errorf("schedule: step %d: %s taking %s: %w", n, actor, kind, err)
 		}
+		// AND THE WALK OBSERVES, after every step (fable, coop r5/152). The
+		// facts go in the ledger at this step's position; nothing is drawn, so
+		// the step above replays identically with or without this call.
+		seen, oerr := observe(ctx, p.Statute, sess, sessions, table, p.Observations, l, &step)
+		if oerr != nil {
+			return rec, fmt.Errorf("schedule: step %d: %w", n, oerr)
+		}
+		step.Observed = len(seen)
+		rec.Observations += len(seen)
 		rec.Steps = append(rec.Steps, step)
+
+		// THE FIRST BUG ENDS IT. Checked after the step is recorded, so the
+		// trace a shrink reads includes the step that produced the finding --
+		// without it the reduction would search a world one step short of the
+		// one that broke.
+		for i := range seen {
+			if v, ok := seen[i].Value.(string); ok && v == findingBug {
+				f := seen[i]
+				rec.Finding = &f
+				rec.FoundAt = n
+				rec.Sessions = sessions.Acquired()
+				rec.Facts = l.Facts()
+				rec.IDs = map[string]string{}
+				for _, h := range table.Handles() {
+					if id, ok := table.ID(h); ok {
+						rec.IDs[h] = id
+					}
+				}
+				return rec, nil
+			}
+		}
 	}
 
 	rec.Sessions = sessions.Acquired()
@@ -246,6 +308,203 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	}
 	return rec, nil
 }
+
+// observe makes every declared observation this step can support, EVALUATES
+// each as a check against the sealed prefix, and returns the findings.
+//
+// NOTHING IS APPENDED, which is the ruling's amendment and not a detail. My
+// first cut wrote each observation into the ledger as an `observed` fact at the
+// step's position, which is what r5/152 said -- and it contradicts a rule fable
+// had RATIFIED themselves at breakout-r2/13 and which both docs state: "the
+// observation is the check's INPUT while the sealed prefix is the DATA ... once
+// the observation is not counted as part of the prefix" (vocabulary v1,
+// amended 2026-10-15; design.md:691). Measured beside the documents: zero
+// `observed` facts in any of the seventeen committed ledgers, and
+// ledger.KindObserved has validation and has never had a producer. The ledger
+// refused the append outright -- "the engine never writes a fact without one"
+// -- because a `direct` observation is nobody's view and has no actor to name.
+// Raised rather than implemented through; amended at r5/155.
+//
+// AFTER EVERY STEP, ruled by fable at coop r5/152. Not periodically and not at
+// the end: a count that disagrees with the store disagrees at a POSITION, and a
+// walk that observed only at the end could say a run is wrong without saying
+// when it became wrong -- which is the whole of what a shrink then has to
+// search for. A selective WHEN (settling, periodic reconciliation) is R8's
+// api-sim and deliberately not this.
+//
+// NOTHING IS DRAWN, which is the ruling's own clause and the reason D1 still
+// holds: the handle sequence and the kind sequence are what they were before
+// this existed, so every seeded walk replays identically and R5.1's arms keep
+// their meaning. An observation needing a `{kind}` therefore takes it from THE
+// STEP'S OWN HANDLES -- the minted one first, then what the step consumed,
+// which is `claimHandles`' list read for a second purpose -- and an observation
+// whose kind is not among them is simply not made at this step.
+//
+// THAT CHOICE IS MINE AND NOT THE RULING'S, so it is named here rather than
+// buried: fable settled WHEN, EVALUATION and REPLAY (r5/152) and not which
+// handle an argument resolves to. The alternatives were a draw (forbidden by
+// the ruling, and it would move every seeded walk), every bound handle of the
+// kind (an observation count per step that grows with the table, and a walk
+// that reads about entities the step never touched), or the newest of the kind
+// (the same answer as this one wherever the step minted one, and an arbitrary
+// one wherever it did not). The step's own subject is the one that answers "did
+// what just happened leave the system consistent".
+//
+// A SUBORN'S HANDLE IS UNBOUND AND SO ITS STEP OBSERVES NOTHING. ObserveArgs
+// resolves through handle.Table.Require, which refuses a handle with no id --
+// which is correct rather than unfortunate: the lie named an entity the system
+// never created, so there is nothing to ask the wire about, and asking would be
+// the "never ask the wire for a thing that does not exist" rule broken by a new
+// door.
+func observe(ctx context.Context, statute string, sess *wire.Session, sessions *Sessions,
+	table *handle.Table, obs []bindings.Observation, l *ledger.Ledger,
+	step *Step) ([]engine.Finding, error) {
+
+	if len(obs) == 0 {
+		return nil, nil
+	}
+	// THE PREFIX IS SEALED FIRST, which is what "against the sealed prefix"
+	// requires and what the vocabulary states: "A ledger is sealed at a
+	// position before any check runs; the check reads the sealed prefix."
+	//
+	// THE ATTRIBUTION HERE WAS WRONG AND tests/vocabulary CAUGHT IT. I first
+	// credited the document with "seals a prefix before any check runs, so this
+	// is a sequencing error and not an empty result" -- which is engine.Input's
+	// own REFUSAL TEXT and not a sentence the vocabulary contains. The sweep
+	// reported 32 quotes against a declared 31 and named the file and line. It
+	// is the second time I have credited this document with an error message,
+	// and the sweep is why neither reached a reader.
+	//
+	// engine.Input refuses an unsealed ledger outright, and the walk's own seal
+	// happens at the TOP of a step, so everything this step just appended is
+	// unsealed when we get here. Sealing to Len() makes the check's world
+	// exactly "everything that has happened, including this step", which is the
+	// only position at which "did what just happened leave the system
+	// consistent" is a question.
+	if err := l.SealAt(l.Len()); err != nil {
+		return nil, fmt.Errorf("sealing the prefix before observing after step %d: %w", step.N, err)
+	}
+
+	var made []engine.Finding
+	for _, decl := range obs {
+		chosen, ok := observeHandles(decl, table, step)
+		if !ok {
+			continue
+		}
+		args, err := ObserveArgs(decl, chosen, table)
+		if err != nil {
+			// A HANDLE THAT WILL NOT RESOLVE IS A SKIP AND NOT A REFUSAL, for
+			// the suborn reason above: the step named something unbound, so
+			// this observation has no subject at this position.
+			continue
+		}
+
+		// THE TOKEN IS THE SOURCE'S, which is the ruling's second clause: an
+		// `api` observation goes through the acting actor's own session, and a
+		// `direct` one is the engine's own and carries none.
+		var token string
+		if decl.Source == wire.SourceAPI || decl.Source == wire.SourceUI {
+			t, terr := sessions.Token(step.Actor, string(decl.Source))
+			if terr != nil {
+				// THE ACTOR CANNOT MAKE IT, which is "every declared
+				// observation whose actor CAN make it". An actor with no
+				// session in that context observes nothing through it, and
+				// that is the project's role model answering rather than a
+				// fault.
+				continue
+			}
+			token = t
+		}
+
+		resp, err := sess.Observe(wire.ObserveRequest{
+			Query: decl.Name, Source: decl.Source, Token: token, Args: args,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("observing %s (%s) after step %d: %w",
+				decl.Name, decl.Source, step.N, err)
+		}
+
+		// THE OBSERVER IS THE STEP'S ACTOR FOR api AND THE ENGINE FOR direct,
+		// which is what `role` then reads off: a direct observation bears no
+		// role, because it is nobody's view (engine.Input's own rule) and a
+		// statute's role_sees_subject reads its ABSENCE rather than a blank.
+		check := engine.Check{
+			Query:  decl.Name,
+			Of:     decl.Of,
+			Source: ledger.Source(decl.Source),
+			Value:  resp.Value,
+		}
+		if decl.Source != wire.SourceDirect {
+			check.Actor = step.Actor
+			if role, rok := RoleOf(step.Actor); rok {
+				check.Role = role
+			}
+		} else {
+			// A CHECK ALWAYS NAMES AN ACTOR -- engine.Input refuses one that
+			// does not, because "a finding is always some actor's". For a
+			// direct observation that actor is the one whose step produced the
+			// subject: the engine asks the store about what this actor just
+			// did. The ROLE is still omitted, which is the half that decides
+			// what a statute may see.
+			check.Actor = step.Actor
+		}
+
+		// THE ONE EVALUATOR, as a case's check goes through: a second path
+		// running statutes would be free to disagree, and a walk and a case
+		// contradicting each other about one world is what D14 exists to catch.
+		found, err := engine.Evaluate(ctx, statute, []string{engine.FindingRule}, l, check)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating %s (%s) after step %d: %w",
+				decl.Name, decl.Source, step.N, err)
+		}
+		made = append(made, found)
+	}
+	return made, nil
+}
+
+// observeHandles resolves an observation's declared argument names against THE
+// STEP'S OWN handles, by kind, drawing nothing.
+//
+// THE SECOND RETURN IS "THIS STEP CAN SUPPORT IT", not an error: an observation
+// the step has no subject for is not a fault, it is an observation for another
+// step.
+func observeHandles(decl bindings.Observation, table *handle.Table,
+	step *Step) (map[string]string, bool) {
+
+	if len(decl.Args) == 0 {
+		return nil, true
+	}
+	if table == nil {
+		return nil, false
+	}
+	// MINTED FIRST, THEN CONSUMED, which is claimHandles' order read for a
+	// second purpose: a join's own handle before the event it joined, so an
+	// observation declaring `event` takes the event and never the join.
+	candidates := make([]string, 0, len(step.Handles)+len(step.Used))
+	candidates = append(candidates, step.Handles...)
+	candidates = append(candidates, step.Used...)
+	chosen := map[string]string{}
+	for _, name := range decl.Args {
+		found := ""
+		for _, h := range candidates {
+			if kind, ok := handleKind(h); ok && kind == name {
+				found = h
+				break
+			}
+		}
+		if found == "" {
+			return nil, false
+		}
+		chosen[name] = found
+	}
+	return chosen, true
+}
+
+// findingBug is the one finding value a walk stops on. The four values are
+// docs/vocabulary.md's and `bug` is the only one that means the system and the
+// statute disagree; `consistent` and `explained` are a walk continuing, and
+// `pending` is R9's.
+const findingBug = "bug"
 
 // take performs one drawn kind: the honest action, or the lie.
 func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions,
