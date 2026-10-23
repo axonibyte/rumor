@@ -46,6 +46,14 @@ palter = 1
 suborn = 1
 essoin = 0
 
+# AND THE HONEST TELL, which is an ENGINE kind rather than a nemesis one: it
+# passes on a claim the run did NOT plant (fable, coop r5/114). Arm 19 requires
+# a weight for it on the same grounds as the four above -- the walk can draw it,
+# so absent is not zero. It is weighted beside the honest actions because it is
+# honest, and this package is a CASE corpus rather than a walked one, so the
+# number is here to be complete rather than to tune anything.
+tell = 1
+
 [[rollback]]
 provider = "doc-store-truncate"
 covers = ["some_other_store"]

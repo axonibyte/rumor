@@ -109,12 +109,29 @@ func TestFlowPlaceholdersComeOffTheCorpus(t *testing.T) {
 	}
 }
 
+// allKnown is "the actor knows every handle that is bound", which is what the
+// table-and-kind arms below mean to hold constant.
+//
+// WHY IT EXISTS. R5.4 scoped Resolvable to the handles the ACTOR knows of
+// (fable, coop r5/114), so the function now answers an intersection. These arms
+// were written about the TABLE and the KIND and still are: handing them a known
+// set equal to the table leaves exactly one variable each. The knowledge
+// dimension is NOT covered here -- it has its own arms below, and this helper
+// is the line between them.
+func allKnown(t *testing.T, tab *handle.Table) []string {
+	t.Helper()
+	if tab == nil {
+		return nil
+	}
+	return tab.Handles()
+}
+
 // AN ACTION THAT NAMES NO HANDLE NEEDS NOTHING. This arm's comment used to say
 // a flow reference was the ONLY way an action names a handle, which R5.4's
 // `[[action.args]]` made false: an argument with `source = "handle"` is the
 // other way, and the arm below drives it.
 func TestResolvableIsTrueWhereNothingIsNeeded(t *testing.T) {
-	ok, kind := schedule.Resolvable(bindings.Action{Name: "create_event"}, nil)
+	ok, kind := schedule.Resolvable(bindings.Action{Name: "create_event"}, nil, nil)
 	if !ok {
 		t.Errorf("an action with no flow and no arguments needs no handle; got a complaint "+
 			"about %q", kind)
@@ -128,7 +145,7 @@ func TestResolvableIsTrueWhereNothingIsNeeded(t *testing.T) {
 		{Name: "capacity", Source: bindings.ArgDraw, From: []any{int64(1)}},
 		{Name: "name", Source: bindings.ArgActor},
 	}}
-	if ok, kind := schedule.Resolvable(only, nil); !ok {
+	if ok, kind := schedule.Resolvable(only, nil, nil); !ok {
 		t.Errorf("literal, draw and actor arguments need no handle; got a complaint about %q", kind)
 	}
 }
@@ -143,7 +160,7 @@ func TestResolvableCountsAHandleArgument(t *testing.T) {
 		{Name: "event", Source: bindings.ArgHandle, Of: "event"},
 	}}
 
-	if ok, kind := schedule.Resolvable(a, nil); ok || kind != "event" {
+	if ok, kind := schedule.Resolvable(a, nil, nil); ok || kind != "event" {
 		t.Errorf("with no table: ok=%v kind=%q, want false and event", ok, kind)
 	}
 
@@ -156,14 +173,14 @@ func TestResolvableCountsAHandleArgument(t *testing.T) {
 	}
 	// A BOUND HANDLE OF ANOTHER KIND DOES NOT SATISFY IT, the control that
 	// keeps this from passing on any non-empty table.
-	if ok, kind := schedule.Resolvable(a, tab); ok || kind != "event" {
+	if ok, kind := schedule.Resolvable(a, tab, allKnown(t, tab)); ok || kind != "event" {
 		t.Errorf("a bound USER handle must not satisfy an argument needing an event: ok=%v kind=%q",
 			ok, kind)
 	}
 	if err := tab.Bind("member_2.event#1", "e-1"); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
-	if ok, kind := schedule.Resolvable(a, tab); !ok {
+	if ok, kind := schedule.Resolvable(a, tab, allKnown(t, tab)); !ok {
 		t.Errorf("a bound event handle must satisfy it; got a complaint about %q", kind)
 	}
 }
@@ -179,7 +196,7 @@ func TestAnArgumentsKindIsNamedBeforeAFlows(t *testing.T) {
 	if got := schedule.HandleKindsNeeded(a); len(got) != 2 || got[0] != "user" || got[1] != "event" {
 		t.Errorf("HandleKindsNeeded = %v, want [user event]", got)
 	}
-	if ok, kind := schedule.Resolvable(a, nil); ok || kind != "user" {
+	if ok, kind := schedule.Resolvable(a, nil, nil); ok || kind != "user" {
 		t.Errorf("ok=%v kind=%q, want false and the argument's kind user", ok, kind)
 	}
 }
@@ -203,7 +220,7 @@ func TestAKindNeededTwiceIsListedOnce(t *testing.T) {
 func TestResolvableNamesTheUnresolvedKind(t *testing.T) {
 	a := bindings.Action{Name: "join_event_ui", Flow: []bindings.Step{{Step: "navigate", To: "/ui/events/{event}"}}}
 
-	ok, kind := schedule.Resolvable(a, nil)
+	ok, kind := schedule.Resolvable(a, nil, nil)
 	if ok || kind != "event" {
 		t.Errorf("with no table at all: ok=%v kind=%q, want false and event", ok, kind)
 	}
@@ -212,7 +229,7 @@ func TestResolvableNamesTheUnresolvedKind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handle.New: %v", err)
 	}
-	if ok, kind := schedule.Resolvable(a, empty); ok || kind != "event" {
+	if ok, kind := schedule.Resolvable(a, empty, allKnown(t, empty)); ok || kind != "event" {
 		t.Errorf("with nothing bound: ok=%v kind=%q, want false and event", ok, kind)
 	}
 
@@ -225,14 +242,14 @@ func TestResolvableNamesTheUnresolvedKind(t *testing.T) {
 	if err := other.Bind("member_1.user#1", "u-1"); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
-	if ok, kind := schedule.Resolvable(a, other); ok || kind != "event" {
+	if ok, kind := schedule.Resolvable(a, other, allKnown(t, other)); ok || kind != "event" {
 		t.Errorf("a bound USER handle must not satisfy a flow needing an event: ok=%v kind=%q", ok, kind)
 	}
 
 	if err := other.Bind("member_1.event#1", "e-1"); err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
-	if ok, kind := schedule.Resolvable(a, other); !ok {
+	if ok, kind := schedule.Resolvable(a, other, allKnown(t, other)); !ok {
 		t.Errorf("a bound event handle must satisfy it; got a complaint about %q", kind)
 	}
 }

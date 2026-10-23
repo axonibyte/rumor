@@ -372,11 +372,11 @@ weight the project never declared, or a usage error.
 $ rumor run tests/run/fixtures/walkable --seed 42 --steps 5
 run: seed 42
 run:   1 member_1 create_event [member_1.event#1]
-run:   2 member_1 join_event [member_1.join_event#1] <- [member_1.event#1]
-run:   3 member_2 create_event [member_2.event#1]
-run:   4 member_1 create_event [member_1.event#2]
-run:   5 member_1 create_event [member_1.event#3]
-run: walkable -- seed 42, 5 step(s), 5 handle(s), 2 session(s); 1 rollback provider(s) registered
+run:   2 member_1 tell -> member_2 <- member_1.event#1
+run:   3 member_1 join_event [member_1.join_event#1] <- [member_1.event#1]
+run:   4 member_1 join_event [member_1.join_event#2] <- [member_1.event#1]
+run:   5 member_1 create_event [member_1.event#2]
+run: walkable -- seed 42, 5 step(s), 4 handle(s), 1 session(s); 1 rollback provider(s) registered
 ```
 
 `join_event` cannot appear at step 1, and two separate things say so: its

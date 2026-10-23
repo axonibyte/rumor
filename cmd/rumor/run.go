@@ -135,8 +135,23 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		if len(s.Used) > 0 {
 			used = fmt.Sprintf(" <- %v", s.Used)
 		}
-		if _, err := fmt.Fprintf(stdout, "run: %3d %s %s%s %v%s\n",
-			s.N, s.Actor, kind, mark, s.Handles, used); err != nil {
+		// AND WHO WAS TOLD, for a step that told somebody. A tell mints no
+		// handle and consumes none, so without this the line reads
+		// `member_1 tell []` and the drill cannot see whether the actor that
+		// joined was the actor that was told.
+		if s.Hop != "" {
+			used = fmt.Sprintf(" -> %s", s.Hop)
+		}
+		// AN EMPTY HANDLE LIST IS OMITTED rather than printed as `[]`: a step
+		// that minted nothing is a telling step, and `tell [] -> guest_1` reads
+		// as a list that failed to fill rather than one there was never
+		// anything to put in.
+		minted := ""
+		if len(s.Handles) > 0 {
+			minted = fmt.Sprintf(" %v", s.Handles)
+		}
+		if _, err := fmt.Fprintf(stdout, "run: %3d %s %s%s%s%s\n",
+			s.N, s.Actor, kind, mark, minted, used); err != nil {
 			_, _ = fmt.Fprintf(stderr, "run: writing the trace: %v\n", err)
 			return 2
 		}

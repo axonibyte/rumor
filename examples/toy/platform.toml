@@ -65,6 +65,20 @@ leave_event = 12
 delete_event = 12
 join_event_ui = 12
 
+# THE HONEST TELL, which is an ENGINE kind and not a nemesis one: it passes on a
+# claim the run did not plant (fable, coop r5/114). It is weighted in the HONEST
+# band because it is honest, and toward the bottom of it for the reason
+# create_user is light -- it is applicable to any actor holding any claim, so it
+# is contested in a wide pool and does not need help to be drawn.
+#
+# WITHOUT IT A WALK CANNOT TELL THE TRUTH. Before R5.4 the only `told` the walk
+# appended was canard's, so a lie could travel and an honest claim could not,
+# and an actor could act only on what it had made itself. With the handle draw
+# now scoped to what an actor knows, that is the difference between a join by a
+# second actor and a self-join: seed 6's step 8 was the first and became the
+# second when the draw was scoped.
+tell = 9
+
 # THE FOUR NEMESIS KINDS, which arm 19 requires a weight for: absent is not
 # zero (fable, coop r4/125 and r5/49). `essoin` abandons a flow mid-way and the
 # engine has no flow state until R9, so it is declared at ZERO -- in the pool,

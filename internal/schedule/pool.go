@@ -29,12 +29,29 @@ const (
 	Canard = "canard"
 	Palter = "palter"
 	Essoin = "essoin"
+
+	// Tell is the HONEST kind, and it is not one of the four above: a tell
+	// passes on a claim the run did not plant. fable ruled it into R5.4 at coop
+	// r5/114 as canard's mirror, weighted in the honest band because it is
+	// honest. It is listed in PoolKinds and deliberately NOT in NemesisKinds.
+	Tell = "tell"
 )
 
 // NemesisKinds in a fixed order. The order does not reach the draw -- Pick
 // sorts by kind for D1's reason -- but a fixed slice keeps the REFUSALS below
 // reproducible, since the first undeclared weight is the one reported.
 var NemesisKinds = []string{Suborn, Canard, Palter, Essoin}
+
+// PoolKinds is every kind the ENGINE puts in the pool beside a project's own
+// actions: the four nemesis kinds and the honest tell.
+//
+// IT EXISTS BECAUSE "NEMESIS KIND" STOPPED BEING THE SAME SET AS "ENGINE KIND"
+// when R5.4 added the honest tell. Every reader asking "does this name belong
+// to the engine rather than to the project" wants THIS list -- a weight must
+// exist for each, and `rumor validate` pairs them -- while readers asking "is
+// this a lie" still want NemesisKinds, which stays the four docs/design.md
+// names in one breath and which tests/validate pins to that sentence.
+var PoolKinds = append(append([]string{}, NemesisKinds...), Tell)
 
 // Pool is the candidate set for one step of the walk: every applicable action
 // and every applicable nemesis kind, each carrying the weight platform.toml
@@ -59,10 +76,10 @@ var NemesisKinds = []string{Suborn, Canard, Palter, Essoin}
 // count is fable's -- but a silent double-weight is worse than an early error.
 func Pool(ctx context.Context, statute string, actions []bindings.Action, l *ledger.Ledger,
 	actor string, w platform.Weights, stage, profile string, t *handle.Table,
-	roles []bindings.Role) ([]Candidate, error) {
+	roles []bindings.Role, known, actors []string) ([]Candidate, error) {
 
 	reserved := map[string]bool{}
-	for _, k := range NemesisKinds {
+	for _, k := range PoolKinds {
 		reserved[k] = true
 	}
 	for _, a := range actions {
@@ -115,7 +132,7 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 		return nil, err
 	}
 
-	out := make([]Candidate, 0, len(app)+len(NemesisKinds))
+	out := make([]Candidate, 0, len(app)+len(PoolKinds))
 	add := func(kind string) error {
 		v, ok := w.Weight(stage, profile, kind)
 		if !ok {
@@ -135,9 +152,19 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 	// inapplicable, not drawn-and-then-refused -- a suborn mints a handle for
 	// an action that never ran, and the walk must never ask the wire for a
 	// thing that does not exist.
+	//
+	// AND THE HANDLE MUST BE ONE THIS ACTOR KNOWS OF, which is R5.4's close of
+	// the narrowing Resolvable's own comment had declared and left open (fable,
+	// coop r5/114).
+	//
+	// `known` IS THE CALLER'S AND NOT READ HERE, so the pool and the step that
+	// follows it quantify over ONE set. Reading it twice -- once to decide the
+	// pool and once to compose the draw -- would be two answers to one
+	// question, and the pool offering an action whose draw then refuses is
+	// exactly the defect being closed.
 	usable := make([]bindings.Action, 0, len(app))
 	for _, a := range app {
-		if ok, kind := Resolvable(a, t); !ok {
+		if ok, kind := Resolvable(a, t, known); !ok {
 			_ = kind
 			continue
 		}
@@ -150,8 +177,8 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 			return nil, err
 		}
 	}
-	for _, k := range NemesisKinds {
-		live, err := nemesisApplicable(k, app, l, actor)
+	for _, k := range PoolKinds {
+		live, err := engineKindApplicable(k, app, l, actor, actors)
 		if err != nil {
 			return nil, err
 		}
@@ -188,15 +215,37 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 // the engine gains at R9. It keeps a declared weight in platform.toml -- zero in
 // the toy -- so the weight table stays complete and arm 19's new cell can pair
 // it, and it is simply never drawn until R9 gives it something to abandon.
-func nemesisApplicable(kind string, app []bindings.Action, l *ledger.Ledger, actor string) (bool, error) {
+func engineKindApplicable(kind string, app []bindings.Action, l *ledger.Ledger, actor string,
+	actors []string) (bool, error) {
+
+	// BOTH TELLING KINDS CARRY THE RECEIVER HALF, which neither did at first.
+	// A subject nobody still needs is not a tell anybody can make, and leaving
+	// that to the step aborted three walks in eighty. Tellable is the same
+	// function the step draws through, so the gate and the draw cannot answer
+	// differently.
 	switch kind {
+	case Tell:
+		subjects, err := engine.TellSubjects(l, actor)
+		if err != nil {
+			return false, fmt.Errorf("schedule: tell's precondition for %s: %w", actor, err)
+		}
+		live, err := Tellable(l, actors, actor, subjects)
+		if err != nil {
+			return false, fmt.Errorf("schedule: tell's receiver half for %s: %w", actor, err)
+		}
+		return len(live) > 0, nil
 	case Canard:
 		subjects, err := engine.CanardSubjects(l, actor)
 		if err != nil {
 			return false, fmt.Errorf("schedule: canard's precondition for %s: %w", actor, err)
 		}
-		return len(subjects) > 0, nil
-
+		live, err := Tellable(l, actors, actor, subjects)
+		if err != nil {
+			return false, fmt.Errorf("schedule: canard's receiver half for %s: %w", actor, err)
+		}
+		return len(live) > 0, nil
+	}
+	switch kind {
 	case Suborn:
 		// AN APPLICABLE ACTION THAT EMITS SOMETHING. `app` is already the
 		// actions whose preconditions hold for this actor, so the honest half

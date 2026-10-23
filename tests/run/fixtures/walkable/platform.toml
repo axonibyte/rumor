@@ -35,3 +35,13 @@ suborn = 0
 canard = 0
 palter = 0
 essoin = 0
+
+# THE HONEST TELL IS WEIGHTED AND THE FOUR ABOVE ARE NOT, which is not an
+# inconsistency: the reason they are zero is that an unimplemented effect would
+# refuse the run by name, and `tell` IS implemented (fable, coop r5/114). It
+# also cannot be zero here. At zero the kind stays APPLICABLE -- any actor
+# holding any claim can tell -- so a step whose only candidate is `tell` yields
+# a pool that is non-empty and entirely zero, which Pick refuses rather than
+# skips, and the verb under test would fail for a reason that is not about the
+# verb.
+tell = 1

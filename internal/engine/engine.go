@@ -604,6 +604,98 @@ func KnownAt(l *ledger.Ledger, actor string) ([]string, error) {
 	return known, nil
 }
 
+// KnownHandlesAt is every handle NAMED by a claim `actor` knows at the seal.
+//
+// IT IS KnownAt's HANDLE-LEVEL SIBLING, and fable named KnownAt as the
+// instrument for scoping a `handle` argument (coop r5/114). KnownAt answers in
+// REFS; a `handle` argument is answered in handles, and the two are not the
+// same set once a claim names more than its own ref. A walked `event.joined`
+// carries `["member_1.join_event#1", "member_1.event#1"]` since r5/105, so an
+// actor told that join knows OF the event -- by ref it would know only the
+// join. Scoping on refs alone would make a told actor unable to act on what it
+// was told, which is the opposite of the defect being closed.
+//
+// ONE PATH, not a second reading of the ledger: it goes through the same
+// sealForPrecondition and knownAtSeal that KnownAt and PreconditionInput take,
+// for the reason stated on CanardSubjects -- a second computation of what an
+// actor knows would be free to disagree with the first.
+//
+// IT READS ledger.Fact.Handles AND NOT THE STATUTE PROJECTION, because the
+// projection does not carry handles yet: fable ruled it at r5/16 and
+// docs/design.md says plainly that "the engine does not do it yet". The ledger
+// has carried the field all along, so this needs no projection change and makes
+// no claim about one.
+func KnownHandlesAt(l *ledger.Ledger, actor string) ([]string, error) {
+	known, err := KnownAt(l, actor)
+	if err != nil {
+		return nil, err
+	}
+	is := make(map[string]bool, len(known))
+	for _, ref := range known {
+		is[ref] = true
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, f := range l.SealedPrefix() {
+		if f.Kind != ledger.KindClaim || !is[f.Ref] {
+			continue
+		}
+		for _, h := range f.Handles {
+			if h == "" || seen[h] {
+				continue
+			}
+			seen[h] = true
+			out = append(out, h)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// TellSubjects answers the honest tell's precondition: the claims `actor` knows
+// that the run did NOT plant.
+//
+// IT IS CanardSubjects' MIRROR AND DIFFERS IN TWO CLAUSES, both deliberate.
+// fable ruled the kind at coop r5/114 as "the drawn actor passes a claim it
+// holds (honest, not planted) to an actor who does not yet know it".
+//
+//  1. NOT PLANTED, where canard requires planted. That is the whole difference
+//     between a lie travelling and a claim travelling, and it is why the two
+//     are separately weighted: how often honest claims travel is a different
+//     question about a crowd from how often lies do.
+//
+//  2. AUTHORSHIP IS NOT EXCLUDED, where canard excludes it. A canard is a tell
+//     "by an actor that is not the claim's author" because passing on your own
+//     lie is just lying. An honest tell by the author is the ordinary case and
+//     the one the corpus carries by hand: honest-count's position 4 is alice
+//     telling bob of alice's own event, which is what makes bob able to join
+//     it. Excluding the author would leave the kind unable to do the one thing
+//     the examples use it for.
+//
+// THE RECEIVER HALF IS NOT HERE, as it is not in CanardSubjects: this answers
+// "has this actor anything to pass on", and whether anybody still needs telling
+// is about the OTHER actors, which the pool cannot see. See tell() for that
+// half and for the gap it leaves.
+func TellSubjects(l *ledger.Ledger, actor string) ([]string, error) {
+	known, err := KnownAt(l, actor)
+	if err != nil {
+		return nil, err
+	}
+	is := make(map[string]bool, len(known))
+	for _, ref := range known {
+		is[ref] = true
+	}
+	var out []string
+	for _, f := range l.SealedPrefix() {
+		if f.Kind != ledger.KindClaim || f.Planted || !is[f.Ref] {
+			continue
+		}
+		out = append(out, f.Ref)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 // CanardSubjects answers canard's precondition, which docs/design.md states and
 // docs/vocabulary.md's v1 row confirms is "a weight and a precondition over the
 // kinds above, not a fact kind and not a tag". A canard is a tell that PASSES

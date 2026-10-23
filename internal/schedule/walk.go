@@ -67,6 +67,17 @@ type Step struct {
 	// Planted says the step appended a planted claim -- a lie the engine knows
 	// it told, because it told it.
 	Planted bool
+
+	// Hop is the tell this step made, where it made one: the receiver and the
+	// claim that travelled, as "guest_1 <- alice.event#1".
+	//
+	// IT IS HERE BECAUSE A TELLING STEP IS OTHERWISE INVISIBLE. `canard` and
+	// `tell` mint no handle and move no system, so the trace printed
+	// `member_1 tell []` -- the kind's name and nothing else. D15's reach half
+	// asks for "an honest tell and a join by the TOLD actor" (fable, coop
+	// r5/114), and that cannot be read off a trace which does not say who was
+	// told. The same blindness hid canard's hop for the whole of R5.1.
+	Hop string
 }
 
 // Record is one attempt's walk.
@@ -185,8 +196,18 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		}
 		actor := actors[ai]
 
+		// WHAT THIS ACTOR KNOWS, read ONCE for the step and handed to both the
+		// pool and the step itself. Two reads of the same question would be two
+		// answers that could differ -- and the pool offering an action whose
+		// draw then refuses is precisely the defect this scoping closes, so the
+		// one place it must not be reintroduced is here.
+		known, err := engine.KnownHandlesAt(l, actor)
+		if err != nil {
+			return rec, fmt.Errorf("schedule: step %d: the handles %s knows: %w", n, actor, err)
+		}
+
 		pool, err := Pool(ctx, p.Statute, p.Actions, l, actor, p.Weights, p.Stage, p.Profile, table,
-			p.Roles)
+			p.Roles, known, actors)
 		if err != nil {
 			return rec, fmt.Errorf("schedule: step %d: the pool for %s: %w", n, actor, err)
 		}
@@ -200,7 +221,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		}
 
 		step := Step{N: n, Actor: actor, Kind: kind}
-		if err := take(ctx, p, sess, sessions, l, table, mint, src, &step); err != nil {
+		if err := take(ctx, p, sess, sessions, l, table, mint, src, known, &step); err != nil {
 			return rec, fmt.Errorf("schedule: step %d: %s taking %s: %w", n, actor, kind, err)
 		}
 		rec.Steps = append(rec.Steps, step)
@@ -219,11 +240,14 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 
 // take performs one drawn kind: the honest action, or the lie.
 func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions,
-	l *ledger.Ledger, table *handle.Table, mint *minter, src *Source, step *Step) error {
+	l *ledger.Ledger, table *handle.Table, mint *minter, src *Source, known []string,
+	step *Step) error {
 
 	switch step.Kind {
 	case Canard:
 		return canard(l, src, p, step)
+	case Tell:
+		return tell(l, src, p, step)
 	case Suborn:
 		return suborn(ctx, p, l, mint, src, step)
 	case Palter:
@@ -233,7 +257,7 @@ func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions
 		// `visible_to` argument is that field. ibis hit the refusal from the
 		// other end driving the toy (coop r5/88): seed 4242 reaches step 3 and
 		// step 3 draws palter.
-		return palter(ctx, p, sess, sessions, l, table, mint, src, step)
+		return palter(ctx, p, sess, sessions, l, table, mint, src, known, step)
 	case Essoin:
 		// STILL UNREACHABLE AND STILL A REFUSAL rather than a skip: fable ruled
 		// at coop r5/58 that a drawn kind whose effect is unimplemented is
@@ -249,7 +273,7 @@ func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions
 		return fmt.Errorf("%q is neither a declared action nor a nemesis kind, and the pool it "+
 			"came from is built from those two sets alone", step.Kind)
 	}
-	return honest(ctx, sess, sessions, l, table, mint, src, a, step)
+	return honest(ctx, sess, sessions, l, table, mint, src, a, known, step)
 }
 
 // honest executes the action against the system under test and records what it
@@ -274,7 +298,8 @@ type performed struct {
 // copy would be free to drift in the token, the arg order or the binding, which
 // are exactly the parts a reader would assume identical.
 func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
-	table *handle.Table, mint *minter, src *Source, a bindings.Action, step *Step) (performed, error) {
+	table *handle.Table, mint *minter, src *Source, a bindings.Action, known []string,
+	step *Step) (performed, error) {
 	_ = ctx
 	var out performed
 
@@ -283,7 +308,7 @@ func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
 	// run that composed in the other order would walk differently from the same
 	// seed. Stated here because it is the kind of thing a later edit reorders
 	// without noticing.
-	chosen, err := chooseHandles(a, src, table)
+	chosen, err := chooseHandles(a, src, table, known)
 	if err != nil {
 		return out, err
 	}
@@ -368,8 +393,9 @@ func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
 // honest executes the action against the system under test and records what it
 // emitted, truthfully.
 func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledger.Ledger,
-	table *handle.Table, mint *minter, src *Source, a bindings.Action, step *Step) error {
-	done, err := perform(ctx, sess, sessions, table, mint, src, a, step)
+	table *handle.Table, mint *minter, src *Source, a bindings.Action, known []string,
+	step *Step) error {
+	done, err := perform(ctx, sess, sessions, table, mint, src, a, known, step)
 	if err != nil {
 		return err
 	}
@@ -432,6 +458,7 @@ func suborn(ctx context.Context, p Project, l *ledger.Ledger, mint *minter, src 
 // engine.CanardSubjects answers exactly that -- and the receiver is drawn from
 // the actors who do not hold it yet, because telling somebody what they already
 // know passes nothing on.
+// canard passes on a LIE: a planted claim the actor knows and did not author.
 func canard(l *ledger.Ledger, src *Source, p Project, step *Step) error {
 	subjects, err := engine.CanardSubjects(l, step.Actor)
 	if err != nil {
@@ -441,24 +468,88 @@ func canard(l *ledger.Ledger, src *Source, p Project, step *Step) error {
 		return fmt.Errorf("canard was drawn for %s with no planted claim it knows and did not "+
 			"author: its precondition held when the pool was built and does not now", step.Actor)
 	}
-	si, err := src.IntN(len(subjects))
-	if err != nil {
-		return fmt.Errorf("drawing which planted claim travels: %w", err)
-	}
-	ref := subjects[si]
+	// A CANARD IS TAGGED, because the run planted what travelled and the
+	// control in the vocabulary reads that tag.
+	return pass(l, src, p, step, subjects, "planted claim", true)
+}
 
-	actors, err := Actors(p.Venire)
+// tell passes on a CLAIM: an honest one the actor knows, authored by anybody
+// including itself.
+//
+// IT IS THE MIRROR OF canard AND SHARES ITS APPEND, which is fable's own
+// instruction at coop r5/114 -- "canard's append is the code path, with an
+// honest subject and no tag". The two differ in the subject they draw from and
+// in whether the hop is tagged, and in nothing else; a second copy of the
+// receiver draw would be free to disagree about who still needs telling.
+//
+// WHY THE KIND EXISTS AT ALL, measured. Before it, the walk's ONLY
+// ledger.KindTold append was canard's, so a lie could travel and an honest
+// claim never could -- an actor could know only what it had made itself. I
+// claimed from that that a join by a second actor was unreachable (coop r5/106)
+// and was wrong about the count: the walk reached one anyway, through a handle
+// draw that was not scoped to knowledge (ratchet r5/107, ibis r5/111). With
+// that draw now scoped, the claim is true again by construction -- seed 6's
+// step 8 became a self-join -- so the kind is what makes a told actor able to
+// act on what it was told, and what lets a walk produce an `explained` finding
+// at all.
+//
+// IT IS HONEST, so it is weighted in the honest band and is NOT a nemesis kind:
+// NemesisKinds stays the four docs/design.md names in one breath, which
+// tests/validate pins to that sentence.
+func tell(l *ledger.Ledger, src *Source, p Project, step *Step) error {
+	subjects, err := engine.TellSubjects(l, step.Actor)
 	if err != nil {
 		return err
 	}
-	var receivers []string
+	if len(subjects) == 0 {
+		return fmt.Errorf("tell was drawn for %s with no honest claim it knows: its precondition "+
+			"held when the pool was built and does not now", step.Actor)
+	}
+	return pass(l, src, p, step, subjects, "claim", false)
+}
+
+// Tellable is the subset of `subjects` that somebody still needs telling of.
+//
+// IT IS THE RECEIVER HALF, AND IT IS A PRECONDITION AND NOT A HOPE. The first
+// cut of the honest tell left this to pass() alone and said so in a comment --
+// "both kinds can be drawn and then refuse ... named rather than left". Driven
+// over 80 seeds it aborted the walk in THREE of 77 completing runs: a telling
+// step drawn for an actor whose only honest claim everybody already held. D15
+// asks for ten steps and no refusal, so a 4% abort is not a named gap, it is a
+// flaky drill. The measurement is what changed the decision.
+//
+// IT SERVES BOTH KINDS, because canard had the identical hole: its own error
+// said the pool "cannot see" the receiver half. Fixing tell and leaving canard
+// drawn-and-refusable would be the same defect in one function with two
+// answers.
+//
+// AND IT FEEDS THE DRAW AS WELL AS THE GATE, through the same function: a draw
+// over subjects the gate did not vet could still land on one with no receiver.
+func Tellable(l *ledger.Ledger, actors []string, actor string, subjects []string) ([]string, error) {
+	var out []string
+	for _, ref := range subjects {
+		who, err := receiversFor(l, actors, actor, ref)
+		if err != nil {
+			return nil, err
+		}
+		if len(who) > 0 {
+			out = append(out, ref)
+		}
+	}
+	return out, nil
+}
+
+// receiversFor is every actor other than `actor` that does not already hold
+// `ref`, sorted -- D1's rule, so the set and not a loop's order decides.
+func receiversFor(l *ledger.Ledger, actors []string, actor, ref string) ([]string, error) {
+	var out []string
 	for _, cand := range actors {
-		if cand == step.Actor {
+		if cand == actor {
 			continue
 		}
 		known, err := engine.KnownAt(l, cand)
 		if err != nil {
-			return fmt.Errorf("what %s knows: %w", cand, err)
+			return nil, fmt.Errorf("what %s knows: %w", cand, err)
 		}
 		holds := false
 		for _, k := range known {
@@ -468,16 +559,62 @@ func canard(l *ledger.Ledger, src *Source, p Project, step *Step) error {
 			}
 		}
 		if !holds {
-			receivers = append(receivers, cand)
+			out = append(out, cand)
 		}
 	}
-	// SORTED, for D1's reason one noun over: the receiver must be a function of
-	// the seed and the SET, not of the order a loop happened to build it in.
-	sort.Strings(receivers)
+	sort.Strings(out)
+	return out, nil
+}
+
+// pass is the hop both telling kinds make: draw which claim travels, draw a
+// receiver who does not already hold it, and append the `told`. The system
+// never moves.
+//
+// THE RECEIVER HALF IS NOT IN THE POOL and that is a gap this kind INHERITS
+// rather than introduces. A kind's precondition here is "has the teller
+// anything to pass on"; whether anybody still needs telling is about the other
+// actors, which nemesisApplicable cannot see without the venire. So both kinds
+// can be drawn and then refuse, which is the shape Resolvable exists to prevent
+// arriving by a third door. Named rather than left: closing it means handing
+// Pool the actor list, and that is a signature change past what fable ruled
+// (r5/114) -- raised in the same post as this commit.
+//
+// `tagged` IS planted ON THE HOP AND ON THE STEP, not on the claim: the claim
+// was already planted or already honest before this ran, and a tell does not
+// change what it is.
+func pass(l *ledger.Ledger, src *Source, p Project, step *Step, subjects []string,
+	what string, tagged bool) error {
+
+	actors, err := Actors(p.Venire)
+	if err != nil {
+		return err
+	}
+	// ONLY SUBJECTS SOMEBODY STILL NEEDS, and the same function the pool asked
+	// with. Drawing first and discovering the receiver set empty afterwards is
+	// the drawn-and-then-refused shape, which cost three aborted walks in
+	// eighty before this filter existed.
+	live, err := Tellable(l, actors, step.Actor, subjects)
+	if err != nil {
+		return err
+	}
+	if len(live) == 0 {
+		return fmt.Errorf("every other actor already holds each %s %s knows, so there is nobody "+
+			"to pass one to: the pool asked Tellable and got a non-empty answer, so the world "+
+			"moved between the pool and this step", what, step.Actor)
+	}
+	si, err := src.IntN(len(live))
+	if err != nil {
+		return fmt.Errorf("drawing which %s travels: %w", what, err)
+	}
+	ref := live[si]
+
+	receivers, err := receiversFor(l, actors, step.Actor, ref)
+	if err != nil {
+		return err
+	}
 	if len(receivers) == 0 {
-		return fmt.Errorf("every other actor already holds %s, so there is nobody for %s to pass "+
-			"it on to: canard's precondition is about the teller and this is the receiver half, "+
-			"which the pool cannot see", ref, step.Actor)
+		return fmt.Errorf("Tellable offered %s and it has no receiver: the filter and the draw "+
+			"disagree, which they cannot, since both ask receiversFor", ref)
 	}
 	ri, err := src.IntN(len(receivers))
 	if err != nil {
@@ -492,7 +629,10 @@ func canard(l *ledger.Ledger, src *Source, p Project, step *Step) error {
 	}); err != nil {
 		return fmt.Errorf("recording the hop from %s to %s: %w", step.Actor, receivers[ri], err)
 	}
-	step.Planted = true
+	step.Hop = fmt.Sprintf("%s <- %s", receivers[ri], ref)
+	if tagged {
+		step.Planted = true
+	}
 	return nil
 }
 
@@ -657,26 +797,24 @@ func claimHandles(minted string, used []string) []string {
 // an action out of the pool until every kind it names has a bound handle, so
 // reaching here with none means applicability and composition disagree -- which
 // is worth a refusal naming both halves rather than a step that merely fails.
-func chooseHandles(a bindings.Action, src *Source, table *handle.Table) (map[string]string, error) {
+func chooseHandles(a bindings.Action, src *Source, table *handle.Table,
+	known []string) (map[string]string, error) {
 	var chosen map[string]string
 	for _, arg := range a.Args {
 		if arg.Source != bindings.ArgHandle {
 			continue
 		}
-		var candidates []string
-		if table != nil {
-			for _, h := range table.Handles() {
-				if kind, ok := handleKind(h); ok && kind == arg.Of {
-					candidates = append(candidates, h)
-				}
-			}
-		}
+		// THE SAME SET Resolvable ASKED ABOUT, through the same function. Two
+		// intersections computed apart would let the pool offer an action whose
+		// draw then refuses, which is the shape the refusal below reports and
+		// the shape this scoping was added to close.
+		candidates := UsableHandles(table, known, arg.Of)
 		if len(candidates) == 0 {
 			return nil, fmt.Errorf("schedule: %s declares argument %q as a handle of kind %q and "+
-				"no handle of that kind is bound: Resolvable should have held this action out of "+
-				"the pool, so applicability and composition disagree", a.Name, arg.Name, arg.Of)
+				"this actor knows of no bound handle of that kind: Resolvable should have held "+
+				"this action out of the pool, so applicability and composition disagree",
+				a.Name, arg.Name, arg.Of)
 		}
-		sort.Strings(candidates)
 		if src == nil {
 			return nil, fmt.Errorf("schedule: choosing a %q handle for %s's argument %q needs the "+
 				"run's generator: a choice made some other way would not replay from the seed",
@@ -804,13 +942,14 @@ func palterable(a bindings.Action) bool {
 // would be caught by the statute as malformed instead of as a visibility
 // defect.
 func palter(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions,
-	l *ledger.Ledger, table *handle.Table, mint *minter, src *Source, step *Step) error {
+	l *ledger.Ledger, table *handle.Table, mint *minter, src *Source, known []string,
+	step *Step) error {
 
 	a, err := lieAbout(ctx, p, l, src, step.Actor, palterable)
 	if err != nil {
 		return err
 	}
-	done, err := perform(ctx, sess, sessions, table, mint, src, a, step)
+	done, err := perform(ctx, sess, sessions, table, mint, src, a, known, step)
 	if err != nil {
 		return err
 	}

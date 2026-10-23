@@ -342,6 +342,49 @@ description with no action under it.
 > NOT as a check sees them**" below. The measurement stands; the remedy was
 > mine and wrong.
 
+**The honest `tell` is a pool kind too, and it is not a nemesis kind.** R5.4
+added it (fable, coop r5/114) as `canard`'s mirror: the drawn actor passes a
+claim it HOLDS — one the run did not plant — to an actor who does not yet know
+it, appended as a `told`, and the system never moves. It differs from `canard`
+in two clauses and nothing else. The subject must be UNPLANTED, which is the
+whole difference between a claim travelling and a lie travelling and the reason
+the two are weighted apart. And AUTHORSHIP IS NOT EXCLUDED, where canard
+excludes it: passing on your own lie is just lying, while telling of your own
+event is the ordinary case and the one the corpus carries by hand —
+honest-count's position 4 is alice telling bob of alice's own event, which is
+what makes bob able to join it.
+
+It is weighted in the HONEST band because it is honest, and it is listed in
+`PoolKinds` rather than `NemesisKinds`: readers asking "does this name belong to
+the engine" want the first, and `rumor validate` pairs weights against it, while
+readers asking "is this a lie" still want the second, which stays the four
+`docs/design.md` names in one breath.
+
+**Why it had to exist.** Before it, the walk's only `told` was canard's, so a
+lie could travel and an honest claim could not, and an actor could act only on
+what it had made itself. With the handle draw now scoped, that is the difference
+between a join by a second actor and a self-join: seed 6's step 8 was the first
+and became the second the moment the draw was scoped. Without the kind a walk
+can also produce no `explained` finding at all, since `explained` is what an
+observer's knowledge not having reached it looks like.
+
+**Both telling kinds carry the receiver half in the pool**, and that was
+measured rather than reasoned. The first cut left it to the step and said so in
+a comment — a subject nobody still needs telling of is not a tell anybody can
+make, but the pool "cannot see" the other actors. Driven over eighty seeds it
+aborted the walk in THREE of seventy-seven completing runs: a telling step drawn
+for an actor whose only claim everybody already held. D15 asks for ten steps and
+no refusal, so a 4% abort is not a named gap but a flaky drill. `Tellable` now
+gates both kinds and filters the draw through one function, which also closes
+`canard`'s identical hole — its own error message had admitted it.
+
+**A weight of zero on `tell` is not the same as the kind not existing.** The
+kind is applicable to any actor holding any claim, so a step whose only
+candidate is `tell` yields a pool that is non-empty and entirely ZERO — which
+`Pick` refuses rather than skips, where before such a step had an empty pool and
+the walk recorded a no-op and carried on. So a project declaring `tell = 0`
+turns a skipped step into an aborted walk. Reported rather than worked around.
+
 **An undeclared weight is refused, not read as zero.** Zero means never chosen
 and the project decided it; absent means nobody did. Defaulting either way
 would stop the walk's composition being a function of the weight file, and
@@ -428,6 +471,29 @@ role is looked up -- so a missing `[[role]]` and a world permitting nothing were
 the same answer again, which is the fault the refusal exists to prevent. Running
 the gate first also narrows honestly: a precondition is no longer evaluated for
 an action this role could never take.
+
+**And a `handle` argument resolves only to a handle the ACTOR knows of.** The
+fourth half, closed in R5.4 after the walk reached the gap. `Arg.Of` has always
+been documented as resolving to "an id the ACTOR knows of" and the engine did
+not do it: the handle table is global to the attempt, so any bound handle of the
+right kind satisfied the argument. `Resolvable`'s own comment stated the
+narrowing and promised a filter "one layer up" that was never built — ratchet
+read it correctly as a declared narrowing rather than an oversight (coop
+r5/109), which is what it was, and mine. The walk then reached it: seed 6's
+step 8 had `guest_1` join `member_1.event#1`, an event nothing had told it of,
+because `knows_of_subject` passed on guest_1's OWN event while the draw took
+member_1's (ibis, r5/111). fable ruled the scoping into the engine at r5/114 —
+"the precondition and the argument quantify over one set" — so a walk can never
+pass `may_join` on event A and send event B.
+
+The instrument is `engine.KnownHandlesAt`, which is `KnownAt` read at the level
+of handles rather than refs: a claim names more than its own ref since r5/105,
+so an actor told a join knows OF the event, and scoping on refs alone would
+leave a told actor unable to act on what it was told. One function,
+`UsableHandles`, answers it for both readers — the pool asks whether the set is
+non-empty and the draw draws from it, and two intersections computed apart would
+put back the drawn-and-then-refused shape this closes.
+
 
 **A claim's handle is the single `creates` entry, else the action's own name**
 (coop r5/62): `member_1.event#1` for `create_event`, `member_1.join_event#1`

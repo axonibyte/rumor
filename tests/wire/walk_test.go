@@ -54,6 +54,22 @@ func walkProject(t *testing.T) schedule.Project {
 				"create_event": 4, "join_event": 1,
 				schedule.Suborn: 0, schedule.Canard: 0,
 				schedule.Palter: 0, schedule.Essoin: 0,
+				// THE HONEST TELL AT ZERO, declared and never drawn. R5.4 put
+				// it in the pool (fable, coop r5/114), and an undeclared weight
+				// is REFUSED rather than read as zero -- so a fixture omitting
+				// it fails on the weight file and not on its subject. Zero
+				// rather than a number because these arms are about handles,
+				// visibility and the role gate: drawing a kind they do not
+				// measure would move every walk they assert on, for nothing.
+				// A ONE AND NOT A ZERO, which these arms measured for me. At zero
+				// the kind is still APPLICABLE -- any actor holding any claim
+				// can tell -- so a step whose only candidate was `tell` gave a
+				// pool that was non-empty and entirely zero, and Pick refuses
+				// that rather than skipping it. Before this kind existed such a
+				// step had an EMPTY pool and the walk recorded a no-op and
+				// carried on, so `tell = 0` turns a skipped step into an
+				// aborted walk. Reported to fable rather than worked around.
+				schedule.Tell: 1,
 			},
 		},
 		Venire: []platform.Member{{Role: "member", Count: 2}},

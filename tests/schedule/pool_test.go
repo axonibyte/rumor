@@ -18,6 +18,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/handle"
+	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 )
@@ -27,6 +28,46 @@ import (
 // actor is `observer`, which is not a name Actors() could mint (<role>_<n>), so
 // a declared role list could not be matched to it anyway. Passing none means the
 // gate is not exercised HERE -- it has its own arms, named for it, below.
+
+// knownFor is what the walk hands Pool: the handles this actor knows at the
+// seal, through the same engine.KnownHandlesAt the walk calls.
+//
+// IT IS THE REAL ANSWER AND NOT THE WHOLE TABLE. R5.4 scoped a `handle`
+// argument to the handles the ACTOR knows of (fable, coop r5/114), and an arm
+// that handed Pool every bound handle would be testing the world before that
+// close while claiming to test the one after. Where an arm's own guard then
+// reports an empty pool, the arm is telling the truth about the new behaviour.
+func knownFor(t *testing.T, l *ledger.Ledger, actor string) []string {
+	t.Helper()
+	known, err := engine.KnownHandlesAt(l, actor)
+	if err != nil {
+		t.Fatalf("the handles %s knows: %v", actor, err)
+	}
+	return known
+}
+
+// toyActors is the toy's venire, which is the actor list the walk hands Pool.
+//
+// WHY THESE ARMS PASS IT RATHER THAN THEIR OWN FIXTURE'S NAMES. R5.4 gave both
+// telling kinds a receiver half -- a subject nobody still needs telling of is
+// not a tell anybody can make -- and that half is about the OTHER actors. The
+// case ledgers these arms read are alice/bob/carol worlds, and the venire is
+// admin_1/member_1/member_2/guest_1, none of whom know anything in them: so
+// every subject has a receiver and the receiver half is satisfied without
+// affecting what these arms measure. It has its OWN arm, named for it, which
+// drives the half that matters.
+func toyActors(t *testing.T) []string {
+	t.Helper()
+	rep, err := platform.Load(toy+"/platform.toml", decl.TOML)
+	if err != nil || !rep.OK() {
+		t.Fatalf("the toy's platform: %v %v", err, rep.Refusals)
+	}
+	actors, err := schedule.Actors(rep.Platform.Venire)
+	if err != nil {
+		t.Fatalf("the toy's actors: %v", err)
+	}
+	return actors
+}
 
 // toyActions is the toy's declared actions, loaded the way the walk would.
 func toyActions(t *testing.T) []bindings.Action {
@@ -175,7 +216,7 @@ func TestPoolCarriesActionsAndApplicableNemesisKinds(t *testing.T) {
 	l, _, observer := sealedToy(t, "honest-count")
 	w := withNemesis(toyWeights(t), 2)
 
-	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil)
+	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t))
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -195,21 +236,35 @@ func TestPoolCarriesActionsAndApplicableNemesisKinds(t *testing.T) {
 	// bound makes the action inapplicable, exactly as an unresolvable {kind}
 	// in a flow does. The cell below binds one and watches it come back, so
 	// this is an assertion about resolvability rather than a shrunken want.
-	want := []string{"create_event", "palter", "suborn"}
+	// AND `tell` JOINED THIS SET IN R5.4, which is the honest kind's whole
+	// point: bob knows two claims the run did not plant, and the venire holds
+	// four actors none of whom know them, so there is both something to pass on
+	// and somebody who still needs it. canard stays OUT of the same pool on the
+	// same fixture, which is the pair worth seeing in one want -- the two kinds
+	// differ on plantedness and here that difference is the whole difference.
+	want := []string{"create_event", "palter", "suborn", "tell"}
 	if strings.Join(kinds(got), ",") != strings.Join(want, ",") {
-		t.Fatalf("the pool at honest-count's seal is %v; want %v (canard out on its precondition, "+
-			"essoin out until R9, both weighted 2 here; leave_event out until an event handle "+
-			"resolves its declared arg)", kinds(got), want)
+		t.Fatalf("the pool at honest-count's seal is %v; want %v (canard out on its precondition "+
+			"and tell IN on its mirror, essoin out until R9, all weighted here; leave_event out "+
+			"until an event handle resolves its declared arg)", kinds(got), want)
 	}
 
 	// THE CONTROL FOR THAT EXCLUSION, without which the want above would pass
 	// over a Pool that dropped leave_event for any reason at all: bind one
 	// event handle and the action must return.
+	// THE HANDLE IS alice'S AND NOT THE OBSERVER'S, which R5.4's scoping makes
+	// the difference between a control and a no-op. A `handle` argument now
+	// resolves only to a handle the ACTOR knows of (fable, coop r5/114), and
+	// honest-count's observer is bob: bob was TOLD alice.event#1 at position 4
+	// and bob's own join claim names it, so bob knows it. `bob.event#1` -- what
+	// this bound before -- is a handle bob never created and was never told,
+	// so binding it left the action correctly inapplicable and this control
+	// failed loudly rather than passing on nothing.
 	withEvent := tbl(t)
-	if err := withEvent.Bind(observer+".event#1", "e-99"); err != nil {
+	if err := withEvent.Bind("alice.event#1", "e-99"); err != nil {
 		t.Fatalf("binding an event handle: %v", err)
 	}
-	back, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", withEvent, nil)
+	back, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", withEvent, nil, knownFor(t, l, observer), toyActors(t))
 	if err != nil {
 		t.Fatalf("Pool with a bound event handle: %v", err)
 	}
@@ -263,7 +318,7 @@ func TestCanardEntersThePoolWhereItsPreconditionHolds(t *testing.T) {
 	}
 	w := withNemesis(toyWeights(t), 3)
 
-	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil)
+	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t))
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -298,7 +353,7 @@ func TestAnUndeclaredWeightIsRefusedRatherThanAssumedZero(t *testing.T) {
 			"evidence about suborn in particular")
 	}
 
-	_, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil)
+	_, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t))
 	if err == nil {
 		t.Fatal("a kind the walk will draw with no declared weight must be refused, not invented")
 	}
@@ -317,7 +372,7 @@ func TestAnActionNamedLikeANemesisKindIsRefused(t *testing.T) {
 	l, _, observer := sealedToy(t, "honest-count")
 	acts := append(toyActions(t), bindings.Action{Name: schedule.Suborn, Requires: []string{"may_leave"}})
 
-	_, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 1), "", "", tbl(t), nil)
+	_, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 1), "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t))
 	if err == nil {
 		t.Fatal("an action named `suborn` must be refused: the pool is keyed by kind")
 	}
@@ -352,7 +407,7 @@ func TestSubornAndPalterNeedAnApplicableEmittingAction(t *testing.T) {
 			"cannot reach the precondition it is about")
 	}
 
-	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 2), "", "", tbl(t), nil)
+	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 2), "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t))
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -374,7 +429,7 @@ func TestEssoinIsNeverOfferedBeforeR9(t *testing.T) {
 	for _, name := range []string{"honest-count", "planted-join"} {
 		l, _, observer := sealedToy(t, name)
 		got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer,
-			withNemesis(toyWeights(t), 7), "", "", tbl(t), nil)
+			withNemesis(toyWeights(t), 7), "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t))
 		if err != nil {
 			t.Fatalf("%s: Pool: %v", name, err)
 		}
@@ -418,7 +473,7 @@ func TestAnActionWhoseFlowHandleCannotResolveIsInapplicable(t *testing.T) {
 
 	// NOTHING BOUND: the flow's {event} resolves to no id, so the action is out.
 	empty := tbl(t)
-	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", empty, nil)
+	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", empty, nil, knownFor(t, l, observer), toyActors(t))
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -433,11 +488,19 @@ func TestAnActionWhoseFlowHandleCannotResolveIsInapplicable(t *testing.T) {
 	// resolves -- and now it must be offered. Without this cell the assertion
 	// above would pass over a Pool that excluded the action for any reason at
 	// all, including a precondition I had got wrong.
+	// THE HANDLE IS alice'S AND NOT THE OBSERVER'S, which R5.4's scoping makes
+	// the difference between a control and a no-op. A `handle` argument now
+	// resolves only to a handle the ACTOR knows of (fable, coop r5/114), and
+	// honest-count's observer is bob: bob was TOLD alice.event#1 at position 4
+	// and bob's own join claim names it, so bob knows it. `bob.event#1` -- what
+	// this bound before -- is a handle bob never created and was never told,
+	// so binding it left the action correctly inapplicable and this control
+	// failed loudly rather than passing on nothing.
 	bound := tbl(t)
-	if err := bound.Bind(observer+".event#1", "e-99"); err != nil {
+	if err := bound.Bind("alice.event#1", "e-99"); err != nil {
 		t.Fatalf("binding an event handle: %v", err)
 	}
-	got, err = schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", bound, nil)
+	got, err = schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", bound, nil, knownFor(t, l, observer), toyActors(t))
 	if err != nil {
 		t.Fatalf("Pool with a bound handle: %v", err)
 	}
@@ -493,7 +556,7 @@ func TestAnActionInAnUnheldContextIsInapplicable(t *testing.T) {
 
 	// BASELINE: the role holds BOTH contexts, so nothing is gated out.
 	both := []bindings.Role{{Name: "member", Contexts: []string{"api", "ui"}}}
-	before, err := schedule.Pool(ctx, statute(t), acts, l, actor, w, "", "", tbl(t), both)
+	before, err := schedule.Pool(ctx, statute(t), acts, l, actor, w, "", "", tbl(t), both, knownFor(t, l, actor), toyActors(t))
 	if err != nil {
 		t.Fatalf("Pool with both contexts held: %v", err)
 	}
@@ -505,7 +568,7 @@ func TestAnActionInAnUnheldContextIsInapplicable(t *testing.T) {
 	// AND THE SAME CALL WITH ui NOT HELD: the moved action is gone and the
 	// others are untouched.
 	apiOnly := []bindings.Role{{Name: "member", Contexts: []string{"api"}}}
-	after, err := schedule.Pool(ctx, statute(t), acts, l, actor, w, "", "", tbl(t), apiOnly)
+	after, err := schedule.Pool(ctx, statute(t), acts, l, actor, w, "", "", tbl(t), apiOnly, knownFor(t, l, actor), toyActors(t))
 	if err != nil {
 		t.Fatalf("Pool with ui unheld: %v", err)
 	}
@@ -562,7 +625,7 @@ func TestAnUndeclaredRoleRefusesRatherThanEmptyingThePool(t *testing.T) {
 
 	// CELL 1: the actor holds a user, so `api` actions are applicable.
 	withUser := sealedToyWithUserFor(t, "member_1")
-	_, err := schedule.Pool(ctx, statute(t), toyActions(t), withUser, "member_1", w, "", "", tbl(t), other)
+	_, err := schedule.Pool(ctx, statute(t), toyActions(t), withUser, "member_1", w, "", "", tbl(t), other, knownFor(t, withUser, "member_1"), toyActors(t))
 	if err == nil {
 		t.Fatal("a declaration naming only `admin` was read as `member` holding no context")
 	}
@@ -578,7 +641,7 @@ func TestAnUndeclaredRoleRefusesRatherThanEmptyingThePool(t *testing.T) {
 	// -- otherwise an applicable `api` action is present and cell 2 would reach
 	// the gate the old way, proving nothing about the ordering.
 	member := []bindings.Role{{Name: "member", Contexts: []string{"api"}}}
-	ok, err := schedule.Pool(ctx, statute(t), toyActions(t), noUser, "member_1", w, "", "", tbl(t), member)
+	ok, err := schedule.Pool(ctx, statute(t), toyActions(t), noUser, "member_1", w, "", "", tbl(t), member, knownFor(t, noUser, "member_1"), toyActors(t))
 	if err != nil {
 		t.Fatalf("Pool for an actor with no user and a declared role: %v", err)
 	}
@@ -599,7 +662,7 @@ func TestAnUndeclaredRoleRefusesRatherThanEmptyingThePool(t *testing.T) {
 		}
 	}
 
-	_, err = schedule.Pool(ctx, statute(t), toyActions(t), noUser, "member_1", w, "", "", tbl(t), other)
+	_, err = schedule.Pool(ctx, statute(t), toyActions(t), noUser, "member_1", w, "", "", tbl(t), other, knownFor(t, noUser, "member_1"), toyActors(t))
 	if err == nil {
 		t.Fatal("an actor nothing `api` is applicable to got a pool and no refusal, so a missing " +
 			"[[role]] and a world permitting nothing are still the same answer")
@@ -607,4 +670,190 @@ func TestAnUndeclaredRoleRefusesRatherThanEmptyingThePool(t *testing.T) {
 	if !strings.Contains(err.Error(), "member") {
 		t.Errorf("the refusal must name the role it could not find; got %v", err)
 	}
+}
+
+// A HANDLE THE ACTOR DOES NOT KNOW OF DOES NOT RESOLVE ITS ARGUMENT, which is
+// R5.4's close of the narrowing `Resolvable`'s own comment had declared and left
+// open. fable ruled it at coop r5/114: "the precondition and the argument
+// quantify over one set", so a walk can never pass `may_join` on event A and
+// send event B.
+//
+// IT IS A DIFFERENTIAL OVER ONE VARIABLE: the same statute, ledger, actor,
+// weights and roles, two handle tables that differ only in WHOSE event is
+// bound. honest-count's observer is bob, who was told `alice.event#1` at
+// position 4; `carol.event#1` is an event of nobody's that bob was never told.
+// An arm asserting a fixed set would move whenever the toy's weights moved and
+// would not say that KNOWLEDGE was what removed the action.
+//
+// WHY THIS IS THE DEFECT AND NOT A TIGHTENING. Seed 6 step 8 had `guest_1` join
+// `member_1.event#1` -- an event nothing had told it of -- because
+// `knows_of_subject` passed on guest_1's OWN event while the draw took
+// member_1's (ibis, coop r5/111). The precondition and the argument were
+// quantifying over different sets, so the walk sent the wire an id the actor
+// had no business naming, and `Arg.Of`'s own documented promise -- "an id the
+// ACTOR knows of" -- was false of the engine.
+func TestAHandleTheActorDoesNotKnowDoesNotResolve(t *testing.T) {
+	ctx := context.Background()
+	l, _, observer := sealedToy(t, "honest-count")
+	w := withNemesis(toyWeights(t), 2)
+	known := knownFor(t, l, observer)
+
+	// THE PREMISE, MEASURED: bob knows alice's event and not carol's. Without
+	// this the two cells below could differ for some other reason entirely.
+	if !slices.Contains(known, "alice.event#1") {
+		t.Fatalf("%s does not know alice.event#1 (%v), so the KNOWN cell below is not about "+
+			"knowledge", observer, known)
+	}
+	if slices.Contains(known, "carol.event#1") {
+		t.Fatalf("%s knows carol.event#1 (%v), so the UNKNOWN cell below has no subject",
+			observer, known)
+	}
+
+	pool := func(bind string) []string {
+		t.Helper()
+		table := tbl(t)
+		if err := table.Bind(bind, "e-99"); err != nil {
+			t.Fatalf("binding %s: %v", bind, err)
+		}
+		got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", table,
+			nil, known, toyActors(t))
+		if err != nil {
+			t.Fatalf("Pool with %s bound: %v", bind, err)
+		}
+		return kinds(got)
+	}
+
+	withKnown := pool("alice.event#1")
+	withUnknown := pool("carol.event#1")
+
+	// leave_event declares `event` as a handle argument, so it is the action
+	// whose applicability turns on this and nothing else.
+	const needsHandle = "leave_event"
+	if !slices.Contains(withKnown, needsHandle) {
+		t.Fatalf("%q is absent with a KNOWN event bound (%v), so this arm cannot show knowledge "+
+			"removing it", needsHandle, withKnown)
+	}
+	if slices.Contains(withUnknown, needsHandle) {
+		t.Errorf("%q is present with only an UNKNOWN event bound (%v): the draw would send %s an "+
+			"id it was never told of, which is the promise Arg.Of makes and the engine did not keep",
+			needsHandle, withUnknown, observer)
+	}
+
+	// AND NOTHING ELSE MOVED, over the project's ACTIONS. Nemesis kinds ride an
+	// applicable action's precondition (fable r5/49), so they are derived and
+	// not independent -- the same bound the role-gate arm carries, for the same
+	// reason.
+	nemesis := map[string]bool{schedule.Suborn: true, schedule.Canard: true,
+		schedule.Palter: true, schedule.Essoin: true}
+	for _, k := range withKnown {
+		if k == needsHandle || nemesis[k] {
+			continue
+		}
+		if !slices.Contains(withUnknown, k) {
+			t.Errorf("binding an unknown event also removed %q, which needs no event handle: "+
+				"known %v, unknown %v", k, withKnown, withUnknown)
+		}
+	}
+	t.Logf("PROOF %s knows %v; pool with alice's event %v, with carol's %v",
+		observer, known, withKnown, withUnknown)
+}
+
+// THE HONEST TELL AND CANARD SEPARATE ON PLANTEDNESS AND ON AUTHORSHIP, and
+// planted-join separates all three actors on exactly those two clauses. One
+// fixture, both kinds, because the pair is the point: before R5.4 the walk's
+// only `told` was canard's, so a lie could travel and an honest claim could not.
+//
+// THE FIXTURE, READ AND NOT ASSUMED -- my first version of this arm asserted
+// that carol had something to tell, which is false, and the arm failed on its
+// own premise rather than on the subject:
+//
+//	alice  owns alice.event#1 (honest); told bob.join#1 (honest) and
+//	       carol.join#1 (PLANTED)        -> tells 2, canards 1
+//	bob    told alice.event#1 (honest); owns bob.join#1 (honest)
+//	                                     -> tells 2, canards 0
+//	carol  owns carol.join#1 (PLANTED), told nothing
+//	                                     -> tells 0, canards 0
+//
+// SO EACH CELL IS ONE CLAUSE. alice's tells must EXCLUDE carol.join#1 though it
+// knows it: that is plantedness. alice's canard must INCLUDE it: that is the
+// same clause read the other way. bob canards nothing though it knows two
+// claims: plantedness again, from the other side. carol tells nothing though it
+// knows a claim: an actor holding only a lie has nothing honest to pass on,
+// which is the clause in its purest form. And carol canards nothing because it
+// AUTHORED the lie -- the clause tell deliberately does not have, since an
+// actor telling of its own event is the ordinary case and the one honest-count
+// carries by hand at position 4.
+func TestTheHonestTellAndCanardSeparateOnPlantedness(t *testing.T) {
+	l, _, _ := sealedToy(t, "planted-join")
+
+	tells := func(actor string) []string {
+		t.Helper()
+		got, err := engine.TellSubjects(l, actor)
+		if err != nil {
+			t.Fatalf("%s's tell subjects: %v", actor, err)
+		}
+		return got
+	}
+	canards := func(actor string) []string {
+		t.Helper()
+		got, err := engine.CanardSubjects(l, actor)
+		if err != nil {
+			t.Fatalf("%s's canard subjects: %v", actor, err)
+		}
+		return got
+	}
+
+	// THE PREMISE, MEASURED: the fixture holds both a planted claim and honest
+	// ones, or no cell below is about plantedness.
+	var planted, honest int
+	for _, f := range l.SealedPrefix() {
+		if f.Kind != ledger.KindClaim {
+			continue
+		}
+		if f.Planted {
+			planted++
+		} else {
+			honest++
+		}
+	}
+	if planted == 0 || honest == 0 {
+		t.Fatalf("planted-join holds %d planted and %d honest claim(s); this arm needs both",
+			planted, honest)
+	}
+
+	aliceTells, aliceCanards := tells("alice"), canards("alice")
+	if len(aliceTells) != 2 {
+		t.Errorf("alice knows two honest claims (its own event and bob's join), so it has two to "+
+			"tell; got %v", aliceTells)
+	}
+	if slices.Contains(aliceTells, "carol.join#1") {
+		t.Errorf("carol.join#1 is PLANTED and alice knows it, but a tell passes on a claim the "+
+			"run did NOT plant: %v", aliceTells)
+	}
+	if !slices.Contains(aliceCanards, "carol.join#1") {
+		t.Errorf("alice knows carol's planted claim and did not author it, so it is exactly a "+
+			"canard's subject; got %v", aliceCanards)
+	}
+	if !slices.Contains(aliceTells, "alice.event#1") {
+		t.Errorf("alice cannot tell of the event it created itself (%v), which is the ordinary "+
+			"case and the clause canard has and tell must not", aliceTells)
+	}
+
+	if got := canards("bob"); len(got) != 0 {
+		t.Errorf("bob knows no planted claim, so it has no canard to make; got %v", got)
+	}
+	if got := tells("bob"); len(got) != 2 {
+		t.Errorf("bob knows two honest claims, so it has two to tell; got %v", got)
+	}
+
+	if got := tells("carol"); len(got) != 0 {
+		t.Errorf("carol knows ONLY the lie it authored, so it has nothing honest to pass on; "+
+			"got %v", got)
+	}
+	if got := canards("carol"); len(got) != 0 {
+		t.Errorf("carol AUTHORED the planted claim, so passing it on is not a canard; got %v", got)
+	}
+
+	t.Logf("PROOF alice tells %v canards %v; bob tells %v canards %v; carol tells %v canards %v",
+		aliceTells, aliceCanards, tells("bob"), canards("bob"), tells("carol"), canards("carol"))
 }

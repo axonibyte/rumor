@@ -77,7 +77,7 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 		}
 	}
 	act := declared(action)
-	nemesis := declared(NemesisKinds)
+	nemesis := declared(PoolKinds)
 	role := map[string]bool{}
 	for _, r := range b.Roles {
 		role[r.Name] = true
@@ -123,7 +123,7 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 	for kind := range p.Weights.Default {
 		if !act[kind] && !nemesis[kind] {
 			note("platform.toml: [weights.default] names %s: no action of that name in bindings.toml, "+
-				"and it is not a nemesis kind", kind)
+				"and it is not a kind the engine draws", kind)
 		}
 	}
 
@@ -144,9 +144,9 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 			note("bindings.toml: action %s: no weight for it in [weights.default], and absent is not zero", name)
 		}
 	}
-	for _, kind := range NemesisKinds {
+	for _, kind := range PoolKinds {
 		if _, ok := p.Weights.Default[kind]; !ok {
-			note("platform.toml: the nemesis kind %s has no weight in [weights.default], and absent is not zero", kind)
+			note("platform.toml: the engine kind %s has no weight in [weights.default], and absent is not zero", kind)
 		}
 	}
 
@@ -290,6 +290,22 @@ func arm19Observations(rep *Report, b bindings.Bindings, d wire.DescribeResponse
 // copy cannot drift from the document while both exist; when the scheduler
 // lands, this reads its list and the oracle moves with it.
 var NemesisKinds = []string{"canard", "essoin", "palter", "suborn"}
+
+// PoolKinds is every kind the ENGINE draws beside a project's own actions: the
+// four above and the honest `tell`.
+//
+// WHY A SECOND LIST RATHER THAN A FIFTH ENTRY ABOVE. R5.4 added the honest tell
+// (fable, coop r5/114) -- it passes on a claim the run did NOT plant, so it is
+// not a nemesis kind, and NemesisKinds is pinned by tests/validate to
+// docs/design.md's sentence naming those four in one breath. Arm 19's two cells
+// are about which names the ENGINE owns rather than about which are lies, so
+// they read this list: a weight must EXIST for each, and a weight naming one is
+// not a dangling reference.
+//
+// THE SCHEDULER OWNS THE REAL LIST, as the note above says of the other one:
+// internal/schedule.PoolKinds is the set the pool actually draws, and this copy
+// exists because arm 19 cannot otherwise tell an engine kind from a typo.
+var PoolKinds = []string{"canard", "essoin", "palter", "suborn", "tell"}
 
 // placeholder is `{name}`: the brace form a flow step uses for a handle.
 var placeholder = regexp.MustCompile(`\{([^{}]+)\}`)

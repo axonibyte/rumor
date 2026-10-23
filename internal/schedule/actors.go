@@ -3,6 +3,7 @@ package schedule
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -147,35 +148,78 @@ func HandleKindsNeeded(a bindings.Action) []string {
 // Both are counted by HandleKindsNeeded, and an action needing neither needs
 // nothing.
 //
-// WHAT THIS DOES NOT ASK, stated rather than left to be discovered: whether the
-// handle belongs to a kind the ACTOR knows of. The table is global to the
-// attempt, so a kind bound by anybody satisfies this, while
-// `[[action.args]]`'s `of` is documented as resolving to "an id the ACTOR knows
-// of". Knowledge is the ledger's and the statute's answer (engine.KnownAt), not
-// the table's, and asking it needs a ledger this function is not given.
-// Narrowing stated so it is not read as covered: an action whose argument names
-// an event only somebody else can see is applicable here and would be filtered
-// one layer up.
-func Resolvable(a bindings.Action, t *handle.Table) (bool, string) {
+// AND IT ASKS WHOSE HANDLE IT IS, which it did not until R5.4's close. The
+// comment here used to state the gap and promise a filter "one layer up":
+//
+//	the table is global to the attempt, so a kind bound by anybody satisfies
+//	this, while `[[action.args]]`'s `of` is documented as resolving to "an id
+//	the ACTOR knows of" ... an action whose argument names an event only
+//	somebody else can see is applicable here and would be filtered one layer up
+//
+// That filter was never built, and the walk reached the gap: seed 6 step 8 had
+// `guest_1` join `member_1.event#1`, an event nothing had told it of, because
+// `knows_of_subject` passed on guest_1's OWN event while the draw took
+// member_1's. ibis drove it (coop r5/111), ratchet found this comment and read
+// it correctly as a declared narrowing rather than an oversight (r5/109), and
+// fable ruled the scoping into the engine (r5/114): "the precondition and the
+// argument quantify over one set".
+//
+// `known` IS THE ACTOR'S, from engine.KnownHandlesAt, and it is REQUIRED rather
+// than optional. A nil set means the actor knows nothing, so every
+// handle-needing action is inapplicable to it -- which is the correct answer
+// for a fresh actor and, more to the point, fails CLOSED. A nil meaning
+// "unscoped" would have made the one caller that forgot to pass it silently
+// restore the defect.
+//
+// IT IS STILL ONLY THE TABLE'S QUESTION PLUS THE ACTOR'S: whether the project
+// PERMITS the action is the statute's, and whether the role holds the context
+// is HoldsContext's. Three separate halves, each refusing in its own terms.
+func Resolvable(a bindings.Action, t *handle.Table, known []string) (bool, string) {
 	needs := HandleKindsNeeded(a)
 	if len(needs) == 0 {
 		return true, ""
 	}
-	if t == nil {
-		return false, needs[0]
-	}
-	have := map[string]bool{}
-	for _, h := range t.Handles() {
-		if kind, ok := handleKind(h); ok {
-			have[kind] = true
-		}
-	}
 	for _, kind := range needs {
-		if !have[kind] {
+		if len(UsableHandles(t, known, kind)) == 0 {
 			return false, kind
 		}
 	}
 	return true, ""
+}
+
+// UsableHandles is the handles of one kind this actor may name: bound in the
+// attempt's table AND named by a claim the actor knows.
+//
+// IT IS ONE FUNCTION BECAUSE IT HAS TWO CALLERS AND THEY MUST NOT DRIFT.
+// Resolvable asks whether the set is non-empty and chooseHandles draws from it;
+// two intersections computed apart would let the pool offer an action whose
+// draw then refuses -- the drawn-and-then-refused shape Resolvable exists to
+// prevent, which is exactly how this defect arrived the first time
+// (chooseHandles' own error says "Resolvable should have held this action out
+// of the pool, so applicability and composition disagree").
+//
+// SORTED, so a caller drawing from it draws from a set and not from a map's
+// order, which is D1's rule and the reason chooseHandles sorted before.
+func UsableHandles(t *handle.Table, known []string, kind string) []string {
+	if t == nil {
+		return nil
+	}
+	is := make(map[string]bool, len(known))
+	for _, h := range known {
+		is[h] = true
+	}
+	var out []string
+	for _, h := range t.Handles() {
+		if k, ok := handleKind(h); !ok || k != kind {
+			continue
+		}
+		if !is[h] {
+			continue
+		}
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // handleKind is the type segment of a run-local handle: the `event` of
