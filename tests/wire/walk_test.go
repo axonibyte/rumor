@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -1251,4 +1252,139 @@ func TestTheFirstBugEndsTheWalkAndIsCarried(t *testing.T) {
 	}
 	t.Logf("PROOF %q at step %d of a 6-step walk; %d step(s) in the trace, %d fact(s), %d id(s)",
 		rec.Finding.Says(), rec.FoundAt, len(rec.Steps), len(rec.Facts), len(rec.IDs))
+}
+
+// REPLAY RE-RUNS A SEEDED ATTEMPT TO A STEP COUNT WITH KINDS DROPPED, which is
+// R5.5's ruling (3) (fable, coop r5/152) and what shrink.Request.Replay will be
+// handed by R5.3's third.
+//
+// THREE CELLS, and the third is the one that makes the other two mean anything.
+//
+//  1. REPLAYING THE WHOLE TRACE REPRODUCES IT. Same seed, same step count,
+//     nothing dropped: the kind sequence is identical to the original walk's.
+//     Without this the shrinker would be searching a world that does not match
+//     the one that failed.
+//
+//  2. A SHORTER COUNT IS A PREFIX. Replaying to fewer steps gives the first n
+//     kinds of the full trace, which is what a length bisection rests on: if a
+//     shorter replay were a DIFFERENT walk, halving the trace would be testing
+//     an unrelated world and calling it a reduction.
+//
+//  3. DROPPING A KIND REMOVES IT AND THE STEPS THAT RAN ARE RETURNED. The kind
+//     must be absent from the replay, and the walk must still reach its step
+//     count -- a step whose every candidate was dropped records as a no-op
+//     (R5.5's sibling ruling) rather than ending the run.
+//
+// AND A KIND THE PROJECT NEVER WEIGHTED IS REFUSED, because a reduction that
+// silently dropped a name that was never there would report "removing it
+// changed nothing" about nothing at all.
+func TestReplayReproducesShortensAndDropsKinds(t *testing.T) {
+	ctx := context.Background()
+	const seed = 20261023
+	const steps = 6
+
+	// The quiet statute again: this arm is about replay and not about findings,
+	// and the toy's `finding` defaults to `bug`, which would end every walk at
+	// step 1 and leave nothing to compare.
+	const quiet = `package rumor.statute
+
+default finding := "consistent"
+
+default may_create_event := true
+
+default may_join := true
+`
+	project := func() schedule.Project {
+		p := walkProject(t)
+		p.Statute = quiet
+		return p
+	}
+
+	withSession := func(salt string, fn func(*wire.Session)) {
+		t.Helper()
+		sess, err := wire.Open(ctx, fakeSpawn("--id-salt", salt), 20*time.Second)
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		defer func() { _ = sess.Close() }()
+		fn(sess)
+	}
+
+	var original []string
+	withSession("orig", func(sess *wire.Session) {
+		rec, err := schedule.Walk(ctx, project(), sess, seed, steps, 1)
+		if err != nil {
+			t.Fatalf("the original walk: %v", err)
+		}
+		original = rec.KindSequence()
+	})
+	if len(original) != steps {
+		t.Fatalf("the original walk took %d of %d step(s), so there is no full trace to replay",
+			len(original), steps)
+	}
+
+	// CELL 1: the whole trace, nothing dropped.
+	withSession("whole", func(sess *wire.Session) {
+		_, got, err := schedule.Replay(ctx, project(), sess, seed, 1, steps, nil)
+		if err != nil {
+			t.Fatalf("replaying the whole trace: %v", err)
+		}
+		if strings.Join(kindsOf(got), ",") != strings.Join(original, ",") {
+			t.Errorf("a full replay walked differently from the original:\n  original %v\n  replay   %v",
+				original, kindsOf(got))
+		}
+	})
+
+	// CELL 2: a shorter count is a prefix.
+	withSession("short", func(sess *wire.Session) {
+		_, got, err := schedule.Replay(ctx, project(), sess, seed, 1, steps-2, nil)
+		if err != nil {
+			t.Fatalf("replaying a prefix: %v", err)
+		}
+		want := original[:steps-2]
+		if strings.Join(kindsOf(got), ",") != strings.Join(want, ",") {
+			t.Errorf("a %d-step replay is not the first %d of the trace:\n  want %v\n  got  %v",
+				steps-2, steps-2, want, kindsOf(got))
+		}
+	})
+
+	// CELL 3: dropping a kind removes it. join_event is in the original or this
+	// cell has no subject, which is asserted rather than assumed.
+	if !slices.Contains(original, "join_event") {
+		t.Fatalf("the original trace %v draws no join_event, so dropping it proves nothing", original)
+	}
+	withSession("dropped", func(sess *wire.Session) {
+		_, got, err := schedule.Replay(ctx, project(), sess, seed, 1, steps, []string{"join_event"})
+		if err != nil {
+			t.Fatalf("replaying without join_event: %v", err)
+		}
+		if slices.Contains(kindsOf(got), "join_event") {
+			t.Errorf("join_event was dropped and still drawn: %v", kindsOf(got))
+		}
+		if len(got) != steps {
+			t.Errorf("the replay took %d of %d step(s); a step whose candidates were all dropped "+
+				"is a no-op and not the end of the run", len(got), steps)
+		}
+	})
+
+	// AND A KIND NOTHING WEIGHTS IS REFUSED.
+	withSession("unknown", func(sess *wire.Session) {
+		if _, _, err := schedule.Replay(ctx, project(), sess, seed, 1, steps,
+			[]string{"no_such_kind"}); err == nil {
+			t.Error("dropping a kind the project never weighted must refuse: silently succeeding " +
+				"would report that removing it changed nothing")
+		}
+	})
+	t.Logf("PROOF original %v; full replay identical; %d-step replay is its prefix; join_event "+
+		"dropped leaves %d step(s)", original, steps-2, steps)
+}
+
+// kindsOf is a step slice's kind sequence, which Record.KindSequence gives for
+// a record and Replay returns steps rather than a record.
+func kindsOf(steps []schedule.Step) []string {
+	out := make([]string, 0, len(steps))
+	for _, s := range steps {
+		out = append(out, s.Kind)
+	}
+	return out
 }
