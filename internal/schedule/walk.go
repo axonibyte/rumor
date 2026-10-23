@@ -219,6 +219,15 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		if err != nil {
 			return rec, fmt.Errorf("schedule: step %d: drawing from %s's pool: %w", n, actor, err)
 		}
+		// NOTHING DRAWABLE IS A NO-OP STEP, not a fault (fable, coop r5/121).
+		// Pick drops zero-weight candidates before asking, so a pool that was
+		// empty and a pool whose every candidate the project weighted zero
+		// arrive here identically, and both are a step the walk records as
+		// having taken nothing.
+		if kind == "" {
+			rec.Steps = append(rec.Steps, Step{N: n, Actor: actor})
+			continue
+		}
 
 		step := Step{N: n, Actor: actor, Kind: kind}
 		if err := take(ctx, p, sess, sessions, l, table, mint, src, known, &step); err != nil {
@@ -249,7 +258,7 @@ func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions
 	case Tell:
 		return tell(l, src, p, step)
 	case Suborn:
-		return suborn(ctx, p, l, mint, src, step)
+		return suborn(ctx, p, l, table, mint, src, known, step)
 	case Palter:
 		// IMPLEMENTED IN R5.4, because that is when the field arrived. The
 		// refusal that stood here said palter "needs a claim field to falsify
@@ -426,8 +435,9 @@ func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledg
 // under it. The handles are minted as if the action had run and are NEVER
 // BOUND, so they resolve to no id and any later step needing one is
 // inapplicable -- the walk never asks the wire for a thing that does not exist.
-func suborn(ctx context.Context, p Project, l *ledger.Ledger, mint *minter, src *Source, step *Step) error {
-	a, err := lieAbout(ctx, p, l, src, step.Actor, nil)
+func suborn(ctx context.Context, p Project, l *ledger.Ledger, table *handle.Table, mint *minter,
+	src *Source, known []string, step *Step) error {
+	a, err := lieAbout(ctx, p, l, src, step.Actor, table, known, nil)
 	if err != nil {
 		return err
 	}
@@ -436,13 +446,39 @@ func suborn(ctx context.Context, p Project, l *ledger.Ledger, mint *minter, src 
 		return err
 	}
 	h := mint.next(step.Actor, kind)
+
+	// THE PLANTED CLAIM CARRIES THE HANDLES THE HONEST ONE WOULD, ruled by
+	// fable at coop r5/119 after ratchet named the gap in my own claimHandles
+	// comment: "a statute must be able to group a lie by entity exactly as it
+	// groups the truth, and a lie distinguishable from the truth by its shape
+	// is not a lie the control can test".
+	//
+	// SO THE HANDLES ARE DRAWN, WHICH SPENDS THE GENERATOR. I raised this as
+	// the reason it was a ruling and not a line: a suborn of an action with a
+	// `handle` argument now draws that handle, so every walk from every seed
+	// moves. That is the cost the ruling accepted, and it is why this was not
+	// mine to take quietly.
+	//
+	// step.Used IS DELIBERATELY NOT SET. The trace prints Used as `<- [...]`,
+	// meaning CONSUMED, and a suborn consumed nothing -- the action never ran.
+	// The claim carries the handles; the step does not claim to have used them.
+	chosen, err := chooseHandles(a, src, table, known)
+	if err != nil {
+		return fmt.Errorf("the handles %s's lie about %s would have named: %w", step.Actor, a.Name, err)
+	}
+	var would []string
+	for _, arg := range a.Args {
+		if arg.Source == bindings.ArgHandle {
+			would = append(would, chosen[arg.Name])
+		}
+	}
 	if _, err := l.Append(ledger.Fact{
 		Kind:    ledger.KindClaim,
 		Actor:   step.Actor,
 		Ref:     h,
 		Type:    a.Emits[0],
 		Planted: true,
-		Handles: []string{h},
+		Handles: claimHandles(h, would),
 	}); err != nil {
 		return fmt.Errorf("planting %s's %s claim: %w", step.Actor, a.Emits[0], err)
 	}
@@ -648,7 +684,7 @@ func pass(l *ledger.Ledger, src *Source, p Project, step *Step, subjects []strin
 // a lie may be about, which is the precondition fable ruled at coop r5/49.
 // `extra` is nil for suborn.
 func lieAbout(ctx context.Context, p Project, l *ledger.Ledger, src *Source, actor string,
-	extra func(bindings.Action) bool) (bindings.Action, error) {
+	table *handle.Table, known []string, extra func(bindings.Action) bool) (bindings.Action, error) {
 	var zero bindings.Action
 	app, err := Applicable(ctx, p.Statute, p.Actions, l, actor)
 	if err != nil {
@@ -657,6 +693,20 @@ func lieAbout(ctx context.Context, p Project, l *ledger.Ledger, src *Source, act
 	var emitting []bindings.Action
 	for _, a := range app {
 		if len(a.Emits) == 0 {
+			continue
+		}
+		// AND RESOLVABLE FOR THIS ACTOR, which this did not ask until the
+		// suborn-handles ruling (fable, coop r5/119) needed the handles the
+		// honest action would have consumed.
+		//
+		// IT IS A HOLE I OPENED AT c543a0c AND IT REACHED palter FIRST. This
+		// function reads the STATUTE's applicability and nothing else, while
+		// the pool also filters by Resolvable -- so once Resolvable became
+		// knowledge-scoped, a lie could be drawn about an action whose handle
+		// this actor cannot name, and palter, which EXECUTES, would then abort
+		// in chooseHandles. None of 80 seeds hit it; it was reachable all the
+		// same, which is the only part that matters.
+		if ok, _ := Resolvable(a, table, known); !ok {
 			continue
 		}
 		if extra != nil && !extra(a) {
@@ -945,7 +995,7 @@ func palter(ctx context.Context, p Project, sess *wire.Session, sessions *Sessio
 	l *ledger.Ledger, table *handle.Table, mint *minter, src *Source, known []string,
 	step *Step) error {
 
-	a, err := lieAbout(ctx, p, l, src, step.Actor, palterable)
+	a, err := lieAbout(ctx, p, l, src, step.Actor, table, known, palterable)
 	if err != nil {
 		return err
 	}

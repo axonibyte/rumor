@@ -227,20 +227,94 @@ func TestTheWeightsBiasTheDraw(t *testing.T) {
 	t.Logf("PROOF a 3:1 weighting drew heavy %d of %d (expected about 750)", heavy, draws)
 }
 
-// EVERY WEIGHT ZERO IS A REFUSAL, not a uniform fallback: a fallback would run
-// a walk the project asked not to have.
-func TestAllZeroWeightsRefuseRatherThanFallBack(t *testing.T) {
-	if _, err := New(1).Pick([]Candidate{{"a", 0}, {"b", 0}}); err == nil {
-		t.Error("an all-zero candidate set drew a kind: the project said never to each")
-	}
-	if _, err := New(1).Pick(nil); err == nil {
-		t.Error("an empty candidate set drew a kind")
-	}
+// A NEGATIVE WEIGHT REFUSES AND A LONE CANDIDATE IS ALWAYS DRAWN -- the two
+// clauses of the old all-zero arm that the R5.4 ruling left standing.
+//
+// THIS WAS TestAllZeroWeightsRefuseRatherThanFallBack and it asserted the
+// OPPOSITE of what Pick now does, so it is narrowed rather than deleted: what
+// changed is a RULING, not a bug. fable ruled at coop r5/121 and r5/124 that an
+// all-zero pool is an EMPTY pool and a no-op step, because D3's "never chosen"
+// applies candidate by candidate and a step with nothing choosable is the step
+// the walk already knew how to record. The old sentence -- "a fallback would run
+// a walk the project asked not to have" -- is still true of a UNIFORM fallback,
+// which is not what replaced it.
+//
+// AND THE ZERO CLAUSE IS NOT RE-ASSERTED HERE, because it is already covered
+// better: TestAZeroWeightIsNeverDrawn above puts the zero-weighted candidate in
+// FIRST sort position, which rook established at coop r5/6-7 is the only slot a
+// `<=` boundary can wrongly select. My first attempt at this replacement
+// re-asserted the clause with the zero in an arbitrary slot, which would have
+// been a weaker duplicate of an arm that already carries that history. The
+// no-op half has its own arm, TestAnAllZeroPoolIsANoOpAndNotARefusal.
+func TestANegativeWeightRefusesAndALoneCandidateIsDrawn(t *testing.T) {
 	if _, err := New(1).Pick([]Candidate{{"a", -1}}); err == nil {
-		t.Error("a negative weight was drawn from rather than refused")
+		t.Error("a negative weight was drawn from rather than refused: internal/platform rejects " +
+			"one at parse, so reaching Pick means a caller built it")
 	}
 	got, err := New(1).Pick([]Candidate{{"only", 7}})
 	if err != nil || got != "only" {
 		t.Errorf("a single candidate must always be drawn: got %q, %v", got, err)
 	}
+}
+
+// AN ALL-ZERO POOL IS AN EMPTY POOL AND NOT A REFUSAL, ruled by fable at coop
+// r5/121 and placed as a UNIT DRIVE OF Pick at r5/124 rather than as a toy walk:
+// ratchet was right that the toy cannot reach the state, so a project would
+// prove nothing here and the three cells need no project at all.
+//
+// WHAT MADE IT REACHABLE. R5.4's honest `tell` is applicable to any actor
+// holding any claim, so a step whose only candidate was `tell` gave a pool that
+// was non-empty and entirely zero. A project weighting the kind at 0 then got an
+// ABORTED walk where before it got a skipped step -- the old sentence had never
+// been wrong in practice because no project could reach the state.
+//
+// THREE CELLS, which is fable's own list: an all-zero pool answers the no-op, a
+// pool with one positive weight draws THAT candidate and not the zero beside it,
+// and the refusing mutant fails the first.
+func TestAnAllZeroPoolIsANoOpAndNotARefusal(t *testing.T) {
+	// CELL 1: every candidate weighted zero.
+	src := New(99)
+	kind, err := src.Pick([]Candidate{{Kind: "tell", Weight: 0}, {Kind: "canard", Weight: 0}})
+	if err != nil {
+		t.Fatalf("an all-zero pool refused: %v -- a zero weight is the project saying never, "+
+			"candidate by candidate, so a step with nothing choosable is the no-op the walk "+
+			"already records", err)
+	}
+	if kind != "" {
+		t.Errorf("an all-zero pool drew %q: nothing was choosable, so the answer is the empty "+
+			"kind and the caller records a no-op step", kind)
+	}
+
+	// CELL 2: an EMPTY pool answers identically. The walk tests len(pool) == 0
+	// before calling, so this was unreachable from the only caller and its old
+	// refusal said what the no-op step now says.
+	if kind, err := New(99).Pick(nil); err != nil || kind != "" {
+		t.Errorf("an empty pool gave (%q, %v); it is the same answer as an all-zero one", kind, err)
+	}
+
+	// CELL 3: THE CONTROL. One positive weight beside a zero must draw the
+	// positive one -- without this, a Pick that answered "" for every input
+	// would pass both cells above.
+	for i := 0; i < 8; i++ {
+		got, err := New(uint64(i)).Pick([]Candidate{
+			{Kind: "tell", Weight: 0},
+			{Kind: "create_event", Weight: 3},
+		})
+		if err != nil {
+			t.Fatalf("seed %d: a pool with a positive weight refused: %v", i, err)
+		}
+		if got != "create_event" {
+			t.Errorf("seed %d: drew %q beside a zero-weighted candidate; a zero is never chosen",
+				i, got)
+		}
+	}
+
+	// AND A NEGATIVE WEIGHT IS STILL A DEFECT, which the ruling did not touch:
+	// internal/platform refuses one at parse, so reaching Pick means a caller
+	// built it.
+	if _, err := New(1).Pick([]Candidate{{Kind: "x", Weight: -1}}); err == nil {
+		t.Error("a negative weight must still refuse: it cannot come from a parsed project")
+	}
+	t.Log("PROOF all-zero -> (\"\", nil); empty -> (\"\", nil); zero beside 3 -> create_event " +
+		"over 8 seeds; negative -> refusal")
 }

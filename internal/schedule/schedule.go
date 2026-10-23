@@ -118,31 +118,55 @@ type Candidate struct {
 // cumulative walk uses a strict `<`: a project that writes 0 has said "never",
 // not "rarely".
 //
-// EVERY WEIGHT ZERO IS A REFUSAL rather than a uniform fallback. A fallback
-// would run a walk the project asked not to have, and the project's own
-// mistake would arrive as a corpus nobody chose.
+// EVERY WEIGHT ZERO IS AN EMPTY POOL, NOT A REFUSAL, ruled by fable at coop
+// r5/121 and r5/124. The sentence here used to say refusal, and half of its
+// reason still holds: a uniform fallback would run a walk the project asked not
+// to have. The other half was wrong. D3's "never chosen" applies CANDIDATE BY
+// CANDIDATE, so a zero-weight candidate is simply not a candidate -- and a step
+// with nothing choosable is the no-op step the walk already knew how to record,
+// not a fault. "A project that weights `tell` at 0 is a project that does not
+// want tells, not a broken one."
+//
+// SO ZERO-WEIGHT CANDIDATES ARE DROPPED BEFORE THE QUESTION IS ASKED, and an
+// empty result and an all-zero one are the same answer: `("", nil)`, meaning
+// nothing was drawable. The caller records a no-op step, exactly as it does for
+// a pool that was empty to begin with.
+//
+// WHAT MADE THIS REACHABLE. R5.4's honest `tell` is applicable to any actor
+// holding any claim, so a step whose only candidate was `tell` gave a pool that
+// was non-empty and entirely zero -- a state no project could reach before,
+// which is why the old sentence had never been wrong in practice. A project
+// weighting the kind at 0 then got an ABORTED walk where it had previously got
+// a skipped step.
+//
+// AN EMPTY `candidates` NO LONGER REFUSES EITHER, and that is the same ruling
+// rather than a check being dropped: the walk has always tested `len(pool) == 0`
+// before calling, so the old refusal was unreachable from the only caller, and
+// its contract -- "an empty applicable set is the walk's finding to report" --
+// is what the no-op step IS.
 func (s *Source) Pick(candidates []Candidate) (string, error) {
-	if len(candidates) == 0 {
-		return "", fmt.Errorf("schedule: no applicable action to draw from: an empty " +
-			"applicable set is the walk's finding to report, not a draw")
-	}
-	ordered := make([]Candidate, len(candidates))
-	copy(ordered, candidates)
-	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Kind < ordered[j].Kind })
-
-	total := 0
-	for _, c := range ordered {
+	// A NEGATIVE WEIGHT IS STILL A DEFECT and is still refused: internal/platform
+	// rejects one at parse, so reaching here means a caller built it.
+	ordered := make([]Candidate, 0, len(candidates))
+	for _, c := range candidates {
 		if c.Weight < 0 {
 			return "", fmt.Errorf("schedule: %q carries weight %d: a negative weight is "+
 				"refused by internal/platform at parse, so reaching here is a defect in "+
 				"the caller rather than in the project", c.Kind, c.Weight)
 		}
-		total += c.Weight
+		if c.Weight == 0 {
+			continue
+		}
+		ordered = append(ordered, c)
 	}
-	if total == 0 {
-		return "", fmt.Errorf("schedule: all %d applicable action(s) carry weight 0: the "+
-			"project has said never to each of them, and a uniform fallback would run a "+
-			"walk it did not ask for", len(ordered))
+	if len(ordered) == 0 {
+		return "", nil
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Kind < ordered[j].Kind })
+
+	total := 0
+	for _, c := range ordered {
+		total += c.Weight
 	}
 
 	n, err := s.IntN(total)

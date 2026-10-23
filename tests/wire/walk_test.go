@@ -983,3 +983,104 @@ func TestAWalkedClaimCarriesTheHandlesItNames(t *testing.T) {
 	t.Logf("PROOF %d join(s) %v; %d create(s) %v",
 		len(joins), shapes(joins), len(creates), shapes(creates))
 }
+
+// A SUBORNED CLAIM CARRIES THE HANDLES THE HONEST ONE WOULD, ruled by fable at
+// coop r5/119: "a statute must be able to group a lie by entity exactly as it
+// groups the truth, and a lie distinguishable from the truth by its shape is not
+// a lie the control can test".
+//
+// IT IS THE SAME ARM SHAPE AS THE JOIN-HANDLES ONE and the same fixture, driven
+// on a SUBORNED join: `join_event` declares an `event` handle argument, so the
+// honest claim carries [join, event] and the planted one must too. The handles
+// are DRAWN for a suborn even though nothing ran, which is why this was a
+// ruling and not a line -- it spends the generator and moves every walk.
+//
+// THE SHAPES ARE COMPARED AGAINST EACH OTHER, not against a literal: an arm
+// asserting [join, event] twice would pass if both shapes were wrong in the
+// same way, while "the lie looks like the truth" is the property ruled.
+func TestASubornedClaimLooksLikeTheHonestOne(t *testing.T) {
+	ctx := context.Background()
+	p := walkProject(t)
+	for i := range p.Actions {
+		if p.Actions[i].Name == "join_event" {
+			p.Actions[i].Args = []bindings.Arg{{Name: "event", Source: bindings.ArgHandle, Of: "event"}}
+		}
+	}
+	// SUBORN HEAVY AND tell OFF, so the walk plants rather than tells: this arm
+	// is about the planted claim's shape and nothing else.
+	p.Weights = platform.Weights{Default: map[string]int{
+		"create_event": 4, "join_event": 3,
+		schedule.Suborn: 6, schedule.Canard: 0,
+		schedule.Palter: 0, schedule.Essoin: 0, schedule.Tell: 0,
+	}}
+
+	sess, err := wire.Open(ctx, fakeSpawn("--id-salt", "suborn"), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	rec, err := schedule.Walk(ctx, p, sess, 20261023, 12, 1)
+	if err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+
+	var planted, honest []ledger.Fact
+	for _, f := range rec.Facts {
+		if f.Kind != ledger.KindClaim || f.Type != "event.joined" {
+			continue
+		}
+		if f.Planted {
+			planted = append(planted, f)
+		} else {
+			honest = append(honest, f)
+		}
+	}
+	// THE REACH IS ASSERTED FIRST, both halves: without a planted join there is
+	// no subject, and without an honest one there is nothing to compare it to.
+	if len(planted) == 0 {
+		t.Fatalf("no SUBORNED join in 12 steps (kinds %v), so this arm has no subject",
+			rec.KindSequence())
+	}
+	if len(honest) == 0 {
+		t.Fatalf("no honest join in 12 steps (kinds %v), so there is no truth for the lie to "+
+			"resemble", rec.KindSequence())
+	}
+
+	shape := func(f ledger.Fact) string {
+		if len(f.Handles) == 0 {
+			return "none"
+		}
+		kinds := make([]string, 0, len(f.Handles))
+		for _, h := range f.Handles {
+			switch {
+			case strings.Contains(h, ".join_event#"):
+				kinds = append(kinds, "join")
+			case strings.Contains(h, ".event#"):
+				kinds = append(kinds, "event")
+			default:
+				kinds = append(kinds, "other")
+			}
+		}
+		return strings.Join(kinds, ",")
+	}
+
+	want := shape(honest[0])
+	if want != "join,event" {
+		t.Fatalf("the HONEST join's shape is %q and not join,event, so the comparison below is "+
+			"against the wrong reference: %v", want, honest[0].Handles)
+	}
+	for _, f := range planted {
+		if got := shape(f); got != want {
+			t.Errorf("suborned join %q carries %v (%s) where the honest one carries %v (%s): a "+
+				"lie distinguishable from the truth by its SHAPE is not a lie the control can "+
+				"test", f.Ref, f.Handles, got, honest[0].Handles, want)
+		}
+		if f.Handles[0] != f.Ref {
+			t.Errorf("suborned join %q carries %v: the MINTED handle comes first, as it does for "+
+				"the honest claim", f.Ref, f.Handles)
+		}
+	}
+	t.Logf("PROOF %d planted join(s) %v; %d honest %v", len(planted), planted[0].Handles,
+		len(honest), honest[0].Handles)
+}

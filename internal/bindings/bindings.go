@@ -471,9 +471,18 @@ func arg(g *decl.Reader) Arg {
 		case nil:
 			g.Refuse("from", "a draw argument needs a `from` list to draw out of")
 		default:
-			g.Refuse("from", fmt.Sprintf("`from` is %T and a draw needs a LIST: one value is a "+
-				"literal and should say so, since a draw of one would spend the generator on a "+
-				"choice that is not one", raw))
+			// THE REFUSAL IS ABOUT THE TYPE, NOT ABOUT CARDINALITY, and the
+			// sentence used to say otherwise -- "a draw of one would spend the
+			// generator on a choice that is not one" -- while the next clause
+			// down accepts `from = ["x"]`, which IS a draw of one. ratchet
+			// named the contradiction at coop r5/118 and fable ruled the
+			// sentence narrowed to the code rather than the code widened to the
+			// sentence (r5/119). A one-element list is accepted deliberately:
+			// the TYPE is what says "this argument is drawn", and a project
+			// extending the list later should not have to restate that.
+			g.Refuse("from", fmt.Sprintf("`from` is %T and a draw needs a LIST: a scalar does not "+
+				"say whether the project means one choice or the first of several, and `[%v]` "+
+				"says the first", raw, raw))
 		}
 		if raw != nil && len(a.From) == 0 {
 			g.Refuse("from", "a draw argument's `from` is empty: there is nothing to draw, and a "+
