@@ -11,6 +11,7 @@ package wire_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1387,4 +1388,142 @@ func kindsOf(steps []schedule.Step) []string {
 		out = append(out, s.Kind)
 	}
 	return out
+}
+
+// THE OBSERVE REQUEST CARRIES THE RESOLVED ID IN `args`, read off the BYTES the
+// walk wrote.
+//
+// ROOK FOUND THE HOLE THIS CLOSES (coop r5/164): internal/fake answers
+// `cfg.Surface.Observe[m.Query]` and reads NO args, so every other R5.5 observe
+// arm runs against a responder that discards them -- a correct args payload and
+// an empty one are indistinguishable there. Those arms prove the walk SENDS an
+// observe and that nothing drifts; they cannot prove WHAT it sends. This one
+// does, by capturing the request rather than trusting the answer.
+//
+// AND IT MATTERS MORE THAN USUAL because the toy adapter's observe path is the
+// defect that blocks D16: it splits the subject out of `m.Query` and never reads
+// `m.Args`, while contract v2 (contract.md:546, 2026-10-19) gave observe args
+// and the execute path moved. A suite that cannot tell a filled `args` from an
+// empty one could not have caught that and did not.
+//
+// THE HANDLE BECOMES AN ID, never a run-local name: ObserveArgs resolves through
+// handle.Table.Require and "a handle is never written to the wire". The canned
+// execute answer binds the handle to a known id, so the id in the captured
+// observe is one this arm can name rather than merely a non-empty string.
+func TestTheObserveRequestCarriesTheResolvedID(t *testing.T) {
+	ctx := context.Background()
+
+	const theID = "e-captured-1"
+	spawn, seen := capturingAdapter(t,
+		// describe
+		mustJSON(t, wire.DescribeResponse{
+			Envelope:     wire.Envelope{Kind: wire.KindDescribe, Contract: wire.ContractVersion, ID: "1"},
+			Actions:      []wire.Action{},
+			Observations: []wire.Observation{},
+			Contexts:     []string{},
+			Components:   []wire.Component{},
+		}),
+		// session, for the api action
+		mustJSON(t, wire.SessionResponse{
+			Envelope: wire.Envelope{Kind: wire.KindSession, Contract: wire.ContractVersion, ID: "2"},
+			Token:    "tok",
+		}),
+		// create_event, binding the event handle to a known id
+		mustJSON(t, wire.ExecuteResponse{
+			Envelope: wire.Envelope{Kind: wire.KindExecute, Contract: wire.ContractVersion, ID: "3"},
+			IDs:      map[string]any{"event": theID},
+			Response: map[string]any{"status": 201},
+		}),
+		// the observe that follows it
+		mustJSON(t, wire.ObserveResponse{
+			Envelope: wire.Envelope{Kind: wire.KindObserve, Contract: wire.ContractVersion, ID: "4"},
+			Value:    1,
+		}),
+	)
+
+	p := walkProject(t)
+	p.Statute = `package rumor.statute
+
+default finding := "consistent"
+
+default may_create_event := true
+
+default may_join := false
+`
+	// ONE ACTION AND ONE OBSERVATION, so the captured stream is short enough to
+	// assert over whole: create_event mints the event, and the observation
+	// declares `event` so the walk must resolve it.
+	p.Actions = []bindings.Action{{
+		Name: "create_event", Context: "api", Emits: []string{"event.created"},
+		Requires: []string{"may_create_event"}, Creates: []string{"event"},
+	}}
+	p.Observations = []bindings.Observation{{
+		Name: "event_count", Source: wire.SourceAPI, Of: "event.created", Args: []string{"event"},
+	}}
+
+	sess, err := wire.Open(ctx, spawn, 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if _, err := schedule.Walk(ctx, p, sess, 7, 1, 1); err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+	_ = sess.Close()
+
+	raw, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("the capture was not written: %v", err)
+	}
+	var observes []map[string]any
+	for _, line := range strings.Split(strings.TrimRight(string(raw), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		if jerr := json.Unmarshal([]byte(line), &m); jerr != nil {
+			t.Fatalf("a captured request is not JSON: %v\n  %s", jerr, line)
+		}
+		if m["kind"] == string(wire.KindObserve) {
+			observes = append(observes, m)
+		}
+	}
+
+	// THE REACH FIRST: no observe captured means this arm asserts nothing.
+	if len(observes) == 0 {
+		t.Fatalf("no observe request in the capture; the walk wrote:\n%s", raw)
+	}
+
+	for _, m := range observes {
+		args, ok := m["args"].(map[string]any)
+		if !ok {
+			t.Fatalf("the observe carries no `args` object: %v -- an observation declaring `event` "+
+				"must send it, which is the half the fake adapter cannot check", m)
+		}
+		got, ok := args["event"].(string)
+		if !ok {
+			t.Fatalf("`args.event` is %T (%v), want the system's id as a string", args["event"],
+				args["event"])
+		}
+		if got != theID {
+			t.Errorf("`args.event` is %q; the handle must resolve to the id the adapter gave, %q, "+
+				"and a run-local handle is never written to the wire", got, theID)
+		}
+		if q, _ := m["query"].(string); q != "event_count" {
+			t.Errorf("`query` is %q, want the observation's name alone -- the subject rides in "+
+				"`args` since contract v2 and not in the query", q)
+		}
+		if strings.Contains(fmt.Sprint(m["query"]), "/") {
+			t.Errorf("`query` %v carries a separator: that is the pre-v2 shape the toy adapter "+
+				"still reads and the engine must not write", m["query"])
+		}
+	}
+	// THE PROOF LINE PRINTS WHAT WAS READ, not what was wanted. My first one
+	// interpolated theID -- the EXPECTED value -- so the mutation control
+	// printed `args.event="e-captured-1"` underneath an assertion reporting
+	// that it was actually the handle. Third time in one day; the rule is that
+	// a PROOF line may only contain values taken from the subject.
+	for i, m := range observes {
+		a, _ := m["args"].(map[string]any)
+		t.Logf("PROOF observe %d: query=%v args.event=%v", i+1, m["query"], a["event"])
+	}
 }
