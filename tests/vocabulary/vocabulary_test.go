@@ -89,6 +89,20 @@ const root = "../.."
 // sealed prefix", because the walk must seal before it evaluates an observation
 // as a check. Fifth move of the same shape: 0 absent, refused on the count.
 //
+// EVERY MOVE KEEPS ITS REASON, AND NOTHING BELOW ENFORCES THAT. rook named it
+// at coop r5/160: this arm refuses on the COUNT and tests MEMBERSHIP of each
+// quote, so it catches a number that moved and a quote that was never the
+// document's -- and it cannot see a reason that fell out. The reasons are prose
+// at the point of use, which is why they are here and not in a commit message
+// nobody re-reads.
+//
+// SO IF YOU ARE RESOLVING THIS NUMBER IN A RE-CUT, keep every reason, not the
+// count. R5.3's third and R5.5 each take this to 32 from v0.1.27's 31, for
+// DIFFERENT quotations -- internal/shrink's Findings entry and the observe
+// step's sealed-prefix rule -- so onto v0.1.28 the answer is 33 with THREE
+// reasons, and the one most likely to be dropped is the oldest, because by then
+// it is two bases back and nothing refuses on its absence.
+//
 // AND THE MOVE CAME WITH A CORRECTED ATTRIBUTION. The first version of that
 // comment credited this document with engine.Input's REFUSAL TEXT -- "seals a
 // prefix before any check runs, so this is a sequencing error and not an empty
