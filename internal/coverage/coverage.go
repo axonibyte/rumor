@@ -264,10 +264,28 @@ func descend(root, dir string, out *[]string) error {
 	sort.Strings(names)
 	for _, name := range names {
 		kid := filepath.Join(dir, name)
+		// THE NAME IS TESTED BEFORE THE TYPE, and the order is the whole fix
+		// (issue 6). `skipped` used to be consulted only inside the isDir
+		// branch, which reads the exemption as "a DIRECTORY called .git" --
+		// and in a git WORKTREE `.git` is a FILE holding a gitdir pointer, so
+		// it fell to the entry branch below and was demanded of
+		// docs/coverage.toml. The intent at skipDirs is "the walk skips only
+		// .git and target", with no condition on the type.
+		//
+		// IT WAS WRONG TWICE: `.git` is not in the committed tree that
+		// TestCommittedTreeIsFullyMapped is named for, so the arm asked the
+		// map to describe a path git itself would never carry.
+		//
+		// MEASURED, not reasoned: at 0da475f in a worktree the suite failed
+		// `revbin`-free with ".git matches no entry in docs/coverage.toml",
+		// and the identical commit in a clone passed -- the only difference
+		// being that `.git` is a directory there. Reviewing a branch with
+		// `git worktree add` is the ordinary way to do it, and the message
+		// pointed at the map rather than at the cause.
+		if skipped(name) {
+			continue
+		}
 		if isDir[name] {
-			if skipped(name) {
-				continue
-			}
 			if err := descend(root, kid, out); err != nil {
 				return err
 			}

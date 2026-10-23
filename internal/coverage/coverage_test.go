@@ -55,6 +55,51 @@ func TestCommittedTreeIsFullyMapped(t *testing.T) {
 	}
 }
 
+// ISSUE 6: `.git` IS A FILE IN A WORKTREE, AND THE WALK MUST SKIP IT ANYWAY.
+//
+// THE FIXTURE IS THE SHAPE AND NOT A MOCK OF IT. `skipped` is consulted on a
+// NAME, so an arm that passed a directory called `.git` would exercise the
+// branch the defect was never in. Here `.git` is a regular FILE holding the
+// `gitdir:` pointer a worktree carries, which is the only spelling that reached
+// the entry branch and demanded a docs/coverage.toml line.
+//
+// WHY A HAND-BUILT TREE RATHER THAN `git worktree add`: this package's tests
+// take no dependency on a git binary, and the defect needs nothing from git
+// except the one fact that `.git` can be a file. Asserting that fact directly
+// keeps the arm honest on a box with no git at all -- the PROVISIONING finding
+// ci.yml names at :137 -- and the live reproduction is recorded in the commit
+// message rather than demanded of every run.
+//
+// MUTATION-CHECKED: with `skipped(name)` back inside the isDir branch this
+// fails with ".git matches no entry", which is the message the real worktree
+// produced at 0da475f.
+func TestAGitFileIsSkippedAsAGitDirectoryIs(t *testing.T) {
+	d := scratch(t)
+	write(t, filepath.Join(d, "docs", "coverage.toml"),
+		"[[entry]]\npath = \"docs/*\"\ndocs = [\"docs/release.md\"]\n")
+	// A WORKTREE'S .git, byte for byte in shape: a file, not a directory.
+	write(t, filepath.Join(d, ".git"), "gitdir: /somewhere/.git/worktrees/w\n")
+
+	n, err := Check(d)
+	if err != nil {
+		t.Fatalf("a worktree's .git FILE must be skipped exactly as a clone's .git "+
+			"DIRECTORY is -- the exemption is the name, not the type: %v", err)
+	}
+	if n < 1 {
+		t.Fatalf("checked %d paths, so the walk found nothing and the arm above "+
+			"could have passed on an empty tree", n)
+	}
+	// THE CONTROL, WITHOUT WHICH THE ARM PROVES ONLY THAT Check RETURNED NIL:
+	// the same tree with an unmapped file of another name must still FAIL, so
+	// the skip is specific to `.git` and not a walk that stopped early.
+	write(t, filepath.Join(d, "stray.txt"), "s\n")
+	if _, err := Check(d); err == nil {
+		t.Fatal("an unmapped stray.txt passed, so the walk is not checking entries at all")
+	} else if !strings.Contains(err.Error(), "stray.txt") {
+		t.Fatalf("the refusal names %v, not stray.txt", err)
+	}
+}
+
 // The other arm issue 2 asks for: an unmapped path fails, by name.
 func TestAnUnmappedPathFailsAndIsNamed(t *testing.T) {
 	d := scratch(t)
