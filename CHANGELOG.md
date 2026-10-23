@@ -3,6 +3,61 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.27 — 2026-10-23
+
+**R5.4, arguments and sessions: a walk acts as somebody, on something it knows
+about** — issue 78, every bullet. An action's inputs are declared rather than
+invented, a session is held per actor per context, and every claim a walk writes
+names the entity it is about.
+
+- **`[[action.args]]`, four sources.** An action declares each argument as a
+  `literal`, a `draw` from a declared list, the acting `actor`'s own name, or a
+  `handle` of a named kind. The walk composes the request from the declaration
+  instead of guessing, and the draws are consumed in declaration order so one
+  seed replays one walk.
+- **A session per actor per context.** The engine acquires a token at first use
+  and holds it for the run, keyed by actor AND context: reusing an `api` token
+  for a `ui` action would send a token the adapter issued for something else.
+  An empty token is refused rather than held.
+- **A role's contexts gate applicability.** An action in a context the actor's
+  role does not hold is inapplicable rather than attempted, so the engine never
+  asks for a session the project says this role never has. A declaration that
+  omits the actor's role is REFUSED, since a walk stalling for a missing
+  `[[role]]` and a walk whose world permits nothing are different states.
+- **`palter` is implemented.** It executes the honest action and then appends
+  its claim with exactly one recorded field false, drawn from the values the
+  project declared. An action whose claim carries no falsifiable field is
+  inapplicable for the kind rather than drawn and then refused.
+- **A precondition is shown the HONEST claims only.** A planted claim is a
+  description with no action under it, so it must not steer what the walk does
+  next; a check still sees every claim, because measuring belief against the
+  store is what a planted claim exists for.
+- **A `handle` argument resolves only to a handle the ACTOR knows of.** The
+  table is global to the attempt, so the draw used to reach any bound handle of
+  the kind — and a walk could pass `may_join` on one event while sending
+  another. The precondition and the argument now quantify over one set.
+- **The honest `tell`.** A pool kind mirroring `canard`: the drawn actor passes
+  a claim it holds — one the run did not plant — to an actor who does not yet
+  know it, and the system never moves. Without it a lie could travel and an
+  honest claim could not, so no walk could reach a join by a second actor or an
+  `explained` finding.
+- **A claim carries the handles it names**, the minted one first and then what
+  the step consumed, for a planted claim exactly as for an honest one: a lie
+  distinguishable from the truth by its shape is not a lie a control can test.
+- **EOF is the adapter's stop signal.** The client closes stdin and waits a
+  bounded grace before killing, so an adapter's own teardown runs. Killing at
+  once orphaned a spawned child, and under `timeout(1)` — which reaps
+  descendants — a completed run then hung to its bound and read as a runner
+  fault.
+- **A pool whose every candidate weighs zero is an empty pool**, not a refusal:
+  a zero weight is the project saying never, candidate by candidate, so a step
+  with nothing choosable is the no-op step the walk already recorded.
+
+Also in this release: the toy adapter removes the state directory it creates on
+every exit path, its error envelope is the contract's `error`, every `api`
+action requires the actor to have made its user, and the weights draw a nemesis
+kind about one step in ten.
+
 ## 0.1.26 — 2026-10-20
 
 **R5.1, the scheduler: a run is a seeded walk** — issue 72, every bullet. One
