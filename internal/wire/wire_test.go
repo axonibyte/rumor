@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -488,4 +490,74 @@ func asRefusal(err error, out *Refusal) bool {
 	}
 	*out = ref
 	return true
+}
+
+// countingCloser is a stdin whose Close is counted, which is how the arm below
+// tells "teardown ran once" from "teardown ran and nobody noticed how often".
+// A boolean would answer the panic question and not the once question.
+type countingCloser struct {
+	n int32
+}
+
+func (c *countingCloser) Write(p []byte) (int, error) { return len(p), nil }
+func (c *countingCloser) Close() error {
+	atomic.AddInt32(&c.n, 1)
+	return nil
+}
+
+// ISSUE: Close WAS IDEMPOTENT IN SEQUENCE AND NOT UNDER CONCURRENCY.
+//
+// The body was `select { case <-done: return nil; default: close(done) }`,
+// which is TWO steps with a gap: two callers could both take the default and
+// the second close(done) panics with "close of closed channel". The comment
+// beside it said "Close is idempotent", true only of sequential calls, which is
+// the shape ratchet raised in R5.4's review (coop r5/118 finding 3) and fable
+// ruled a patch after v0.1.27 (r5/119).
+//
+// TWO ORACLES, because either alone passes a broken implementation:
+//   - NO PANIC with N concurrent callers. A recover() here would hide exactly
+//     the failure, so there is none: the panic propagates and fails the test.
+//   - TEARDOWN RAN EXACTLY ONCE, counted through stdin's Close. Without this a
+//     Close that simply never closed anything would pass the panic half.
+//
+// MUTATION-CHECKED: with the select-then-close restored this fails as
+// "close of closed channel" within a run or two; under sync.Once it is green
+// across 200 iterations of 8 callers.
+func TestCloseIsIdempotentUnderConcurrency(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		stdin := &countingCloser{}
+		cancelled := int32(0)
+		s := &Session{
+			done:   make(chan struct{}),
+			stdin:  stdin,
+			cancel: func() { atomic.AddInt32(&cancelled, 1) },
+		}
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for g := 0; g < 8; g++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start // release them together, so the gap is actually contested
+				if err := s.Close(); err != nil {
+					t.Errorf("Close returned %v", err)
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		if got := atomic.LoadInt32(&stdin.n); got != 1 {
+			t.Fatalf("iteration %d: stdin closed %d time(s); teardown must run exactly "+
+				"once however many callers ask", i, got)
+		}
+		if got := atomic.LoadInt32(&cancelled); got != 1 {
+			t.Fatalf("iteration %d: cancel called %d time(s), want 1", i, got)
+		}
+		select {
+		case <-s.done:
+		default:
+			t.Fatalf("iteration %d: done is still open after Close returned", i)
+		}
+	}
 }

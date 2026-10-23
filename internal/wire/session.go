@@ -8,6 +8,7 @@ import (
 	"io"
 	"os/exec"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -67,10 +68,17 @@ type answer struct {
 // and every subsequent call returns it, so a caller cannot accidentally carry
 // on against a dead adapter.
 type Session struct {
-	cmd      *exec.Cmd
-	stdin    io.WriteCloser
-	answers  chan answer
-	done     chan struct{}
+	cmd     *exec.Cmd
+	stdin   io.WriteCloser
+	answers chan answer
+	done    chan struct{}
+	// once makes Close idempotent under CONCURRENCY and not only in sequence.
+	// The select-then-close it replaces was two steps: two callers could both
+	// find `done` open and the second `close(done)` would panic. sync.Once also
+	// gives the second caller a stronger guarantee than the old early return --
+	// Do BLOCKS until the first call's teardown has finished, so a Close that
+	// returns means the adapter is stopped rather than merely being stopped.
+	once     sync.Once
 	cancel   context.CancelFunc
 	describe DescribeResponse
 	timeout  time.Duration
@@ -307,13 +315,10 @@ func (s *Session) poison(err error) error {
 // taken. Nothing is lost by moving it: the process is already reaped by then,
 // and the call still releases the context.
 func (s *Session) Close() error {
-	select {
-	case <-s.done:
-		return nil // already closed; Close is idempotent
-	default:
+	s.once.Do(func() {
 		close(s.done)
-	}
-	stopAdapter(s.cmd, s.stdin)
-	s.cancel()
+		stopAdapter(s.cmd, s.stdin)
+		s.cancel()
+	})
 	return nil
 }
