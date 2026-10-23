@@ -42,7 +42,7 @@ fields of the check's input document, which is where R2.3's engine puts the
 sealed prefix and the flattened facts; OPA's own `data` namespace is not used
 in v1) (R2). The example cases therefore carry `known` pre-flattened, which is this
 architecture and not a shortcut; `told` facts appear in the examples'
-ledger files (R2.1, eleven of seventeen); no example carries a `clock` fact
+ledger files (eleven of seventeen AT R2.1, 2026-10-15); no example carries a `clock` fact
 until R2.3 drives one, which is a named gap, not an oversight. Whether a tell
 carries the claim's reference or its payload is an epic Open item leaning
 reference; v1 adopts the reference form and the ADR that decides it revises
