@@ -177,7 +177,7 @@ demonstrated what it was cut to demonstrate.
 Plus four counting guards — no package, no case, no rule, no mutant — because
 every arm above is satisfied for free by an empty walk.
 
-**Six kinds of line**, then a tally. Over `examples/` the run prints 50 of them;
+**Six kinds of line**, then a tally. Over `examples/` the run prints 51 of them;
 one of each kind is shown here, and the counts in the tally are the whole run's:
 
 ```sh run
