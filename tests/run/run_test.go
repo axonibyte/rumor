@@ -331,3 +331,109 @@ func TestTheTraceNamesTheConsumedHandle(t *testing.T) {
 			"fixture's join_event declares a `handle` argument and should have been drawn:\n%s", out)
 	}
 }
+
+// A FOUND BUG IS THE RUN'S PRODUCT: IT IS REPORTED, AND THE STATUS SAYS SO.
+//
+// `walkable`'s statute declares no `finding` rule deliberately, so that every
+// other arm here is about the VERB and no walk stops early. This arm is that
+// fixture with ONE change -- a finding rule -- built in a temp directory the
+// way the no-weight arm builds its own, so the committed fixture keeps its
+// property.
+//
+// IT EXISTS BECAUSE THE CARRIER WAS NOT THE CONSUMER. schedule.Record grew
+// Finding and FoundAt at R5.5 and `cmd/` read NEITHER -- zero hits (ibis, coop
+// main/149) -- so a found bug printed as a slightly short trace with a clean
+// verdict and exit 0. Every unit arm over the walk passed throughout: the walk
+// really did carry the finding. Nothing downstream looked, which is a gap only
+// a test that runs the BINARY can see.
+//
+// THE CONTROL IS THE OTHER HALF. A walk that stopped at step 5 for any reason
+// would satisfy the assertions below on their own, so the unmodified fixture is
+// run at the same seed and the same length and must reach step 10 and exit 0.
+// Without it this arm cannot tell "the finding ended the walk" from "the walk
+// ends at 5".
+func TestAFoundBugIsReportedAndTheStatusSaysSo(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego"} {
+		b, err := os.ReadFile(filepath.Join(fixture, f))
+		if err != nil {
+			t.Fatalf("reading %s: %v", f, err)
+		}
+		if f == "statute.rego" {
+			if strings.Contains(string(b), "finding") {
+				t.Fatal("the fixture's statute already names a finding, so appending one " +
+					"proves nothing about this arm's change")
+			}
+			b = append(b, []byte("\n"+
+				"default finding := \"consistent\"\n\n"+
+				"finding := \"bug\" if {\n"+
+				"\tcount([c | some c in input.claims; c.type == \"event.created\"]) >= 2\n"+
+				"}\n")...)
+		}
+		if err := os.WriteFile(filepath.Join(dir, f), b, 0o600); err != nil {
+			t.Fatalf("writing %s: %v", f, err)
+		}
+	}
+
+	const steps = 10
+	out, errb, code := run(t, "run", dir, "--seed", "42", "--steps", strconv.Itoa(steps))
+	if code != 3 {
+		t.Fatalf("exit %d, want 3: a finding is the run's product and not a refusal of the "+
+			"project (1) or a could-not-run (2)\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	}
+
+	// THE LINE NAMES THE FINDING, THE STEP AND THE RULE, all three read off the
+	// record rather than recomposed: a reader with the trace above it needs to
+	// know which step left the system in the state that broke.
+	var value, rule string
+	var at int
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.HasPrefix(line, "run: FOUND ") {
+			continue
+		}
+		if _, err := fmt.Sscanf(line, "run: FOUND %s after step %d -- %s", &value, &at, &rule); err != nil {
+			t.Fatalf("the finding line is not readable: %q: %v", line, err)
+		}
+	}
+	if value != "bug" {
+		t.Fatalf("no finding line naming a bug in:\n%s", out)
+	}
+	if rule != "data.rumor.statute.finding" {
+		t.Errorf("the finding line names rule %q, and the statute's rule is "+
+			"data.rumor.statute.finding", rule)
+	}
+
+	// AND THE STEP IT NAMES IS THE LAST STEP THE WALK TOOK, which is the first
+	// half of "the first bug ends the walk": the trace a shrink reads must
+	// include the step that produced the finding, and nothing may follow it.
+	last := 0
+	for _, line := range strings.Split(out, "\n") {
+		n := 0
+		if _, err := fmt.Sscanf(strings.TrimPrefix(line, "run: "), "%d", &n); err == nil && n > last {
+			last = n
+		}
+	}
+	if at != last {
+		t.Errorf("the finding is reported after step %d and the trace's last step is %d: "+
+			"either a step ran after the bug or the reported step is not the one that "+
+			"produced it\n%s", at, last, out)
+	}
+	if last >= steps {
+		t.Errorf("the walk took all %d steps, so it did not stop on the finding and this arm "+
+			"would pass on a run that never stopped at all\n%s", steps, out)
+	}
+
+	cout, cerr, ccode := run(t, "run", fixture, "--seed", "42", "--steps", strconv.Itoa(steps))
+	if ccode != 0 {
+		t.Fatalf("the control exited %d, want 0: the unmodified fixture declares no finding "+
+			"rule\nstdout:\n%s\nstderr:\n%s", ccode, cout, cerr)
+	}
+	if strings.Contains(cout, "FOUND") {
+		t.Errorf("the control reports a finding, so the line above is not the appended rule's "+
+			"doing\n%s", cout)
+	}
+	if !strings.Contains(cout, fmt.Sprintf("%d step(s)", steps)) {
+		t.Errorf("the control did not take all %d steps, so the short walk above is not the "+
+			"finding's doing\n%s", steps, cout)
+	}
+}

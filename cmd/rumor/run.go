@@ -164,6 +164,25 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		_, _ = fmt.Fprintf(stderr, "run: could not run: %v\n", werr)
 		return 2
 	}
+	// A FINDING IS THE RUN'S PRODUCT, AND THE VERB HAS TO SAY SO. The walk
+	// carries the first `bug` and the step it came after (fable, coop r5/152
+	// ruling 2), and until now `cmd/` read NEITHER field -- zero hits, ibis at
+	// coop main/149. A found bug therefore printed as a slightly short trace
+	// with a clean verdict and exit 0: the one outcome this tool exists to
+	// produce, reported as nothing having happened. Measured before the fix on
+	// examples/toy, where seeds 6, 7 and 4242 each stop early on a finding and
+	// all three exited 0.
+	//
+	// IT IS PRINTED BEFORE THE VERDICT because the verdict is the last line of
+	// every run and the finding belongs beside the step that produced it, which
+	// the trace shows directly above.
+	if rec.Finding != nil {
+		if _, err := fmt.Fprintf(stdout, "run: FOUND %v after step %d -- %s\n",
+			rec.Finding.Value, rec.FoundAt, rec.Finding.Rule); err != nil {
+			_, _ = fmt.Fprintf(stderr, "run: writing the finding: %v\n", err)
+			return 2
+		}
+	}
 	// THE SESSION COUNT IS IN THE VERDICT for the provider count's reason: a
 	// token is acquired at first use and reused after, so a holder that
 	// re-acquired every step would send identical requests and the difference
@@ -179,6 +198,17 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		rec.Sessions, rec.Observations, len(rollback.Registered())); err != nil {
 		_, _ = fmt.Fprintf(stderr, "run: writing the verdict: %v\n", err)
 		return 2
+	}
+	// EXIT 3 AND NOT 1. A refusal (1) means the PROJECT is wrong and its
+	// reader fixes their declarations; a finding means the SYSTEM UNDER TEST is
+	// wrong and its reader fixes their application. Folding the product into
+	// the refusal status would make those two indistinguishable to anything
+	// reading the exit code, which is every CI step that will ever run this
+	// verb -- and "your project is malformed" is the reading a green-seeking
+	// pipeline would act on. could-not-run (2) still outranks both: when the
+	// run could not finish, what an observation would have said is unknown.
+	if rec.Finding != nil {
+		return 3
 	}
 	return 0
 }

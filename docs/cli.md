@@ -364,9 +364,39 @@ so a run that dies in the handshake still tells you the one thing you need to
 reproduce it. Without `--seed` one is minted from crypto/rand and printed, and
 that printed number is exactly what `--seed` takes.
 
-`--steps` defaults to 20. Exit 0 on a completed walk, 1 on a project the
-documents refuse, 2 on could-not-run -- an adapter that will not start, a
-weight the project never declared, or a usage error.
+`--steps` defaults to 20.
+
+| status | meaning |
+|---|---|
+| 0 | the walk completed and no observation found a bug |
+| 1 | refused: the project's own documents are wrong |
+| 2 | could-not-run: an adapter that will not start, a weight the project never declared, or a usage error |
+| 3 | **a bug was found**, and the line above the verdict names it |
+
+**A finding is 3 and not 1, because they are different authors' problems.** A
+refusal means the PROJECT is wrong and its author fixes their declarations; a
+finding means the SYSTEM UNDER TEST is wrong and its author fixes their
+application. One status for both would make this tool's product
+indistinguishable from a malformed project to anything reading an exit code --
+which is every CI step that will ever run this verb, and "your project is
+malformed" is the reading a green-seeking pipeline acts on. `2` still outranks
+both: when the run could not finish, what an observation would have said is
+unknown.
+
+**The finding is a line and not only a status.**
+
+```
+run: FOUND bug after step 5 -- data.rumor.statute.finding
+```
+
+It sits between the trace and the verdict and names three things off the
+record: the value, the step it came after, and the rule that produced it. The
+step it names is the LAST line of the trace, because the first bug ends the
+walk -- the trace a shrink reads has to include the step that broke the system,
+and nothing may follow it. Until 2026-10-24 `cmd/` read neither field the walk
+carries (ibis, coop main/149), so a found bug printed as a slightly short trace
+with a clean verdict and exit 0: the one outcome this tool exists to produce,
+reported as nothing having happened.
 
 ```console
 $ rumor run tests/run/fixtures/walkable --seed 42 --steps 5
@@ -416,13 +446,17 @@ declares none. A drawn `visible_to` is also what the emitted claim carries,
 since that is a field a statute reads.
 
 **Why the example walks a test fixture and not `examples/`.** A run needs a
-weight for every action the bindings declare and for all four nemesis kinds --
-an undeclared weight is refused rather than read as zero, since zero means
-never chosen and the project decided it. Measured 2026-10-19: `examples/twin`
-weights `publish_doc` and not `publish_doc_ui`, and `examples/toy` weights its
-six actions and none of the kinds, so `rumor run` refuses both until
-`validate`'s arm 19 weight cell closes that. The block above is held to the
-binary's own output by an arm in `tests/run`, so it cannot drift.
+weight for every action the bindings declare and for all five pool kinds -- an
+undeclared weight is refused rather than read as zero, since zero means never
+chosen and the project decided it. **Both examples carry those weights now and
+both walk**: measured 2026-10-24, `rumor run examples/toy --seed 6 --steps 10`
+and `rumor run examples/twin --seed 1 --steps 3` each exit 3 on a finding,
+where on 2026-10-19 both refused -- the twin for a missing `publish_doc_ui`
+weight and the toy for weighting none of the kinds. The fixture remains the
+documented subject because it is the one whose trace cannot drift: an example
+is a system under test, and its weights, its actions and its bugs move with the
+project. The block above is held to the binary's own output by an arm in
+`tests/run`, so it cannot drift either.
 
 **No `run` block here, deliberately.** An executable one would have to build
 `rumor`, put it on PATH for the fixture's `[adapter].command`, and reach into
