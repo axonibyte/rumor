@@ -100,6 +100,45 @@ func TestAGitFileIsSkippedAsAGitDirectoryIs(t *testing.T) {
 	}
 }
 
+// ROOK'S OBSERVATION at coop r5/180, taken rather than left: hoisting `skipped(name)`
+// out of the isDir branch exempts by NAME, so a FILE called `target` is now skipped
+// exactly as a DIRECTORY called `target` was. The hoist's comment states that intent
+// ("the walk skips only .git and target, with no condition on the type"), which is why
+// rook ruled the reason covers what it widens -- but NO CELL EXERCISED IT, and a
+// comment is an untested claim whoever wrote it.
+//
+// SO THIS ASSERTS THE SENTENCE. If the exemption should ever narrow to `.git` alone,
+// this arm is what fails and says so, rather than the widening going out silently.
+//
+// MUTATION-CHECKED: narrow the hoist to `name == ".git"` and this fails with
+// "target matches no entry in docs/coverage.toml".
+func TestATargetFileIsSkippedAsATargetDirectoryIs(t *testing.T) {
+	d := scratch(t)
+	write(t, filepath.Join(d, "docs", "coverage.toml"),
+		"[[entry]]\npath = \"docs/*\"\ndocs = [\"docs/release.md\"]\n")
+	// A FILE, not a directory, and not a plausible build output -- the point is the
+	// TYPE, so the content is irrelevant and saying so keeps the fixture honest.
+	write(t, filepath.Join(d, "target"), "not a build directory\n")
+
+	n, err := Check(d)
+	if err != nil {
+		t.Fatalf("the exemption is the NAME and not the type, which is what the hoist's "+
+			"own comment claims: %v", err)
+	}
+	if n < 1 {
+		t.Fatalf("checked %d paths, so the walk found nothing and the arm above could "+
+			"have passed on an empty tree", n)
+	}
+	// THE CONTROL, so this proves an exemption and not a walk that stops at any file:
+	// a differently-named file in the same tree must still be demanded of the map.
+	write(t, filepath.Join(d, "targets"), "one letter off\n")
+	if _, err := Check(d); err == nil {
+		t.Fatal("a file named `targets` passed, so the skip is not matching whole names")
+	} else if !strings.Contains(err.Error(), "targets") {
+		t.Fatalf("the refusal names %v, not targets", err)
+	}
+}
+
 // The other arm issue 2 asks for: an unmapped path fails, by name.
 func TestAnUnmappedPathFailsAndIsNamed(t *testing.T) {
 	d := scratch(t)
