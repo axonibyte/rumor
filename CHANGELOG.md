@@ -3,6 +3,29 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.29 — 2026-10-24
+
+**`docs --check` skips `.git` by name, so a review in a worktree is green** —
+issue 6. The walk consulted its exemption list only inside the `isDir` branch,
+which reads the rule as "a DIRECTORY called `.git`". In a git worktree `.git` is
+a FILE holding a `gitdir:` pointer, so it fell through to the entry branch and
+was demanded of `docs/coverage.toml` — and the refusal pointed at the map rather
+than at the cause. Reviewing a branch with `git worktree add` is the ordinary way
+to do it, and it failed the suite over a path git itself would never carry.
+
+- **The name is tested before the type.** The intent at `skipDirs` is "the walk
+  skips only `.git` and `target`", with no condition on the type, and the code
+  now says that. Measured rather than reasoned: at 0da475f a worktree failed
+  with ".git matches no entry in docs/coverage.toml" while the identical commit
+  in a clone passed, the only difference being that `.git` is a directory there.
+- **Both halves of the exemption have arms.** A `.git` FILE holding the worktree
+  pointer is skipped as the directory is, with a control that a stray unmapped
+  file still fails by name; and a FILE called `target` is skipped as the
+  directory was, with a control that `targets` is still demanded of the map, so
+  the exemption is proven to match whole names. The second arm exists because
+  the hoist widens the rule to every name on the list and nothing exercised
+  that — a comment is an untested claim whoever wrote it.
+
 ## 0.1.28 — 2026-10-24
 
 **R5.5, the walk observes and a found bug is the run's product** — issue 83.
