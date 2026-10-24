@@ -373,10 +373,24 @@ func names() string {
 }
 
 func (a *adapter) observe(id string, m wire.ObserveRequest) any {
-	name, subject := m.Query, ""
-	if i := strings.IndexByte(m.Query, '/'); i >= 0 {
-		name, subject = m.Query[:i], m.Query[i+1:]
-	}
+	// THE SUBJECT COMES OUT OF `args`, which is the shape the execute path
+	// above already has at its own m.Args["event"].
+	//
+	// THIS PATH SPLIT THE QUERY ON A SLASH until now -- contract 1's form --
+	// while contract 2 moved the observation's arguments into `args` on
+	// 2026-10-19 (docs/contract.md's v2 row, "observe gains args") and
+	// examples/toy has declared `args = ["event"]` on both observations ever
+	// since. So the two halves disagreed in the one direction nothing could
+	// see: the project was right, the wire type carried Args, and this
+	// adapter -- the tree's only query-splitter -- was the half left behind.
+	// A real walk died at its first observation with "event_count names one
+	// event" (quill, coop r5/163), which is this function faulting correctly
+	// on a request it would not read.
+	//
+	// The query is the observation's NAME ALONE, which bindings.toml says in
+	// its own words beside the args row it declares.
+	name := m.Query
+	subject, _ := m.Args["event"].(string)
 	// THE SOURCE IS CHECKED AGAINST THE DECLARED ONE and a mismatch is
 	// FaultSource, never an answer through another channel: docs/contract.md
 	// says an adapter that cannot observe through the source it was handed
@@ -400,20 +414,42 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 	switch name {
 	case "event_count":
 		if subject == "" {
-			return fault(id, wire.FaultField, "query",
-				"event_count names one event: the query is event_count/<id>")
+			return fault(id, wire.FaultField, "args",
+				"event_count names one event: send it as args.event")
 		}
 		path = "/events/" + subject + "/count"
 	case "store_event_count":
 		if subject == "" {
-			return fault(id, wire.FaultField, "query",
-				"store_event_count names one event: the query is store_event_count/<id>")
+			return fault(id, wire.FaultField, "args",
+				"store_event_count names one event: send it as args.event")
 		}
 		path = "/store/events/" + subject + "/count"
 	}
 
-	var value any
-	code, err := a.call(http.MethodGet, path, m.Token, nil, &value)
+	// THE VALUE IS THE COUNT, NOT THE BODY THAT CARRIES IT, and this is the
+	// second half of the same contract drift as the args read above.
+	//
+	// Both count routes answer {"event":..,"count":N,"deleted":..}, and this
+	// function used to pass that whole object through as the observation's
+	// value. The reviewed definition of this observation's value is a SCALAR:
+	// examples/toy/cases/honest-count.json carries `"value": 1` and the
+	// statute compares it to `believed`, which is
+	// `count(joined_by_observer) - count(left_by_observer)` -- a number. An
+	// object never equals a number, so once the args fix let a real walk's
+	// observation through, EVERY observation fell to `default finding :=
+	// "bug"` and every seed ended at its first observable step. Measured on
+	// seeds 34, 35, 6, 7 and 4242 before this hunk: 4, 5, 4, 4 and 2 steps of
+	// ten, each with a finding and no disagreement to justify it.
+	//
+	// `deleted` is deliberately dropped rather than carried alongside: the
+	// statute reads the ledger for that -- `deleted` is a fact it derives from
+	// the delete_event action -- and an observation that also reported it
+	// would be giving the statute a second, unreviewed source for something it
+	// already decides.
+	var body struct {
+		Count int `json:"count"`
+	}
+	code, err := a.call(http.MethodGet, path, m.Token, nil, &body)
 	if err != nil {
 		return fault(id, wire.FaultInternal, "", err.Error())
 	}
@@ -421,6 +457,7 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 		return fault(id, wire.FaultInternal, "query",
 			fmt.Sprintf("the toy answered %s with status %d", path, code))
 	}
+	var value any = body.Count
 	return wire.ObserveResponse{
 		Envelope: wire.Envelope{Kind: wire.KindObserve, Contract: wire.ContractVersion, ID: id},
 		Value:    value,

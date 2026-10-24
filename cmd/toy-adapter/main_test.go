@@ -276,19 +276,29 @@ func TestAnActionNeedingAnEventWithoutOneIsRefusedBeforeTheToy(t *testing.T) {
 	}
 }
 
-func TestAnObservationCarriesItsSubjectInTheQuery(t *testing.T) {
+// THE SUBJECT ARRIVES IN `args`, which is contract 2's rule. This arm read
+// `event_count/e7` until 2026-10-24 and passed, because the adapter split the
+// query -- so the suite agreed with the adapter and both disagreed with the
+// contract and with examples/toy, which has declared args = ["event"] since
+// the contract moved. A walk against the real project faulted at its first
+// observation; no arm here could see it, because every arm spoke contract 1.
+func TestAnObservationCarriesItsSubjectInArgs(t *testing.T) {
 	a, log := stub(t, map[string]answer{
 		"GET /events/e7/count": fine(map[string]any{"event": "e7", "count": 3}),
 	})
 	out := ask(t, a, map[string]any{
-		"kind": "observe", "query": "event_count/e7", "source": "api", "token": "t1",
+		"kind": "observe", "query": "event_count", "source": "api", "token": "t1",
+		"args": map[string]any{"event": "e7"},
 	})
 	if out["kind"] != "observe" {
 		t.Fatalf("not an observe: %v", out)
 	}
-	value, _ := out["value"].(map[string]any)
-	if value["count"].(float64) != 3 {
-		t.Errorf("the value is %v", out["value"])
+	// THE VALUE IS A SCALAR, which is what the reviewed cases carry
+	// (examples/toy/cases/honest-count.json: "value": 1) and what the statute
+	// compares to `believed`. This arm asserted a MAP until 2026-10-24 and so
+	// agreed with the adapter against the cases.
+	if got, ok := out["value"].(float64); !ok || got != 3 {
+		t.Errorf("the value is %#v, want the scalar 3", out["value"])
 	}
 	if len(*log) != 1 || (*log)[0].path != "/events/e7/count" {
 		t.Fatalf("the adapter called %v", *log)
@@ -303,8 +313,33 @@ func TestAParameterizedObservationWithNoSubjectIsRefused(t *testing.T) {
 	if kind != string(wire.FaultField) {
 		t.Errorf("a subjectless event_count is fault %q, want %q", kind, wire.FaultField)
 	}
-	if !strings.Contains(detail, "event_count/<id>") {
-		t.Errorf("the fault does not say the shape: %q", detail)
+	if !strings.Contains(detail, "args.event") {
+		t.Errorf("the fault does not say where the subject goes: %q", detail)
+	}
+}
+
+// THE SLASH FORM IS GONE, AND THIS IS THE ARM THAT WOULD HAVE CAUGHT ITS
+// SURVIVAL. Before 2026-10-24 the adapter split the query, so this request
+// was ANSWERED; now `event_count/e7` is simply not an observation this
+// adapter serves, and the name it reports back is the whole query. Without
+// this cell the only thing standing between the tree and contract 1's shape
+// is the arms above happening to send args -- and arms that send the right
+// thing cannot tell you the wrong thing is still accepted.
+func TestTheSlashFormQueryIsNoLongerSplit(t *testing.T) {
+	a, log := stub(t, map[string]answer{
+		"GET /events/e7/count": fine(map[string]any{"event": "e7", "count": 3}),
+	})
+	kind, detail := faultOf(t, ask(t, a, map[string]any{
+		"kind": "observe", "query": "event_count/e7", "source": "api", "token": "t1",
+	}))
+	if kind != string(wire.FaultInternal) {
+		t.Errorf("a slash-form query is fault %q, want %q", kind, wire.FaultInternal)
+	}
+	if !strings.Contains(detail, "event_count/e7") {
+		t.Errorf("the fault does not name the query it refused: %q", detail)
+	}
+	if len(*log) != 0 {
+		t.Errorf("the adapter asked the toy anyway, %d time(s): %v", len(*log), *log)
 	}
 }
 
@@ -317,7 +352,8 @@ func TestTheWrongSourceIsAFaultAndNotAnAnswer(t *testing.T) {
 		"GET /events/e1/count": fine(map[string]any{"count": 1}),
 	})
 	kind, detail := faultOf(t, ask(t, a, map[string]any{
-		"kind": "observe", "query": "event_count/e1", "source": "direct",
+		"kind": "observe", "query": "event_count", "source": "direct",
+		"args": map[string]any{"event": "e1"},
 	}))
 	if kind != string(wire.FaultSource) {
 		t.Errorf("a source mismatch is fault %q, want %q", kind, wire.FaultSource)
@@ -338,7 +374,8 @@ func TestTheDirectObservationGoesToTheStoreRouteWithNoToken(t *testing.T) {
 		"GET /store/events/e2/count": fine(map[string]any{"event": "e2", "count": 5}),
 	})
 	out := ask(t, a, map[string]any{
-		"kind": "observe", "query": "store_event_count/e2", "source": "direct",
+		"kind": "observe", "query": "store_event_count", "source": "direct",
+		"args": map[string]any{"event": "e2"},
 	})
 	if out["kind"] != "observe" {
 		t.Fatalf("not an observe: %v", out)
