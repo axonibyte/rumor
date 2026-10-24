@@ -4,18 +4,39 @@
 # can account for -- which is the difference between a regression suite and a
 # list of numbers.
 #
-# 7 -- THE STALE COUNT, one of the two ledger rows a run can catch in R5. The
-# walk makes three users, admin_1 creates an event, admin_1 deletes it, and the
-# observations after that step are still ANSWERED a count for it -- "the
-# disagreement between a delete the ledger carries and a count the application
-# still reports" (statute.rego's `deleted`). Both of them are: the API's
-# denormalized counter and the store's attendee list, which is why the row is
-# the application's and not one endpoint's.
+# D12 AS AMENDED IS WHY THESE TWO AND NOT ONE (breakout-r5/1 item 3): "each of
+# the toy's two api-sim bugs found from a COMMITTED SEED by api-sim and shrunk
+# to under five actions, every step on a verified clean rollback". Found from a
+# COMMITTED seed is part of the done-when, so the shrink's product belongs here
+# rather than in a test's temporary directory (fable, coop r5/219).
 #
-# Five actions, the delete last, and NO planted step in the trace -- so the
-# finding is the honest one and `rests_on_planted` is false, which is half of
-# its identity when R14 compares two findings.
+# 2 -- THE STALE COUNT, in FOUR actions. member_2 makes a user, creates an
+# event, admin_1 makes a user, and member_2 deletes the event; the observations
+# after the delete are still ANSWERED a count for it -- "the disagreement
+# between a delete the ledger carries and a count the application still
+# reports" (statute.rego's `deleted`). Both the API's denormalized counter and
+# the store's attendee list answer, which is why the row is the application's
+# and not one endpoint's.
 #
-# Measured 2026-10-24: `rumor run examples/toy --seed 7 --steps 10` exits 3 and
-# prints `FOUND bug after step 5`, byte-identical across two runs.
-7
+# 40 -- A BUG REACHED WITH NO DELETE, in THREE actions. member_1 makes a user,
+# creates an event and joins it, and the observation disagrees with what the
+# observer may see. THE TRACE PROVES THE ABSENCE OF A DELETE AND NOT WHICH ROW
+# THIS IS: once an `event.deleted` claim is in the prefix the statute can reach
+# neither `consistent` nor `explained`, so a delete is sufficient for a bug and
+# its absence rules the stale count out -- but naming this one the visibility
+# leak rests on D12 enumerating exactly two R5-catchable rows and putting the
+# capacity race in R8, not on any field of the finding. Both rows arrive as
+# `default finding := "bug"` with no clause fired, so no field of
+# engine.Finding separates them (ratchet, coop r5/178 and /216).
+#
+# Both are the HONEST finding -- `rests_on_planted false` -- which is a third of
+# a finding's identity, and both are byte-identical across two runs.
+# Measured 2026-10-24.
+#
+# SEED 7 IS RETIRED FROM THIS FILE and stays R5.5's record of D16. It caught
+# the stale count in FIVE actions, and the done-when asks for UNDER five; seed
+# 2 reaches the same row in four. Keeping both would carry the longer seed for
+# a row already covered, and a regression suite is not improved by a second
+# witness to one defect.
+2
+40

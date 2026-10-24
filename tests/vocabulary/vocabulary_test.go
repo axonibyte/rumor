@@ -126,9 +126,11 @@ const root = "../.."
 // fires no clause, so its Rule is the default's own path and constant across
 // two such findings -- the rule comparison cannot separate them, and nothing
 // else in engine.Finding can either. That case is answered by the attribution
-// instead, and by Shrink saying so when the attribution was not compared. The moves are ADDITIVE and none cancels
-// another: R5.4's came from a mutant copying a statute, R5.5's from the observe
-// step quoting the sealing rule, R5.3's from a new quotation in a new package.
+// instead, and by Shrink saying so when the attribution was not compared.
+//
+// The moves are ADDITIVE and none cancels another: R5.4's came from a mutant
+// copying a statute, R5.5's from the observe step quoting the sealing rule,
+// R5.3's from a new quotation in a new package.
 // The number is the sweep's and not my arithmetic -- it refuses on the count and
 // names the actual, which is how this value was settled.
 const declaredQuotes = 33

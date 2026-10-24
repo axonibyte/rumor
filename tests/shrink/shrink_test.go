@@ -160,8 +160,11 @@ func TestTheToyBugsAreFoundByAWalkAndShrinkToUnderFiveActions(t *testing.T) {
 		row     string
 		deletes bool
 	}{
-		{2, "the stale count: a delete the ledger carries against a count the application still reports", true},
-		{40, "the other row: an observed value matching neither what the observer believes nor the visible truth", false},
+		// THE LABELS SAY WHAT IS PROVEN. "the stale count" is identified by
+		// the delete; seed 40's label says the absence and names the
+		// interpretation as D12's rather than as something measured here.
+		{2, "a bug reached WITH a delete, which is the stale count", true},
+		{40, "a bug reached with NO delete, which D12 enumerates as the leak", false},
 	} {
 		t.Run(fmt.Sprintf("seed%d", tc.seed), func(t *testing.T) {
 			ctx := context.Background()
@@ -223,6 +226,27 @@ func TestTheToyBugsAreFoundByAWalkAndShrinkToUnderFiveActions(t *testing.T) {
 					deleted = true
 				}
 			}
+			// WHAT THIS ASSERTION PROVES AND WHAT IT DOES NOT, said here because
+			// the `row` strings above read as more than it establishes (fable,
+			// coop r5/219 (A), on ratchet's observation at /216).
+			//
+			// IT PROVES: the delete's presence or absence, and therefore that
+			// one of these two bugs was reached WITHOUT one. A delete is
+			// sufficient for a bug -- the statute can reach neither
+			// `consistent` nor `explained` once `event.deleted` is in the
+			// prefix -- so its absence rules the stale count out for seed 40
+			// and its presence identifies the row for seed 2.
+			//
+			// IT DOES NOT PROVE WHICH ROW SEED 40 IS. Calling it the visibility
+			// leak rests on D12 as amended enumerating exactly two
+			// R5-catchable rows and putting the capacity race in R8 -- not on
+			// anything the trace or the finding carries, since both rows arrive
+			// as `default finding := "bug"` with no clause fired and no field
+			// of engine.Finding separates them. If a fourth catchable row is
+			// ever planted, this cell would relabel in silence: it would still
+			// be a bug with no delete, and the name in `row` would be wrong
+			// with nothing here to notice. The mechanism is given for the
+			// delete direction only.
 			if deleted != tc.deletes {
 				t.Fatalf("seed %d's trace carries delete_event = %v, want %v -- this seed is "+
 					"not %s, so the two cells may be one row measured twice",
