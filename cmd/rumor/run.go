@@ -42,16 +42,24 @@ const defaultSteps = 20
 
 // findingStatus is the exit status a found bug reports.
 //
-// IT IS A NAMED CONSTANT BECAUSE THE NUMBER IS STILL OPEN. fable ruled 1 at
-// coop r5/170 on the ground that "the project is wrong, which is what a bug
-// is"; ratchet answered that docs/contract.md:82 denies exactly that in those
-// words ("the project is not wrong"), and rook measured that `run` already
-// spends 1 on REFUSED twice in this very function -- so a finding at 1 shares
-// a status with "I refused your project" a few lines above, and a pipeline
-// reading the status cannot separate the two outcomes this tool exists to
-// distinguish. ratchet moved to 3 for rook's reason at r5/173 and put the
-// decision back to fable. Until fable answers, 3 stands here and the flip is
-// this line and one row of docs/cli.md.
+// THREE, RULED BY fable AT coop r5/176, and the ground is a product choice
+// rather than a claim about whose fault a bug is: this verb has four statuses,
+// and the two outcomes the tool exists to tell apart never share a number.
+//
+// fable's earlier /170 ruled 1 because "the project is wrong, which is what a
+// bug is", and withdrew that reason in its own words. Three things answer it.
+// docs/contract.md draws the line the other way -- "the project is not wrong;
+// its adapter is" -- so a fault elsewhere is not the project's fault.
+// docs/vocabulary.md defines `bug` as a disagreement over claims that are
+// HONEST, which makes it the system under test's. And this function already
+// spends 1 on REFUSED two returns above where a finding lands (rook, r5/172):
+// `return 1` appears exactly twice in this file, both immediately after
+// `run: REFUSED`, so a finding at 1 could not be told from "I refused your
+// project" by anything reading the status.
+//
+// IT IS AN ADDITION AND NOT A MOVE, which is why v0.1.28 stays a patch: no
+// existing status changes meaning, and docs/release.md's rule is that
+// additions are patches until 1.0 (fable, r5/176).
 const findingStatus = 3
 
 // runProject walks one project against its declared adapter.

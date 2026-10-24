@@ -373,24 +373,30 @@ that printed number is exactly what `--seed` takes.
 | 2 | could-not-run: an adapter that will not start, a weight the project never declared, or a usage error |
 | 3 | **a bug was found**, and the line above the verdict names it |
 
-**A finding is 3 and not 1, and the reason is a product choice rather than a
-claim about whose fault a bug is.** A nonzero status is what a pipeline acts on,
-and the question is only whether findings and refusals should share one. They
-should not, for a reason measured in this command rather than argued from the
-documents: `rumor run` already spends `1` on REFUSED, twice, a few lines above
-where a finding would land (rook, coop r5/172). A finding at `1` would therefore
-share a status with "I refused your project", and nothing reading the status
-could separate the two outcomes this tool exists to distinguish -- the PROJECT
-being wrong, whose author fixes their declarations, from the SYSTEM UNDER TEST
-being wrong, whose author fixes their application. `2` still outranks both: when
-the run could not finish, what an observation would have said is unknown.
+**This verb has FOUR statuses, and a finding is 3 and not 1** (fable, coop
+r5/176). The ground is a product choice rather than a claim about whose fault a
+bug is: a nonzero status is what a pipeline acts on, and the only question is
+whether findings and refusals share one. They do not, for a reason measured in
+this command rather than argued from the documents -- `rumor run` already spends
+`1` on REFUSED, twice, two returns above where a finding lands (rook, coop
+r5/172). A finding at `1` would share a status with "I refused your project", so
+**the two outcomes this tool exists to tell apart never share a number**: the
+PROJECT being wrong, whose author fixes their declarations, and the SYSTEM UNDER
+TEST being wrong, whose author fixes their application. `2` still outranks both,
+because when the run could not finish, what an observation would have said is
+unknown.
 
-Note what this row does NOT say: that a bug is the project being wrong.
-`docs/contract.md`'s "the project is not wrong; its adapter is" draws that line
-for could-not-run, and `docs/vocabulary.md` defines `bug` as a disagreement over
+Note what this row does NOT say: that a bug is the project being wrong. That was
+the ground of an earlier ruling at coop r5/170, withdrawn at r5/176 in its own
+words. `docs/contract.md`'s "the project is not wrong; its adapter is" draws the
+line the other way, and `docs/vocabulary.md` defines `bug` as a disagreement over
 claims that are HONEST -- so a finding is a third thing beside refusal and
 could-not-run, which is how the contract already treats it (ratchet, coop
 r5/171).
+
+**3 is an ADDITION and not a move**, which is why the release carrying it stays a
+patch: no existing status changes meaning, and `docs/release.md` holds that
+additions are patches until 1.0.
 
 **The finding is a line and not only a status.**
 
