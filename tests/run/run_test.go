@@ -525,11 +525,47 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 
 	for _, seed := range seeds {
 		t.Run("seed"+seed, func(t *testing.T) {
-			first, errb, code := run(t, "run", "../../examples/toy", "--seed", seed, "--steps", "10")
-			if code != 3 {
-				t.Fatalf("exit %d, want 3: seed %s is promoted as a seed that FINDS a bug, and "+
-					"a clean walk means the promotion has lost its defect\nstdout:\n%s\n"+
-					"stderr:\n%s", code, seed, first, errb)
+			// ONE CONSTANT FOR THE LENGTH, because the exit-0 message below
+			// quotes it: two literals saying 10, one inside a sentence about
+			// the other, is a drift waiting to happen.
+			const steps = 10
+			first, errb, code := run(t, "run", "../../examples/toy", "--seed", seed,
+				"--steps", strconv.Itoa(steps))
+			// THE STATUS IS READ AS THE FOUR THINGS IT MEANS, not as "3 or not
+			// 3". ratchet found this message asserting the wrong one of them
+			// (coop r5/198): the adapter's own request budget expired, the run
+			// reported could-not-run, and this arm said "a clean walk means the
+			// promotion has lost its defect" -- about a run that never walked.
+			// The verb has four statuses and docs/cli.md documents them because
+			// collapsing outcomes into one number loses which happened; an arm
+			// over that verb which collapses three of them back again is the
+			// same defect one level up.
+			//
+			// NONE OF THEM IS A SKIP. A could-not-run names nothing about the
+			// promotion, and that is precisely why it must still fail: a seed
+			// whose defect could not be checked has not been shown to
+			// reproduce, and passing here would report an unmeasured promotion
+			// as a measured one.
+			switch code {
+			case 3:
+				// The promotion holds. The assertions below say what it holds.
+			case 0:
+				t.Fatalf("exit 0: seed %s walked CLEAN over %d step(s) asked for, so the "+
+					"promotion has lost its defect -- either the system under test was "+
+					"repaired or the draw moved off it\nstdout:\n%s", seed, steps, first)
+			case 1:
+				t.Fatalf("exit 1: the project was REFUSED, so examples/toy's own "+
+					"declarations are wrong and this says nothing about whether seed %s "+
+					"still reproduces\nstdout:\n%s\nstderr:\n%s", seed, first, errb)
+			case 2:
+				t.Fatalf("exit 2: COULD-NOT-RUN. Nothing was observed, so this names "+
+					"nothing about seed %s's defect -- it is not a clean walk and not a "+
+					"lost promotion. The adapter carries its own per-request budget and "+
+					"an expiry arrives here\nstdout:\n%s\nstderr:\n%s", seed, first, errb)
+			default:
+				t.Fatalf("exit %d is not a status `rumor run` documents (0 clean, 1 "+
+					"refused, 2 could-not-run, 3 a finding)\nstdout:\n%s\nstderr:\n%s",
+					code, first, errb)
 			}
 			if !strings.Contains(first, "run: FOUND ") {
 				t.Errorf("exit 3 with no finding line, so the status and the report disagree:\n%s",
