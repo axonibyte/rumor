@@ -118,7 +118,15 @@ const root = "../.."
 // clean-world replay gate compares a replayed finding by RULE as well as by
 // value: one value reached by a different clause is a different finding, so two
 // distinct failures would otherwise read as one reproduction and the seed would
-// be shrunk against the wrong one. The moves are ADDITIVE and none cancels
+// be shrunk against the wrong one.
+//
+// AND THAT CLAUSE'S REACH IS NAMED, because ratchet read it the wide way (coop
+// r5/210) and a later reader would too: it is true of two NAMED clauses, and it
+// does NOT cover the `bug` DEFAULT. A finding from `default finding := "bug"`
+// fires no clause, so its Rule is the default's own path and constant across
+// two such findings -- the rule comparison cannot separate them, and nothing
+// else in engine.Finding can either. That case is answered by the attribution
+// instead, and by Shrink saying so when the attribution was not compared. The moves are ADDITIVE and none cancels
 // another: R5.4's came from a mutant copying a statute, R5.5's from the observe
 // step quoting the sealing rule, R5.3's from a new quotation in a new package.
 // The number is the sweep's and not my arithmetic -- it refuses on the count and
