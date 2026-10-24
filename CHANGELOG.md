@@ -3,6 +3,34 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.30 — 2026-10-24
+
+**`Session.Close` is idempotent under concurrency, not only in sequence** — and a
+returned `Close` now means the adapter is stopped. The old body read `done`,
+found it open, and closed it as two steps, so two callers could both take the
+`default` branch and the second `close(done)` would panic. It was already called
+from a `defer` and explicitly in a run, which is the arrangement that makes two
+callers ordinary rather than exotic.
+
+- **`sync.Once` replaces select-then-close.** It removes the window and gives
+  the second caller a stronger guarantee than the old early return: `Do` BLOCKS
+  until the first call's teardown has finished, so a `Close` that returns means
+  the adapter is stopped rather than merely being stopped. `stopAdapter` and
+  `cancel` sat OUTSIDE the old `select`, so a second concurrent caller tore the
+  adapter down twice even when nothing panicked.
+- **Two arms, each catching what the other cannot.** One releases eight callers
+  together over 200 iterations with deliberately no `recover()`, and counts
+  stdin closes to prove teardown ran exactly once; restoring select-then-close
+  makes it panic. The other asserts INSIDE each caller, against a deliberately
+  slow teardown, that its own return implies teardown finished; replacing the
+  `Once` with a bare `CompareAndSwap` that lets the losers return early makes it
+  fail while the first arm still passes. Clean under `-race`.
+- **What this does not change:** the stop protocol `docs/contract.md` states.
+  EOF on the adapter's stdin is still the signal and `StopGrace` is still two
+  seconds. What changes is the client's ability to keep that promise when two of
+  its own callers close at once — a panic mid-teardown is how an adapter was
+  denied the cleanup the document says it may rely on.
+
 ## 0.1.29 — 2026-10-24
 
 **`docs --check` skips `.git` by name, so a review in a worktree is green** —
