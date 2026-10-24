@@ -3,6 +3,57 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.28 — 2026-10-24
+
+**R5.5, the walk observes and a found bug is the run's product** — issue 83.
+Until now a walk could act but never ask, so no run could produce a finding at
+all; the toy's third of R5.3 was blocked on exactly that. A walk now evaluates
+every declared observation after every step, stops on the first `bug`, and the
+command says so and exits non-zero.
+
+- **The walk observes after every step.** The prefix is sealed to everything
+  that has happened, including the step just taken, which is the only position
+  at which "did that leave the system consistent" is a question. The observation
+  DRAWS NOTHING and appends nothing, so a step replays identically with or
+  without it — the seeded walk is unchanged by the fact that it now looks.
+- **The first bug ends the walk, and the record carries it.** `consistent` and
+  `explained` walk on. The finding is checked after the step is recorded, so the
+  trace a shrink reads includes the step that broke the system; a reduction over
+  a trace one step short would be searching the wrong world.
+- **`rumor run` reports the finding and exits 3.** A fourth status, and an
+  addition rather than a move: `1` is the project being refused and a finding is
+  the SYSTEM UNDER TEST being wrong, so the two outcomes this tool exists to
+  tell apart never share a number. Before this the command read neither field
+  the walk carried, and a found bug printed as a slightly short trace with a
+  clean verdict and exit 0.
+- **The finding line carries its attribution.** `rests_on_planted` is the third
+  part of a finding's identity, with the rule and the value: a `bug` resting on a
+  planted claim is the engine catching its own lie, not a defect. The twin at
+  seed 1 reports it true, which the value alone would have booked against the
+  twin's application. A statute declaring no such rule prints `undeclared`,
+  because the attribution is then unknown.
+- **A seeded attempt replays to a step count with kinds dropped**, which is the
+  seam a shrinker reduces through: the same seed, fewer steps, or a named kind
+  weighted out at every level — and a kind the project never weighted is refused
+  rather than silently dropped.
+- **The first promoted seed.** `examples/toy/seeds.lock` carries seed 7 for the
+  stale-count row: the walk deletes an event and the observations after it are
+  still answered a count for it. Eleven of twenty-four seeds find a bug and
+  thirteen walk clean, so a promotion selects a reproducer rather than restating
+  a property of the toy. Nothing runs that file until R22, so an arm re-runs
+  every promoted seed twice and requires the exit, the identity and the
+  attribution.
+- **The toy adapter answers the observation it declares.** Its observe path
+  reads the subject from the declared `args`, and the value it reports is the
+  COUNT rather than the body — a scalar, which is what the statute reviews.
+  Either half alone left every observation reading as `bug`.
+
+Also in this release: the observe request's `args` are asserted off the bytes
+the adapter receives rather than off its answer; the vocabulary sweep enforces
+its quotation count, which cannot see a missing reason; and the told-fact count
+in `docs/vocabulary.md` carries the date it was measured, because nothing armed
+it.
+
 ## 0.1.27 — 2026-10-23
 
 **R5.4, arguments and sessions: a walk acts as somebody, on something it knows
