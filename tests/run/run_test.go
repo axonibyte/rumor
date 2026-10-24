@@ -518,9 +518,18 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 		seeds = append(seeds, line)
 	}
 	if len(seeds) == 0 {
-		t.Fatalf("%s holds no seed, so this arm is checking nothing. D16 promoted seed 7 for "+
-			"the stale-count row; a deliberate decision to carry no promotion here has to "+
-			"change this arm, not pass it silently", lock)
+		// THE MESSAGE NAMES WHAT THE LOCK SHOULD HOLD TODAY, not what it held
+		// when this arm was written. It said "D16 promoted seed 7" until
+		// 2026-10-24, and seed 7 retired from the lock that day -- so the one
+		// line a reader sees when the file is empty was describing a seed the
+		// file no longer carries (ratchet, coop r5/229). It prints ONLY when
+		// the lock is empty, which is exactly when somebody is working out what
+		// the file should hold, so stale prose here costs most.
+		t.Fatalf("%s holds no seed, so this arm is checking nothing. D12 wants each of the "+
+			"toy's two api-sim bugs found from a COMMITTED seed: seed 2 for the stale count "+
+			"in four actions and seed 40 for the row reached with no delete, in three. A "+
+			"deliberate decision to carry no promotion here has to change this arm, not "+
+			"pass it silently", lock)
 	}
 
 	for _, seed := range seeds {
