@@ -580,8 +580,17 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 				t.Errorf("exit 3 with no finding line, so the status and the report disagree:\n%s",
 					first)
 			}
-			// AND IT IS THE HONEST FINDING, which is half of what seeds.lock's
-			// comment claims for seed 7. A promotion whose bug came to rest on
+			// AND IT IS THE HONEST FINDING, which is half of what seeds.lock
+			// claims for EVERY seed it carries: "Both are the HONEST finding --
+			// `rests_on_planted false`". This cited "seed 7" until 2026-10-24,
+			// and seed 7 retired from the lock that day -- so the citation
+			// landed on the one paragraph in that file which says the opposite,
+			// the retirement note calling it five actions and superseded.
+			// ratchet found it at coop r5/235 by grepping the file for the seed
+			// I had removed, which is the search I owed and did not run: a
+			// cleanup cannot see the citations it strands.
+			//
+			// A promotion whose bug came to rest on
 			// a planted claim is the engine catching a lie rather than the toy
 			// being wrong, and it would be the wrong fixture for a shrinker:
 			// `rests_on_planted` is part of the finding's identity, so a change
