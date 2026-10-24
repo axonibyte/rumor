@@ -548,6 +548,20 @@ value, which is the difference the corroboration arm exists to see; a shrinker
 that let a trace drift from one to the other would be shrinking toward a
 different defect.
 
+**And when the third part cannot be compared, the operator is told rather than
+refused.** A project with no planted claims need not define `rests_on_planted`
+at all -- `rumor attaint` requires it only of a project carrying planted cases
+-- and then neither the original finding nor the replayed one carries it, so
+"the same finding" is established on the rule and the value alone. That is not a
+failure of the comparison: with no attribution, two `bug` findings reached
+through `default finding := "bug"` differ in no field a finding carries, so
+there is nothing to distinguish. It is a narrower claim than the three-part one,
+and the shrinker says so in a line beside the trace rather than refusing a
+legitimate project or letting a two-part agreement read as a three-part one.
+Measured 2026-10-24: the gate recorded this and nothing downstream read it, so
+an operator could shrink on a partial reproduction and never learn it was
+partial (ratchet, coop r5/203; the remedy placed at r5/206).
+
 **A candidate that cannot run is not one that did not reproduce.** Dropping an
 action can leave a later one with a precondition that is no longer true, so the
 candidate is inapplicable: it cannot be executed at all. The shrinker records

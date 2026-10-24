@@ -3,6 +3,7 @@ package shrink
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
@@ -55,6 +56,53 @@ type Result struct {
 
 	// Probes is every candidate world rebuilt, the gate's included.
 	Probes int
+
+	// AttributionCompared is the gate Verdict's own field, carried out so a
+	// reader of the RESULT can see it. False with Stable true means "the same
+	// finding" was established on two of its three parts: the rule and the
+	// value agreed and the attribution was never compared, because neither
+	// finding carries the rule.
+	//
+	// IT IS HERE BECAUSE THE VERDICT'S COPY HAD NO READER. ratchet measured it
+	// at coop r5/203 -- written at the gate and read by nothing in production,
+	// only by two test lines -- and rook named the shape at /204: a struct
+	// holding what the caller needs while nothing asks, which is cmd/rumor's
+	// own R5.5 defect one layer in.
+	AttributionCompared bool
+}
+
+// Render writes the result as the lines an operator reads: what the gate
+// decided, and then the trace.
+//
+// THE PARTIAL REPRODUCTION IS TOLD, NOT REFUSED, which is fable's ruling at
+// coop r5/206. A project with no planted claims need not define an attribution
+// rule, so refusing a shrink there would turn away a legitimate project; but
+// silence would let the operator read a two-part agreement as a three-part one.
+// This is the same decision `rumor run` makes one layer up, where the finding
+// line prints `rests_on_planted undeclared` rather than `false`: an unknown is
+// said in that word rather than reported as a match.
+//
+// AND IT DOES NOT CALL THE REPRODUCTION WRONG. With no attribution on either
+// side, two findings from `default finding := "bug"` differ in NO field
+// engine.Finding carries -- so there was nothing to distinguish and the
+// comparison is not failing to (ratchet's correction of their own reading,
+// r5/203). The line reports what was compared, and the operator decides.
+func (r Result) Render() string {
+	var b strings.Builder
+	if !r.Stable {
+		// NOTHING ELSE WAS ATTEMPTED, so there is no trace to render: the gate
+		// refused and design.md marks the seed unstable rather than shrinking
+		// it.
+		fmt.Fprintf(&b, "shrink: UNSTABLE -- %s\n", r.Why)
+		return b.String()
+	}
+	if !r.AttributionCompared {
+		fmt.Fprintf(&b, "shrink: PARTIAL REPRODUCTION -- the rule and the value agreed; the "+
+			"attribution was NOT compared, neither finding carrying %s. \"The same finding\" "+
+			"is three parts and this one is established on two\n", engine.AttributionRule)
+	}
+	b.WriteString(r.Trace.Render())
+	return b.String()
 }
 
 // Shrink runs the whole reduction in docs/design.md's order: replay the failure
@@ -100,7 +148,8 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 		return Result{Probes: probes}, err
 	}
 	if !v.Reproduced {
-		return Result{Stable: false, Why: v.Why, Probes: probes}, nil
+		return Result{Stable: false, Why: v.Why, Probes: probes,
+			AttributionCompared: v.AttributionCompared}, nil
 	}
 
 	// 2. LENGTH BISECTION.
@@ -111,7 +160,8 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 		})
 	probes += red.Probes
 	if err != nil {
-		return Result{Stable: true, Reduction: red, Probes: probes}, err
+		return Result{Stable: true, Reduction: red, Probes: probes,
+			AttributionCompared: v.AttributionCompared}, err
 	}
 
 	// 3. KIND REMOVAL, over the SHORTENED trace: the cheap pass went first, so
@@ -123,14 +173,16 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 		})
 	probes += kr.Probes
 	if err != nil {
-		return Result{Stable: true, Reduction: red, Kinds: kr, Probes: probes}, err
+		return Result{Stable: true, Reduction: red, Kinds: kr, Probes: probes,
+			AttributionCompared: v.AttributionCompared}, err
 	}
 
 	// 4. THE TRACE THAT RAN.
 	finding, steps, err := req.Replay(ctx, red.Steps, kr.Removed)
 	probes++
 	if err != nil {
-		return Result{Stable: true, Reduction: red, Kinds: kr, Probes: probes},
+		return Result{Stable: true, Reduction: red, Kinds: kr, Probes: probes,
+				AttributionCompared: v.AttributionCompared},
 			fmt.Errorf("shrink: the final replay of the shortened trace: %w", err)
 	}
 	out := Result{
@@ -139,6 +191,9 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 		Kinds:     kr,
 		Trace:     Trace{Seed: req.Seed, Steps: steps, Finding: finding},
 		Probes:    probes,
+		// THE GATE'S, carried so Render can say whether "the same finding"
+		// was established on three parts or two.
+		AttributionCompared: v.AttributionCompared,
 	}
 
 	// 5. PROMOTION, last, because a seed is worth promoting only once the
