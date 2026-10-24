@@ -25,6 +25,20 @@ const StatutePackage = "data.rumor.statute"
 // four finding values; this is the rule that yields one of them.
 const FindingRule = "finding"
 
+// AttributionRule is the rule a finding's ATTRIBUTION is read from, and it is
+// the third part of a finding's identity: "two findings are the same when the
+// rule that fired, the finding's value, and its attribution
+// (`rests_on_planted`) all agree" (docs/design.md). A `bug` resting on a
+// planted claim and a `bug` resting on none are different findings sharing one
+// name, so a reader handed the value alone cannot tell the engine catching a
+// lie from the system under test being wrong.
+//
+// A STATUTE NEED NOT DECLARE IT, and then Rules carries no entry -- the
+// attribution is UNKNOWN rather than false, which is a distinction a caller
+// reporting it has to keep. `rumor attaint` is what requires it of a project
+// carrying planted cases.
+const AttributionRule = "rests_on_planted"
+
 // moduleName is the filename the statute is parsed under. It appears in every
 // Definition string below, so it is a constant rather than a caller's choice.
 const moduleName = "statute.rego"

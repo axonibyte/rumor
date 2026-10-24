@@ -1003,3 +1003,41 @@ The guard is what made all three findable. Every arm here asserts it has a
 subject -- the capture holds a request, some step consumed a handle, two
 candidates existed at some consuming step -- so an instrument that recorded
 nothing failed loudly instead of passing on an empty set.
+
+### A promoted fixture needs a runner, or it is a comment
+
+`examples/toy/seeds.lock` carries this project's first promoted seed: "a seed
+that produced a defect is promoted into `seeds.lock` with a comment naming the
+defect" (`docs/design.md`), which is how a project's found bugs become its
+regression suite. Nothing runs that file. R22 is the phase that teaches a run to
+take promoted seeds FIRST, so between the promotion and R22 the file is prose
+with a number in it -- and a promotion that quietly stopped reproducing would
+read exactly like one that still does.
+
+**The arm is in `tests/run` and not in the phase that will consume the file**,
+because the gap is now and R22 is later. It reads every seed in `seeds.lock`,
+runs each twice through the toy's own adapter, and requires three things: the
+run exits on a finding, the two runs agree byte for byte, and the finding is
+attributed to honest claims.
+
+**Each of the three fails differently, and that is the point.** A seed that
+walks clean means the promotion has lost its defect -- the system under test
+repaired by accident, which `cmd/toy`'s own suite exists to prevent and which
+this catches from the outside, where a reader would otherwise see only a shorter
+trace. Two runs disagreeing means the seed is not the reproducer it was promoted
+as. And an attribution that moved to `rests_on_planted true` means the finding
+became the engine catching a planted lie rather than the application being
+wrong: a different finding under the same name, since "two findings are the same
+when the rule that fired, the finding's value, and its attribution all agree".
+
+**The file is also the arm's own vacuity guard.** A `seeds.lock` with no seed
+makes the arm fail rather than pass over an empty set, because "there are no
+promotions" and "every promotion still reproduces" are otherwise the same green.
+A deliberate decision to carry no promotion has to change the arm, not satisfy
+it by subtraction.
+
+**What makes the promotion worth holding, measured 2026-10-24:** 11 of 24 toy
+seeds find a bug and 13 walk clean. A promoted seed is therefore selecting
+something. Had every seed found one, the file would have recorded a property of
+the toy rather than a reproducer, and the arm would have been true for a reason
+unrelated to what it asserts.

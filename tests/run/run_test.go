@@ -26,12 +26,24 @@ func TestMain(m *testing.M) {
 	defer func() { _ = os.RemoveAll(dir) }()
 
 	rumorBin = filepath.Join(dir, "rumor")
-	build := exec.Command("go", "build", "-o", rumorBin, "./cmd/rumor")
-	build.Dir = filepath.Join("..", "..")
-	build.Env = append(os.Environ(), "GOTOOLCHAIN=local")
-	if out, berr := build.CombinedOutput(); berr != nil {
-		fmt.Fprintf(os.Stderr, "TestMain: building rumor: %v\n%s\n", berr, out)
-		os.Exit(1)
+	// THE TOY PAIR IS BUILT TOO, because `examples/toy` against
+	// `cmd/toy-adapter` "is the pairing that exercises the toy"
+	// (tests/wire/walk_test.go) and the promoted-seed arm below runs exactly
+	// that pairing through this verb. toy-adapter spawns `toy` itself when
+	// TOY_ADDR is unset, so both have to be on the PATH this TestMain sets --
+	// one missing is a could-not-run that looks like a walk finding nothing.
+	for _, pkg := range []struct{ out, path string }{
+		{"rumor", "./cmd/rumor"},
+		{"toy", "./cmd/toy"},
+		{"toy-adapter", "./cmd/toy-adapter"},
+	} {
+		build := exec.Command("go", "build", "-o", filepath.Join(dir, pkg.out), pkg.path)
+		build.Dir = filepath.Join("..", "..")
+		build.Env = append(os.Environ(), "GOTOOLCHAIN=local")
+		if out, berr := build.CombinedOutput(); berr != nil {
+			fmt.Fprintf(os.Stderr, "TestMain: building %s: %v\n%s\n", pkg.path, berr, out)
+			os.Exit(1)
+		}
 	}
 	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH")); err != nil {
 		fmt.Fprintf(os.Stderr, "TestMain: %v\n", err)
@@ -353,87 +365,194 @@ func TestTheTraceNamesTheConsumedHandle(t *testing.T) {
 // Without it this arm cannot tell "the finding ended the walk" from "the walk
 // ends at 5".
 func TestAFoundBugIsReportedAndTheStatusSaysSo(t *testing.T) {
-	dir := t.TempDir()
-	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego"} {
-		b, err := os.ReadFile(filepath.Join(fixture, f))
-		if err != nil {
-			t.Fatalf("reading %s: %v", f, err)
-		}
-		if f == "statute.rego" {
-			if strings.Contains(string(b), "finding") {
-				t.Fatal("the fixture's statute already names a finding, so appending one " +
-					"proves nothing about this arm's change")
+	// TWO CASES OVER ONE BASE, so the attribution the line prints is
+	// demonstrably the STATUTE'S and not a constant: the same fixture with the
+	// attribution rule declared true and with it absent must print different
+	// words in that position. A single case would pass just as well on a
+	// hard-coded one.
+	for _, tc := range []struct {
+		name  string
+		extra string
+		want  string
+	}{
+		{"attribution undeclared", "", "undeclared"},
+		{"attribution declared", "\ndefault rests_on_planted := true\n", "true"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego"} {
+				b, err := os.ReadFile(filepath.Join(fixture, f))
+				if err != nil {
+					t.Fatalf("reading %s: %v", f, err)
+				}
+				if f == "statute.rego" {
+					if strings.Contains(string(b), "finding") {
+						t.Fatal("the fixture's statute already names a finding, so appending " +
+							"one proves nothing about this arm's change")
+					}
+					b = append(b, []byte("\n"+
+						"default finding := \"consistent\"\n\n"+
+						"finding := \"bug\" if {\n"+
+						"\tcount([c | some c in input.claims; c.type == \"event.created\"]) >= 2\n"+
+						"}\n"+tc.extra)...)
+				}
+				if err := os.WriteFile(filepath.Join(dir, f), b, 0o600); err != nil {
+					t.Fatalf("writing %s: %v", f, err)
+				}
 			}
-			b = append(b, []byte("\n"+
-				"default finding := \"consistent\"\n\n"+
-				"finding := \"bug\" if {\n"+
-				"\tcount([c | some c in input.claims; c.type == \"event.created\"]) >= 2\n"+
-				"}\n")...)
-		}
-		if err := os.WriteFile(filepath.Join(dir, f), b, 0o600); err != nil {
-			t.Fatalf("writing %s: %v", f, err)
-		}
-	}
 
-	const steps = 10
-	out, errb, code := run(t, "run", dir, "--seed", "42", "--steps", strconv.Itoa(steps))
-	if code != 3 {
-		t.Fatalf("exit %d, want 3: a finding is the run's product and not a refusal of the "+
-			"project (1) or a could-not-run (2)\nstdout:\n%s\nstderr:\n%s", code, out, errb)
-	}
+			const steps = 10
+			out, errb, code := run(t, "run", dir, "--seed", "42", "--steps", strconv.Itoa(steps))
+			if code != 3 {
+				t.Fatalf("exit %d, want 3: a finding is the run's product and not a refusal of "+
+					"the project (1) or a could-not-run (2)\nstdout:\n%s\nstderr:\n%s",
+					code, out, errb)
+			}
 
-	// THE LINE NAMES THE FINDING, THE STEP AND THE RULE, all three read off the
-	// record rather than recomposed: a reader with the trace above it needs to
-	// know which step left the system in the state that broke.
-	var value, rule string
-	var at int
-	for _, line := range strings.Split(out, "\n") {
-		if !strings.HasPrefix(line, "run: FOUND ") {
+			// THE LINE NAMES THE VALUE, THE STEP, THE RULE AND THE
+			// ATTRIBUTION -- the three parts of a finding's identity plus where
+			// it happened, all read off the record rather than recomposed.
+			var value, rule, attrName, attr string
+			var at int
+			for _, line := range strings.Split(out, "\n") {
+				if !strings.HasPrefix(line, "run: FOUND ") {
+					continue
+				}
+				if _, err := fmt.Sscanf(line, "run: FOUND %s after step %d -- %s %s %s",
+					&value, &at, &rule, &attrName, &attr); err != nil {
+					t.Fatalf("the finding line is not readable: %q: %v", line, err)
+				}
+			}
+			if value != "bug" {
+				t.Fatalf("no finding line naming a bug in:\n%s", out)
+			}
+			if strings.TrimSuffix(rule, ",") != "data.rumor.statute.finding" {
+				t.Errorf("the finding line names rule %q, and the statute's rule is "+
+					"data.rumor.statute.finding", rule)
+			}
+			if attrName != "rests_on_planted" {
+				t.Errorf("the finding line names the attribution %q, and a finding's identity "+
+					"is the rule, the value and rests_on_planted", attrName)
+			}
+			if attr != tc.want {
+				t.Errorf("the attribution reads %q, want %q: the printed attribution is not "+
+					"the statute's answer", attr, tc.want)
+			}
+
+			// AND THE STEP IT NAMES IS THE LAST STEP THE WALK TOOK, which is
+			// the first half of "the first bug ends the walk": the trace a
+			// shrink reads must include the step that produced the finding, and
+			// nothing may follow it.
+			last := 0
+			for _, line := range strings.Split(out, "\n") {
+				n := 0
+				if _, err := fmt.Sscanf(strings.TrimPrefix(line, "run: "), "%d", &n); err == nil && n > last {
+					last = n
+				}
+			}
+			if at != last {
+				t.Errorf("the finding is reported after step %d and the trace's last step is "+
+					"%d: either a step ran after the bug or the reported step is not the one "+
+					"that produced it\n%s", at, last, out)
+			}
+			if last >= steps {
+				t.Errorf("the walk took all %d steps, so it did not stop on the finding and "+
+					"this arm would pass on a run that never stopped at all\n%s", steps, out)
+			}
+
+			cout, cerr, ccode := run(t, "run", fixture, "--seed", "42", "--steps", strconv.Itoa(steps))
+			if ccode != 0 {
+				t.Fatalf("the control exited %d, want 0: the unmodified fixture declares no "+
+					"finding rule\nstdout:\n%s\nstderr:\n%s", ccode, cout, cerr)
+			}
+			if strings.Contains(cout, "FOUND") {
+				t.Errorf("the control reports a finding, so the line above is not the appended "+
+					"rule's doing\n%s", cout)
+			}
+			if !strings.Contains(cout, fmt.Sprintf("%d step(s)", steps)) {
+				t.Errorf("the control did not take all %d steps, so the short walk above is "+
+					"not the finding's doing\n%s", steps, cout)
+			}
+		})
+	}
+}
+
+// EVERY PROMOTED SEED STILL REPRODUCES ITS FINDING, TWICE IDENTICALLY.
+//
+// `examples/toy/seeds.lock` is this project's first promotion (D16): "a seed
+// that produced a defect is promoted into seeds.lock with a comment naming the
+// defect" (docs/design.md). Until R22 teaches a run to take promoted seeds
+// FIRST, nothing re-runs them -- so without this arm the file is a comment, and
+// a promotion that stopped reproducing would say nothing. Prose is not a
+// mechanism.
+//
+// TWICE, AND COMPARED BYTE FOR BYTE, which is the property D16 asks for and
+// not a restatement of the determinism arm above: that one walks the fake
+// through a fixture, and this one walks the TOY through its own adapter, where
+// every id behind the trace is a real one the application minted. The trace
+// prints handles and never ids, so two runs agreeing byte for byte is the
+// walk's determinism surviving a real system under test.
+//
+// EXIT 3 IS PART OF THE ASSERTION. A promoted seed that walks cleanly is a
+// promotion that has lost its defect -- the toy repaired by accident, which
+// cmd/toy's own suite exists to prevent and which this arm catches from the
+// outside.
+func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
+	const lock = "../../examples/toy/seeds.lock"
+	raw, err := os.ReadFile(lock)
+	if err != nil {
+		t.Fatalf("reading %s: %v", lock, err)
+	}
+	var seeds []string
+	for _, line := range strings.Split(string(raw), "\n") {
+		if i := strings.Index(line, "#"); i >= 0 {
+			line = line[:i]
+		}
+		if line = strings.TrimSpace(line); line == "" {
 			continue
 		}
-		if _, err := fmt.Sscanf(line, "run: FOUND %s after step %d -- %s", &value, &at, &rule); err != nil {
-			t.Fatalf("the finding line is not readable: %q: %v", line, err)
+		if _, perr := strconv.ParseUint(line, 10, 64); perr != nil {
+			t.Fatalf("%s: %q is not one non-negative integer per line, which is the format "+
+				"docs/contract.md declares: %v", lock, line, perr)
 		}
+		seeds = append(seeds, line)
 	}
-	if value != "bug" {
-		t.Fatalf("no finding line naming a bug in:\n%s", out)
-	}
-	if rule != "data.rumor.statute.finding" {
-		t.Errorf("the finding line names rule %q, and the statute's rule is "+
-			"data.rumor.statute.finding", rule)
+	if len(seeds) == 0 {
+		t.Fatalf("%s holds no seed, so this arm is checking nothing. D16 promoted seed 7 for "+
+			"the stale-count row; a deliberate decision to carry no promotion here has to "+
+			"change this arm, not pass it silently", lock)
 	}
 
-	// AND THE STEP IT NAMES IS THE LAST STEP THE WALK TOOK, which is the first
-	// half of "the first bug ends the walk": the trace a shrink reads must
-	// include the step that produced the finding, and nothing may follow it.
-	last := 0
-	for _, line := range strings.Split(out, "\n") {
-		n := 0
-		if _, err := fmt.Sscanf(strings.TrimPrefix(line, "run: "), "%d", &n); err == nil && n > last {
-			last = n
-		}
-	}
-	if at != last {
-		t.Errorf("the finding is reported after step %d and the trace's last step is %d: "+
-			"either a step ran after the bug or the reported step is not the one that "+
-			"produced it\n%s", at, last, out)
-	}
-	if last >= steps {
-		t.Errorf("the walk took all %d steps, so it did not stop on the finding and this arm "+
-			"would pass on a run that never stopped at all\n%s", steps, out)
-	}
-
-	cout, cerr, ccode := run(t, "run", fixture, "--seed", "42", "--steps", strconv.Itoa(steps))
-	if ccode != 0 {
-		t.Fatalf("the control exited %d, want 0: the unmodified fixture declares no finding "+
-			"rule\nstdout:\n%s\nstderr:\n%s", ccode, cout, cerr)
-	}
-	if strings.Contains(cout, "FOUND") {
-		t.Errorf("the control reports a finding, so the line above is not the appended rule's "+
-			"doing\n%s", cout)
-	}
-	if !strings.Contains(cout, fmt.Sprintf("%d step(s)", steps)) {
-		t.Errorf("the control did not take all %d steps, so the short walk above is not the "+
-			"finding's doing\n%s", steps, cout)
+	for _, seed := range seeds {
+		t.Run("seed"+seed, func(t *testing.T) {
+			first, errb, code := run(t, "run", "../../examples/toy", "--seed", seed, "--steps", "10")
+			if code != 3 {
+				t.Fatalf("exit %d, want 3: seed %s is promoted as a seed that FINDS a bug, and "+
+					"a clean walk means the promotion has lost its defect\nstdout:\n%s\n"+
+					"stderr:\n%s", code, seed, first, errb)
+			}
+			if !strings.Contains(first, "run: FOUND ") {
+				t.Errorf("exit 3 with no finding line, so the status and the report disagree:\n%s",
+					first)
+			}
+			// AND IT IS THE HONEST FINDING, which is half of what seeds.lock's
+			// comment claims for seed 7. A promotion whose bug came to rest on
+			// a planted claim is the engine catching a lie rather than the toy
+			// being wrong, and it would be the wrong fixture for a shrinker:
+			// `rests_on_planted` is part of the finding's identity, so a change
+			// in it is a change of finding.
+			if !strings.Contains(first, "rests_on_planted false") {
+				t.Errorf("the promoted seed's finding is not attributed to honest claims, so it "+
+					"is not the finding seeds.lock names:\n%s", first)
+			}
+			second, _, again := run(t, "run", "../../examples/toy", "--seed", seed, "--steps", "10")
+			if again != code {
+				t.Errorf("the same seed exited %d and then %d", code, again)
+			}
+			if first != second {
+				t.Errorf("seed %s does not reproduce: the two runs differ\nfirst:\n%s\n"+
+					"second:\n%s", seed, first, second)
+			}
+		})
 	}
 }

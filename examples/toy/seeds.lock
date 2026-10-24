@@ -1,4 +1,21 @@
-# No seed has been promoted yet. The format is one non-negative integer per
-# line with an optional `#` comment (docs/contract.md); R5.3 writes the first
-# promotion here, and a comment-only file is a project that has promoted none --
-# which validate arm 10a reads as present and readable rather than missing.
+# PROMOTED SEEDS: one non-negative integer per line, `#` comments allowed
+# (docs/contract.md). A promotion carries a comment NAMING THE DEFECT it
+# caught, so a line that stops reproducing can be told apart from a line nobody
+# can account for -- which is the difference between a regression suite and a
+# list of numbers.
+#
+# 7 -- THE STALE COUNT, one of the two ledger rows a run can catch in R5. The
+# walk makes three users, admin_1 creates an event, admin_1 deletes it, and the
+# observations after that step are still ANSWERED a count for it -- "the
+# disagreement between a delete the ledger carries and a count the application
+# still reports" (statute.rego's `deleted`). Both of them are: the API's
+# denormalized counter and the store's attendee list, which is why the row is
+# the application's and not one endpoint's.
+#
+# Five actions, the delete last, and NO planted step in the trace -- so the
+# finding is the honest one and `rests_on_planted` is false, which is half of
+# its identity when R14 compares two findings.
+#
+# Measured 2026-10-24: `rumor run examples/toy --seed 7 --steps 10` exits 3 and
+# prints `FOUND bug after step 5`, byte-identical across two runs.
+7

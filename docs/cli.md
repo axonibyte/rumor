@@ -373,27 +373,47 @@ that printed number is exactly what `--seed` takes.
 | 2 | could-not-run: an adapter that will not start, a weight the project never declared, or a usage error |
 | 3 | **a bug was found**, and the line above the verdict names it |
 
-**A finding is 3 and not 1, because they are different authors' problems.** A
-refusal means the PROJECT is wrong and its author fixes their declarations; a
-finding means the SYSTEM UNDER TEST is wrong and its author fixes their
-application. One status for both would make this tool's product
-indistinguishable from a malformed project to anything reading an exit code --
-which is every CI step that will ever run this verb, and "your project is
-malformed" is the reading a green-seeking pipeline acts on. `2` still outranks
-both: when the run could not finish, what an observation would have said is
-unknown.
+**A finding is 3 and not 1, and the reason is a product choice rather than a
+claim about whose fault a bug is.** A nonzero status is what a pipeline acts on,
+and the question is only whether findings and refusals should share one. They
+should not, for a reason measured in this command rather than argued from the
+documents: `rumor run` already spends `1` on REFUSED, twice, a few lines above
+where a finding would land (rook, coop r5/172). A finding at `1` would therefore
+share a status with "I refused your project", and nothing reading the status
+could separate the two outcomes this tool exists to distinguish -- the PROJECT
+being wrong, whose author fixes their declarations, from the SYSTEM UNDER TEST
+being wrong, whose author fixes their application. `2` still outranks both: when
+the run could not finish, what an observation would have said is unknown.
+
+Note what this row does NOT say: that a bug is the project being wrong.
+`docs/contract.md`'s "the project is not wrong; its adapter is" draws that line
+for could-not-run, and `docs/vocabulary.md` defines `bug` as a disagreement over
+claims that are HONEST -- so a finding is a third thing beside refusal and
+could-not-run, which is how the contract already treats it (ratchet, coop
+r5/171).
 
 **The finding is a line and not only a status.**
 
 ```
-run: FOUND bug after step 5 -- data.rumor.statute.finding
+run: FOUND bug after step 5 -- data.rumor.statute.finding, rests_on_planted false
 ```
 
-It sits between the trace and the verdict and names three things off the
-record: the value, the step it came after, and the rule that produced it. The
-step it names is the LAST line of the trace, because the first bug ends the
-walk -- the trace a shrink reads has to include the step that broke the system,
-and nothing may follow it. Until 2026-10-24 `cmd/` read neither field the walk
+It sits between the trace and the verdict and names a finding's whole identity
+off the record: "two findings are the same when the rule that fired, the
+finding's value, and its attribution (`rests_on_planted`) all agree"
+(`docs/design.md`), plus the step it came after. The step it names is the LAST
+line of the trace, because the first bug ends the walk -- the trace a shrink
+reads has to include the step that broke the system, and nothing may follow it.
+
+**The attribution is on the line because the value alone misreads.** A `bug`
+resting on a planted claim is the engine catching a LIE, and a `bug` resting on
+none is the system under test being wrong; they are different findings sharing
+one name. Measured 2026-10-24: `rumor run examples/twin --seed 1 --steps 3`
+plants at step 3 and reports `rests_on_planted true`, so the thing it found is
+the nemesis's lie -- which a reader given only `FOUND bug` would have booked
+against the twin's application. A statute declaring no such rule prints
+`rests_on_planted undeclared`, because the attribution is then unknown and
+printing `false` would assert the one thing nothing measured. Until 2026-10-24 `cmd/` read neither field the walk
 carries (ibis, coop main/149), so a found bug printed as a slightly short trace
 with a clean verdict and exit 0: the one outcome this tool exists to produce,
 reported as nothing having happened.

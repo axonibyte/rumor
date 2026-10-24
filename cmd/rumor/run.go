@@ -10,6 +10,7 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
+	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
@@ -38,6 +39,20 @@ import (
 // a precondition that only becomes true after one, which is what makes a run
 // of the default length say anything at all.
 const defaultSteps = 20
+
+// findingStatus is the exit status a found bug reports.
+//
+// IT IS A NAMED CONSTANT BECAUSE THE NUMBER IS STILL OPEN. fable ruled 1 at
+// coop r5/170 on the ground that "the project is wrong, which is what a bug
+// is"; ratchet answered that docs/contract.md:82 denies exactly that in those
+// words ("the project is not wrong"), and rook measured that `run` already
+// spends 1 on REFUSED twice in this very function -- so a finding at 1 shares
+// a status with "I refused your project" a few lines above, and a pipeline
+// reading the status cannot separate the two outcomes this tool exists to
+// distinguish. ratchet moved to 3 for rook's reason at r5/173 and put the
+// decision back to fable. Until fable answers, 3 stands here and the flip is
+// this line and one row of docs/cli.md.
+const findingStatus = 3
 
 // runProject walks one project against its declared adapter.
 //
@@ -177,8 +192,21 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 	// every run and the finding belongs beside the step that produced it, which
 	// the trace shows directly above.
 	if rec.Finding != nil {
-		if _, err := fmt.Fprintf(stdout, "run: FOUND %v after step %d -- %s\n",
-			rec.Finding.Value, rec.FoundAt, rec.Finding.Rule); err != nil {
+		// THE ATTRIBUTION IS PART OF THE IDENTITY, which is why it is on this
+		// line and not inferred from the trace: "two findings are the same when
+		// the rule that fired, the finding's value, and its attribution
+		// (`rests_on_planted`) all agree" (docs/design.md), and `bug` resting
+		// on a planted claim is the engine catching a LIE rather than the
+		// system under test being wrong. A statute that declares no such rule
+		// says so in that word: the attribution is then UNKNOWN, and printing
+		// `false` for it would assert the one thing nothing measured.
+		rests := "undeclared"
+		if v, ok := rec.Finding.Rules[engine.AttributionRule]; ok {
+			rests = fmt.Sprintf("%v", v)
+		}
+		if _, err := fmt.Fprintf(stdout, "run: FOUND %v after step %d -- %s, %s %s\n",
+			rec.Finding.Value, rec.FoundAt, rec.Finding.Rule,
+			engine.AttributionRule, rests); err != nil {
 			_, _ = fmt.Fprintf(stderr, "run: writing the finding: %v\n", err)
 			return 2
 		}
@@ -208,7 +236,7 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 	// pipeline would act on. could-not-run (2) still outranks both: when the
 	// run could not finish, what an observation would have said is unknown.
 	if rec.Finding != nil {
-		return 3
+		return findingStatus
 	}
 	return 0
 }

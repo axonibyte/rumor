@@ -452,7 +452,15 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 		// THE ONE EVALUATOR, as a case's check goes through: a second path
 		// running statutes would be free to disagree, and a walk and a case
 		// contradicting each other about one world is what D14 exists to catch.
-		found, err := engine.Evaluate(ctx, statute, []string{engine.FindingRule}, l, check)
+		// THE ATTRIBUTION IS ASKED FOR ALONGSIDE THE FINDING, because it is
+		// part of the finding's identity and not a second question: `bug`
+		// resting on a planted claim is a different finding from `bug` resting
+		// on none (docs/design.md), and a caller handed only the value cannot
+		// tell them apart. Naming a rule the statute does not declare is not an
+		// error -- Rules simply carries no entry for it -- so a project with no
+		// planted cases is unaffected.
+		found, err := engine.Evaluate(ctx, statute,
+			[]string{engine.FindingRule, engine.AttributionRule}, l, check)
 		if err != nil {
 			return nil, fmt.Errorf("evaluating %s (%s) after step %d: %w",
 				decl.Name, decl.Source, step.N, err)
