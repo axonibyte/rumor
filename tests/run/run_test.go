@@ -580,14 +580,27 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 				t.Errorf("exit 3 with no finding line, so the status and the report disagree:\n%s",
 					first)
 			}
-			// AND IT IS THE HONEST FINDING, which is half of what seeds.lock
-			// claims for EVERY seed it carries: "Both are the HONEST finding --
-			// `rests_on_planted false`". This cited "seed 7" until 2026-10-24,
-			// and seed 7 retired from the lock that day -- so the citation
-			// landed on the one paragraph in that file which says the opposite,
-			// the retirement note calling it five actions and superseded.
-			// ratchet found it at coop r5/235 by grepping the file for the seed
-			// I had removed, which is the search I owed and did not run: a
+			// AND IT IS THE HONEST FINDING, which is ONE OF THE TWO things
+			// seeds.lock claims for every seed it carries: that each is the
+			// honest finding, and that each is byte-identical across two runs.
+			// This assertion checks the first; the two-run comparison below
+			// checks the second.
+			//
+			// TWO DENOMINATORS SIT CLOSE TOGETHER HERE, AND SAYING "HALF" HID
+			// THAT (rook, coop r5/236). The attribution is a THIRD of a
+			// FINDING'S IDENTITY -- rule, value, attribution -- and separately
+			// it is ONE OF TWO CLAIMS the LOCK makes. This comment said "half"
+			// beside a quotation cut before the lock's own "a third of a
+			// finding's identity", so the two fractions read as a contradiction
+			// while counting different things. Neither was wrong; nothing said
+			// which was which.
+			//
+			// AND THE CITATION WAS STRANDED BEFORE THAT: it said "what
+			// seeds.lock's comment claims for seed 7" until 2026-10-24, and
+			// seed 7 retired from the lock that day -- so it landed on the
+			// retirement note, the one paragraph in that file saying the
+			// opposite. ratchet found it at r5/235 by grepping for the seed I
+			// had removed, which is the search I owed and did not run: a
 			// cleanup cannot see the citations it strands.
 			//
 			// A promotion whose bug came to rest on
