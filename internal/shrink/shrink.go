@@ -177,9 +177,47 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 			AttributionCompared: v.AttributionCompared}, err
 	}
 
-	// 4. THE TRACE THAT RAN.
-	finding, steps, err := req.Replay(ctx, red.Steps, kr.Removed)
+	// 4. THE TRACE THAT RAN, ON A WORLD PUT BACK FIRST.
+	//
+	// IT GOES THROUGH Once FOR THE RESTORE, which is the defect this fixed:
+	// step 4 called req.Replay directly, so the trace that gets REPORTED and
+	// PROMOTED was the only candidate in the whole reduction not run on a
+	// verified clean world -- it ran on whatever the last kind-removal
+	// candidate left behind. design.md is explicit that "the verify step is not
+	// optional: a shrink step run on a world the previous step dirtied would
+	// attribute to the trace what the leftover state did".
+	//
+	// WHY NO ARM HERE SAW IT. This package's own world fixture accepts every
+	// request, so a dirty world and a clean one produce the same answer and the
+	// missing restore is invisible. It surfaced the first time the reduction
+	// ran against a real application: cmd/toy answers 409 "that name is taken"
+	// when a create_user repeats, so the final replay failed at step 1 while
+	// the gate and both reductions had passed. A fake wider than the real thing
+	// passes forever.
+	//
+	// AND Once IS THE RIGHT CALLER, not a second restore written here: it is
+	// the only place that restores and VERIFIES, and routing through it also
+	// confirms the surviving shape still reproduces -- so the trace reported is
+	// one observed to carry the finding rather than one assumed to.
+	var steps []schedule.Step
+	fv, err := Once(ctx, req.Provider, req.Checkpoint, req.Want,
+		func(c context.Context) (engine.Finding, error) {
+			f, ran, rerr := req.Replay(c, red.Steps, kr.Removed)
+			steps = ran
+			return f, rerr
+		})
 	probes++
+	if err == nil && !fv.Reproduced {
+		// THE REDUCTIONS SAID THIS SHAPE REPRODUCES AND NOW IT DOES NOT, which
+		// is a contradiction and not a shrink: reporting the trace anyway would
+		// promote a seed whose own final run disagreed with the reduction that
+		// chose it.
+		return Result{Stable: true, Reduction: red, Kinds: kr, Probes: probes,
+				AttributionCompared: v.AttributionCompared},
+			fmt.Errorf("shrink: the surviving shape did not reproduce on its final clean "+
+				"replay though the reduction kept it: %s", fv.Why)
+	}
+	finding := fv.Got
 	if err != nil {
 		return Result{Stable: true, Reduction: red, Kinds: kr, Probes: probes,
 				AttributionCompared: v.AttributionCompared},

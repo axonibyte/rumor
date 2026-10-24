@@ -760,11 +760,14 @@ The arm is R5.3's and it is driven: two events in one ledger, one finding each.
 Event A has two joins and B has one, so the three counts 2, 1 and 3 separate a
 per-entity statute from a spanning one — and with the projection removed the
 statute knows of no events at all, so every count reads as spanning and BOTH
-clean cases turn into bugs. **The WALK does not follow the convention yet**:
-`internal/schedule`'s honest() appends only the minted handle, so a walked join
-names no event. R5.4 already computes the consumed handles as `Step.Used`;
-putting them on the fact is one line in R5.4's files and lands after the re-cut,
-which is why the done-when's toy third waits on it.
+clean cases turn into bugs. **The WALK FOLLOWS THE CONVENTION, since R5.4.** This paragraph said it did
+not, and that it was "one line in R5.4's files" still to land -- which is why
+the done-when's toy third was recorded as waiting on it. It landed in that
+release: `internal/schedule`'s honest() writes `claimHandles(done.Handle,
+step.Used)`, the minted handle first and then what the step consumed, and
+v0.1.27's changelog carries it as "a claim carries the handles it names". So a
+walked join does name its event, and the toy third waits on nothing here.
+Measured 2026-10-24, reading the call rather than the note.
 
 **What a PRECONDITION is shown is a partial observation** (coop r5/16).
 `input.observation` carries `actor` and `position` -- `seal+1`, the position the

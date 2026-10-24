@@ -1041,3 +1041,48 @@ seeds find a bug and 13 walk clean. A promoted seed is therefore selecting
 something. Had every seed found one, the file would have recorded a property of
 the toy rather than a reproducer, and the arm would have been true for a reason
 unrelated to what it asserts.
+
+### A fake wider than the real thing passes forever
+
+R5.3's shrinker was reviewed, cleared and green, and the first time its six
+steps ran against the real application they failed at the fourth. Three defects
+came out of that one run, and no unit arm in the package could have seen any of
+them.
+
+- **The project declared no `[adapter].env`.** `[adapter].env` is a list of
+  variable NAMES the engine passes through, so `examples/toy` not naming
+  `TOY_ADDR` meant the value could never reach the adapter -- and the
+  composition the rollback provider's own package documents ("the provider owns
+  the application, the adapter drives that one through `TOY_ADDR`") was
+  unreachable for the one project that ships it.
+- **The provider's address is not stable.** `Restore` stops the toy and starts
+  it again on `127.0.0.1:0`, deliberately, so two worlds on one box cannot
+  collide. An adapter spawned once is therefore talking to a dead port from the
+  second candidate onward: the driver has to re-open it against the provider's
+  current address for every candidate, and nothing said so because nothing had
+  ever run a second candidate against a real world.
+- **The final replay skipped the restore.** The one candidate whose trace is
+  REPORTED and PROMOTED ran on whatever the previous candidate had dirtied.
+
+**The common cause is the fixture, and it is the mirror of the narrow-stub
+lesson.** This package's world fixture answers every request, so a dirty world
+and a clean one produce the same verdict and a missing restore changes nothing
+it can observe. `cmd/toy` answers `409 "that name is taken"` to a repeated
+`create_user`, which is what made the third defect arrive as a failure instead
+of a silence. A stub NARROWER than the real thing fails loudly and gets fixed;
+a stub WIDER than it passes forever.
+
+**And an arm was holding the defect in place.** It read `restored ==
+probes - 1` and explained it in words: "the final replay is the one that does
+not rebuild a world." `docs/design.md` and `docs/rollback.md` both say the
+opposite and say it is not optional -- so the documents were right, the code was
+wrong, and the test asserted the code. A test can pin wrong behavior as a
+property, and the thing that dislodged this one was not a reading of the
+assertion but a real application refusing the request.
+
+**How to apply.** When a suite's subject is a COMPOSITION -- an engine, a
+provider and a system under test -- the unit arms cannot be the only arms, no
+matter how many of them are green. Run the whole thing against the real
+dependency once before calling the composition built, and treat every
+permissive answer in a fixture as a question: what would the real one refuse
+here, and which of my arms would notice?

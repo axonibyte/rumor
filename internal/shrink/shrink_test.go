@@ -109,11 +109,28 @@ func TestShrinkRunsTheWholeReduction(t *testing.T) {
 		t.Errorf("the seeds file does not hold the seed: %v %q", rerr, raw)
 	}
 
-	// EVERY CANDIDATE GOT ITS OWN WORLD, the gate's included, and the count is
-	// the sum the Result reports rather than one the test recomputes.
-	if f.restored != got.Probes-1 {
-		t.Errorf("%d restore(s) for %d probe(s): the final replay is the one that does not "+
-			"rebuild a world, so restores should be probes minus one", f.restored, got.Probes)
+	// EVERY CANDIDATE GOT ITS OWN WORLD, the gate's AND THE FINAL REPLAY'S
+	// included, and the count is the sum the Result reports rather than one the
+	// test recomputes.
+	//
+	// THIS ARM USED TO SAY probes-1, PINNING A DEFECT AS A PROPERTY: "the final
+	// replay is the one that does not rebuild a world". docs/design.md says the
+	// opposite and says it is not optional -- "every candidate trace is run
+	// against a verified clean rollback", because "a shrink step run on a world
+	// the previous step dirtied would attribute to the trace what the leftover
+	// state did" -- and the final replay is the candidate whose trace is
+	// REPORTED and PROMOTED, so it is the last one that may skip the restore.
+	//
+	// WHY THE OLD EXPECTATION LOOKED RIGHT HERE: this package's world fixture
+	// answers every request, so a dirty world and a clean one are
+	// indistinguishable and the missing restore changed no verdict. Driving the
+	// reduction against cmd/toy through the shipped provider is what showed it
+	// (tests/shrink): the real application answers 409 "that name is taken" on
+	// a repeated create_user, so the final replay failed at step 1 while the
+	// gate and both reductions had passed.
+	if f.restored != got.Probes {
+		t.Errorf("%d restore(s) for %d probe(s): every probe runs on a world put back and "+
+			"verified, the final replay included, so the two counts agree", f.restored, got.Probes)
 	}
 }
 

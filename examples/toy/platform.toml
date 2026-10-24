@@ -8,6 +8,17 @@ contract = "2"
 # TOY_ADDR is unset, which is what makes `rumor validate examples/toy` answer
 # the four live arms without an engine or a rollback provider in the picture.
 command = ["toy-adapter"]
+# AND TOY_ADDR IS PASSED THROUGH, which is the other half of the comment above
+# and what the ENGINE needs. Under a rollback provider the provider owns the
+# application -- it starts cmd/toy, holds the handle and hands out the address
+# it bound (internal/rollback/toyrestart) -- and the adapter drives THAT one
+# through TOY_ADDR rather than starting a second toy of its own. Declared here
+# because `[adapter].env` is a list of variable NAMES the engine passes through,
+# so without this line the value cannot reach the adapter at all and a shrink
+# would restore one world while the adapter talked to another. Measured
+# 2026-10-24 by driving R5.3's third: the name was absent and the composition
+# the provider documents was unreachable for this project.
+env = ["TOY_ADDR"]
 
 [[venire]]
 role = "admin"
