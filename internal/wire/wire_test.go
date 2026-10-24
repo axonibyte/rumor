@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // wellFormed is one legal message per direction and kind, as a map so a test
@@ -558,6 +559,69 @@ func TestCloseIsIdempotentUnderConcurrency(t *testing.T) {
 		case <-s.done:
 		default:
 			t.Fatalf("iteration %d: done is still open after Close returned", i)
+		}
+	}
+}
+
+// slowCloser makes the WINDOW observable. Teardown that completes instantly cannot
+// distinguish "Do blocked the other callers" from "the other callers returned early
+// and teardown happened to finish before anyone looked".
+type slowCloser struct {
+	n int32
+}
+
+func (c *slowCloser) Write(p []byte) (int, error) { return len(p), nil }
+func (c *slowCloser) Close() error {
+	time.Sleep(2 * time.Millisecond)
+	atomic.AddInt32(&c.n, 1)
+	return nil
+}
+
+// ROOK'S NOTE at coop r5/181, taken rather than left: Close's comment promises that a
+// RETURNED Close means the adapter is stopped, and NOTHING DROVE IT -- the promise
+// rested on sync.Once, whose Do blocks every other caller until f returns. A comment
+// is an untested claim whoever wrote it, so here is the arm that would see it break.
+//
+// WHY THE EXISTING CONCURRENCY ARM CANNOT ANSWER THIS: it reads the counters after
+// wg.Wait(), by which time every caller has returned anyway, so it would pass against
+// a Close that let losers return mid-teardown. The assertion below is made INSIDE each
+// caller, because the claim is about what MY OWN Close returning implies -- and it is
+// counted rather than t.Errorf'd at the point of failure so the message can name how
+// many callers saw it.
+//
+// MUTATION-CHECKED: replace the sync.Once with a bare CompareAndSwap that tears down
+// on the winner and returns immediately on the losers, and this fails with "7 caller(s)
+// had Close return while teardown had closed stdin 0 time(s)".
+func TestAReturnedCloseMeansTheAdapterIsStopped(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		stdin := &slowCloser{}
+		s := &Session{done: make(chan struct{}), stdin: stdin, cancel: func() {}}
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		early := int32(0)
+		for g := 0; g < 8; g++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start // released together, so the callers actually contest the gap
+				if err := s.Close(); err != nil {
+					t.Errorf("Close returned %v", err)
+				}
+				if atomic.LoadInt32(&stdin.n) == 0 {
+					atomic.AddInt32(&early, 1)
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+		if got := atomic.LoadInt32(&early); got != 0 {
+			t.Fatalf("iteration %d: %d caller(s) had Close return while teardown had "+
+				"closed stdin 0 time(s) -- a returned Close must mean stopped", i, got)
+		}
+		// AND THE POSITIVE HALF, so the arm above cannot pass on a Close that tears
+		// down NOTHING: teardown must still have happened, exactly once.
+		if got := atomic.LoadInt32(&stdin.n); got != 1 {
+			t.Fatalf("iteration %d: stdin closed %d time(s), want 1", i, got)
 		}
 	}
 }
