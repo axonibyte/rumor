@@ -70,7 +70,9 @@ func TestPromoteIsIdempotent(t *testing.T) {
 	if _, err := Promote(p, 7, "the first"); err != nil {
 		t.Fatal(err)
 	}
-	added, err := Promote(p, 7, "a different reason")
+	// IDEMPOTENT ON THE SAME REASON: a second promotion adds nothing and the
+	// file keeps its one line.
+	added, err := Promote(p, 7, "the first")
 	if err != nil {
 		t.Fatalf("second Promote: %v", err)
 	}
@@ -79,6 +81,34 @@ func TestPromoteIsIdempotent(t *testing.T) {
 	}
 	if n := strings.Count(readFile(t, p), "\n"); n != 1 {
 		t.Errorf("%d line(s) after promoting one seed twice", n)
+	}
+
+	// AND A DIFFERING REASON REFUSES, WHICH THIS ARM USED TO ACCEPT. It passed
+	// "a different reason" on the second call and asserted a quiet no-op --
+	// right while a skip was the rule, and fable changed the rule at coop
+	// r6/15 on ratchet's write-once point: seeds.lock is the one artifact of a
+	// shrink that gets checked in, so a seed promoted for one finding and later
+	// producing another would keep a comment that was true when written, in the
+	// file a later run replays from, with nothing saying so.
+	//
+	// THE ARM NOW ASSERTS MORE: that the second call refuses, that it names
+	// both reasons so a reader can see which is stale, and -- the half that
+	// matters -- that the file is UNCHANGED, since a refusal that had already
+	// written would be worse than the skip it replaced.
+	before := readFile(t, p)
+	if _, err := Promote(p, 7, "a different reason"); err == nil {
+		t.Error("a present seed whose comment disagrees was skipped quietly, so the lock " +
+			"keeps a reason the run no longer finds")
+	} else {
+		for _, want := range []string{"the first", "a different reason"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("the refusal does not name %q, so a reader cannot tell which "+
+					"reason is stale: %v", want, err)
+			}
+		}
+	}
+	if after := readFile(t, p); after != before {
+		t.Errorf("the refusing promotion wrote to the file:\n%s\n%s", before, after)
 	}
 
 	// AND A SEED THAT ONLY LOOKS LIKE ONE ALREADY THERE IS STILL ADDED: 7 and

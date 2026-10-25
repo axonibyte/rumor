@@ -195,7 +195,7 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 				"claim at position %d: the kind is R6.2's to define and this build cannot "+
 				"name it, so it refuses rather than reading a probe that gave up as either "+
 				"inside or past the bound", c.Of, "quiesce", claimPos)
-		default:
+		case QuiesceAbsent:
 			// ABSENT, which is not an answer. A caller with no prober wired
 			// must not have its silence read as "not quiet": that would hold a
 			// real disagreement open to the end of a run and report it as
@@ -204,6 +204,19 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 				"was supplied (%s): the bound cannot be judged, and treating silence as "+
 				"\"not quiet\" would hold this disagreement open for the whole run and "+
 				"report it as clean", c.Of, "quiesce", c.Quiesce)
+		default:
+			// A STATE THIS SWITCH HAS NOT MET, named rather than folded into
+			// the absent clause (ratchet, coop r6/19). Go checks no switch for
+			// exhaustiveness, and this is the enum most likely to GROW: R6.2
+			// owns the probes and the timed-out kind is theirs to define. A
+			// new state falling into "no quiesce answer was supplied" would be
+			// a correct refusal naming the wrong cause, which is a branch
+			// written for one state standing in for every state that reaches
+			// it.
+			return nil, fmt.Errorf("engine: %q is eventual bounded %q and the quiesce answer "+
+				"is %d, a state this build does not know: it refuses rather than reading an "+
+				"unknown answer as any of quiet, busy or timed out",
+				c.Of, "quiesce", int(c.Quiesce))
 		}
 	}
 	// ONE REFUSAL, NOT TWO, and mutation is what settled it. A separate check

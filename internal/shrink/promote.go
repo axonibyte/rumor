@@ -52,7 +52,30 @@ func Promote(path string, seed uint64, why string) (bool, error) {
 		return false, fmt.Errorf("shrink: reading the seeds file %s: %w", path, err)
 	}
 
-	if seedPresent(string(raw), seed) {
+	// A PRESENT SEED WHOSE COMMENT DISAGREES WITH THE FINDING IS A REFUSAL, not
+	// a quiet skip (fable, coop r6/15, on ratchet's write-once point).
+	//
+	// THIS RETURNED EARLY ON ANY PRESENT SEED. seeds.lock is the one artifact
+	// of a shrink that gets checked in, and its comment names the defect the
+	// seed caught; a seed promoted for a plain `bug` that later produces a
+	// `stale` would keep a comment that was true when written, in the file a
+	// later run replays from, and nothing would say so. A disagreement between
+	// the lock and the run is a thing to SEE.
+	//
+	// AN ABSENT COMMENT IS NOT A DISAGREEMENT, and nor is an empty `why`:
+	// refusing on those would refuse every promotion into a lock whose lines
+	// carry no reason, which arm 10b accepts and the twin's own file is. The
+	// refusal is for two reasons that are both present and differ.
+	if have, present := seedComment(string(raw), seed); present {
+		want := strings.TrimSpace(why)
+		if have != "" && want != "" && have != want {
+			return false, fmt.Errorf("shrink: %s already carries seed %d with the comment %q, "+
+				"and this run would record %q: a promoted seed's comment names the defect it "+
+				"caught, so the two disagreeing means either the lock is stale or this is a "+
+				"different finding under the same seed -- refusing rather than leaving the "+
+				"older reason standing in the file a later run replays from",
+				path, seed, have, want)
+		}
 		return false, nil
 	}
 
@@ -80,21 +103,29 @@ func Promote(path string, seed uint64, why string) (bool, error) {
 	return true, nil
 }
 
-// seedPresent reads the file the way arm 10b does, for the single purpose of
-// not promoting a seed twice.
-func seedPresent(content string, seed uint64) bool {
+// seedComment reads the file the way arm 10b does and answers two things about
+// a seed: whether it is already there, and the comment beside it if so.
+//
+// ONE PASS AND ONE FUNCTION, replacing seedPresent, which answered only the
+// first half. A caller that asked the two separately could be told the seed is
+// present and then read a comment from a file that had changed in between; and
+// leaving both functions would have left a reader to work out which one to
+// reach for.
+func seedComment(content string, seed uint64) (string, bool) {
 	want := strconv.FormatUint(seed, 10)
 	for _, line := range strings.Split(content, "\n") {
 		t := strings.TrimSpace(line)
 		if t == "" || strings.HasPrefix(t, "#") {
 			continue
 		}
+		comment := ""
 		if h := strings.Index(t, "#"); h >= 0 {
+			comment = strings.TrimSpace(t[h+1:])
 			t = strings.TrimSpace(t[:h])
 		}
 		if t == want {
-			return true
+			return comment, true
 		}
 	}
-	return false
+	return "", false
 }

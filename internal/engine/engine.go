@@ -194,6 +194,20 @@ func (f Finding) Says() string {
 	if !f.Defined {
 		return "no finding"
 	}
+	// AND THE KIND, FOR THE REASON THE PARAGRAPH ABOVE GIVES. fable ruled the
+	// renderers follow the comparison's basis (coop r6/15): a finding's
+	// identity is rule, value, attribution AND kind, so a renderer that shows
+	// the value alone makes a `stale` and a plain `bug` look identical -- in
+	// the shrink trace, the examples line and the promoted comment, which is
+	// the one artifact that gets checked in.
+	//
+	// IT LIVES HERE AND NOT IN EACH CALLER, which is this comment's own
+	// argument turned on me: `run` composed " of kind %s" by hand at R6.1, the
+	// third consumer printing a field itself after the first two had ignored
+	// it. The wording is the FOUND line's so nothing changes there.
+	if f.Kind != "" {
+		return fmt.Sprintf("%v of kind %s", f.Value, f.Kind)
+	}
 	return fmt.Sprint(f.Value)
 }
 

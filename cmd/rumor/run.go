@@ -257,12 +257,15 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		// ruling 2). A finding the statute produced on its own carries no kind
 		// and this adds nothing to its line, which is why examples/toy's output
 		// is unchanged: nothing in the toy is eventual yet.
-		kind := ""
-		if rec.Finding.Kind != "" {
-			kind = fmt.Sprintf(" of kind %s", rec.Finding.Kind)
-		}
-		if _, err := fmt.Fprintf(stdout, "run: FOUND %v%s after step %d -- %s, %s %s\n",
-			rec.Finding.Value, kind, rec.FoundAt, rec.Finding.Rule,
+		// THE FINDING SAYS ITSELF, kind included. This composed the kind by
+		// hand at R6.1, which is the defect engine.Finding.Says's own comment
+		// warns about -- "each consumer fixing its own print leaves the next
+		// one to rediscover it" -- with this as the third consumer. fable ruled
+		// it into Says at coop r6/15 so the shrink trace and the promoted
+		// comment carry what the comparator compares; the wording here is
+		// unchanged because Says took this line's own.
+		if _, err := fmt.Fprintf(stdout, "run: FOUND %s after step %d -- %s, %s %s\n",
+			rec.Finding.Says(), rec.FoundAt, rec.Finding.Rule,
 			engine.AttributionRule, rests); err != nil {
 			_, _ = fmt.Fprintf(stderr, "run: writing the finding: %v\n", err)
 			return 2

@@ -533,3 +533,36 @@ func TestAQuiesceAnswerThatIsNotAnAnswerRefuses(t *testing.T) {
 		}
 	}
 }
+
+// Says RENDERS THE KIND, which is what makes a finding's identity readable
+// wherever it is printed rather than only where run.go composes a line.
+//
+// fable ruled the renderers follow the comparator's basis (coop r6/15): rule,
+// value, attribution AND kind. A renderer showing the value alone makes a
+// `stale` and a plain `bug` identical in the shrink trace, the examples line
+// and the PROMOTED COMMENT -- the one artifact of a shrink that gets checked
+// in, and the one ratchet's write-once point is about.
+//
+// ALL THREE SHAPES, because the first alone would pass for a renderer that
+// always appended something and the second for one that never did.
+func TestSaysRendersTheKindAndTheAbsenceOfOne(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		f    Finding
+		want string
+	}{
+		{"a kind", Finding{Defined: true, Value: "bug", Kind: "stale"}, "bug of kind stale"},
+		{"no kind", Finding{Defined: true, Value: "bug"}, "bug"},
+		{"undefined", Finding{}, "no finding"},
+	} {
+		if got := tc.f.Says(); got != tc.want {
+			t.Errorf("%s: Says() = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+	// AND THE WORDING IS THE FOUND LINE'S, so moving it here changed no output:
+	// run.go printed " of kind stale" after the value before this and prints
+	// Says() now.
+	if s := (Finding{Defined: true, Value: "bug", Kind: "stale"}).Says(); !strings.HasSuffix(s, " of kind stale") {
+		t.Errorf("Says() no longer carries the FOUND line's own wording: %q", s)
+	}
+}

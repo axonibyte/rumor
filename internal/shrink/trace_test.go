@@ -113,3 +113,24 @@ func TestHandlesAreOrderedAndDeduplicated(t *testing.T) {
 		t.Errorf("Handles() = %q, want first-appearance order with the repeat dropped", got)
 	}
 }
+
+// AND THE RENDERED TRACE CARRIES THE KIND, which is where ratchet pointed
+// (coop r6/14): trace.go renders the finding through Finding.Says, so a shrunk
+// `stale` and a plain `bug` rendered identically while Says showed the value
+// alone. The comparator separated them and the reader could not.
+//
+// THE CONTROL IS THE PLAIN BUG, so this cannot pass for a renderer that
+// appends the word to everything -- and every finding in the tree today has no
+// kind, so that is also the ordinary line staying as it was.
+func TestTheRenderedTraceCarriesTheFindingsKind(t *testing.T) {
+	stale := Trace{Seed: 2, Finding: engine.Finding{Defined: true, Value: "bug",
+		Kind: "stale", Rule: "data.rumor.statute.finding"}}
+	if out := stale.Render(); !strings.Contains(out, "of kind stale") {
+		t.Errorf("a shrunk stale renders without its kind, so it reads as a plain bug:\n%s", out)
+	}
+	plain := Trace{Seed: 2, Finding: engine.Finding{Defined: true, Value: "bug",
+		Rule: "data.rumor.statute.finding"}}
+	if out := plain.Render(); strings.Contains(out, "of kind") {
+		t.Errorf("a finding with no kind rendered one:\n%s", out)
+	}
+}
