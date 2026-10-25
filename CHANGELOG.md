@@ -3,6 +3,52 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.31 — 2026-10-25
+
+**R5.3, the shrinker: a found bug is reduced to a trace somebody can read** —
+issue 74. The six steps existed and nothing called them in sequence; now a run's
+finding is replayed once on a verified clean world, shortened, stripped of whole
+action kinds, written as a trace and promoted as a seed — and the toy's two
+api-sim bugs are each found from a committed seed and reduced to under five
+actions.
+
+- **Every candidate runs on a world put back and verified**, the final replay
+  included. That last one bypassed the restore and ran on whatever the previous
+  candidate had dirtied: the one candidate whose trace is REPORTED and PROMOTED
+  was the only one not run on a clean world. `docs/design.md` and
+  `docs/rollback.md` both call the verify not optional, and an arm had pinned
+  the opposite — `restored == probes - 1`, explained in words. The arm asserted
+  the code; the documents were right.
+- **A partial reproduction is reported rather than refused.** The gate records
+  whether the attribution — the third part of a finding's identity — was
+  actually compared, and nothing read it, so an operator could shrink on a
+  two-part agreement and never be told. A project with no planted claims need
+  not define `rests_on_planted`, so refusing there would turn away a legitimate
+  project; the shrinker says in one line that the reproduction was partial and
+  on what.
+- **The toy's two bugs, found by a walk and shrunk.** Seed 2 is the stale count
+  in four actions and seed 40 the row reached with no delete, in three; both are
+  the honest finding and both are byte-identical across two runs. The row is
+  read off the TRACE and never the finding, because both rows arrive as
+  `default finding := "bug"` with no clause fired — no field of a finding
+  separates them.
+- **`examples/toy/seeds.lock` carries both, and seed 7 retires from it.** Seed 7
+  was v0.1.28's first promotion and caught the stale count in FIVE actions,
+  where the done-when asks for under five; seed 2 reaches the same row in four.
+  It stays v0.1.28's record of that milestone, and the lock now carries a seed
+  per row — before this it held one seed for one row and nothing for the other.
+  The arm that re-runs every promoted seed therefore covers both rows for the
+  first time.
+- **A claim's handles are projected to the statute**, so two events in one
+  ledger can be told apart and "an actor can join only an event it knows of"
+  means something in a run that created more than one.
+
+Also in this release: `rumor run`'s promoted-seed arm reads the exit status as
+the four things it means rather than as "3 or not 3", so a could-not-run is no
+longer reported as a promotion that lost its defect; and the toy project passes
+`TOY_ADDR` through, which is what lets the rollback provider own the application
+while the adapter drives it.
+
 ## 0.1.30 — 2026-10-24
 
 **`Session.Close` is idempotent under concurrency, not only in sequence** — and a
