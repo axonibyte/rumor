@@ -3,6 +3,52 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.33 — 2026-10-25
+
+**`stale` is a kind under `bug`, and a bound nothing can judge refuses** — issue
+89, the first of R6's four children. An eventual claim type bounded `quiesce` is
+now judged without a clock, and a disagreement that survives the system going
+quiet is a defect rather than a pending held open to the end of the run.
+
+- **`stale` is a kind, not a fifth finding.** v1 reserved the word and defined
+  nothing; this phase spends it as `engine.Finding.Kind` on a `bug`, exit 3, on
+  the FOUND line, naming the claim type, the claim's position and the bound. The
+  vocabulary's own sentence — later phases add kinds under `bug` — is what
+  settled the shape.
+- **The quiesce bound needs no clock, and the duration bound still refuses
+  without one.** The two forms are told apart by the bound itself rather than by
+  what a fixture happens to carry: the same clock-less ledger that yields a
+  verdict for a `quiesce` type refuses for a duration-bounded one.
+- **A quiesce answer has four values, and the zero value is the refusal.** A
+  bool could not tell a probe that ran and GAVE UP from a system still BUSY, and
+  both handed in the same byte while only one is safe to read as "not quiet".
+  `QuiesceAbsent` is the zero value and refuses, because silence read as "not
+  quiet" holds a real disagreement open for a whole walk and reports it as
+  clean — driven, fifty passes and exit 0. `QuiesceTimedOut` refuses too: its
+  finding kind belongs to the phase that owns the probes, and this build must
+  not invent a word.
+- **A quiesce bound with no prober wired refuses the run.** The condition is
+  structural — the prober slot is nil and a bound exists — so wiring a prober
+  removes the refusal by construction rather than by anyone remembering to
+  delete it. A project declaring no quiesce bound still walks.
+- **A finding's identity is four fields, so every renderer carries all four.**
+  Rule, value, attribution AND kind. `Says()` renders the kind, which fixes the
+  trace, the examples line and the promoted comment at once — the last being the
+  only artifact of a shrink that gets checked in. The same-finding comparison
+  gained the kind clause, so a shrinker cannot trade a `stale` for a plain `bug`
+  and call it a reproduction.
+- **A promoted seed whose comment disagrees with the run refuses.** `Promote`
+  returned early on any seed already present, so a seed promoted for a plain
+  `bug` that later produced a `stale` kept a reason that was true when written,
+  in the file a later run replays from. An absent comment is not a disagreement
+  and nor is an empty reason; the refusal is for two reasons that are both
+  present and differ.
+- **A quiesce state this build does not know is named by its number.** Both the
+  refusal and the rendering: Judge's switch names the unknown value instead of
+  folding it into the clause written for an absent answer, and `String()` no
+  longer answers "absent" for everything it has no name for. Fixing one without
+  the other moves the lie a layer down and leaves it readable.
+
 ## 0.1.32 — 2026-10-25
 
 **Temp directories no longer survive their runs** — issue 88, found at the R5
