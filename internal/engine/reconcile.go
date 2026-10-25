@@ -30,6 +30,24 @@ type Pass struct {
 	Source ledger.Source
 	Values map[string]any    // actor -> the value that actor observed
 	Roles  map[string]string // actor -> role, where the project has roles
+
+	// Quiesce is the probes' answer for this pass, carried through to every
+	// Check it judges.
+	//
+	// WITHOUT IT A QUIESCE-BOUNDED PROJECT COULD NOT RECONCILE AT ALL. The
+	// Check this pass builds took the zero value, which 1(b) made
+	// QuiesceAbsent, and QuiesceAbsent refuses -- so a full reconciliation of
+	// any project declaring a quiesce bound returned "no quiesce answer was
+	// supplied (absent)" and never reached a verdict. Measured at v0.1.33
+	// before this field existed: one busy pending, one covering pass, and the
+	// reconciliation errored rather than re-checking it.
+	//
+	// IT IS STILL AN INPUT AND NEVER A MEASUREMENT HERE, the same split as
+	// Check.Quiesce: R6.2's probes decide it and hand it in, and this package
+	// judges with it. Absent remains the zero value and remains a refusal,
+	// because a caller that wired no prober must not have silence read as
+	// "not quiet".
+	Quiesce QuiesceState
 }
 
 // Report is what one reconciliation found.
@@ -159,6 +177,7 @@ func Reconcile(ctx context.Context, statute string, rules []string, l *ledger.Le
 			}
 			f, err := Judge(ctx, statute, rules, l, Check{
 				Actor: a, Query: p.Query, Of: p.Of, Source: p.Source, Value: v, Role: p.Roles[a],
+				Quiesce: p.Quiesce,
 			}, b, reg)
 			if err != nil {
 				return rep, fmt.Errorf("engine: reconciling %s on %q: %w", a, p.Query, err)
@@ -171,25 +190,53 @@ func Reconcile(ctx context.Context, statute string, rules []string, l *ledger.Le
 		}
 	}
 
+	// NOTHING MAY BE LEFT IN THE REGISTER, and that is the invariant rather
+	// than "every query was re-asked".
+	//
+	// THE DENOMINATOR WAS THE DEFECT (ratchet, coop r6/11). This block used to
+	// report only pendings whose query was ABSENT from the pass set, which
+	// answers "was it re-asked" as a proxy for "was it resolved". The two
+	// agree for every bound that expires on its own -- a duration pending
+	// re-checked after its bound either clears or becomes a finding -- so the
+	// proxy survived until a bound that does not expire on its own arrived.
+	// A pending that WAS re-asked and is still open afterwards fell through
+	// the `if !asked` and the function returned nil with a live disagreement
+	// in the register: an open pending, reported as clean.
+	//
+	// SO BOTH CAUSES ARE REPORTED AND THE MESSAGE NAMES WHICH, because they
+	// ask different things of a reader: an unasked pending means the caller's
+	// pass set was not full, and a surviving one means the system did not
+	// settle and the run has a finding to carry.
 	if reg != nil && reg.Len() > 0 {
 		asked := map[string]bool{}
 		for _, q := range rep.Queries {
 			asked[q] = true
 		}
+		var unasked, survived []string
 		for actor, queries := range reg.Open() {
 			for _, q := range queries {
-				if !asked[q] {
-					rep.StillOpen[actor] = append(rep.StillOpen[actor], q)
+				rep.StillOpen[actor] = append(rep.StillOpen[actor], q)
+				if asked[q] {
+					survived = append(survived, Key(actor, q))
+				} else {
+					unasked = append(unasked, Key(actor, q))
 				}
 			}
 		}
 		for a := range rep.StillOpen {
 			sort.Strings(rep.StillOpen[a])
 		}
-		if len(rep.StillOpen) > 0 {
+		sort.Strings(unasked)
+		sort.Strings(survived)
+		if len(unasked) > 0 {
 			return rep, fmt.Errorf("engine: %d actor(s) still hold a pending this reconciliation did "+
 				"not re-check (%v): v1 re-checks every pending at every full reconciliation, so this "+
 				"pass set was not full", len(rep.StillOpen), rep.StillOpen)
+		}
+		if len(survived) > 0 {
+			return rep, fmt.Errorf("engine: %d pending(s) were re-checked by this reconciliation and "+
+				"are STILL OPEN (%v): the system did not settle, so this is a disagreement the run "+
+				"carries and not a clean pass", len(survived), survived)
 		}
 	}
 	sort.Strings(rep.ReChecked)

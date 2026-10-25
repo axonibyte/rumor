@@ -254,3 +254,86 @@ func TestReconciliationReChecksEveryPendingAndRefusesWhenOneSurvives(t *testing.
 	t.Logf("PROOF one pass left item.total open and was refused; two passes re-checked %d and left 0 open",
 		len(rep.ReChecked))
 }
+
+// A QUIESCE PENDING RE-CHECKED AND STILL OPEN IS NOT SILENT, which is the
+// uncovered half of the register invariant (ratchet, coop r6/11).
+//
+// THE OLD GUARD ASKED "WAS THE QUERY RE-ASKED" as a proxy for "was the pending
+// resolved". For a duration bound the two agree, because a re-checked duration
+// pending either clears or becomes a finding; a quiesce bound does not expire
+// on its own, so a busy pass re-registers it and the proxy reported nothing.
+//
+// IT WAS UNREACHABLE BEFORE Pass.Quiesce EXISTED, which is why this arm comes
+// with that field: the Check a pass built took the zero value, QuiesceAbsent
+// refuses, and a quiesce-bounded project could not reconcile at all. Measured
+// at v0.1.33: one busy pending plus one covering pass errored with "no quiesce
+// answer was supplied (absent)".
+func TestAQuiescePendingReCheckedAndStillOpenIsReported(t *testing.T) {
+	ctx := context.Background()
+	b := Bindings{Eventual: []Eventual{{Of: "item.created", Quiesce: true}}}
+	build := func() *ledger.Ledger {
+		x := ledger.New(false)
+		if _, err := x.Append(ledger.Fact{Kind: ledger.KindClaim, Actor: "alice",
+			Type: "item.created", Ref: "alice.item#1"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := x.SealAt(1); err != nil {
+			t.Fatal(err)
+		}
+		return x
+	}
+
+	// STILL BUSY: the pass re-checks it, it does not resolve, and the
+	// reconciliation must say so rather than return nil.
+	l := build()
+	reg := NewRegister()
+	busy := Check{Actor: "alice", Query: "item.count", Of: "item.created",
+		Source: ledger.SourceAPI, Value: 0, Quiesce: QuiesceBusy}
+	if _, err := Judge(ctx, countStatute, countRules, l, busy, b, reg); err != nil {
+		t.Fatalf("judging a busy quiesce check: %v", err)
+	}
+	if reg.Len() != 1 {
+		t.Fatalf("%d pending(s) open before the reconciliation, wanted 1", reg.Len())
+	}
+	rep, err := Reconcile(ctx, countStatute, countRules, l,
+		[]Pass{{Query: "item.count", Of: "item.created", Source: ledger.SourceAPI,
+			Values: map[string]any{"alice": 0}, Quiesce: QuiesceBusy}}, b, reg)
+	if err == nil {
+		t.Fatal("a pending that survived a full reconciliation was reported as clean")
+	}
+	if !strings.Contains(err.Error(), "STILL OPEN") {
+		t.Fatalf("refused by the wrong clause: %v", err)
+	}
+	// NOT the pass-set clause: this pass set WAS full.
+	if strings.Contains(err.Error(), "pass set was not full") {
+		t.Fatalf("a full pass set was blamed for fullness: %v", err)
+	}
+	if got := rep.StillOpen["alice"]; len(got) != 1 || got[0] != "item.count" {
+		t.Fatalf("the report names %v as still open, wanted item.count", got)
+	}
+
+	// THE CONTROL, and it is the one that makes the assertion above mean
+	// something: the same pass with the probes reading QUIET resolves the
+	// pending, leaves the register empty and is not refused. Without it this
+	// arm would pass against a Reconcile that refused every quiesce pass.
+	l2 := build()
+	reg2 := NewRegister()
+	busy2 := busy
+	if _, err := Judge(ctx, countStatute, countRules, l2, busy2, b, reg2); err != nil {
+		t.Fatal(err)
+	}
+	quiet, err := Reconcile(ctx, countStatute, countRules, l2,
+		[]Pass{{Query: "item.count", Of: "item.created", Source: ledger.SourceAPI,
+			Values: map[string]any{"alice": 1}, Quiesce: QuiesceQuiet}}, b, reg2)
+	if err != nil {
+		t.Fatalf("a quiet reconciliation was refused: %v", err)
+	}
+	if reg2.Len() != 0 {
+		t.Errorf("%d pending(s) survived a quiet reconciliation: %v", reg2.Len(), reg2.Open())
+	}
+	if len(quiet.ReChecked) != 1 {
+		t.Errorf("re-checked %v, wanted alice/item.count", quiet.ReChecked)
+	}
+	t.Logf("PROOF busy left 1 open and was refused by the STILL OPEN clause; quiet re-checked %d and left 0",
+		len(quiet.ReChecked))
+}
