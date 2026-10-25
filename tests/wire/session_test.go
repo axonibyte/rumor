@@ -40,7 +40,20 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "TestMain: %v\n", err)
 		os.Exit(1)
 	}
-	defer func() { _ = os.RemoveAll(dir) }()
+	// EVERY EXIT PATH CLEANS UP, not just the last one. The `defer` that stood
+	// here never ran: a deferred call does not execute when the goroutine
+	// leaves through os.Exit, so this package left its built binary in /tmp on
+	// every run (issue 88, measured at the R5 gate and again on two boxes).
+	//
+	// AND THE OBVIOUS FIX COVERS ONE EXIT OF THREE. Issue 88 proposes
+	// `code := m.Run(); RemoveAll(dir); os.Exit(code)`, which leaves the two
+	// failure paths below still leaking -- a build that does not compile and a
+	// PATH that cannot be set both exit without cleaning. One closure covers
+	// every exit, including whichever one is added next.
+	die := func(code int) {
+		_ = os.RemoveAll(dir)
+		os.Exit(code)
+	}
 
 	bin := filepath.Join(dir, "rumor")
 	build := exec.Command("go", "build", "-o", bin, "./cmd/rumor")
@@ -48,13 +61,13 @@ func TestMain(m *testing.M) {
 	build.Env = append(os.Environ(), "GOTOOLCHAIN=local")
 	if out, berr := build.CombinedOutput(); berr != nil {
 		fmt.Fprintf(os.Stderr, "TestMain: building rumor for the session arms: %v\n%s\n", berr, out)
-		os.Exit(1)
+		die(1)
 	}
 	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH")); err != nil {
 		fmt.Fprintf(os.Stderr, "TestMain: %v\n", err)
-		os.Exit(1)
+		die(1)
 	}
-	os.Exit(m.Run())
+	die(m.Run())
 }
 
 func fakeSpawn(args ...string) wire.Spawn {

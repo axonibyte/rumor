@@ -1086,3 +1086,48 @@ matter how many of them are green. Run the whole thing against the real
 dependency once before calling the composition built, and treat every
 permissive answer in a fixture as a question: what would the real one refuse
 here, and which of my arms would notice?
+
+### A cleanup that cannot run reads exactly like a cleanup
+
+Four of this tree's `TestMain` functions did
+
+```go
+dir, _ := os.MkdirTemp("", "rumor-run-bin")
+defer func() { _ = os.RemoveAll(dir) }()
+...
+os.Exit(m.Run())
+```
+
+and a deferred call does not run when the goroutine leaves through `os.Exit`.
+So the cleanup was dead code that reads as live code, and every run of those
+packages left about 30 MB in `/tmp` -- 300 MB after one gate's three passes,
+and 3.1 GB on a reviewer's box after a day of mutation runs.
+
+**Nothing in the toolchain says so.** `go vet ./...` is clean on the tree that
+contains all four, and the lint gate was green on the same commit. The checks
+that exist for this pattern are in third-party analysers that this project's
+pinned set does not run, so the arm has to be the project's own.
+
+**The arm is shaped like the defect, not like the four instances.** A test per
+`TestMain` would have covered the four that were known; `tests/hygiene` parses
+every `.go` file in the tree and reports any function that both defers a call
+and exits the process. That found a fifth site in shipping code on its first
+run -- `cmd/toy-adapter`'s `main`, where every exit path closes by hand and
+says so in a comment, which is why the arm carries a declared exemption with
+its reason. An exemption whose named function no longer exists fails the arm
+too: a declaration that covers nothing must not pass as a declaration.
+
+**And the resource a package creates is the package's to remove.** The same
+issue's other half was not a stranded defer at all: `toyrestart`'s provider made
+a world directory in `open`, `Discard` removed only the saved world *file* of
+one checkpoint, and nothing removed the directory -- so every caller leaked one
+by construction, 374 of them in a day. The fix that suggests itself, removing it
+in `Close`, breaks a documented contract that an existing arm asserts (`Close`
+stops the toy and leaves the files, which is how the arm for "the file is
+perfect and the server is dead" kills the server). The removal belongs in its
+own method, and the callers that open a world call it.
+
+**How to apply.** When a cleanup is a `defer` in a function that can call
+`os.Exit`, it is not a cleanup. Check the class across the tree rather than the
+instances you were told about, declare the deliberate exceptions where a reader
+will find them, and make the declaration itself fail when its subject moves.

@@ -147,6 +147,15 @@ path = "tests/shrink/*.go"
 docs = ["docs/contract.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# The tree-wide hygiene arms: checks no single package can make about itself.
+# Mapped to the testing methodology because the transferable part is the
+# method -- find a defect class by its SHAPE across the whole tree, and make
+# the declared exceptions fail when their subject moves ("A cleanup that cannot
+# run reads exactly like a cleanup").
+path = "tests/hygiene/*.go"
+docs = ["docs/testing-methodology.md"]
+
+[[entry]]
 path = "tests/licences/*.go"
 docs = ["docs/testing-methodology.md", "docs/release.md"]
 
