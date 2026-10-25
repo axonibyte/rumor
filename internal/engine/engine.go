@@ -99,8 +99,24 @@ const (
 	QuiesceTimedOut
 )
 
+// String names the state for a reader, INCLUDING ONE THIS BUILD DOES NOT KNOW.
+//
+// THE FALLBACK USED TO BE "absent" AND THAT IS A LIE WITH A CONSUMER (rook,
+// coop rumor/969, completing ratchet's r6/19). Judge's refusal for an absent
+// answer interpolates this method to name the real state -- "no quiesce answer
+// was supplied (%s)" -- so a fifth value would have been refused under the
+// absent clause's headline AND rendered as "absent" beside it: two layers
+// agreeing on one lie, with the parenthesis that exists to name the state being
+// the thing that could not. Fixing the switch alone moves the lie one layer
+// down and leaves it readable, which is why this lands with it rather than
+// after it.
+//
+// THE NUMBER IS THE ONLY HONEST ANSWER for a state with no name here. A
+// sibling's name would be wrong in the same way "absent" was.
 func (q QuiesceState) String() string {
 	switch q {
+	case QuiesceAbsent:
+		return "absent"
 	case QuiesceQuiet:
 		return "quiet"
 	case QuiesceBusy:
@@ -108,7 +124,7 @@ func (q QuiesceState) String() string {
 	case QuiesceTimedOut:
 		return "timed out"
 	}
-	return "absent"
+	return fmt.Sprintf("an unknown state (%d)", int(q))
 }
 
 // Definition names one rule definition in a statute: the module and the row it

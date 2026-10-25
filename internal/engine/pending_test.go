@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -564,5 +565,84 @@ func TestSaysRendersTheKindAndTheAbsenceOfOne(t *testing.T) {
 	// Says() now.
 	if s := (Finding{Defined: true, Value: "bug", Kind: "stale"}).Says(); !strings.HasSuffix(s, " of kind stale") {
 		t.Errorf("Says() no longer carries the FOUND line's own wording: %q", s)
+	}
+}
+
+// A STATE THIS BUILD DOES NOT KNOW IS NAMED BY ITS NUMBER, in the refusal and
+// in the rendering, which ratchet put as both or neither (coop r6/19 and
+// rumor/970, on rook's rumor/969).
+//
+// THE TWO LAYERS AGREED ON ONE LIE. Judge's switch ended in `default:`, so a
+// fifth value was refused by the clause written for an ABSENT answer; and
+// String's fallback returned "absent", so the parenthesis that clause carries
+// to name the real state named the wrong one too. A reader would have been told
+// twice that nothing answered, when something did.
+//
+// THIS ENUM IS THE ONE MOST LIKELY TO GROW -- R6.2 owns the probes and the
+// timed-out finding kind is theirs -- and Go checks no switch for
+// exhaustiveness, so nothing but an arm holds this.
+//
+// THE CONTROL IS THE FOUR KNOWN STATES, because a String that printed the
+// number for everything would satisfy the first half and lose every name.
+func TestAQuiesceStateThisBuildDoesNotKnowIsNamedByItsNumber(t *testing.T) {
+	ctx := context.Background()
+	b := Bindings{Eventual: []Eventual{{Of: "item.created", Quiesce: true}}}
+	l := func() *ledger.Ledger {
+		x := ledger.New(false)
+		if _, err := x.Append(ledger.Fact{Kind: ledger.KindClaim, Actor: "alice",
+			Type: "item.created", Ref: "alice.item#1"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := x.SealAt(1); err != nil {
+			t.Fatal(err)
+		}
+		return x
+	}
+	base := Check{Actor: "alice", Query: "item.count", Of: "item.created",
+		Source: ledger.SourceAPI, Value: 0}
+
+	// One past the last named state, and one far past it: the first is what a
+	// sibling actually adding a state produces, the second rules out a fallback
+	// that happens to be right for 4.
+	for _, q := range []QuiesceState{QuiesceTimedOut + 1, QuiesceState(99)} {
+		name := q.String()
+		if !strings.Contains(name, strconv.Itoa(int(q))) {
+			t.Errorf("QuiesceState(%d).String() is %q and does not carry the number, so the "+
+				"refusal below cannot name the state it refused", int(q), name)
+		}
+		if strings.Contains(name, "absent") {
+			t.Errorf("QuiesceState(%d).String() is %q: an answer that was supplied renders as "+
+				"the one that was not", int(q), name)
+		}
+
+		c := base
+		c.Quiesce = q
+		_, err := Judge(ctx, countStatute, countRules, l(), c, b, nil)
+		if err == nil {
+			t.Fatalf("QuiesceState(%d) reached a verdict on the claim", int(q))
+		}
+		if !strings.Contains(err.Error(), "does not know") ||
+			!strings.Contains(err.Error(), strconv.Itoa(int(q))) {
+			t.Errorf("QuiesceState(%d) refused, but not by the clause for an unknown state "+
+				"and not naming it: %v", int(q), err)
+		}
+		if strings.Contains(err.Error(), "no quiesce answer") {
+			t.Errorf("QuiesceState(%d) refused as though nothing answered: %v", int(q), err)
+		}
+	}
+
+	for _, tc := range []struct {
+		state QuiesceState
+		name  string
+	}{
+		{QuiesceAbsent, "absent"},
+		{QuiesceQuiet, "quiet"},
+		{QuiesceBusy, "busy"},
+		{QuiesceTimedOut, "timed out"},
+	} {
+		if got := tc.state.String(); got != tc.name {
+			t.Errorf("QuiesceState(%d).String() is %q, want %q: the fallback took a state "+
+				"this build does know", int(tc.state), got, tc.name)
+		}
 	}
 }
