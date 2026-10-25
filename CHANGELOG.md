@@ -3,6 +3,41 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.32 — 2026-10-25
+
+**Temp directories no longer survive their runs** — issue 88, found at the R5
+gate and not a gate failure. Two leaks, each with the arm that would have caught
+it, and nothing else in the tree changes behaviour.
+
+- **A cleanup that cannot run reads exactly like a cleanup.** Four `TestMain`
+  functions built a binary into `os.MkdirTemp` and deferred the `RemoveAll`; a
+  deferred call does not run when the goroutine leaves through `os.Exit`, so
+  about 30 MB per package per run stayed in `/tmp` — 300 MB after one gate's
+  three passes, and 3.1 GB on a reviewer's box after a day of mutation runs.
+  Issue 88's own fix shape covers one exit of three: each of these functions
+  also exits on a build that will not compile and on a `PATH` that cannot be
+  set. One closure now covers every exit, including whichever is added next.
+- **`tests/hygiene` is the arm, shaped like the defect and not like the four
+  instances.** It parses every `.go` file in the tree and reports any function
+  that both defers a call and exits the process, which found a fifth site on its
+  first run — `cmd/toy-adapter`'s `main`, where every exit path closes by hand
+  and says so, now a declared exemption carrying its reason. An exemption whose
+  named function no longer exists fails the arm too, and parsing no files at all
+  fails rather than reporting zero findings. Neither tool in the gate sees this
+  class: `go vet` was clean on the tree holding all four, and the pinned lint
+  set was green on the same commit.
+- **The resource a package creates is the package's to remove.** `toyrestart`'s
+  provider made a world directory in `open`, `Discard` removed only the saved
+  world *file* of one checkpoint, and nothing removed the directory — so every
+  caller leaked one by construction, 374 of them in a day. Removing it in
+  `Close`, which issue 88 proposes, breaks a documented contract that an
+  existing arm asserts: `Close` stops the toy and leaves the files, which is how
+  the arm for "the file is perfect and the server is dead" kills the server.
+  The removal is `RemoveWorld`, it stops the toy first, and it clears the path
+  so a second call removes nothing rather than `RemoveAll("")`. The two openers
+  call it. Issue 88's other half, "`run` closing the provider it opened", has no
+  subject: `rollback.Open` has no non-test caller.
+
 ## 0.1.31 — 2026-10-25
 
 **R5.3, the shrinker: a found bug is reduced to a trace somebody can read** —

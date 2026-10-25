@@ -23,6 +23,22 @@ Five verbs over a world that can be put back (`internal/rollback`):
 | `Verify` | **is** the world this checkpoint? `nil` proven clean, `ErrDirty` proven otherwise, any other error means the provider could not tell |
 | `Discard` | forget a handle and release what held it |
 
+**Beyond the five verbs, a provider that takes a resource owes a way to give it
+back.** These are not part of the trait -- an engine drives the five above and
+nothing else -- but a caller that opened a provider needs them, and
+`toy-process-restart` has both:
+
+| method | answers |
+|---|---|
+| `Close` | stop the process the provider started. It leaves the provider's files alone, which is what lets a caller ask `Verify` about a world whose server is gone |
+| `RemoveWorld` | stop the process **and** remove the working directory `open` made. The world outlives the process on purpose, so this is the separate act of being finished with the world itself |
+
+`Discard` releases what one checkpoint held; `RemoveWorld` releases what the
+provider held. Neither implies the other, and a caller that opens a world is
+the one that knows which it wants: `tests/shrink` and the provider's own test
+helper call `RemoveWorld`, because a test that leaves one directory per run
+leaves hundreds in a day (issue 88).
+
 A `Checkpoint` is opaque to its caller: what a provider needs to put a world
 back is the provider's business, and an engine that read into it would be
 coupled to one mechanism.
