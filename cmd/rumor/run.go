@@ -212,8 +212,19 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		if v, ok := rec.Finding.Rules[engine.AttributionRule]; ok {
 			rests = fmt.Sprintf("%v", v)
 		}
-		if _, err := fmt.Fprintf(stdout, "run: FOUND %v after step %d -- %s, %s %s\n",
-			rec.Finding.Value, rec.FoundAt, rec.Finding.Rule,
+		// AND THE KIND, WHERE THE VOCABULARY GIVES THE FINDING ONE. `stale` is
+		// a `bug` whose kind says why it is one -- a pending past its bound --
+		// so it is named at the point the value is named and the status stays
+		// 3: a stale is a finding, not a refusal (fable, coop breakout-r6/0
+		// ruling 2). A finding the statute produced on its own carries no kind
+		// and this adds nothing to its line, which is why examples/toy's output
+		// is unchanged: nothing in the toy is eventual yet.
+		kind := ""
+		if rec.Finding.Kind != "" {
+			kind = fmt.Sprintf(" of kind %s", rec.Finding.Kind)
+		}
+		if _, err := fmt.Fprintf(stdout, "run: FOUND %v%s after step %d -- %s, %s %s\n",
+			rec.Finding.Value, kind, rec.FoundAt, rec.Finding.Rule,
 			engine.AttributionRule, rests); err != nil {
 			_, _ = fmt.Fprintf(stderr, "run: writing the finding: %v\n", err)
 			return 2

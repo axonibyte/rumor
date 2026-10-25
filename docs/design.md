@@ -896,13 +896,36 @@ definition that produced it, and the overlay names `engine.pending` with the
 time the bound expires. If a later phase hands the bound to statutes, this
 overlay is the single thing that goes.
 
-Four ways it declines, each a decision: agreement has nothing to hold open; an
-undeclared type is not eventual; no claim of the type means nothing is late;
-and **past the bound the statute's finding stands**, because v1 reserves
-`stale` for R6 and defines nothing, so the engine does not invent a verdict it
-has not been given. It *refuses* when the bound cannot be measured — an
-eventual type with no clock fact at or before its last claim — rather than
-reading missing data as expired, which would turn a `pending` into a defect.
+Three ways it declines, each a decision: agreement has nothing to hold open; an
+undeclared type is not eventual; and no claim of the type means nothing is late.
+It *refuses* when a DURATION bound cannot be measured — an eventual type with no
+clock fact at or before its last claim — rather than reading missing data as
+expired, which would turn a `pending` into a defect.
+
+**There were four, and R6.1 spent the fourth.** The fourth decline was "past the
+bound the statute's finding stands", because v1 reserved `stale` for R6 and
+defined nothing, so the engine would not invent a verdict it had not been given.
+v2 defines it, so past the bound the overlay now returns `bug` of kind `stale`,
+naming the claim type, the position of the claim it was late about, and the
+bound it passed. The word arriving is what changed; the shape did not.
+
+**And the bound has two forms, of which R6 judges one** — fable's ruling at
+breakout-r6/0. A duration bound needs the run to control the clock, and until
+that arrives it keeps the refusal above. The QUIESCE form needs no clock at all:
+it asks whether the system has settled, so a disagreement is `pending` until the
+declared probes read quiet and `stale` if the reconciliation that follows still
+disagrees. The engine takes the quiesced answer as an INPUT on the check and
+never measures it, which is what let this land before the probes existed.
+
+**MEASURED, NOT ASSUMED, which is what this section is amended with.** Past a
+quiesce bound the engine judges with a ledger carrying NO clock fact at all —
+the same ledger that refuses outright for a duration-bounded type, which is the
+discriminator between the two forms rather than an accident of a fixture. A
+`stale` is terminal: it is not registered for re-check where a `pending` is, so
+no run ends with a decided finding sitting in the register as though it were
+still late. And the three findings the engine already produced are unmoved —
+toy seeds 2, 40 and 1 are byte-identical to v0.1.31's output (786416e6925acf7c,
+dff917a0f6c74983, ba42d0333035a0aa), which is R6's control for every child.
 
 **The re-check is keyed on the pair.** v1 re-checks a `pending` "at the actor's
 next observation of the same query and at every full reconciliation", so

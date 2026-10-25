@@ -114,10 +114,15 @@ func TestNowIsTheLatestClockAtOrBeforeTheSeal(t *testing.T) {
 	t.Logf("PROOF time at the seal 105 with a 999 clock past it; absent, not 0, with no clock fact")
 }
 
-// A DISAGREEMENT INSIDE AN EVENTUAL TYPE'S BOUND IS `pending`, AND OUTSIDE IT
-// THE STATUTE'S FINDING STANDS. Both halves, because either alone would pass
-// for an overlay that always fired or never did.
-func TestADisagreementInsideTheBoundIsPendingAndOutsideItIsNot(t *testing.T) {
+// A DISAGREEMENT INSIDE AN EVENTUAL TYPE'S BOUND IS `pending`, AND PAST IT IT
+// IS `stale`. Both halves, because either alone would pass for an overlay that
+// always fired or never did.
+//
+// THE NAME MOVED WITH THE BEHAVIOUR AT R6.1. It read
+// ...IsPendingAndOutsideItIsNot, which asserted the old decline; past the bound
+// is now a finding of its own, so the old name would have described the
+// opposite of what the body checks.
+func TestADisagreementInsideTheBoundIsPendingAndPastItIsStale(t *testing.T) {
 	ctx := context.Background()
 	b := Bindings{Eventual: []Eventual{{Of: "item.created", Bound: 10}}}
 	chk := Check{Actor: "alice", Query: "item.count", Of: "item.created", Source: ledger.SourceAPI, Value: 0}
@@ -142,15 +147,38 @@ func TestADisagreementInsideTheBoundIsPendingAndOutsideItIsNot(t *testing.T) {
 		t.Errorf("the statute's own definition was not kept: %v", inside.Fired)
 	}
 
-	// PAST THE BOUND the engine does not invent a verdict. v1 reserves `stale`
-	// for R6 and defines nothing, so what stands is what the statute said.
+	// PAST THE BOUND IS `stale`, AND THIS ARM CHANGED AT R6.1 BY CHARTER.
+	//
+	// It read: "the engine does not invent a verdict. v1 reserves `stale` for
+	// R6 and defines nothing, so what stands is what the statute said" -- and
+	// asserted `bug` with NO overlay. That was right while the word was
+	// reserved. Issue 89 is where R6 spends it, so the engine has now been
+	// given the verdict it was declining to invent, and the decline is the
+	// thing that would be wrong.
+	//
+	// IT IS NOT A WEAKENED ARM: it asserts strictly more than before -- the
+	// value, the KIND, the rule, and that the statute's own verdict survives
+	// underneath. The old assertion's own stated reason is what expired.
 	outside, err := Judge(ctx, countStatute, countRules, timedLedger(t, 100, 120), chk, b, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outside.Value != "bug" || outside.Overlay != nil {
-		t.Fatalf("past the bound the finding is %v with overlay %+v, wanted the statute's bug and none",
-			outside.Value, outside.Overlay)
+	if outside.Value != "bug" || outside.Kind != "stale" {
+		t.Fatalf("past the bound the finding is %v kind %q, wanted bug of kind stale",
+			outside.Value, outside.Kind)
+	}
+	if outside.Overlay == nil || outside.Overlay.Rule != "engine.stale" {
+		t.Fatalf("a stale does not name the rule that produced it: %+v", outside.Overlay)
+	}
+	if outside.StatuteValue != "bug" {
+		t.Errorf("the statute's own verdict was lost under the overlay: %v", outside.StatuteValue)
+	}
+	// AND IT LOCATES THE LATENESS: a stale a reader cannot place is a bug with
+	// a longer name, so the reason names the type, the bound and the position.
+	for _, want := range []string{`"item.created"`, "bound of 10", "past the bound", "position 2"} {
+		if !strings.Contains(outside.Overlay.Reason, want) {
+			t.Errorf("the stale's reason does not say %q: %s", want, outside.Overlay.Reason)
+		}
 	}
 
 	// AND AGREEMENT IS NEVER HELD OPEN: a consistent observation has nothing
@@ -314,4 +342,119 @@ func TestAPendingIsReCheckedAtTheNextObservationOfTheSameQuery(t *testing.T) {
 			third.ReChecked != nil, third.Value, reg2.Len())
 	}
 	t.Logf("PROOF held open, untouched by another query, cleared by the same one, and re-held when it still disagrees")
+}
+
+// A QUIESCE BOUND IS JUDGED WITH NO CLOCK AT ALL, which is what makes it the
+// bound R6 can judge (fable, coop breakout-r6/0 ruling 1). The duration form
+// needs the run to control the clock and R7 brings it; this one asks only
+// whether the system said it had settled.
+//
+// THE CONTROL IS THE REFUSAL NOT FIRING. The same ledger -- a claim and no
+// clock fact -- refuses outright for a duration-bounded type
+// (TestAnEventualTypeWithNoClockIsRefused drives exactly that), so a quiesce
+// bound reaching a verdict here is the discriminator between the two forms and
+// not an accident of the fixture.
+func TestAQuiesceBoundIsJudgedWithoutAClock(t *testing.T) {
+	ctx := context.Background()
+	b := Bindings{Eventual: []Eventual{{Of: "item.created", Quiesce: true}}}
+
+	noClock := func() *ledger.Ledger {
+		l := ledger.New(false)
+		if _, err := l.Append(ledger.Fact{Kind: ledger.KindClaim, Actor: "alice",
+			Type: "item.created", Ref: "alice.item#1"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := l.SealAt(1); err != nil {
+			t.Fatal(err)
+		}
+		return l
+	}
+	base := Check{Actor: "alice", Query: "item.count", Of: "item.created",
+		Source: ledger.SourceAPI, Value: 0}
+
+	// NOT QUIET YET: held open, and NOT refused for want of a clock.
+	waiting := base
+	waiting.Quiesced = false
+	held, err := Judge(ctx, countStatute, countRules, noClock(), waiting, b, nil)
+	if err != nil {
+		t.Fatalf("a quiesce bound was refused though it needs no clock: %v", err)
+	}
+	if held.Value != "pending" || held.Kind != "" {
+		t.Fatalf("before quiet the finding is %v kind %q, wanted pending with no kind",
+			held.Value, held.Kind)
+	}
+	if held.StatuteValue != "bug" {
+		t.Errorf("the statute's own verdict was lost: %v", held.StatuteValue)
+	}
+
+	// QUIET AND STILL DISAGREEING: the system was given its chance to settle
+	// and says it has, so the disagreement is past the bound.
+	settled := base
+	settled.Quiesced = true
+	stale, err := Judge(ctx, countStatute, countRules, noClock(), settled, b, nil)
+	if err != nil {
+		t.Fatalf("a quiesced check was refused: %v", err)
+	}
+	if stale.Value != "bug" || stale.Kind != "stale" {
+		t.Fatalf("after quiet the finding is %v kind %q, wanted bug of kind stale",
+			stale.Value, stale.Kind)
+	}
+	if stale.Overlay == nil || stale.Overlay.Rule != "engine.stale" {
+		t.Fatalf("the stale does not name the rule that produced it: %+v", stale.Overlay)
+	}
+	for _, want := range []string{`"item.created"`, "quiesce", "position 1"} {
+		if !strings.Contains(stale.Overlay.Reason, want) {
+			t.Errorf("the reason does not say %q: %s", want, stale.Overlay.Reason)
+		}
+	}
+	t.Logf("PROOF quiesce bound, no clock fact: not quiet -> %v; quiet -> %v kind %q",
+		held.Value, stale.Value, stale.Kind)
+}
+
+// A `stale` IS TERMINAL AND IS NOT HELD OPEN FOR RE-CHECK, where a `pending`
+// is. R2.3's rule is that no pending is left open at the end of a run; a stale
+// registered as one would make that false of any run that ended on a stale, and
+// would have the register claiming a decided finding is still waiting.
+func TestAStaleIsNotHeldOpenForReCheck(t *testing.T) {
+	ctx := context.Background()
+	b := Bindings{Eventual: []Eventual{{Of: "item.created", Quiesce: true}}}
+	l := func() *ledger.Ledger {
+		x := ledger.New(false)
+		if _, err := x.Append(ledger.Fact{Kind: ledger.KindClaim, Actor: "alice",
+			Type: "item.created", Ref: "alice.item#1"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := x.SealAt(1); err != nil {
+			t.Fatal(err)
+		}
+		return x
+	}
+	base := Check{Actor: "alice", Query: "item.count", Of: "item.created",
+		Source: ledger.SourceAPI, Value: 0}
+
+	// THE CONTROL FIRST: a pending IS registered, so a register that recorded
+	// nothing at all would fail here rather than pass the assertion below.
+	regPending := NewRegister()
+	waiting := base
+	if _, err := Judge(ctx, countStatute, countRules, l(), waiting, b, regPending); err != nil {
+		t.Fatal(err)
+	}
+	if regPending.Len() != 1 {
+		t.Fatalf("a pending was not registered for re-check: %d open", regPending.Len())
+	}
+
+	regStale := NewRegister()
+	settled := base
+	settled.Quiesced = true
+	f, err := Judge(ctx, countStatute, countRules, l(), settled, b, regStale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Kind != "stale" {
+		t.Fatalf("the fixture did not produce a stale: %v kind %q", f.Value, f.Kind)
+	}
+	if regStale.Len() != 0 {
+		t.Errorf("a stale was held open for re-check: %d open, %v", regStale.Len(), regStale.Open())
+	}
+	t.Logf("PROOF pending registered 1, stale registered %d", regStale.Len())
 }

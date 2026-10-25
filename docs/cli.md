@@ -404,6 +404,12 @@ additions are patches until 1.0.
 run: FOUND bug after step 5 -- data.rumor.statute.finding, rests_on_planted false
 ```
 
+**A finding with a KIND names it there too**, as `FOUND bug of kind stale after
+step 5 -- ...`. A kind narrows a `bug` by saying why it is one — `stale` is a
+`pending` past its bound — and it changes nothing else: the status is still 3,
+because a stale is a finding and not a refusal. A finding the statute produced
+on its own carries no kind and the line is as above.
+
 It sits between the trace and the verdict and names a finding's whole identity
 off the record: "two findings are the same when the rule that fired, the
 finding's value, and its attribution (`rests_on_planted`) all agree"

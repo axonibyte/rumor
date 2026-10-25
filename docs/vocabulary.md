@@ -90,10 +90,35 @@ bound declared in the bindings, and the bindings artefact arrives with R4; no
 example exercises `pending` until then, which is a named gap.
 
 Later phases add **kinds** under `bug` and one finding beside these four,
-each by its own Revisions entry: `stale` (a `pending` past its bound, R6), a
+each by its own Revisions entry: `stale` (DEFINED BELOW at v2, R6.1), a
 quiesce timeout (R6), `ui_timeout` (R9), and `trespass` (R18: an action the
-statute forbids that succeeds). v1 names them here so the examples can avoid
-the words; it does not define them. Avoiding a word means no statute rule,
+statute forbids that succeeds). v1 named them so the examples could avoid the
+words; it did not define them, and the first of them is spent.
+
+### Kinds under `bug`
+
+A kind narrows a `bug` by saying WHY it is one. It is not a fifth finding: a
+kind carries `bug`'s own meaning and its own status, and a reader keying on the
+finding sees every bug whatever its kind.
+
+| kind | meaning |
+|---|---|
+| `stale` | a `pending` past its bound. The observation disagreed on an `eventual` claim type, the disagreement was inside the bound and so was held open, and the bound has since passed with the disagreement unresolved. It names the claim type, the position of the claim it was late about, and the bound it passed |
+
+**A `stale` is terminal and a `pending` is not.** `pending` is re-checked at the
+actor's next observation of the same query and at every full reconciliation; a
+`stale` has had that chance and is a finding, so it is not held open for
+re-check and a run that ends on one leaves no pending open.
+
+**The bound has two forms and R6 judges one of them.** A duration bound is
+measured against the run's own clock, and an eventual type with a duration
+bound in a project with no clock control is REFUSED rather than read as past
+its bound -- time the run does not control never decides a verdict. The
+quiesce form asks instead whether the system has settled: the disagreement is
+`pending` until the declared probes read quiet and `stale` if the
+reconciliation that follows still disagrees. R6 builds the quiesce form end to
+end; the duration form keeps its refusal until a later phase gives the run the
+clock. Avoiding a word means no statute rule,
 finding value or case expectation uses it; prose and comments may name one
 to say it is deliberately unused, and the R1 gate reads the criterion that
 way. `docs/world.md` reserves `trespass` under a heading of its own for the
@@ -197,4 +222,5 @@ to no actor (R9).
 
 | version | date | run | change |
 |---|---|---|---|
+| v2 | 2026-10-25 | R6.1 | `stale` DEFINED, the first of the four words v1 named and did not define: a kind under `bug` rather than a fifth finding, which is what v1's own "later phases add kinds under `bug`" sentence reserved it as. A `pending` past its bound, naming the claim type, the claim's position and the bound; terminal, so it is not held open for re-check where a `pending` is. The two bound forms are stated with the one R6 judges: the quiesce form, pending until the declared probes read quiet and `stale` if the reconciliation after still disagrees, which needs no clock; and the duration form, which keeps the refusal R2.3 gave it -- an eventual type with a duration bound and no clock control is refused rather than read as past its bound -- until a later phase gives the run the clock. No term above is changed or removed, and the other three reserved words stay reserved. MEASURED rather than assumed: the engine overlay declined past the bound until this version because the word was undefined (its own comment said so), and the three findings it does produce are unmoved -- toy seeds 2, 40 and 1 are byte-identical to v0.1.31's output, digests 786416e6925acf7c, dff917a0f6c74983 and ba42d0333035a0aa, which is R6's control for every child |
 | v1 | 2026-10-13, amended 2026-10-14, 2026-10-15 and 2026-10-16 | R1.3 | first definitions: four fact kinds, four findings and the control, positions and sealing, run-local handles, `planted`, `clock` facts, the three observation sources. Named for later phases without defining them: `stale`, the quiesce timeout, `ui_timeout`, `trespass`; the `told` payload-or-reference and the `direct` verb shape are Open items, adopted here in their leaning form. Amended 2026-10-14 from the review against the three packages: `explained`/`bug` clauses corrected and the two inputs stated; `of`, `role` and `visible_to` named; ref = handle in v1 and the between-attempts collision; the expectation on a claim optional; `pending` and `clock` named as gaps with their examples' arrival; reserved words may appear in prose; "the same `bug` findings" compares findings alone; Go, not Rust. Amended 2026-10-15 from R2.1 and R2.3, two readings v1 left open now RATIFIED as its meaning rather than changed (ratchet breakout-r2/12, fable breakout-r2/13): a `told` fact cannot pass a claim no earlier position holds, which follows from "the receiver now knows that claim" without v1 stating it as a rule, and the store refuses it at append because referential integrity is about the ledger's state and not the fact's shape; and the observation is the check's INPUT while the sealed prefix is the DATA, so "judged against the knowledge the observer holds at p" and "the check reads the sealed prefix" say the same thing once the observation is not counted as part of the prefix. Neither adds or removes a definition above. Three wordings amended in the same pass, fable's to word and rook's to carry (breakout-r2/19): "hands the result to Rego as data" now says which document those fields are in, since the epic's "data" and "input" named the two things and not OPA's two namespaces; the `clock` row's "written by" now reads "the run; a clock fact belongs to no actor, and reconciliation walks actors, never facts", which is what an engine that reconciled against an actor called "run" found the hard way; and the Fact kinds note now counts what is actually there -- `told` facts in eleven of the seventeen ledger files, and no `clock` fact in any of them until R2.3 drives one. Amended 2026-10-16 from R3.2 (fable breakout-r3/7, on ibis r3/9 and /11 and quill r3/10): the STRIP bullet gains the scope it was read as already having. `rumor attaint` implements it and fires on three of the four planted cases in `examples/` under the unqualified reading -- role-visibility's viewer-own-lie-exceeds and transitive-count's charlie-own-lie and charlie-knows-only-his-lie carry a planted claim INCIDENTALLY, testing visibility and knowledge gaps, and removing the lie leaves a finding that was never about it. quill's reading settled that the warrant was not in the text: "its two uses are both checks on the engine" says what the checks are about and not which fixtures each covers, and the sibling bullet is explicit where it means universality. So the sentence is amended rather than the three fixtures, which R1's gate passed: changing a gated fixture to fit a sentence is the wrong direction of repair. The CORROBORATION bullet stays universal -- every planted lie produces `bug`, which all three incidental cases already meet -- and a planted case that declares no control is counted and printed rather than silently skipped. Amended 2026-10-17 from R4.1 (quill): the version constant this document promised to R4's contract now exists as `internal/vocabulary.VocabularyVersion`, carrying the value this table's highest row names; no term above is added, removed or changed by that, and the preamble's sentence about the Revisions section BEING the version is replaced by the pairing. Amended 2026-10-19 from R5's breakout (ratchet rumor/853, fable breakout-r5/1): the CORROBORATION bullet gains the scope the strip gained on 10-16 -- it binds where an observation tests the lie, and a planted claim no observation tests is counted and printed rather than read as a pass or a failure; a fixture arranges its observations and `rumor attaint` is unchanged over fixtures. A half-true claim (`palter`) is planted like any lie, the engine recording under the tag which part is false; there is still no third state. `canard` is named here only to say what it is not: a tell that passes on a planted claim by an actor that is not its author, a weight and a precondition over the kinds above, not a fact kind and not a tag |

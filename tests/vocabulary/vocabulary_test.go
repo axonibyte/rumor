@@ -133,7 +133,12 @@ const root = "../.."
 // R5.3's from a new quotation in a new package.
 // The number is the sweep's and not my arithmetic -- it refuses on the count and
 // names the actual, which is how this value was settled.
-const declaredQuotes = 33
+// 33 -> 34 AT R6.1: the v2 Revisions row quotes v1's own "later phases add
+// kinds under `bug`" sentence, to show that `stale` lands as the kind v1
+// reserved it as rather than as a fifth finding. A quote inside the document
+// about the document, which this sweep counts like any other -- and the quote
+// is the warrant for the shape, so it is worth the count moving.
+const declaredQuotes = 34
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would

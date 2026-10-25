@@ -27,4 +27,4 @@ package vocabulary
 // VocabularyVersion is the vocabulary docs/vocabulary.md declares, as that
 // document spells it. A phase that changes a term there bumps this with it and
 // adds a Revisions entry; the release gate refuses the bump that arrives alone.
-const VocabularyVersion = "v1"
+const VocabularyVersion = "v2"

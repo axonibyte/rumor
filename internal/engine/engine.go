@@ -56,6 +56,21 @@ type Check struct {
 	Source ledger.Source // api, ui or direct (R4 refuses a fourth)
 	Value  any           // what came back
 	Role   string        // the observer's role, where the project has roles
+
+	// Quiesced says the system had read quiet when this observation was
+	// made, which is what a `quiesce` bound is measured against.
+	//
+	// IT IS AN INPUT AND NOT A MEASUREMENT HERE. R6.2's probes decide it --
+	// queue depth, worker idle, a `direct` query, each with its own timeout
+	// -- and hand the answer in; this package judges with it and never asks.
+	// That split is fable's ruling 1 (coop breakout-r6/0): the engine takes
+	// a quiesced input, so R6.1 can land before the probes exist.
+	//
+	// FALSE IS "NOT QUIET", NOT "UNKNOWN", and the difference is the
+	// conservative one: a disagreement stays `pending` until something says
+	// the system settled, so a caller that forgets to set this reports a
+	// finding held open rather than a defect it has not earned.
+	Quiesced bool
 }
 
 // Definition names one rule definition in a statute: the module and the row it
@@ -91,6 +106,17 @@ func (d Definition) String() string {
 type Finding struct {
 	Value   any  // the finding, e.g. "bug"; nil when the rule is undefined
 	Defined bool // false means the statute yielded no finding at all
+
+	// Kind narrows the finding where the vocabulary gives it a kind: `stale`
+	// is a `bug` whose kind says WHY it is one -- a pending past its bound --
+	// and it is empty for a finding the statute produced on its own.
+	//
+	// IT IS A KIND AND NOT A FOURTH VALUE, which is fable's ruling 2 (coop
+	// breakout-r6/0): v1 reserved `stale` under findings as "a `pending` past
+	// its bound", so it exits 3 and lands on the FOUND line where a bug does.
+	// A reader keying on Value still sees every bug; a reader that wants the
+	// reason reads this.
+	Kind string
 
 	// THE STATUTE'S OWN VERDICT IS KEPT WHEN THE ENGINE OVERRIDES IT. Judge
 	// may hold a finding open as `pending` (see pending.go); Value is then
