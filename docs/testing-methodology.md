@@ -1131,3 +1131,52 @@ own method, and the callers that open a world call it.
 `os.Exit`, it is not a cleanup. Check the class across the tree rather than the
 instances you were told about, declare the deliberate exceptions where a reader
 will find them, and make the declaration itself fail when its subject moves.
+
+## R6
+
+The lessons from R6's children, under one heading per phase (fable, coop
+r4/137). A child inserting a lesson adds a `###` here in landing order.
+
+### An arm whose reason expired is not an arm you weakened
+
+R6.1 changed an existing arm, and the change reads from a distance exactly like
+the thing this project forbids: an assertion that used to demand one answer now
+demands a different one, in the same commit as the code that produces it.
+
+**The two cases are not alike and the difference is checkable.** Two days apart
+this tree has seen both:
+
+- **R5.3**: an arm asserted `restored == probes - 1` and explained it in words —
+  "the final replay is the one that does not rebuild a world". `docs/design.md`
+  and `docs/rollback.md` both said the opposite and said it was not optional. The
+  arm had pinned a DEFECT. The documents were the authority and the arm was
+  wrong when it was written.
+- **R6.1**: an arm asserted that past an eventual type's bound the statute's
+  finding stands with no overlay, because "v1 RESERVES `stale` for R6 and defines
+  nothing". That was RIGHT when written. Issue 89 is where R6 defines the word,
+  so the arm's own stated reason expired — and leaving it would have pinned the
+  reservation after the thing reserved had arrived.
+
+**The test is whether the arm's stated reason still holds, not whether the arm
+still passes.** An arm that pinned a defect was always wrong and the documents
+show it. An arm whose reason expired was right, and what changed is the world it
+described. An arm with NO stated reason gives a reviewer nothing to check in
+either direction, which is the argument for writing the reason beside the
+assertion rather than only in a commit message.
+
+**Two things make the expired kind auditable**, and both were done here rather
+than asserted:
+
+- **The new arm asserts strictly MORE than the old one.** Value, kind, rule,
+  that the statute's verdict survives underneath, and that the reason locates
+  what was late. A change that asserts strictly less is a weakening whatever
+  charter it cites.
+- **The name moves with the behaviour.** The arm read
+  `...IsPendingAndOutsideItIsNot`, which after the change would have described
+  the opposite of what its body checks. A stale name on a passing arm is how the
+  next reader is told the wrong thing by something green.
+
+**How to apply.** When a change needs an existing assertion to flip, say which
+case it is and show the evidence for it: the document that contradicted the old
+arm, or the charter line that spends what the old arm was waiting for. Then show
+the new arm asserts more, and rename it if its name described the old answer.
