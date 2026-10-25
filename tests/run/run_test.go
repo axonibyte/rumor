@@ -636,3 +636,73 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 		})
 	}
 }
+
+// A QUIESCE BOUND NOTHING CAN JUDGE IS REFUSED, NOT RUN QUIETLY.
+//
+// ratchet drove the alternative at coop r6/8: a claim type bounded `quiesce`
+// with no prober wired holds a real disagreement open on every pass -- the
+// register keeps it, StillOpen cannot see it because the query WAS re-asked,
+// and the walk never ends on a `pending` -- so the run exits 0 on a
+// disagreement. fable ruled the shutter at r6/10 and keyed it structurally at
+// r6/12: the condition is the PROBER SLOT being nil, which R6.2 falsifies by
+// construction when it wires one, so the refusal removes itself rather than
+// waiting to be remembered.
+//
+// THE FIXTURE IS `walkable` WITH ONE CHANGE, built in a temp directory the way
+// the no-weight arm builds its own, and the arm asserts the change landed: a
+// bound on an IMMEDIATE claim is refused by the decoder, so the timing moves
+// with it and a reader can see why both lines are edited.
+func TestAQuiesceBoundWithNoProberIsRefused(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego"} {
+		b, err := os.ReadFile(filepath.Join(fixture, f))
+		if err != nil {
+			t.Fatalf("reading %s: %v", f, err)
+		}
+		if f == "bindings.toml" {
+			const was = "[claim.event_created]\ntiming = \"immediate\""
+			if !strings.Contains(string(b), was) {
+				t.Fatal("the fixture's claim block is not what this arm edits, so the " +
+					"quiesce bound below would not be declared and the refusal could not fire")
+			}
+			b = []byte(strings.Replace(string(b), was,
+				"[claim.event_created]\ntiming = \"eventual\"\nbound = \"quiesce\"", 1))
+		}
+		if err := os.WriteFile(filepath.Join(dir, f), b, 0o600); err != nil {
+			t.Fatalf("writing %s: %v", f, err)
+		}
+	}
+
+	out, errb, code := run(t, "run", dir, "--seed", "42", "--steps", "5")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1: a project declaring a bound this build cannot judge is "+
+			"REFUSED, not could-not-run (2) and not a finding (3)\nstdout:\n%s\nstderr:\n%s",
+			code, out, errb)
+	}
+	if !strings.Contains(out, "REFUSED") || !strings.Contains(out, "no quiesce prober") {
+		t.Errorf("the refusal does not name the missing prober, so a reader cannot tell it "+
+			"from a malformed project:\n%s", out)
+	}
+	// AND IT NAMES THE TYPES, because a project with several eventual types
+	// needs to know which bound is unjudgeable.
+	if !strings.Contains(out, "event_created") {
+		t.Errorf("the refusal names no claim type:\n%s", out)
+	}
+	// NOTHING IS WALKED AFTER IT. A refusal that printed its line and then ran
+	// anyway would be the silent exit-0 case with a warning attached.
+	if strings.Contains(out, "run:   1 ") {
+		t.Errorf("the run walked a step after refusing:\n%s", out)
+	}
+
+	// THE CONTROL: the unmodified fixture declares no quiesce bound and still
+	// walks to exit 0, so the refusal is about the BOUND and not about this
+	// arm's fixture or the slot being nil in every run.
+	cout, cerr, ccode := run(t, "run", fixture, "--seed", "42", "--steps", "5")
+	if ccode != 0 {
+		t.Fatalf("the control exited %d, want 0: walkable declares no quiesce bound\n"+
+			"stdout:\n%s\nstderr:\n%s", ccode, cout, cerr)
+	}
+	if strings.Contains(cout, "REFUSED") {
+		t.Errorf("the control was refused, so the refusal fires without a quiesce bound:\n%s", cout)
+	}
+}

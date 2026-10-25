@@ -35,6 +35,36 @@ type Project struct {
 	// declaring none is walked exactly as before, which is how every suite
 	// written against R5.1-R5.4 keeps its meaning.
 	Observations []bindings.Observation
+
+	// Prober answers whether the system under test has settled, which is what
+	// a `quiesce` bound is judged against.
+	//
+	// IT IS THE SLOT AND IT IS NIL UNTIL R6.2 WIRES ONE. R6.2 declares the
+	// probes -- queue depth, worker idle, a `direct` query, each with its own
+	// timeout -- and this is where their answer arrives. The engine judges the
+	// answer and never asks for it.
+	//
+	// ITS NILNESS IS WHAT `run` REFUSES ON (fable, coop r6/12). The condition
+	// is STRUCTURAL rather than a sentence about this build: a project
+	// declaring a quiesce bound with no prober wired cannot have that bound
+	// judged, so the run refuses by name instead of holding the disagreement
+	// open and exiting 0. R6.2 falsifies the condition by construction the
+	// moment it wires one in, so the shutter removes itself and nothing has to
+	// remember to take it out.
+	Prober Prober
+}
+
+// Prober answers whether the system under test has gone quiet.
+//
+// IT IS AN INTERFACE AND NOT A FUNCTION FIELD because R6.2's probes are
+// several -- queue depth, worker idle, a `direct` query -- each with its own
+// timeout, and the thing that combines them into one answer is theirs to shape.
+type Prober interface {
+	// Quiesce reports the system's settling state, or an error when it cannot
+	// be determined. A prober that gave up answers QuiesceTimedOut rather than
+	// an error: the engine treats a probe that ran and stopped as a finding of
+	// its own kind, not as a failure to run.
+	Quiesce(ctx context.Context) (engine.QuiesceState, error)
 }
 
 // Step is one step of a walk, RECORDED OVER HANDLES AND NEVER OVER IDS. That is

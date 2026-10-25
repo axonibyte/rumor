@@ -914,8 +914,29 @@ breakout-r6/0. A duration bound needs the run to control the clock, and until
 that arrives it keeps the refusal above. The QUIESCE form needs no clock at all:
 it asks whether the system has settled, so a disagreement is `pending` until the
 declared probes read quiet and `stale` if the reconciliation that follows still
-disagrees. The engine takes the quiesced answer as an INPUT on the check and
-never measures it, which is what let this land before the probes existed.
+disagrees. The engine takes the prober's answer as an INPUT on the check and never
+measures it, which is what let this land before the probes existed.
+
+**That answer has FOUR values and is not a bool**, which ratchet's finding
+forced and fable ruled: a probe that ran and GAVE UP and a system still BUSY
+would otherwise hand in the same byte, two causes with one encoding, and only
+one of them is safe to read as "not quiet". So `busy` holds the disagreement
+open, `quiet` makes it `stale`, `timed out` is the slot R6.2's own finding kind
+fills — refused here rather than named, exactly as `stale` was refused before
+this phase defined it — and `absent`, the zero value, is a refusal and never an
+answer.
+
+**And a bound nothing can judge is refused at the run, not carried quietly.**
+ratchet drove the alternative: a claim type bounded `quiesce` with no prober
+wired holds a real disagreement open on every pass — the register keeps it,
+`StillOpen` cannot see it because the query WAS re-asked, and the walk never
+ends on a `pending` — so the run exits 0 on a disagreement, which is worse than
+a missed bug. `run` therefore REFUSES such a project by name. The condition is
+structural rather than a sentence about this build: it is the prober slot being
+nil, which R6.2 falsifies by construction when it wires one in, so the shutter
+removes itself instead of waiting to be remembered. `StillOpen`'s proxy — "was
+the query re-asked" standing in for "was the pending resolved" — is sound only
+while every bound expires on its own, and R6.2 owns closing it.
 
 **MEASURED, NOT ASSUMED, which is what this section is amended with.** Past a
 quiesce bound the engine judges with a ledger carrying NO clock fact at all —

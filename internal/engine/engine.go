@@ -57,20 +57,58 @@ type Check struct {
 	Value  any           // what came back
 	Role   string        // the observer's role, where the project has roles
 
-	// Quiesced says the system had read quiet when this observation was
-	// made, which is what a `quiesce` bound is measured against.
+	// Quiesce is what a prober answered about the system having settled,
+	// which is what a `quiesce` bound is measured against.
 	//
 	// IT IS AN INPUT AND NOT A MEASUREMENT HERE. R6.2's probes decide it --
 	// queue depth, worker idle, a `direct` query, each with its own timeout
 	// -- and hand the answer in; this package judges with it and never asks.
 	// That split is fable's ruling 1 (coop breakout-r6/0): the engine takes
-	// a quiesced input, so R6.1 can land before the probes exist.
-	//
-	// FALSE IS "NOT QUIET", NOT "UNKNOWN", and the difference is the
-	// conservative one: a disagreement stays `pending` until something says
-	// the system settled, so a caller that forgets to set this reports a
-	// finding held open rather than a defect it has not earned.
-	Quiesced bool
+	// the answer, so R6.1 can land before the probes exist.
+	Quiesce QuiesceState
+}
+
+// QuiesceState is a prober's answer about the system having settled.
+//
+// FOUR VALUES AND NOT A BOOL, which is fable's ruling 1(b) at coop r6/10 on
+// ratchet's finding at r6/9. A bool cannot say "I asked and gave up": a probe
+// that ran and TIMED OUT and a system that is still BUSY would hand in the same
+// byte, two causes with one encoding, and only one of them is safe to read as
+// "not quiet". R6.2 owns the probes and would have been stuck with that.
+//
+// THE ZERO VALUE IS ABSENT AND IT REFUSES. Nothing having asked is not the same
+// as "not quiet": a caller with no prober wired gets a refusal that names the
+// slot, never a finding held open and never a defect it has not earned. My
+// first version made the zero value mean "not quiet" and reasoned that this was
+// the conservative choice -- it was not, because it is indistinguishable from
+// an answer.
+type QuiesceState int
+
+const (
+	// QuiesceAbsent is the zero value: no prober answered. A refusal.
+	QuiesceAbsent QuiesceState = iota
+	// QuiesceQuiet: the system has settled, so a disagreement that remains is
+	// past the bound.
+	QuiesceQuiet
+	// QuiesceBusy: the system is still working, so a disagreement is inside
+	// the bound and held open.
+	QuiesceBusy
+	// QuiesceTimedOut: a prober ran and gave up. The finding kind for this is
+	// R6.2's to define, so R6.1 refuses rather than inventing the word --
+	// which is how `stale` itself was handled until this phase defined it.
+	QuiesceTimedOut
+)
+
+func (q QuiesceState) String() string {
+	switch q {
+	case QuiesceQuiet:
+		return "quiet"
+	case QuiesceBusy:
+		return "busy"
+	case QuiesceTimedOut:
+		return "timed out"
+	}
+	return "absent"
 }
 
 // Definition names one rule definition in a statute: the module and the row it

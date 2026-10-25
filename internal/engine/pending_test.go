@@ -372,9 +372,9 @@ func TestAQuiesceBoundIsJudgedWithoutAClock(t *testing.T) {
 	base := Check{Actor: "alice", Query: "item.count", Of: "item.created",
 		Source: ledger.SourceAPI, Value: 0}
 
-	// NOT QUIET YET: held open, and NOT refused for want of a clock.
+	// STILL BUSY: held open, and NOT refused for want of a clock.
 	waiting := base
-	waiting.Quiesced = false
+	waiting.Quiesce = QuiesceBusy
 	held, err := Judge(ctx, countStatute, countRules, noClock(), waiting, b, nil)
 	if err != nil {
 		t.Fatalf("a quiesce bound was refused though it needs no clock: %v", err)
@@ -390,7 +390,7 @@ func TestAQuiesceBoundIsJudgedWithoutAClock(t *testing.T) {
 	// QUIET AND STILL DISAGREEING: the system was given its chance to settle
 	// and says it has, so the disagreement is past the bound.
 	settled := base
-	settled.Quiesced = true
+	settled.Quiesce = QuiesceQuiet
 	stale, err := Judge(ctx, countStatute, countRules, noClock(), settled, b, nil)
 	if err != nil {
 		t.Fatalf("a quiesced check was refused: %v", err)
@@ -436,6 +436,7 @@ func TestAStaleIsNotHeldOpenForReCheck(t *testing.T) {
 	// nothing at all would fail here rather than pass the assertion below.
 	regPending := NewRegister()
 	waiting := base
+	waiting.Quiesce = QuiesceBusy
 	if _, err := Judge(ctx, countStatute, countRules, l(), waiting, b, regPending); err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +446,7 @@ func TestAStaleIsNotHeldOpenForReCheck(t *testing.T) {
 
 	regStale := NewRegister()
 	settled := base
-	settled.Quiesced = true
+	settled.Quiesce = QuiesceQuiet
 	f, err := Judge(ctx, countStatute, countRules, l(), settled, b, regStale)
 	if err != nil {
 		t.Fatal(err)
@@ -457,4 +458,78 @@ func TestAStaleIsNotHeldOpenForReCheck(t *testing.T) {
 		t.Errorf("a stale was held open for re-check: %d open, %v", regStale.Len(), regStale.Open())
 	}
 	t.Logf("PROOF pending registered 1, stale registered %d", regStale.Len())
+}
+
+// THE TWO STATES THAT ARE NOT ANSWERS REFUSE, and that is fable's ruling 1(b)
+// at coop r6/10 on ratchet's finding at r6/9: a bool could not tell a probe
+// that ran and GAVE UP from a system still BUSY, so both handed in the same
+// byte and only one of them is safe to read as "not quiet".
+//
+// ABSENT IS THE DANGEROUS ONE AND IT IS THE ZERO VALUE. ratchet drove the
+// consequence: a quiesce bound with nothing supplying an answer held a real
+// disagreement open for fifty passes, the register kept one, StillOpen saw
+// nothing because the query was re-asked, the walk never ended -- exit 0 on a
+// disagreement. A refusal is the only answer that cannot become that.
+func TestAQuiesceAnswerThatIsNotAnAnswerRefuses(t *testing.T) {
+	ctx := context.Background()
+	b := Bindings{Eventual: []Eventual{{Of: "item.created", Quiesce: true}}}
+	l := func() *ledger.Ledger {
+		x := ledger.New(false)
+		if _, err := x.Append(ledger.Fact{Kind: ledger.KindClaim, Actor: "alice",
+			Type: "item.created", Ref: "alice.item#1"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := x.SealAt(1); err != nil {
+			t.Fatal(err)
+		}
+		return x
+	}
+	base := Check{Actor: "alice", Query: "item.count", Of: "item.created",
+		Source: ledger.SourceAPI, Value: 0}
+
+	for _, tc := range []struct {
+		name  string
+		state QuiesceState
+		says  string
+	}{
+		{"absent, the zero value", QuiesceAbsent, "no quiesce answer"},
+		{"a probe that gave up", QuiesceTimedOut, "TIMED OUT"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := base
+			c.Quiesce = tc.state
+			_, err := Judge(ctx, countStatute, countRules, l(), c, b, nil)
+			if err == nil {
+				t.Fatalf("%s was judged as a verdict on the claim, so a non-answer became "+
+					"either inside or past the bound", tc.state)
+			}
+			if !strings.Contains(err.Error(), tc.says) {
+				t.Errorf("refused, but not by the clause for %s: %v", tc.state, err)
+			}
+			// AND IT MUST NOT REFUSE AS THE CLOCK CLAUSE DOES: a quiesce bound
+			// needs no clock, so borrowing that message would send a reader to
+			// wire a clock that cannot help.
+			if strings.Contains(err.Error(), "bound cannot be measured") {
+				t.Errorf("a quiesce non-answer refused with the duration clause's words: %v", err)
+			}
+		})
+	}
+
+	// THE CONTROL, so the two refusals above are about the ANSWER and not about
+	// quiesce bounds being unjudgeable: the two real answers still reach a
+	// verdict on the same fixture.
+	for _, tc := range []struct {
+		state QuiesceState
+		value any
+	}{{QuiesceBusy, "pending"}, {QuiesceQuiet, "bug"}} {
+		c := base
+		c.Quiesce = tc.state
+		f, err := Judge(ctx, countStatute, countRules, l(), c, b, nil)
+		if err != nil {
+			t.Fatalf("%s was refused: %v", tc.state, err)
+		}
+		if f.Value != tc.value {
+			t.Errorf("%s gave %v, wanted %v", tc.state, f.Value, tc.value)
+		}
+	}
 }

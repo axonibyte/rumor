@@ -164,23 +164,47 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 	// given its chance to settle, it said it had settled, and it still
 	// disagrees. That is the word v1 reserved and R6.1 spends.
 	if e.Quiesce {
-		if !c.Quiesced {
+		switch c.Quiesce {
+		case QuiesceBusy:
 			return &Overlay{
 				Rule:  "engine.pending",
 				Value: "pending",
-				Reason: fmt.Sprintf("%q is eventual bounded %q and the system has not read quiet, "+
+				Reason: fmt.Sprintf("%q is eventual bounded %q and the system is still busy, "+
 					"so the disagreement on the claim at position %d is inside the bound",
 					c.Of, "quiesce", claimPos),
 			}, nil
+		case QuiesceQuiet:
+			return &Overlay{
+				Rule:  "engine.stale",
+				Value: "bug",
+				Kind:  "stale",
+				Reason: fmt.Sprintf("%q is eventual bounded %q, the system read quiet, and the "+
+					"observation still disagrees with the claim at position %d: the bound is past",
+					c.Of, "quiesce", claimPos),
+			}, nil
+		case QuiesceTimedOut:
+			// THE SLOT R6.2's FINDING KIND FILLS (fable, coop r6/10 ruling
+			// 1(b)). A prober that ran and gave up is a thing the run FOUND --
+			// the system would not go quiet -- and it is neither this
+			// disagreement being inside the bound nor past it. The vocabulary
+			// does not define that kind yet, so R6.1 refuses rather than
+			// inventing a word, which is exactly how `stale` was handled until
+			// this phase spent it.
+			return nil, fmt.Errorf("engine: %q is eventual bounded %q and the quiesce probe "+
+				"TIMED OUT, which is a finding of its own kind and not a verdict on the "+
+				"claim at position %d: the kind is R6.2's to define and this build cannot "+
+				"name it, so it refuses rather than reading a probe that gave up as either "+
+				"inside or past the bound", c.Of, "quiesce", claimPos)
+		default:
+			// ABSENT, which is not an answer. A caller with no prober wired
+			// must not have its silence read as "not quiet": that would hold a
+			// real disagreement open to the end of a run and report it as
+			// clean, which is the outcome ratchet drove at r6/8.
+			return nil, fmt.Errorf("engine: %q is eventual bounded %q and no quiesce answer "+
+				"was supplied (%s): the bound cannot be judged, and treating silence as "+
+				"\"not quiet\" would hold this disagreement open for the whole run and "+
+				"report it as clean", c.Of, "quiesce", c.Quiesce)
 		}
-		return &Overlay{
-			Rule:  "engine.stale",
-			Value: "bug",
-			Kind:  "stale",
-			Reason: fmt.Sprintf("%q is eventual bounded %q, the system read quiet, and the "+
-				"observation still disagrees with the claim at position %d: the bound is past",
-				c.Of, "quiesce", claimPos),
-		}, nil
 	}
 	// ONE REFUSAL, NOT TWO, and mutation is what settled it. A separate check
 	// for a missing `now` could never be the clause that answered: the clock

@@ -369,9 +369,17 @@ that printed number is exactly what `--seed` takes.
 | status | meaning |
 |---|---|
 | 0 | the walk completed and no observation found a bug |
-| 1 | refused: the project's own documents are wrong |
+| 1 | refused: the project's own documents are wrong, or they declare something this build cannot judge |
 | 2 | could-not-run: an adapter that will not start, a weight the project never declared, or a usage error |
 | 3 | **a bug was found**, and the line above the verdict names it |
+
+**A bound nothing can judge is a refusal.** A project whose claim types carry
+a `quiesce` bound is refused by name when no quiesce prober is wired — `run:
+REFUSED no quiesce prober is wired; the bounds on <types> cannot be judged` —
+because the alternative is holding a real disagreement open for the whole run
+and exiting 0, which was driven rather than imagined (ratchet, coop r6/8). It is
+a refusal and not a could-not-run: the project's own declaration is
+unsatisfiable here, which is what 1 means.
 
 **This verb has FOUR statuses, and a finding is 3 and not 1** (fable, coop
 r5/176). The ground is a product choice rather than a claim about whose fault a

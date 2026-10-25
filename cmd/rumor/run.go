@@ -6,7 +6,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
@@ -125,6 +127,42 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		// walked as before, which is what keeps every pre-R5.5 fixture's
 		// meaning.
 		Observations: brep.Bindings.Observations,
+	}
+
+	// A QUIESCE BOUND NOTHING CAN JUDGE IS A REFUSAL, NOT A QUIET RUN.
+	//
+	// ratchet drove the alternative at coop r6/8: a claim type bounded
+	// `quiesce` with nothing supplying a quiesce answer holds a real
+	// disagreement open for every pass -- the register keeps it, StillOpen
+	// cannot see it because the query WAS re-asked, the walk never ends on a
+	// `pending` -- and the run exits 0 on a disagreement. That is the one
+	// outcome worse than a missed bug, and it is reachable today because the
+	// untyped `[quiesce]` table parses.
+	//
+	// THE CONDITION IS STRUCTURAL AND NOT A SENTENCE ABOUT THIS BUILD (fable,
+	// coop r6/12): it refuses when the project declares such a bound and the
+	// PROBER SLOT IS NIL. R6.2 falsifies that by construction when it wires a
+	// prober in, so the shutter removes itself; nothing here has to be
+	// remembered and removed by hand, and a later reader checking whether the
+	// window is shut reads a fact rather than a promise.
+	//
+	// IT IS A REFUSAL AND NOT A COULD-NOT-RUN: the PROJECT declares a bound
+	// this build cannot judge, which is the project's own declaration being
+	// unsatisfiable here, and docs/cli.md's 1 is "the project's own documents
+	// are wrong".
+	if p.Prober == nil {
+		var bounded []string
+		for name, c := range brep.Bindings.Claims {
+			if c.Bound == bindings.Quiesce {
+				bounded = append(bounded, name)
+			}
+		}
+		if len(bounded) > 0 {
+			sort.Strings(bounded)
+			_, _ = fmt.Fprintf(stdout, "run: REFUSED no quiesce prober is wired; the bounds on "+
+				"%s cannot be judged\n", strings.Join(bounded, ", "))
+			return 1
+		}
 	}
 
 	ctx := context.Background()
