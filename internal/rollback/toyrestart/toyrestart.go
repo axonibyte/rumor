@@ -193,10 +193,41 @@ func (p *provider) stop() {
 
 // Close stops the toy. Not part of the trait -- R13 may put a teardown in it --
 // but a package that starts a process owes its caller a way to end it.
+//
+// IT LEAVES THE FILES ALONE, AND THAT IS A CONTRACT AND NOT AN OVERSIGHT.
+// TestVerifyRefusesAWorldWhoseFileIsPerfectAndWhoseServerIsDead closes the
+// provider precisely to kill the server while the saved world file stays
+// readable, and that arm fails if Close removes anything. Issue 88 proposes
+// "Close removing p.dir after stop"; I tried it and that arm died, which is
+// the arm doing its job. The removal is RemoveWorld below.
 func (p *provider) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.stop()
+}
+
+// RemoveWorld deletes the directory open() made. A package that makes a
+// directory owes its caller a way to remove it, which this one did not have:
+// Discard removes the saved world FILE of one checkpoint, Close stops the
+// process, and nothing ever removed the directory -- so every caller leaked
+// one BY CONSTRUCTION. ratchet counted 374 of them in a day against 135 for
+// every test binary put together (issue 88, coop rumor/946).
+//
+// SEPARATE FROM Close BECAUSE THE WORLD OUTLIVES THE PROCESS ON PURPOSE (see
+// Close). Call it when the world itself is finished with; it stops the toy
+// first, since removing a directory under a live child races its state file.
+//
+// IDEMPOTENT: p.dir is cleared, so a second call removes nothing rather than
+// RemoveAll("") -- and a caller that pairs this with Close in a t.Cleanup
+// calls it exactly that way.
+func (p *provider) RemoveWorld() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stop()
+	if p.dir != "" {
+		_ = os.RemoveAll(p.dir)
+		p.dir = ""
+	}
 }
 
 func (p *provider) Checkpoint(ctx context.Context) (rollback.Checkpoint, error) {

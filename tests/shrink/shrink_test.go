@@ -47,7 +47,20 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "TestMain: %v\n", err)
 		os.Exit(1)
 	}
-	defer func() { _ = os.RemoveAll(dir) }()
+	// EVERY EXIT PATH CLEANS UP, not just the last one. The `defer` that stood
+	// here never ran: a deferred call does not execute when the goroutine
+	// leaves through os.Exit, so this package left its built binary in /tmp on
+	// every run (issue 88, measured at the R5 gate and again on two boxes).
+	//
+	// AND THE OBVIOUS FIX COVERS ONE EXIT OF THREE. Issue 88 proposes
+	// `code := m.Run(); RemoveAll(dir); os.Exit(code)`, which leaves the two
+	// failure paths below still leaking -- a build that does not compile and a
+	// PATH that cannot be set both exit without cleaning. One closure covers
+	// every exit, including whichever one is added next.
+	die := func(code int) {
+		_ = os.RemoveAll(dir)
+		os.Exit(code)
+	}
 	for _, pkg := range []struct{ out, path string }{
 		{"rumor", "./cmd/rumor"},
 		{"toy", "./cmd/toy"},
@@ -58,14 +71,14 @@ func TestMain(m *testing.M) {
 		build.Env = append(os.Environ(), "GOTOOLCHAIN=local")
 		if out, berr := build.CombinedOutput(); berr != nil {
 			fmt.Fprintf(os.Stderr, "TestMain: building %s: %v\n%s\n", pkg.path, berr, out)
-			os.Exit(1)
+			die(1)
 		}
 	}
 	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH")); err != nil {
 		fmt.Fprintf(os.Stderr, "TestMain: %v\n", err)
-		os.Exit(1)
+		die(1)
 	}
-	os.Exit(m.Run())
+	die(m.Run())
 }
 
 // load reads the project the way `rumor run` reads it. It is duplicated rather
@@ -174,7 +187,15 @@ func TestTheToyBugsAreFoundByAWalkAndShrinkToUnderFiveActions(t *testing.T) {
 			if err != nil {
 				t.Fatalf("opening %s: %v", toyrestart.Name, err)
 			}
-			if c, ok := prov.(interface{ Close() }); ok {
+			// REMOVE THE WORLD, NOT ONLY THE PROCESS. `Close()` stops the
+			// toy and leaves its directory by contract, so this arm used to
+			// leave one toy-world-* per seed per run (issue 88). RemoveWorld
+			// stops the toy as well, so it replaces the Close rather than
+			// following it; the Close fallback stays for any provider that
+			// has not grown the method.
+			if r, ok := prov.(interface{ RemoveWorld() }); ok {
+				defer r.RemoveWorld()
+			} else if c, ok := prov.(interface{ Close() }); ok {
 				defer c.Close()
 			}
 			at, ok := prov.(interface{ Addr() string })

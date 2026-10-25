@@ -43,6 +43,40 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// TestRemoveWorldRemovesTheWorld is issue 88's other half, and the larger one by
+// count: ratchet measured 374 toy-world-* directories against 135 for every
+// test binary put together (coop rumor/946).
+//
+// THE DIRECTORY OUTLIVED EVERY RUN BY CONSTRUCTION. open() made it, Discard
+// removed only the saved world FILE of one checkpoint, and nothing removed the
+// directory -- so no run leaked it by accident; every run leaked it by design.
+//
+// THE PRECONDITION IS ASSERTED BEFORE THE SUCCESS INDICATOR, so a failure
+// reads as "the world was never there" rather than as a missing removal
+// thirty lines of inference later.
+func TestRemoveWorldRemovesTheWorld(t *testing.T) {
+	p := openProvider(t)
+	dir := p.dir
+	if dir == "" {
+		t.Fatal("the provider carries no world directory, so this arm cannot see a removal")
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("the world directory is not there BEFORE Close, so nothing below is about Close: %v", err)
+	}
+	p.RemoveWorld()
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("after RemoveWorld the world directory is still on disk: %s (stat error %v)", dir, err)
+	}
+	// AND A SECOND CALL IS A NO-OP RATHER THAN A RemoveAll(""): openProvider
+	// registers RemoveWorld with t.Cleanup, so this test calls it twice by its
+	// own construction, and an uncleared p.dir would make the second call
+	// remove whatever that stale path then names.
+	p.RemoveWorld()
+	if p.dir != "" {
+		t.Errorf("p.dir is %q after RemoveWorld, so a second call has a path to remove", p.dir)
+	}
+}
+
 func openProvider(t *testing.T) *provider {
 	t.Helper()
 	p, err := rollback.Open(Name, rollback.Options{Dir: t.TempDir()})
@@ -53,7 +87,12 @@ func openProvider(t *testing.T) *provider {
 	if !ok {
 		t.Fatalf("Open returned %T, want *provider", p)
 	}
-	t.Cleanup(tp.Close)
+	// THE WORLD GOES WITH THE TEST, not just the process. Close stops the toy
+	// and leaves the files by contract, so a helper that registers only Close
+	// leaves one toy-world-* behind per test -- which is where issue 88's 374
+	// directories came from. RemoveWorld stops the toy too, so this is the
+	// whole teardown and not an addition to it.
+	t.Cleanup(tp.RemoveWorld)
 	return tp
 }
 
