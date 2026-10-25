@@ -51,6 +51,17 @@ type Verdict struct {
 // defines, so it reaches a Finding through Rules when the caller asks for it.
 const attributionRule = "rests_on_planted"
 
+// kindName names a finding's kind for a reader, including its absence. An empty
+// kind is the ordinary case -- a finding the statute produced on its own -- and
+// printing it as nothing would leave the sentence with a hole where the reader
+// needs the contrast.
+func kindName(k string) string {
+	if k == "" {
+		return "(none)"
+	}
+	return k
+}
+
 // ErrDirty is returned when the world is provably not the checkpoint, so no
 // replay run in it could be attributed. It wraps rollback.ErrDirty so a caller
 // can tell this refusal from a could-not-look with errors.Is.
@@ -130,6 +141,21 @@ func Once(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
 		v.Why = fmt.Sprintf("the original %s and the replay %s", defined(want.Defined), defined(got.Defined))
 	case want.Defined && want.Value != got.Value:
 		v.Why = fmt.Sprintf("the original found %v and the replay found %v", want.Value, got.Value)
+	case want.Defined && want.Kind != got.Kind:
+		// A KIND JOINS THE RULE, THE VALUE AND THE ATTRIBUTION in "the same
+		// finding" (fable, coop breakout-r6/0, R6.4's clause). `stale` is a
+		// `bug` whose kind says WHY it is one -- a pending past its bound -- so
+		// two findings that agree on the value and differ on the kind are two
+		// different defects wearing one word, and a shrink that traded one for
+		// the other would reduce against a failure it did not find.
+		//
+		// IT LANDS WITH R6.1 RATHER THAN R6.4 BECAUSE R6.1 CREATED THE GAP:
+		// engine.Finding gained Kind there, and until this clause read it the
+		// comparison treated a stale and a plain bug as one reproduction.
+		// Leaving a field written and unread is the shape this package was
+		// already caught by once, at Verdict.AttributionCompared.
+		v.Why = fmt.Sprintf("both found %v, but the original is of kind %s and the replay %s",
+			want.Value, kindName(want.Kind), kindName(got.Kind))
 	case wantHas != gotHas:
 		// THE RULE BECOMING UNDEFINED IS A DIFFERENCE, not an absence to pass
 		// over: engine.Finding's Rules is documented there as carrying every

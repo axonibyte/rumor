@@ -269,3 +269,59 @@ func TestAProjectWithoutTheAttributionRuleSaysSo(t *testing.T) {
 		t.Error("AttributionCompared is true though neither finding carries the rule")
 	}
 }
+
+// A KIND DIFFERENCE IS NOT A REPRODUCTION, which is R6.4's clause landing with
+// R6.1 because R6.1 is what created the gap: engine.Finding gained Kind there,
+// and until the comparison read it a `stale` and a plain `bug` were one
+// reproduction. A shrink that traded one for the other would reduce against a
+// failure it never found.
+//
+// THE CONTROL IS THE SAME PAIR WITH ONE KIND. Without it this arm would pass
+// for a comparison that called every pair different, and the ordinary case --
+// two findings with no kind at all, which is every finding in the tree today --
+// has to keep reproducing or R6.1 broke the shrinker for the whole corpus.
+func TestAKindDifferenceIsNotTheSameFinding(t *testing.T) {
+	ctx := context.Background()
+	stale := engine.Finding{Defined: true, Value: "bug", Kind: "stale",
+		Rule: "data.rumor.statute.finding"}
+	plain := engine.Finding{Defined: true, Value: "bug",
+		Rule: "data.rumor.statute.finding"}
+
+	v, err := Once(ctx, &fake{}, cp, stale,
+		func(context.Context) (engine.Finding, error) { return plain, nil })
+	if err != nil {
+		t.Fatalf("Once: %v", err)
+	}
+	if v.Reproduced {
+		t.Fatal("a stale was reproduced by a plain bug, so the shrinker would reduce " +
+			"against a different defect than the one it found")
+	}
+	for _, want := range []string{"stale", "(none)"} {
+		if !strings.Contains(v.Why, want) {
+			t.Errorf("the reason does not name %q, so a reader cannot see which kind "+
+				"moved: %s", want, v.Why)
+		}
+	}
+
+	// THE CONTROL, BOTH WAYS: the same kind on both sides reproduces, and so
+	// does the no-kind pair that every finding in the tree is today.
+	same, err := Once(ctx, &fake{}, cp, stale,
+		func(context.Context) (engine.Finding, error) { return stale, nil })
+	if err != nil {
+		t.Fatalf("Once: %v", err)
+	}
+	if !same.Reproduced {
+		t.Fatalf("two stales did not reproduce each other: %s", same.Why)
+	}
+	none, err := Once(ctx, &fake{}, cp, plain,
+		func(context.Context) (engine.Finding, error) { return plain, nil })
+	if err != nil {
+		t.Fatalf("Once: %v", err)
+	}
+	if !none.Reproduced {
+		t.Fatalf("two findings with no kind did not reproduce each other, so this clause "+
+			"broke the ordinary case: %s", none.Why)
+	}
+	t.Logf("PROOF stale vs plain -> %v (%s); stale vs stale -> %v; none vs none -> %v",
+		v.Reproduced, v.Why, same.Reproduced, none.Reproduced)
+}
