@@ -253,6 +253,30 @@ contexts = ["browser", "api"]
                        "# weight, so a declared action the walk can draw has none. ABSENT IS NOT\n"
                        "# ZERO: zero means never drawn and the project decided it (fable, r4/125).\n" + s)
 
+    # THE NINTH CELL'S FIXTURE, and it existed as a refusal nothing tripped.
+    # Cell 2's reverse has TWO loops -- declared ACTIONS without a weight, and
+    # the engine's POOL KINDS without one -- and only the first had a fixture.
+    # That is rook's arm-19 finding in the arm that taught us the shape: a
+    # refusal no fixture reaches is deletable in silence.
+    #
+    # `tell` IS THE ONE TO REMOVE, deliberately. It is an ENGINE kind rather
+    # than a nemesis one (fable, coop r5/114) and it is NOT an action, so its
+    # absence cannot also trip cell 2, which refuses a weight naming no action.
+    # `essoin` would be the wrong choice for the opposite reason: it carries a
+    # declared ZERO on purpose, and a fixture deleting that would be a fixture
+    # about the zero convention rather than about an absent weight.
+    d = fresh("19/kind-without-a-weight")
+    p = os.path.join(d, "platform.toml"); s = open(p).read()
+    s = s.replace("tell = 1\n", "", 1)
+    open(p, "w").write("# FIXTURE for arm 19: the twin with one change -- the engine kind `tell`\n"
+                       "# loses its weight, so a kind THE WALK CAN DRAW has none. ABSENT IS NOT\n"
+                       "# ZERO (fable, r4/125): zero means never drawn and the project decided it,\n"
+                       "# absent means the walk reaches a kind nobody weighted.\n"
+                       "#\n"
+                       "# NOT AN ACTION, so this cannot also trip cell 2 -- which is why `tell`\n"
+                       "# rather than one of the nemesis kinds, and why not `essoin`, whose\n"
+                       "# declared zero is a convention a fixture should not be about.\n" + s)
+
     d = fresh("19/venire-undeclared-role")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
     open(p, "w").write(s + '''

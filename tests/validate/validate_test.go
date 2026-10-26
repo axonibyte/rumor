@@ -21,11 +21,13 @@ import (
 )
 
 // THE DECLARED SIZE, which is the claim: C2 ships six arms, C3 brings the count
-// to eighteen, fable's r4/113 ruling adds the nineteenth, and R6.2's two
-// probe-integrity arms (7c, 7d) bring it to twenty-one. A fixture directory that
-// vanished would otherwise leave every remaining arm passing and the suite quiet
-// about it.
-const wantFixtures = 30
+// to eighteen, fable's r4/113 ruling adds the nineteenth, and R6.2's three
+// probe-integrity arms (7c, 7d, 7e) bring it to twenty-two. ONE MORE AT R6's
+// GATE BUNDLE: arm 19's cell 2 reverse refuses on TWO loops and only one had a
+// fixture, so `19/kind-without-a-weight` is the thirty-first. A fixture
+// directory that vanished would otherwise leave every remaining arm passing and
+// the suite quiet about it.
+const wantFixtures = 31
 
 // ARM 19 IS ONE ARM WITH SEVERAL CELLS, so it is the one arm with more than one
 // fixture -- and the count is declared here for the same reason every count in
@@ -35,7 +37,15 @@ const wantFixtures = 30
 // cell came off, its referent set unsound enough to refuse both of our own
 // examples; and cell 2's REVERSE went in -- an action or nemesis kind with no
 // weight -- after quill measured that gap from the walk's side.
-const wantCells19 = 9
+//
+// 9 -> 10 AT R6.2, AND NO CELL WAS ADDED. Cell 2's reverse refuses on TWO
+// loops -- a declared ACTION with no weight, and an engine POOL KIND with no
+// weight -- and only the first had a fixture, so the second was a refusal
+// nothing tripped: rook's arm-19 finding inside the arm that taught the room
+// the shape. `19/kind-without-a-weight` trips it. The ARM count does not move,
+// because a cell is not an arm; this number counts the fixtures that pair with
+// cells, and it was short by one for as long as that loop existed.
+const wantCells19 = 10
 
 // armOf is the fixture naming convention: <arm>-<slug>, or <arm>/<slug> for an
 // arm with several cells. The arm is the part before the first separator, so
@@ -751,6 +761,7 @@ var changedBy = map[string][]string{
 	// fable's r4/74 rule allows and its README names which is which.
 	"19/requires-unknown-rule":           {"bindings.toml"},
 	"19/action-without-a-weight":         {"platform.toml"},
+	"19/kind-without-a-weight":           {"platform.toml"},
 	"19/weight-unknown-action":           {"platform.toml"},
 	"19/venire-undeclared-role":          {"bindings.toml", "platform.toml", "WHY-venire-undeclared-role.md"},
 	"19/action-arg-unknown-handle":       {"bindings.toml"},
