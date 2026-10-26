@@ -64,8 +64,12 @@ type Bindings struct {
 	// inside them belong to R6, R7 and R20, and checking them against a key set
 	// this phase would be inventing is how a schema acquires fields nothing
 	// consumes. A malformed TABLE is still refused, which is issue 63's rule.
-	Clock    map[string]any
+	Clock map[string]any
+	// Quiesce stays the RESERVED MAP for anything the table carries beyond the
+	// probes, so a project is not refused for a key R7 reserves. Probes is the
+	// typed half, which is what R6.2 added.
 	Quiesce  map[string]any
+	Probes   []Probe
 	Deadline map[string]any
 	Seeding  map[string]any
 
@@ -170,6 +174,41 @@ type Step struct {
 // are the ledger's, assigned on append, and the validate arm about an
 // observation lacking a position or a source is static over the EXAMPLES' cases,
 // whose observations carry both (ibis, coop r4/20).
+// Probe is one way a project says its system is known to be quiet, declared
+// under [[quiesce.probe]] and answered by the adapter.
+//
+// SEVERAL, NOT ONE, each with its own timeout: a queue can be empty while a
+// worker is mid-job, so "quiet" is the conjunction of the probes a project
+// declares and never a single reading (fable, coop breakout-r6/0's R6.2 row).
+//
+// THE TIMEOUT IS REQUIRED AND THAT IS THE POINT. A probe without one is a
+// wait with no end, and R6's rule is that a system which never goes quiet is
+// a FINDING rather than a hang -- so the bound has to exist before the engine
+// will ask. validate refuses a probe that declares none, by name.
+type Probe struct {
+	// Kind is queue_depth, worker_idle or direct. The first two name a
+	// property the adapter reports; `direct` reuses the observation shape R5
+	// shipped, store_event_count being the model, and so carries Query.
+	Kind string
+
+	// Timeout is how long this probe may go unanswered before the run carries
+	// a finding of the timeout's own kind. A duration, as a claim's bound is.
+	Timeout string
+
+	// Every is how often to ask while waiting. Optional: absent means the
+	// engine's own cadence, and a project that wants a slower one says so.
+	Every string
+
+	// Query is the `direct` kind's observation name, and is refused on the
+	// other two -- a queue depth is not read through an observation.
+	Query string
+
+	// Quiet is what this probe's answer must read for the system to count as
+	// settled: for queue_depth a number (usually 0), for worker_idle a bool,
+	// for direct the value the observation must return.
+	Quiet any
+}
+
 type Observation struct {
 	Name   string
 	Source wire.Source
@@ -353,6 +392,32 @@ func Parse(doc map[string]any) Report {
 		{"seeding", &b.Seeding},
 	} {
 		if t, ok := r.Table(reserved.key, false); ok {
+			// THE PROBES ARE TYPED AND THE REST OF THE TABLE IS STILL CARRIED.
+			// [quiesce] was a reserved map read whole into Quiesce, so any key
+			// passed and nothing was required: `{probe = "/test/quiet"}` was a
+			// valid declaration that no code read. R6.2 types the probe array
+			// and leaves the sibling keys carried, so a key a later phase
+			// reserves here is not refused by this one.
+			if reserved.key == "quiesce" {
+				for _, pr := range t.Tables("probe") {
+					b.Probes = append(b.Probes, Probe{
+						Kind: pr.Str("kind", true),
+						// OPTIONAL AT PARSE AND REQUIRED BY validate, which is
+						// not a contradiction: a missing timeout is a thing to
+						// say about the PROJECT, so arm 7b names it with the
+						// probe it belongs to and the fixture that trips it
+						// tests the arm. Required here instead, the parser
+						// refuses first and validate's refusal is unreachable
+						// -- measured: the fixture tripped bindings-refused
+						// and not 7b.
+						Timeout: pr.Str("timeout", false),
+						Every:   pr.Str("every", false),
+						Query:   pr.Str("query", false),
+						Quiet:   pr.Any("quiet"),
+					})
+					pr.Done()
+				}
+			}
 			carried := map[string]any{}
 			for _, k := range t.Keys() {
 				carried[k] = t.Any(k)

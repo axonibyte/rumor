@@ -133,6 +133,23 @@ func arm7(rep *Report, b bindings.Bindings) {
 		rep.refuse("7b", "claim type(s) bounded on quiesce with no [quiesce] probe declared: %s -- "+
 			"the bound names a condition nothing can evaluate", strings.Join(noProbe, ", "))
 	}
+
+	// THE PROBE-INTEGRITY REFUSALS ARE NOT HERE YET, and the reason is a
+	// measurement rather than a preference. 90 asks for a refusal on a probe
+	// with no timeout and on an unknown kind. Both are the same SUBJECT as 7b's
+	// first half reached from the probe's end, so folding them in looks right
+	// -- and tests/validate's TestEveryFixtureTripsExactlyItsOwnArm refuses it:
+	// "2 fixtures claim arm 7b: one fixture per arm is the invariant". One arm
+	// id, one fixture, one condition is this suite's shape.
+	//
+	// Their own id (7c) needs the arm COUNT to move, and that is a ruled number
+	// -- tests/validate: "it moves only with a count posted in r4 first" (fable,
+	// coop breakout-r4/6) -- pinned in TotalArms, three tests and about fifteen
+	// documentation sites, with r4 now closed. Landing them under 7b WITHOUT a
+	// fixture would reproduce exactly the defect rook found in arm 19 (a
+	// refusal no fixture trips, deletable in silence), which is a patch I owe
+	// separately. So they wait on fable's count and nothing else.
+
 }
 
 // arm8: A RULE READING `clock` WITH NO CLOCK CONTROL.

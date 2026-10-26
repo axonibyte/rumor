@@ -291,7 +291,19 @@ func TestTheReservedTablesAreCarriedAndNotInvented(t *testing.T) {
 	}
 	doc := wellFormed()
 	doc["clock"] = map[string]any{"endpoint": "/test/clock"}
-	doc["quiesce"] = map[string]any{"probe": "/test/quiet"}
+	// THE TYPED FORM, R6.2. This read `{"probe": "/test/quiet"}` until the
+	// probes were typed: the table was a reserved map, so any key passed and
+	// nothing was required, and that string was a valid declaration no code
+	// read. It is refused now by name -- "wanted an array of tables" -- which
+	// is the narrowing fable ruled at coop r6/1 as a validate matter rather
+	// than a contract-version move: nothing read the old shape at run time, so
+	// no project can break at run time, and one carrying it is refused loudly
+	// before any run.
+	doc["quiesce"] = map[string]any{
+		"probe": []any{
+			map[string]any{"kind": "queue_depth", "timeout": "30s", "quiet": int64(0)},
+		},
+	}
 	doc["deadline"] = map[string]any{"grace": "2s"}
 	doc["seeding"] = map[string]any{"path": "./seed.sh"}
 	doc["uses"] = map[string]any{"faults": []any{"restart"}, "volume": []any{"users"}}
@@ -300,8 +312,17 @@ func TestTheReservedTablesAreCarriedAndNotInvented(t *testing.T) {
 		t.Fatalf("the reserved tables are refused: %v", rep.Refusals)
 	}
 	b := rep.Bindings
-	if b.Clock["endpoint"] != "/test/clock" || b.Quiesce["probe"] != "/test/quiet" {
-		t.Errorf("clock %v quiesce %v", b.Clock, b.Quiesce)
+	if b.Clock["endpoint"] != "/test/clock" {
+		t.Errorf("clock %v", b.Clock)
+	}
+	// THE PROBES ARE TYPED NOW and this asserted the untyped string until
+	// R6.2. The fields are read individually rather than compared as a struct
+	// so a later field added to Probe does not silently make this arm vacuous.
+	if len(b.Probes) != 1 {
+		t.Fatalf("%d probe(s) parsed, wanted 1: %v", len(b.Probes), b.Probes)
+	}
+	if got := b.Probes[0]; got.Kind != "queue_depth" || got.Timeout != "30s" {
+		t.Errorf("probe kind %q timeout %q", got.Kind, got.Timeout)
 	}
 	if b.Deadline["grace"] != "2s" || b.Seeding["path"] != "./seed.sh" {
 		t.Errorf("deadline %v seeding %v", b.Deadline, b.Seeding)
