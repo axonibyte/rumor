@@ -14,6 +14,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/quiesce"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
@@ -150,19 +151,28 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 	// this build cannot judge, which is the project's own declaration being
 	// unsatisfiable here, and docs/cli.md's 1 is "the project's own documents
 	// are wrong".
-	if p.Prober == nil {
-		var bounded []string
-		for name, c := range brep.Bindings.Claims {
-			if c.Bound == bindings.Quiesce {
-				bounded = append(bounded, name)
-			}
+	// R6.2 WIRED ONE, SO THE SHUTTER HAS REMOVED ITSELF -- and what is left is
+	// narrower rather than gone. internal/quiesce implements the Prober slot,
+	// built below from the probes the project declared, so "no prober is wired"
+	// is no longer a thing this build can be. What remains unjudgeable is a
+	// quiesce bound with NO PROBE DECLARED: there is nothing to ask, and
+	// "quiet" over an empty set is a claim about nothing.
+	//
+	// IT DOES NOT TRUST validate TO HAVE RUN. That is arm 7b's refusal too, and
+	// a run is not obliged to have been validated first -- which is the whole
+	// reason this check is structural and here.
+	var bounded []string
+	for name, c := range brep.Bindings.Claims {
+		if c.Bound == bindings.Quiesce {
+			bounded = append(bounded, name)
 		}
-		if len(bounded) > 0 {
-			sort.Strings(bounded)
-			_, _ = fmt.Fprintf(stdout, "run: REFUSED no quiesce prober is wired; the bounds on "+
-				"%s cannot be judged\n", strings.Join(bounded, ", "))
-			return 1
-		}
+	}
+	sort.Strings(bounded)
+	if len(bounded) > 0 && len(brep.Bindings.Probes) == 0 {
+		_, _ = fmt.Fprintf(stdout, "run: REFUSED the bounds on %s are `quiesce` and the project "+
+			"declares no [[quiesce.probe]]; there is nothing to ask, so the bounds cannot be "+
+			"judged\n", strings.Join(bounded, ", "))
+		return 1
 	}
 
 	ctx := context.Background()
@@ -178,6 +188,24 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		return 2
 	}
 	defer func() { _ = sess.Close() }()
+
+	// THE PROBER IS BUILT HERE AND NOT ABOVE because it asks the ADAPTER: a
+	// probe is an `observe` with source `direct`, so it needs the session, and
+	// the session is what the lines above just opened.
+	//
+	// A MALFORMED PROBE IS A REFUSAL AND NOT A COULD-NOT-RUN: the project
+	// declared a probe with no timeout, an unknown kind or a `query` on a kind
+	// that does not read one, which is the project's own document being wrong
+	// -- validate's 7c, 7d and 7e by name, re-checked here because a run need
+	// not have been validated.
+	if len(brep.Bindings.Probes) > 0 {
+		pr, qerr := quiesce.New(brep.Bindings.Probes, sess)
+		if qerr != nil {
+			_, _ = fmt.Fprintf(stdout, "run: REFUSED %v\n", qerr)
+			return 1
+		}
+		p.Prober = pr
+	}
 
 	rec, werr := schedule.Walk(ctx, p, sess, seed, steps, 1)
 	// THE RECORD IS PRINTED EVEN WHEN THE WALK STOPPED EARLY, because the

@@ -110,6 +110,16 @@ path = "internal/schedule/*.go"
 docs = ["docs/design.md"]
 
 [[entry]]
+# THE PROBER (R6.2, issue 90). It fills internal/schedule's `Prober` slot, which
+# was declared at R6.1 with nothing implementing it. Mapped to contract.md
+# because the probe's declaration and the `direct` observation it rides are that
+# document's, and to design.md because "full reconciliation only after quiesce"
+# is a design sentence rather than a contract one. NO cli.md entry: this package
+# has no verb, and `run` already documents the statuses it spends.
+path = "internal/quiesce/*.go"
+docs = ["docs/contract.md", "docs/design.md"]
+
+[[entry]]
 # `rumor validate` itself (R4.3). Mapped to contract.md because that document
 # IS this package's prose -- it states what the three declarations must agree
 # on, and the exit statuses 0/1/2 including the rule that a decode refusal is

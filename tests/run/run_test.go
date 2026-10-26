@@ -679,9 +679,22 @@ func TestAQuiesceBoundWithNoProberIsRefused(t *testing.T) {
 			"REFUSED, not could-not-run (2) and not a finding (3)\nstdout:\n%s\nstderr:\n%s",
 			code, out, errb)
 	}
-	if !strings.Contains(out, "REFUSED") || !strings.Contains(out, "no quiesce prober") {
-		t.Errorf("the refusal does not name the missing prober, so a reader cannot tell it "+
-			"from a malformed project:\n%s", out)
+	// IT NAMES THE ABSENT PROBE TABLE, and this assertion MOVED at R6.2 with
+	// the behaviour it is about. It used to require the words "no quiesce
+	// prober", which was right while the Prober slot was nil in every run;
+	// internal/quiesce fills that slot now, built from the project's own
+	// probes, so "no prober is wired" is no longer a thing this build can be.
+	// What is still unjudgeable is a quiesce bound with NO PROBE DECLARED --
+	// nothing to ask, and "quiet" over an empty set is a claim about nothing.
+	// That is the condition fable's r6/12 ruling named: structural, and
+	// falsified by construction the moment a prober exists, so the shutter
+	// removes itself rather than being remembered and taken out.
+	if !strings.Contains(out, "REFUSED") || !strings.Contains(out, "no [[quiesce.probe]]") {
+		t.Errorf("the refusal does not name the absent probe table, so a reader cannot tell "+
+			"it from a malformed project:\n%s", out)
+	}
+	if strings.Contains(out, "no quiesce prober") {
+		t.Errorf("the refusal still blames a missing prober, which R6.2 wired:\n%s", out)
 	}
 	// AND IT NAMES THE TYPES, because a project with several eventual types
 	// needs to know which bound is unjudgeable.
@@ -704,5 +717,74 @@ func TestAQuiesceBoundWithNoProberIsRefused(t *testing.T) {
 	}
 	if strings.Contains(cout, "REFUSED") {
 		t.Errorf("the control was refused, so the refusal fires without a quiesce bound:\n%s", cout)
+	}
+}
+
+// TestAQuiesceBoundWithAProbeIsNotRefusedForWantOfAProber is the other half of
+// the arm above, and it is what makes the move at R6.2 an ADDITION rather than
+// a relaxation: the same fixture, the same bound, PLUS a well-formed probe, must
+// no longer be refused for having nothing to ask.
+//
+// WITHOUT THIS CELL the change above would be indistinguishable from deleting a
+// refusal: a build that refused every quiesce bound and a build that refuses
+// only the unaskable one both satisfy the arm above.
+func TestAQuiesceBoundWithAProbeIsNotRefusedForWantOfAProber(t *testing.T) {
+	for _, c := range []struct {
+		what  string
+		probe string
+		// refused is whether the PROJECT is wrong, and says which clause.
+		refused string
+	}{
+		{"a well-formed direct probe",
+			"[quiesce]\n\n  [[quiesce.probe]]\n  kind = \"direct\"\n  timeout = \"30s\"\n  query = \"event\"\n  quiet = 0\n",
+			""},
+		{"a probe with no timeout",
+			"[quiesce]\n\n  [[quiesce.probe]]\n  kind = \"direct\"\n  query = \"event\"\n  quiet = 0\n",
+			"no timeout"},
+		{"a probe of an unknown kind",
+			"[quiesce]\n\n  [[quiesce.probe]]\n  kind = \"stares_at_it\"\n  timeout = \"30s\"\n  quiet = 0\n",
+			"not one of"},
+		{"a query on a kind that does not read one",
+			"[quiesce]\n\n  [[quiesce.probe]]\n  kind = \"queue_depth\"\n  timeout = \"30s\"\n  query = \"event\"\n  quiet = 0\n",
+			"only the `direct` kind"},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego"} {
+				b, err := os.ReadFile(filepath.Join(fixture, f))
+				if err != nil {
+					t.Fatalf("reading %s: %v", f, err)
+				}
+				if f == "bindings.toml" {
+					const was = "[claim.event_created]\ntiming = \"immediate\""
+					if !strings.Contains(string(b), was) {
+						t.Fatal("the fixture's claim block is not what this arm edits")
+					}
+					b = []byte(strings.Replace(string(b), was,
+						"[claim.event_created]\ntiming = \"eventual\"\nbound = \"quiesce\"", 1))
+					b = append(b, []byte("\n"+c.probe)...)
+				}
+				if err := os.WriteFile(filepath.Join(dir, f), b, 0o600); err != nil {
+					t.Fatalf("writing %s: %v", f, err)
+				}
+			}
+			out, errb, code := run(t, "run", dir, "--seed", "42", "--steps", "5")
+			if c.refused == "" {
+				if strings.Contains(out, "no [[quiesce.probe]]") {
+					t.Errorf("a project WITH a probe was refused for having none:\n%s", out)
+				}
+				if strings.Contains(out, "no quiesce prober") {
+					t.Errorf("a project with a probe was refused for want of a prober:\n%s", out)
+				}
+				return
+			}
+			if code != 1 {
+				t.Fatalf("exit %d, want 1: %s is the PROJECT being wrong\nstdout:\n%s\nstderr:\n%s",
+					code, c.what, out, errb)
+			}
+			if !strings.Contains(out, c.refused) {
+				t.Errorf("the refusal for %s does not say %q:\n%s", c.what, c.refused, out)
+			}
+		})
 	}
 }
