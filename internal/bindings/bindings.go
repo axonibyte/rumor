@@ -201,6 +201,12 @@ type Probe struct {
 
 	// Query is the `direct` kind's observation name, and is refused on the
 	// other two -- a queue depth is not read through an observation.
+	//
+	// AND SOMETHING REFUSES IT NOW, which it did not when this sentence was
+	// written: validate's arm 7e. For one phase this comment asserted a
+	// refusal that nothing performed, so a project could declare a query on a
+	// queue_depth probe and pass -- arm 19's lesson in prose rather than in
+	// code (fable, coop r6/33).
 	Query string
 
 	// Quiet is what this probe's answer must read for the system to count as

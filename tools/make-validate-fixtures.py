@@ -184,6 +184,19 @@ contexts = ["browser", "api"]
         "# being refused as a malformed file.\n"
         + s.rstrip("\n") + '\n\n[quiesce]\n\n  [[quiesce.probe]]\n  kind = "stares_at_it"\n  timeout = "30s"\n  quiet = 0\n')
 
+    # 7e CARRIES A TIMEOUT AND A KNOWN KIND so it trips neither 7c nor 7d, and
+    # its kind is deliberately one of the two that do NOT read an observation.
+    d = fresh("7e-probe-query-on-a-wrong-kind")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    open(p, "w").write(
+        "# FIXTURE for arm 7e.\n#\n# SETUP: the twin, plus a [quiesce] table declaring one probe that is\n"
+        "# well-formed for 7c and 7d -- it has a timeout and a known kind.\n#\n"
+        "# CONDITION: that kind is `worker_idle`, which the adapter REPORTS, and the\n"
+        "# probe also declares `query`, which only the `direct` kind reads. bindings.go\n"
+        "# said this was refused long before anything refused it.\n"
+        + s.rstrip("\n") + '\n\n[quiesce]\n\n  [[quiesce.probe]]\n  kind = "worker_idle"\n'
+        '  timeout = "30s"\n  query = "item.count"\n  quiet = true\n')
+
     d = fresh("6-component-uncovered")
     p = os.path.join(d, "platform.toml"); s = open(p).read()
     s = s.replace('covers = ["doc_store"]', 'covers = ["some_other_store"]', 1)

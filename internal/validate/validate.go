@@ -45,7 +45,7 @@ import (
 // and found nothing -- the same reason every count in this project is declared
 // (fable ruled the number at coop breakout-r4/6, and it moves only with a count
 // posted there first).
-const TotalArms = 21
+const TotalArms = 22
 
 // Refusal is one arm firing, named by the arm so a fixture can assert that it
 // tripped ITS arm and no other -- the invariant fable set over the eighteen.
@@ -177,7 +177,7 @@ func (r *Report) unreached(f string, a ...any) {
 // path only -- which is the path a reader trusts most, because it is the one
 // that says nothing was measured.
 var allArmIDs = []string{
-	"1", "2", "3", "4", "5", "6", "7a", "7b", "7c", "7d", "8",
+	"1", "2", "3", "4", "5", "6", "7a", "7b", "7c", "7d", "7e", "8",
 	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13", "19",
 }
 

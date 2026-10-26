@@ -25,7 +25,7 @@ import (
 // probe-integrity arms (7c, 7d) bring it to twenty-one. A fixture directory that
 // vanished would otherwise leave every remaining arm passing and the suite quiet
 // about it.
-const wantFixtures = 29
+const wantFixtures = 30
 
 // ARM 19 IS ONE ARM WITH SEVERAL CELLS, so it is the one arm with more than one
 // fixture -- and the count is declared here for the same reason every count in
@@ -737,9 +737,10 @@ var changedBy = map[string][]string{
 	// the twin declares no [quiesce] at all -- and the condition is the one
 	// field inside it. 7d's probe carries a timeout it does not need for its
 	// own refusal, precisely so it cannot also trip 7c.
-	"7c-probe-without-a-timeout":  {"bindings.toml"},
-	"7d-probe-of-an-unknown-kind": {"bindings.toml"},
-	"10b-unreadable-seed":         {"seeds.lock"},
+	"7c-probe-without-a-timeout":     {"bindings.toml"},
+	"7d-probe-of-an-unknown-kind":    {"bindings.toml"},
+	"7e-probe-query-on-a-wrong-kind": {"bindings.toml"},
+	"10b-unreadable-seed":            {"seeds.lock"},
 
 	// THE LIVE ARMS change the project's ASK and never the adapter's surface:
 	// changing what the adapter can do would test the fake adapter, and these
@@ -825,7 +826,7 @@ func TestEveryFixtureIsTheTwinPlusItsOwnChange(t *testing.T) {
 // allArms is the eighteen, named. fable ruled the count at coop breakout-r4/6
 // and it moves only with a count posted in r4 first.
 var allArms = []string{
-	"1", "2", "3", "4", "5", "6", "7a", "7b", "7c", "7d", "8",
+	"1", "2", "3", "4", "5", "6", "7a", "7b", "7c", "7d", "7e", "8",
 	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13", "19",
 }
 

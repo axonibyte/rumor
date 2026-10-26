@@ -109,8 +109,8 @@ func arm5(rep *Report, b bindings.Bindings, p platform.Platform) {
 var probeKinds = map[string]bool{"queue_depth": true, "worker_idle": true, "direct": true}
 
 // arm7: AN EVENTUAL CLAIM TYPE WITH NO BOUND (7a), ONE BOUNDED ON QUIESCE WITH
-// NO QUIESCE PROBE DECLARED (7b), A PROBE WITH NO TIMEOUT (7c), AND A PROBE OF
-// AN UNKNOWN KIND (7d).
+// NO QUIESCE PROBE DECLARED (7b), A PROBE WITH NO TIMEOUT (7c), A PROBE OF AN
+// UNKNOWN KIND (7d), AND `query` ON A PROBE THAT IS NOT `direct` (7e).
 //
 // internal/bindings leaves `bound` optional on purpose -- its comment at the
 // timing key says THE BOUND IS NOT REQUIRED HERE -- precisely so this arm can
@@ -126,6 +126,13 @@ var probeKinds = map[string]bool{"queue_depth": true, "worker_idle": true, "dire
 // is deletable in silence. The count moved 19 -> 21 with the accounting posted
 // at coop r6/28 first, which is breakout-r4/6's rule.
 //
+// 7e WAS A SENTENCE AND NOT A MECHANISM, which is why it is an arm. bindings.go
+// described Query as "the `direct` kind's observation name, and is refused on
+// the other two -- a queue depth is not read through an observation", and
+// nothing refused it: a declaration could carry a query on a queue_depth probe
+// and validate passed it. That is arm 19's shape written in prose, and fable
+// ruled it an id of its own at coop r6/33 with the count posted at r6/36.
+//
 // A PROBE IS IDENTIFIED BY ITS POSITION because nothing names it. `[[quiesce.probe]]`
 // entries carry no key, so the refusal says "probe 1" in declaration order and
 // the kind beside it, which is the most a reader can be given to find the line.
@@ -134,6 +141,7 @@ func arm7(rep *Report, b bindings.Bindings) {
 	rep.ran("7b")
 	rep.ran("7c")
 	rep.ran("7d")
+	rep.ran("7e")
 	var noBound, noProbe []string
 	for t, c := range b.Claims {
 		if c.Timing != "eventual" {
@@ -163,7 +171,7 @@ func arm7(rep *Report, b bindings.Bindings) {
 			"the bound names a condition nothing can evaluate", strings.Join(noProbe, ", "))
 	}
 
-	var noTimeout, badKind []string
+	var noTimeout, badKind, strayQuery []string
 	for i, p := range b.Probes {
 		where := fmt.Sprintf("probe %d (kind %q)", i+1, p.Kind)
 		if p.Timeout == "" {
@@ -172,11 +180,25 @@ func arm7(rep *Report, b bindings.Bindings) {
 		if !probeKinds[p.Kind] {
 			badKind = append(badKind, where)
 		}
+		// ONLY ON A KIND THIS ARM KNOWS. A probe of an UNKNOWN kind carrying a
+		// query is 7d's to refuse and not also this one: whether a query
+		// belongs to a kind nobody has defined is not a question, and refusing
+		// both would make one declaration trip two arms -- which the fixture
+		// invariant forbids and which would tell its reader two things when
+		// one of them is the cause.
+		if p.Query != "" && probeKinds[p.Kind] && p.Kind != "direct" {
+			strayQuery = append(strayQuery, where)
+		}
 	}
 	if len(noTimeout) > 0 {
 		rep.refuse("7c", "[[quiesce.probe]] with no timeout: %s -- a probe without one is a wait "+
 			"with no end, and a system that never goes quiet has to be a finding rather than a hang",
 			strings.Join(noTimeout, ", "))
+	}
+	if len(strayQuery) > 0 {
+		rep.refuse("7e", "[[quiesce.probe]] declaring `query` on a kind that does not read one: %s "+
+			"-- only the `direct` kind answers through an observation, and a queue depth or an "+
+			"idle worker is a property the adapter reports", strings.Join(strayQuery, ", "))
 	}
 	if len(badKind) > 0 {
 		kinds := make([]string, 0, len(probeKinds))

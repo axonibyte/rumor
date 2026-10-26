@@ -291,9 +291,9 @@ jobs:
           test "$rc" -eq 124 && { echo "HANG: validate exceeded 300s. RUNNER finding."; exit 124; }
           test "$rc" -eq 0 || { echo "validate exited $rc on the permitted twin, which must PASS: an arm fired, or a declaration could not be read"; exit "$rc"; }
           # THE LITERAL. fable ruled the count at coop breakout-r4/6 and the
-          # reading at r4/77: every run accounts for all twenty-one arms, each
+          # reading at r4/77: every run accounts for all twenty-two arms, each
           # evaluated or skipped with its reason, and the twin -- which D9
-          # requires to pass with NONE skipped -- evaluates all twenty-one. This
+          # requires to pass with NONE skipped -- evaluates all twenty-two. This
           # line moves only with a count posted in the live phase thread first
           # (r4/6's rule, honored in R6.2 at r6/28 with r4 closed), together
           # with internal/validate.TotalArms and docs/testing-methodology.md.
@@ -305,8 +305,8 @@ jobs:
           # a message that reads like a dropped arm. tests/validate's
           # TestTheWorkflowsArmCountIsTotalArms reads this file now, so the next
           # bump fails locally in a second instead of in CI in six minutes.
-          grep -q '21 of 21 arm(s) evaluated' ../validate.log \
-            || { echo "the twin did not report 21 of 21 arms evaluated: an arm was added or removed without this literal, or an arm skipped where D9 requires none"; exit 1; }
+          grep -q '22 of 22 arm(s) evaluated' ../validate.log \
+            || { echo "the twin did not report 22 of 22 arms evaluated: an arm was added or removed without this literal, or an arm skipped where D9 requires none"; exit 1; }
           grep -q '0 refusal(s)' ../validate.log \
             || { echo "the twin was refused, and the permitted twin is the one project that must pass"; exit 1; }
           grep -q 'skipped' ../validate.log \
@@ -322,7 +322,7 @@ jobs:
           # BOTH BINARIES GO ON PATH UNDER THEIR OWN NAMES, for the reason the
           # rumor link above exists: the project names them as a real project
           # would, and a run that found neither would report could-not-run on
-          # four arms and still account for twenty-one.
+          # four arms and still account for twenty-two.
           timeout 300 "$GO" build -o "$bindir/toy" ./cmd/toy || { echo "cmd/toy did not build"; exit 1; }
           timeout 300 "$GO" build -o "$bindir/toy-adapter" ./cmd/toy-adapter || { echo "cmd/toy-adapter did not build"; exit 1; }
           rc=0
@@ -330,8 +330,8 @@ jobs:
           cat ../validate-toy.log
           test "$rc" -eq 124 && { echo "HANG: validate on the toy exceeded 300s. RUNNER finding."; exit 124; }
           test "$rc" -eq 0 || { echo "validate exited $rc on the toy, which issue 73 requires to pass"; exit "$rc"; }
-          grep -q '21 of 21 arm(s) evaluated' ../validate-toy.log \
-            || { echo "the toy did not report 21 of 21 arms evaluated"; exit 1; }
+          grep -q '22 of 22 arm(s) evaluated' ../validate-toy.log \
+            || { echo "the toy did not report 22 of 22 arms evaluated"; exit 1; }
           grep -q '0 refusal(s)' ../validate-toy.log \
             || { echo "the toy was refused, and issue 73 requires it to validate"; exit 1; }
           grep -q 'skipped' ../validate-toy.log \
