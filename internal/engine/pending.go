@@ -160,9 +160,22 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 	// long ago the claim was made. R6.2's probes answer it and hand the answer
 	// in on the check; this package only reads it.
 	//
-	// AND A QUIESCED DISAGREEMENT IS `stale`, not `bug` plain: the system was
-	// given its chance to settle, it said it had settled, and it still
-	// disagrees. That is the word v1 reserved and R6.1 spends.
+	// AND A QUIESCED DISAGREEMENT IS NOT `stale` BY ITSELF. This said the
+	// opposite -- "a quiesced disagreement IS `stale`, not `bug` plain: the
+	// system was given its chance to settle, it said it had settled, and it
+	// still disagrees" -- and fable overturned it at coop r6/87: being given
+	// the chance to settle is what a HELD pending records, and a first look at
+	// a quiet system was never waiting for anything. So this function answers
+	// `pending` or hands the facts back, and Judge decides the word where the
+	// re-check is in hand.
+	//
+	// THE SENTENCE OUTLIVED THE ARM BELOW IT BY ONE COMMIT, which is the
+	// finding ratchet reported at coop r6/91: it sat ten lines above code
+	// saying the opposite, in the summary position a reader meets first. A
+	// comment that states an overturned rule is worse than none, and the
+	// overturned text is kept here deliberately -- quoted as what was wrong --
+	// because a reader who learned the old rule from this file needs to find
+	// it refuted where they first read it.
 	if e.Quiesce {
 		switch c.Quiesce {
 		case QuiesceBusy:
