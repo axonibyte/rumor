@@ -191,17 +191,15 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 			// was open at the moment it gave up". A pending is what it usually
 			// CARRIES, not what it requires.
 			//
-			// pendingOverlay CANNOT SAY THAT. It returns at the top when the
-			// statute found agreement, so with every observation consistent a
-			// probe that gave up is reported by nothing. That is not a defect
-			// of this function -- an overlay is by construction a verdict ON a
-			// finding -- it is the half of the word that belongs to whatever
-			// POLLS the probes, which is R6.2's remaining piece: the prober
-			// reports the timeout as a finding of the RUN, and this arm stays
-			// the path for the case where a pending was open too. Named here
-			// rather than left implicit, because docs/vocabulary.md's v3 row
-			// now defines the wider word and this is the only site that
-			// produces it.
+			// pendingOverlay CANNOT SAY THAT, and the other half now exists.
+			// This returns at the top when the statute found agreement, so with
+			// every observation consistent a probe that gave up is invisible
+			// here -- which is not a defect of this function, an overlay being
+			// by construction a verdict ON a finding. internal/schedule's walk
+			// asks the prober after its last step and produces the finding for
+			// that case; this arm stays the path for a timeout with a pending
+			// ALSO open. Two sites, one word, and the division is which of them
+			// can see a run where nothing disagreed.
 			//
 			// THE FIFTH FINDING, AND NOT A KIND UNDER `bug`. fable's D7 (coop
 			// breakout-r6/0) rules it "neither `bug` nor a refusal, and the

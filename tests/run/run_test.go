@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 var rumorBin string
@@ -784,6 +785,119 @@ func TestAQuiesceBoundWithAProbeIsNotRefusedForWantOfAProber(t *testing.T) {
 			}
 			if !strings.Contains(out, c.refused) {
 				t.Errorf("the refusal for %s does not say %q:\n%s", c.what, c.refused, out)
+			}
+		})
+	}
+}
+
+// TestANeverQuietProbeEndsTheRunAsAFinding is fable's D5 end to end, and the
+// half of it that only a whole run can show: "the never-quiet one ends in the
+// timeout finding inside its declared timeout plus grace, measured, hang report
+// written".
+//
+// NO PENDING IS OPEN HERE, DELIBERATELY. The fixture declares probes and NO
+// quiesce bound, so nothing in the walk is eventual and no observation
+// disagrees -- which is exactly fable's ruling 2 at coop r6/46: "a probe that
+// gives up while every observation agrees is the fifth finding all the same".
+// internal/engine's pendingOverlay cannot reach that case, since it returns
+// before it looks when the statute found agreement, so a run is the only place
+// this can be driven.
+//
+// THE TIMEOUT IS 100ms AND THAT IS NOT A SHORTCUT. A real 30s budget would make
+// this arm time the BOX, which the room measured as unavailable to any of us --
+// three jails, four CPUs, one kern.boottime (ratchet and rook, coop r5/192 and
+// /193). The declared timeout is the project's, so an arm may declare a small
+// one; what it must not do is assert a wall-clock figure it does not control,
+// which is why the bound below is generous in one direction only.
+func TestANeverQuietProbeEndsTheRunAsAFinding(t *testing.T) {
+	for _, c := range []struct {
+		what  string
+		quiet string
+		query string
+		// found is whether the run should end on the quiesce_timeout finding,
+		// and code the exit status when it should not.
+		found bool
+		code  int
+	}{
+		// The fake adapter's default surface answers `attendance` with 1, so a
+		// probe wanting 0 never reads quiet and one wanting 1 reads quiet at once.
+		{"a probe that never reads quiet", "0", "attendance", true, 3},
+		{"a probe that reads quiet immediately", "1", "attendance", false, 0},
+		// AND THE THIRD STATE, which is the one worth most: a query the adapter
+		// does not record is COULD-NOT-RUN (2) and never the finding. The
+		// adapter did not answer the question, so "the system will not settle"
+		// would be a verdict about a system nobody asked -- the
+		// two-states-one-code shape the room spent a night correcting.
+		{"a probe the adapter cannot answer", "0", "no_such_observation", false, 2},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego"} {
+				b, err := os.ReadFile(filepath.Join(fixture, f))
+				if err != nil {
+					t.Fatalf("reading %s: %v", f, err)
+				}
+				if f == "bindings.toml" {
+					b = append(b, []byte("\n[quiesce]\n\n  [[quiesce.probe]]\n  kind = \"direct\"\n"+
+						"  timeout = \"100ms\"\n  every = \"10ms\"\n  query = \""+c.query+"\"\n"+
+						"  quiet = "+c.quiet+"\n")...)
+				}
+				if err := os.WriteFile(filepath.Join(dir, f), b, 0o600); err != nil {
+					t.Fatalf("writing %s: %v", f, err)
+				}
+			}
+			start := time.Now()
+			out, errb, code := run(t, "run", dir, "--seed", "42", "--steps", "3")
+			elapsed := time.Since(start)
+
+			if !c.found {
+				// THE CONTROLS, and they carry the whole weight of the cell
+				// above: the same fixture, the same probe kind, the same wiring,
+				// one field different. Without them a build that reported
+				// quiesce_timeout unconditionally would pass.
+				if code != c.code {
+					t.Fatalf("exit %d, want %d for %s\nstdout:\n%s\nstderr:\n%s",
+						code, c.code, c.what, out, errb)
+				}
+				if strings.Contains(out, "quiesce_timeout") {
+					t.Errorf("%s produced the timeout finding:\n%s", c.what, out)
+				}
+				if c.code == 2 && !strings.Contains(out+errb, "could not run") {
+					t.Errorf("an unanswerable probe did not say could-not-run:\nstdout:\n%s\n"+
+						"stderr:\n%s", out, errb)
+				}
+				return
+			}
+
+			if code != 3 {
+				t.Fatalf("exit %d, want 3: a probe that gave up is a FINDING, not a refusal (1) "+
+					"and not could-not-run (2)\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+			}
+			if !strings.Contains(out, "FOUND quiesce_timeout") {
+				t.Errorf("the run does not report the fifth finding by name:\n%s", out)
+			}
+			// IT IS NOT A BUG AND CARRIES NO KIND, which is what fable's D7
+			// ruled and what a reader keying on `bug` must not see here.
+			if strings.Contains(out, "FOUND bug") {
+				t.Errorf("the timeout was reported as a bug:\n%s", out)
+			}
+			// THE HANG REPORT IS WRITTEN AND NAMES THE PROBE AND THE TIMEOUT.
+			for _, want := range []string{"did not read quiet", "100ms", "probe 1"} {
+				if !strings.Contains(out+errb, want) {
+					t.Errorf("the hang report does not say %q:\nstdout:\n%s\nstderr:\n%s",
+						want, out, errb)
+				}
+			}
+			// NO PENDING WAS OPEN: nothing here is eventual, so the finding
+			// cannot have come from the overlay.
+			if strings.Contains(out, "pending") {
+				t.Errorf("a pending appears in a run with no eventual type:\n%s", out)
+			}
+			// INSIDE THE DECLARED TIMEOUT PLUS GRACE. One direction only: the
+			// floor would be timing the box.
+			if elapsed > 30*time.Second {
+				t.Errorf("the run took %s against a declared 100ms: the budget is not bounding it",
+					elapsed)
 			}
 		})
 	}

@@ -329,6 +329,55 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		}
 	}
 
+	// THE WALK ASKS WHETHER THE SYSTEM SETTLED, AND A PROBE THAT GAVE UP IS A
+	// FINDING OF THE RUN (R6.2, fable's ruling 2 at coop r6/46).
+	//
+	// WHY HERE AND NOT BESIDE A PENDING: "a probe that gives up while every
+	// observation agrees is the fifth finding ALL THE SAME, and it is produced
+	// by the thing that polls the probes, not by the overlay, which judges
+	// findings". So this is asked after the last step whatever the walk found,
+	// and it fires with NO PENDING OPEN -- which is the half
+	// internal/engine.pendingOverlay cannot reach, because it returns before it
+	// looks when the statute found agreement.
+	//
+	// AND ONLY WHEN A PROBER IS WIRED. A project declaring no probes is walked
+	// exactly as before, which is what keeps every pre-R6.2 fixture's meaning;
+	// cmd/rumor refuses a quiesce BOUND with no probe separately, and that is a
+	// statement about the project rather than about this walk.
+	//
+	// A PROBER THAT COULD NOT BE ASKED IS AN ERROR AND NOT A FINDING, the
+	// distinction internal/quiesce draws at its own boundary: the adapter not
+	// answering is could-not-run, where a probe that ran and stopped is a thing
+	// the run FOUND.
+	if p.Prober != nil {
+		state, qerr := p.Prober.Quiesce(ctx)
+		if qerr != nil {
+			return rec, fmt.Errorf("schedule: asking whether the system settled: %w", qerr)
+		}
+		if state == engine.QuiesceTimedOut {
+			reason := "the declared quiesce probes did not read quiet within their timeouts"
+			if h, ok := p.Prober.(interface{ Hang() string }); ok && h.Hang() != "" {
+				reason = h.Hang()
+			}
+			rec.Finding = &engine.Finding{
+				Value:   engine.FindingQuiesceTimedOut,
+				Defined: true,
+				// THE RULE IS THE OVERLAY'S AND NOT EMPTY. cmd/rumor's FOUND
+				// line prints Finding.Rule, and with it unset the line read
+				// "FOUND quiesce_timeout after step 3 -- , rests_on_planted
+				// undeclared" -- a finding naming no rule at all, which is the
+				// one field docs/design.md makes part of a finding's identity.
+				Rule: "engine.quiesce_timeout",
+				Overlay: &engine.Overlay{
+					Rule:   "engine.quiesce_timeout",
+					Value:  engine.FindingQuiesceTimedOut,
+					Reason: reason,
+				},
+			}
+			rec.FoundAt = len(rec.Steps)
+		}
+	}
+
 	rec.Sessions = sessions.Acquired()
 	rec.Facts = l.Facts()
 	rec.IDs = map[string]string{}

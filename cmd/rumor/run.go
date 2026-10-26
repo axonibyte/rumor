@@ -298,6 +298,25 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 			_, _ = fmt.Fprintf(stderr, "run: writing the finding: %v\n", err)
 			return 2
 		}
+		// AND THE OVERLAY'S REASON, ON ITS OWN LINE, WHERE THE ENGINE WROTE ONE.
+		//
+		// R6.2's `quiesce_timeout` needs this and D5 asks for it by name: "the
+		// never-quiet one ends in the timeout finding ... hang report WRITTEN".
+		// The report says which probe did not read quiet, its declared timeout,
+		// how many times it was asked and over what span -- none of which fits
+		// the FOUND line's shape, and all of which is what a reader does next.
+		//
+		// IT IS NOT SPECIAL-CASED TO THAT FINDING, deliberately: `stale` has
+		// carried a Reason since R6.1 locating what was late, and nothing
+		// printed it either. A finding whose reason the engine wrote and the
+		// command swallowed is the struct-holds-what-the-caller-needs shape
+		// rook named at coop r5/204, and it was live here for two findings.
+		if rec.Finding.Overlay != nil && rec.Finding.Overlay.Reason != "" {
+			if _, err := fmt.Fprintf(stdout, "run:   %s\n", rec.Finding.Overlay.Reason); err != nil {
+				_, _ = fmt.Fprintf(stderr, "run: writing the finding's reason: %v\n", err)
+				return 2
+			}
+		}
 	}
 	// THE SESSION COUNT IS IN THE VERDICT for the provider count's reason: a
 	// token is acquired at first use and reused after, so a holder that
