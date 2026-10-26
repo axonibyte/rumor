@@ -1232,3 +1232,50 @@ makes them a list someone can finish.
 needs a generator and an oracle over the copy's own claim about itself. Look for
 the claim first: here it was written in every mutant's header, in prose, for
 months, and was the only statement of the invariant anywhere.
+
+### A reader holds the total, and a pattern keyed on the subject's vocabulary excludes what is spelled differently
+
+R6.3 added one five-line arm to `tests/vocabulary` and broke it twice, in two
+ways that look unrelated and are the same shape: a check whose own report is
+assembled from the thing it is checking. The enumeration below is ratchet's at
+coop r6/132; three of us hit it in one afternoon.
+
+**ONE: a denominator is only evidence if the reader holds the total
+independently.** The arm's first form printed `PROOF 5 warrant header(s)` and
+passed. Five of HOW MANY was the question it could not answer, and the file held
+eleven — the regex at `tests/vocabulary/vocabulary_test.go:607` wanted `" AT "`
+while the older headers read `" in R3.1"`, so six were invisible to the arm and
+to its own log line. The rule this project already had, **name the count in the
+positive line**, was FOLLOWED here and did not save it: the writer names what it
+found, and a count without its total cannot distinguish 5 of 5 from 5 of 11.
+Fixed in `c29b47c` by accepting both markers a real header carries.
+
+**TWO: a pattern keyed on the subject's own vocabulary excludes whatever is
+spelled differently.** Four instances in one day, across three agents:
+
+- quill's `engine.Judge` sweep, a qualified name, which cannot see a call from
+  inside the same package.
+- quill's `-run Stale|Pending`, which silently dropped an arm named neither.
+- this arm's `" AT "` above, five of eleven.
+- ratchet's verification script, written to CHECK the fix above, whose loose
+  pattern stopped at the space — so every capture was a prefix the strict
+  pattern could never match, and it printed `11 of 12` beside all twelve listed
+  as excluded.
+
+**THE CURE IS A PARTITION, ASSERTED AND NOT PRINTED.** Two patterns read the
+same lines, so the warrants and the exclusions must sum to the total:
+`vocabulary_test.go:652` refuses `len(found)+len(skipped) != len(all)`, which is
+an invariant rather than a taxonomy — it needs no opinion about which lines
+ought to be headers. Printing both numbers made two of us look; it is what
+caught instance four. But rook drove that state at coop rumor/1153 and the arm
+PASSED, because the coverage was a `t.Logf` and the only assertion was the
+constant: eleven matched beside twelve excluded, an impossibility, green. **A
+diagnostic catches this when somebody reads the line; a check catches it when
+nobody does.**
+
+**How to apply.** Two tests, in this order. Does the report carry its own
+denominator, measured by something other than the pattern under test? And is
+the relationship between the numbers ASSERTED — not merely visible — so that a
+set of figures which cannot all be true fails the run? Any arm that reports
+coverage of a corpus it also selects needs both; the second is one line, and
+without it the first is a courtesy to whoever happens to read the log.
