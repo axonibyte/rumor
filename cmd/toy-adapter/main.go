@@ -84,6 +84,23 @@ type adapter struct {
 	// --state path the caller supplied is the caller's to remove, so this
 	// stays empty there and close() has nothing to delete.
 	stateDir string
+
+	// THE REQUEST BUDGET AND WHAT IT HAS ACTUALLY COST, which is the half
+	// nobody could see. ratchet measured at coop r5/200 that the headroom of
+	// this timeout "is not measurable from outside the adapter": the test's
+	// whole `go test` invocation is 6-8s warm, the budget governs ONE request
+	// inside it, and NEITHER figure gives the margin between them. So the
+	// constant was chosen without a measurement and could not be validated
+	// where it sat -- and raising it on the same reasoning that set it would
+	// just move an unmeasured guess, however much less often it failed.
+	//
+	// These three fields are that measurement, taken from inside.
+	budget  time.Duration
+	calls   int
+	slowest time.Duration
+	// slowestWhat is the route that cost `slowest`, because a headroom figure
+	// with no route attached cannot be acted on.
+	slowestWhat string
 }
 
 func main() {
@@ -128,7 +145,7 @@ func main() {
 // cell in the test beside this, which is the cell that exists for this path.
 // A local flag reads nothing the returns have touched.
 func open(toyBin, state string) (*adapter, error) {
-	a := &adapter{client: &http.Client{Timeout: 10 * time.Second}}
+	a := &adapter{budget: requestBudget, client: &http.Client{Timeout: requestBudget}}
 	opened := false
 	defer func() {
 		if !opened {
@@ -189,7 +206,52 @@ func addressOf(line string) string {
 // THE CHILD DIES FIRST, which is the order and not an accident: the toy holds
 // state.json open and writes it, so removing the directory under a live toy
 // would race its last write. Kill then Wait then RemoveAll.
+// requestBudget is how long ONE request to the toy may take before this adapter
+// gives up.
+//
+// THE NUMBER IS CHOSEN FROM THE MEASUREMENT BELOW IT, which is the whole point
+// of instrumenting first (ratchet, coop r5/200): "raising 10s to 60s on the
+// same reasoning that set it at 10s just moves an unmeasured guess, even though
+// it will certainly fail less often."
+//
+// THE MEASUREMENT, taken 2026-10-26 at vm.loadavg 7.09 on a FOUR-CPU box that
+// three jails share -- so a busy one, which is the only kind available here:
+//
+//	one request to the toy        median   2.0ms   worst  24.2ms  (30 requests)
+//	process start to first answer median  10.4ms   worst  27.2ms  (12 starts)
+//
+// AND THAT CHANGES WHAT THE NUMBER IS FOR. The old 10s already stood at roughly
+// 370 TIMES the worst work observed, so the budget was never below the work it
+// measures -- which was the premise fable's r5/196 placement rested on and
+// which rook and ratchet had already withdrawn as unmeasured at r5/199 and
+// /200, load having failed to predict which run paid. An expiry here therefore
+// means a STALL of ten seconds or more, not a request that ran slightly long.
+//
+// SO 60s IS STALL TOLERANCE AND NOT A HEADROOM FIGURE, and saying which is the
+// point: it buys survival of a 10-to-60s stall and nothing else, and it fixes
+// no cause. What makes it safe rather than merely larger is the half beside it
+// -- an expiry now names the budget and the elapsed and says the instrument
+// gave up, so a 60s wait reads as this adapter's patience running out rather
+// than as a verdict on the toy. The cause of the original stalls remains
+// UNMEASURED and is recorded as such in the R5 gate record.
+const requestBudget = 60 * time.Second
+
 func (a *adapter) close() {
+	// THE HEADROOM IS PUBLISHED ONCE, AT CLOSE, AND ON STDERR. Stdout is the
+	// wire -- one JSON response per line -- so a figure printed there would be
+	// a protocol violation; stderr is where this adapter already says things to
+	// a human.
+	//
+	// ONCE AND NOT PER REQUEST, which is ratchet's flood at coop main 12/259: a
+	// per-poll line for a persistent condition drowns the thing it reports.
+	// One summary names the count, the worst route and the margin, which is
+	// everything needed to choose the number.
+	if a.calls > 0 {
+		head := a.budget - a.slowest
+		_, _ = fmt.Fprintf(os.Stderr, "toy-adapter: %d request(s), slowest %s (%s), budget %s, "+
+			"headroom %s\n", a.calls, a.slowest.Round(time.Millisecond), a.slowestWhat,
+			a.budget, head.Round(time.Millisecond))
+	}
 	if a.child != nil && a.child.Process != nil {
 		_ = a.child.Process.Kill()
 		_ = a.child.Wait()
@@ -486,8 +548,27 @@ func (a *adapter) call(method, path, token string, body map[string]any, out any)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	start := time.Now()
 	resp, err := a.client.Do(req)
+	lat := time.Since(start)
+	a.calls++
+	if lat > a.slowest {
+		a.slowest, a.slowestWhat = lat, method+" "+path
+	}
 	if err != nil {
+		// AN EXPIRY PRESENTS AS THE ADAPTER'S OWN FAULT, NAMING THE BUDGET AND
+		// THE ELAPSED (fable, coop r5/206 item 3). Before this the error was
+		// http's own "context deadline exceeded", which says nothing about
+		// whose budget was exceeded or by how much -- so a reader could not
+		// tell a wedged toy from a budget set below the work. `run` reports it
+		// as could-not-run, which is CORRECT and unchanged: the system did not
+		// answer, so what an observation would have said is unknown.
+		if os.IsTimeout(err) {
+			return 0, fmt.Errorf("%s %s: the toy did not answer within this adapter's %s "+
+				"request budget (elapsed %s); the budget is the ADAPTER's and not the toy's, "+
+				"so this is the instrument giving up rather than a verdict on the system: %w",
+				method, path, a.budget, lat.Round(time.Millisecond), err)
+		}
 		return 0, fmt.Errorf("%s %s: %w", method, path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()

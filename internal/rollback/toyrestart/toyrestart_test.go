@@ -97,6 +97,24 @@ func openProvider(t *testing.T) *provider {
 }
 
 // touch makes the world move: it creates a user through the toy's own API, so
+// testClientBudget is how long THIS TEST's own HTTP client waits.
+//
+// IT IS AN INSTRUMENT'S PATIENCE AND NOT AN ORACLE: nothing in this package
+// asserts latency, and ratchet measured at coop r5/192 that the only `time.`
+// references here were the two client timeouts -- so raising it weakens no
+// assertion. That is the condition that made it raisable at all.
+//
+// 5s -> 60s ON THE MEASUREMENT fable's r5/206 required before it moved, taken
+// 2026-10-26 at vm.loadavg 7.09 on the shared four-CPU box: one request to the
+// toy is 2.0ms median and 24.2ms worst over 30, and a process start to its
+// first answered request is 10.4ms median and 27.2ms worst over 12. So 5s was
+// already ~185x the worst work, and an expiry was never a slow request -- it is
+// a stall of five seconds or more, and this number buys tolerance of one up to
+// sixty. It matches cmd/toy-adapter's requestBudget deliberately: two budgets
+// over the same work that disagreed by 2x would make one of them the real one
+// and nobody could say which.
+const testClientBudget = 60 * time.Second
+
 // the change is one the application made rather than one the test wrote into
 // the file behind its back.
 func touch(t *testing.T, p *provider, name string) {
@@ -107,9 +125,12 @@ func touch(t *testing.T, p *provider, name string) {
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	resp, err := (&http.Client{Timeout: testClientBudget}).Do(req)
 	if err != nil {
-		t.Fatalf("creating the user %s: %v", name, err)
+		t.Fatalf("creating the user %s after %s: %v -- this is the TEST CLIENT's budget "+
+			"giving up, not the toy failing; one request measured 2.0ms median and 24.2ms "+
+			"worst at loadavg 7.09, so an expiry here is a stall and not a slow request",
+			name, testClientBudget, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
@@ -227,7 +248,7 @@ func TestCheckpointRestoreVerifyPutsTheWorldBack(t *testing.T) {
 	// step needs and what a file copy under a live process would not give.
 	req, _ := http.NewRequest(http.MethodPost, "http://"+p.Addr()+"/users", strings.NewReader(`{"name":"bob"}`))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	resp, err := (&http.Client{Timeout: testClientBudget}).Do(req)
 	if err != nil {
 		t.Fatalf("re-creating bob: %v", err)
 	}
