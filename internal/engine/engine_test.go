@@ -411,8 +411,11 @@ func allFixtures(t *testing.T) [][2]string {
 			strings.TrimSuffix(filepath.Base(p), ".jsonl"),
 		})
 	}
-	if len(out) != 29 {
-		t.Fatalf("expected the 29 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
+	// 30 SINCE examples/toy/cases/dropped-recount (R6.3, 2026-10-26). The
+	// number is declared so a corpus that SHRANK is a failure and not a quiet
+	// pass; it is re-read when a case lands, never widened to what was found.
+	if len(out) != 30 {
+		t.Fatalf("expected the 30 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
 	}
 	return out
 }
@@ -422,7 +425,7 @@ func allFixtures(t *testing.T) [][2]string {
 // applied it; mutating that argument upward kills nothing, so the mutant is
 // equivalent and the honest thing is to state and check the premise it rests
 // on: nothing handed to the flattener sits past the seal. Checked across all
-// 29 fixtures, including the three whose files hold facts beyond it.
+// 30 fixtures, including the three whose files hold facts beyond it.
 func TestNothingHandedToTheFlattenerSitsPastTheSeal(t *testing.T) {
 	beyond := 0
 	for _, f := range allFixtures(t) {

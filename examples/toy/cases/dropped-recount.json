@@ -1,0 +1,44 @@
+{
+  "why": "THE R6 LEDGER ROW AS A CASE: a retry dropped, a count that never settles. bob joined alice's event and asked for a recount, which the worker applied; carol then joined and bob asked again, and cmd/toy's worker treats a repeat recount for an event it has already recounted as redundant and DROPS it. So the worker's tally still reports ONE while bob believes two and the whole truth is two -- the gap is not something he was never told of, so `explained` does not reach it and the finding is `bug`. THE API's COUNT IS NOT WHAT THIS OBSERVES: that number is R5's and moves with the write (fable, coop r6/82), and the claim type here is the worker's own `event.tallied`, declared eventual and bounded on quiesce. A case carries no quiesce answer, so what the engine adds on top of this -- `pending` while the probes read busy, `stale` once they read quiet and it still disagrees -- is driven by a WALK under the `settling` profile and never here.",
+  "expect": {
+    "believed": 2,
+    "role_sees_subject": true,
+    "finding": "bug",
+    "rests_on_planted": false,
+    "may_join": false,
+    "may_leave": true,
+    "may_create_user": false,
+    "has_user": true,
+    "may_create_event": true,
+    "may_delete": false
+  },
+  "input": {
+    "observation": {
+      "actor": "bob",
+      "of": "event.tallied",
+      "query": "event_tally",
+      "source": "api",
+      "value": 1,
+      "role": "member",
+      "position": 10
+    },
+    "known": [
+      "bob.user#1",
+      "alice.event#1",
+      "bob.join#1",
+      "bob.tally#1",
+      "carol.join#1",
+      "bob.tally#2"
+    ],
+    "claims": [
+      {"ref": "alice.user#1", "actor": "alice", "type": "user.created", "position": 1, "handles": ["alice.user#1"]},
+      {"ref": "bob.user#1", "actor": "bob", "type": "user.created", "position": 2, "handles": ["bob.user#1"]},
+      {"ref": "carol.user#1", "actor": "carol", "type": "user.created", "position": 3, "handles": ["carol.user#1"]},
+      {"ref": "alice.event#1", "actor": "alice", "type": "event.created", "position": 4, "handles": ["alice.event#1"], "visible_to": ["admin", "member", "guest"]},
+      {"ref": "bob.join#1", "actor": "bob", "type": "event.joined", "position": 6, "handles": ["bob.join#1", "alice.event#1"]},
+      {"ref": "bob.tally#1", "actor": "bob", "type": "event.tallied", "position": 7, "handles": ["bob.tally#1", "alice.event#1"]},
+      {"ref": "carol.join#1", "actor": "carol", "type": "event.joined", "position": 8, "handles": ["carol.join#1", "alice.event#1"]},
+      {"ref": "bob.tally#2", "actor": "bob", "type": "event.tallied", "position": 10, "handles": ["bob.tally#2", "alice.event#1"]}
+    ]
+  }
+}

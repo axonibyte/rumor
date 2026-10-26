@@ -73,7 +73,8 @@ const findingStatus = 3
 // still tells the reader the one thing they need to replay it. A seed reported
 // only on success would be missing from exactly the runs somebody wants to
 // reproduce.
-func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stderr io.Writer) int {
+func runProject(dir string, seed uint64, haveSeed bool, steps int, profile string,
+	stdout, stderr io.Writer) int {
 	if steps <= 0 {
 		steps = defaultSteps
 	}
@@ -135,6 +136,11 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		// reading it as past -- so handing it through here would move that
 		// refusal from the engine to a silent truncation.
 		Eventual: schedule.EventualOf(brep.Bindings),
+		// THE PROFILE THE READER ASKED FOR, which selects the weights table the
+		// pool draws from. Empty is the default table, which is every run that
+		// does not pass the flag -- so the control seeds are unaffected by the
+		// flag existing.
+		Profile: profile,
 	}
 
 	// A QUIESCE BOUND NOTHING CAN JUDGE IS A REFUSAL, NOT A QUIET RUN.
@@ -393,40 +399,61 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 	return 0
 }
 
-// parseRunArgs reads `run PROJECT [--seed N] [--steps N]`.
-func parseRunArgs(args []string) (dir string, seed uint64, haveSeed bool, steps int, bad string) {
+// parseRunArgs reads `run PROJECT [--seed N] [--steps N] [--profile NAME]`.
+//
+// THE PROFILE IS A NAME AND NOT A NUMBER, which is why it is parsed before the
+// numeric pair rather than folded into it: platform.toml declares profiles and
+// a weights table per profile, and the walk already takes one -- what was
+// missing was any way for a reader to SELECT it. A row of R6's bug ledger says
+// it is caught by `settling`, and until this flag existed that profile could be
+// declared, validated and never run (fable, coop r6/92).
+func parseRunArgs(args []string) (dir string, seed uint64, haveSeed bool, steps int,
+	profile string, bad string) {
+
 	rest := args
 	for len(rest) > 0 {
 		switch {
+		case rest[0] == "--profile":
+			if len(rest) < 2 {
+				return "", 0, false, 0, "", "--profile wants a value"
+			}
+			// AN EMPTY NAME IS REFUSED rather than read as "the default",
+			// because those are different requests and silence between them is
+			// how a reader ends up measuring the wrong mix.
+			if rest[1] == "" {
+				return "", 0, false, 0, "", "--profile wants a name"
+			}
+			profile = rest[1]
+			rest = rest[2:]
 		case rest[0] == "--seed" || rest[0] == "--steps":
 			if len(rest) < 2 {
-				return "", 0, false, 0, rest[0] + " wants a value"
+				return "", 0, false, 0, "", rest[0] + " wants a value"
 			}
 			n, err := strconv.ParseUint(rest[1], 10, 64)
 			if err != nil {
-				return "", 0, false, 0, fmt.Sprintf("%s %s: wanted a non-negative integer", rest[0], rest[1])
+				return "", 0, false, 0, "", fmt.Sprintf("%s %s: wanted a non-negative integer", rest[0], rest[1])
 			}
 			if rest[0] == "--seed" {
 				seed, haveSeed = n, true
 			} else {
 				if n == 0 {
-					return "", 0, false, 0, "--steps 0: a walk of no steps is not a walk"
+					return "", 0, false, 0, "", "--steps 0: a walk of no steps is not a walk"
 				}
 				steps = int(n)
 			}
 			rest = rest[2:]
 		case len(rest[0]) > 2 && rest[0][:2] == "--":
-			return "", 0, false, 0, fmt.Sprintf("%s is not a flag of run", rest[0])
+			return "", 0, false, 0, "", fmt.Sprintf("%s is not a flag of run", rest[0])
 		default:
 			if dir != "" {
-				return "", 0, false, 0, "run takes one project directory"
+				return "", 0, false, 0, "", "run takes one project directory"
 			}
 			dir = rest[0]
 			rest = rest[1:]
 		}
 	}
 	if dir == "" {
-		return "", 0, false, 0, "run wants a project directory"
+		return "", 0, false, 0, "", "run wants a project directory"
 	}
-	return dir, seed, haveSeed, steps, ""
+	return dir, seed, haveSeed, steps, profile, ""
 }

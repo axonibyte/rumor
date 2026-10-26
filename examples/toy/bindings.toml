@@ -120,6 +120,38 @@ response = { status = 200 }
   source = "handle"
   of = "event"
 
+# THE WORKER'S OWN SURFACE (R6.3, issue 91), AND IT IS WEIGHTED ZERO BY DEFAULT.
+#
+# An actor asks for an event's attendance to be recomputed; cmd/toy enqueues one
+# job and answers with the RECOUNT's id. The claim it emits is the eventual type
+# below, and the observation of the worker's number names the recount as its
+# subject -- which is what keeps both out of the default profile's way.
+#
+# ZERO IN [weights.default] AND WEIGHTED IN THE `settling` PROFILE, which is
+# fable's ruling at coop r6/92: the bug ledger says a row is caught "by the
+# stage or feature listed for it" and R6's row says `settling`. Measured before
+# it was built (ibis, coop r6/94): a zero-weight action leaves seeds 1, 2 and 40
+# drawing line for line identically, so the control is untouched by its
+# existence.
+[[action]]
+name = "recount_event"
+context = "api"
+emits = ["event.tallied"]
+requires = ["has_user"]
+# IT CREATES A `recount`, and that is the half that keeps the default profile
+# clean. An observation's args resolve against the handles the STEP minted, so
+# an observation declaring `event` is makeable on any step that touches one --
+# measured at step 2 of seed 2 (coop r6/100) -- and the tally is only a question
+# once a recount has been asked for. Nothing else in a run mints this kind.
+creates = ["recount"]
+touches = ["store"]
+response = { status = 200 }
+
+  [[action.args]]
+  name = "event"
+  source = "handle"
+  of = "event"
+
 [[action]]
 name = "delete_event"
 context = "api"
@@ -201,6 +233,23 @@ of = "event.joined"
 args = ["event"]
 component = "store"
 
+# THE WORKER'S COUNT, OBSERVED BY ITS OWN QUERY AND ABOUT ITS OWN SUBJECT.
+#
+# `args = ["recount"]` is load-bearing twice over: it names the entity
+# recount_event creates, so the observation is unmakeable until that action is
+# drawn (an unresolved arg is a SKIP, not a refusal), and it is the reason the
+# three control seeds are unmoved by this block existing.
+#
+# IT IS DECLARED LAST, and the order matters for the same reason the R5 pair's
+# does: a step's observations are judged in declaration order and the first
+# finding that stops a walk ends it, so R5's two are reached first and this one
+# cannot get in front of them.
+[[observation]]
+name = "event_tally"
+source = "api"
+of = "event.tallied"
+args = ["recount"]
+
 # THE QUIESCE PROBES (R6.2's typed table, R6.3's first real use).
 #
 # TWO KINDS AND QUIET IS THEIR CONJUNCTION, which is the point of declaring more
@@ -245,6 +294,25 @@ timing = "immediate"
 # THE EVENTUAL TYPE IS THE WORKER'S OWN, BELOW.
 [claim."event.joined"]
 timing = "immediate"
+
+# THE WORKER'S OWN COUNT IS THE EVENTUAL TYPE (R6.3, issue 91).
+#
+# cmd/toy maintains TWO numbers: the API's count, which the write that changes
+# it updates, and the worker's tally, which a queued job applies as a DELTA when
+# a read advances the queue. A reader asking straight after a recount sees the
+# old tally -- docs/vocabulary.md reads that as a `pending` on an eventual type
+# rather than a defect, and it is the whole reason 90's probes came first.
+#
+# THE BOUND IS `quiesce` AND NOT A DURATION: the question is whether the system
+# has settled, not how long ago the claim was made, and a duration bound in a
+# project with no clock control is refused by name (R2.3, R7's door still shut).
+#
+# AND IT IS THIS TYPE AND NOT `event.joined`, which fable ruled at coop r6/82:
+# a bound over the number R5 planted its rows in turns seed 40's R5 finding into
+# an R6 one, losing a row the ledger needs rather than finding it late.
+[claim."event.tallied"]
+timing = "eventual"
+bound = "quiesce"
 
 # `event.left` STAYS IMMEDIATE, and the asymmetry is deliberate rather than an
 # oversight. A leave enqueues a recount too, so its lag is real -- but no

@@ -99,6 +99,59 @@ palter = 1
 suborn = 1
 essoin = 0
 
+# AND THE WORKER'S OWN ACTION AT ZERO, which is `essoin`'s shape used for a
+# different reason: in the pool, never drawn, named rather than missing. R6's
+# bug ledger says each row is caught by the stage or feature listed for it and
+# this one says `settling`, so the action that reaches it is weighted in THAT
+# profile and nowhere else (fable, coop r6/92).
+#
+# MEASURED BEFORE THE REST WAS BUILT (ibis, coop r6/94): with this at zero,
+# seeds 1, 2 and 40 draw line for line identically to the control and their five
+# fields are unmoved -- the pool does not consume the generator's stream for a
+# candidate it cannot draw.
+recount_event = 0
+
+# THE `settling` PROFILE ITSELF, which the weights table below is FOR: a
+# weights profile naming no declared profile is refused by name, and the refusal
+# is right -- a table of weights nothing can select is a tuning nobody can run.
+#
+# ONE STAGE AND ONE SEED, because that is what this profile is for: R6's ledger
+# row is reached through the api stage, and the seed that reaches it is committed
+# rather than searched for at gate time. The budget is the toy's own scale -- a
+# recount is a map write and a file write -- so a minute is ~2000x the worst
+# request measured at r5/… and an expiry here would be a stall, not slow work.
+[profiles.settling]
+stages = ["api"]
+seeds = 1
+budget = "1m"
+
+# THE `settling` WEIGHTS, AND THE MIX IS TUNED FOR THE ROW THIS PROFILE NAMES.
+# R5's D3 is that a profile changes the mix measurably; precedence is profile,
+# then stage, then default (platform.Weight), so a kind absent here keeps its
+# default -- which is how the four nemesis kinds and `tell` stay exactly as
+# arm 19 requires them.
+#
+# WHAT THE ROW NEEDS, AND IT IS A SEQUENCE AND NOT A COUNT: recount an event,
+# change its attendance, recount it AGAIN. The second ask is the dropped retry.
+# So the mix has to make a repeat recount of the SAME event likely, which is
+# three decisions:
+#
+#   recount_event HIGH so it is drawn often
+#   create_event LOW so there are few events to spread those recounts across --
+#     measured first at the default 15 and seed 3 drew two recounts on two
+#     DIFFERENT events, which is the row missed by arithmetic rather than by
+#     mechanism
+#   delete_event ZERO because a delete reaches R5's stale-count row, which
+#     stops the walk before the sequence completes; the R5 rows are found under
+#     the DEFAULT profile and this one is not for re-finding them
+#
+# NOTHING ELSE MOVES, and `join_event` keeps its default so attendance still
+# changes between the two asks.
+[weights.profile.settling]
+recount_event = 40
+create_event = 8
+delete_event = 0
+
 [[rollback]]
 # THE PROCESS-RESTART PROVIDER, which C3 implements and R5.3 consumes. It covers
 # `store` -- the component the bindings name on the `direct` observation, and

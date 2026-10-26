@@ -70,16 +70,26 @@ type event struct {
 	Count int `json:"count"`
 	// Tally is THE WORKER'S OWN NUMBER and nothing else reads or writes it.
 	// Count above is maintained by the write that changes it, which is what
-	// R5's rows rest on; Tally is maintained by the recount queue, so a reader
-	// asking straight after a join sees the old one until the queue advances.
+	// R5's rows rest on; Tally is maintained by the RECOUNT QUEUE and by
+	// nothing else, so it is current as of the last recount the worker applied
+	// and a reader asking straight after one asked for sees the old number.
 	//
 	// TWO COUNTS WITH TWO TIMINGS, which is fable's ruling at coop r6/82: "the
 	// eventual type is the WORKER'S OWN claim, not the count R5 planted its
 	// rows in". One field with both roles made seed 40's R5 finding read as
 	// engine.stale at step 4 behind a delete -- the child losing a row rather
 	// than finding it late, where the ledger needs both.
-	Tally   int  `json:"tally"`
-	Deleted bool `json:"deleted"`
+	Tally int `json:"tally"`
+	// Recounted says the worker has applied a recount for this event already.
+	//
+	// IT IS THE R6 LEDGER ROW: a retry dropped, a count that never settles.
+	// The worker treats a repeat recount as redundant and drops it, so the
+	// SECOND ask for an event is never applied -- and once the attendee list
+	// has moved since the first, the tally is wrong for good. One defect wide:
+	// the job is dropped, not mis-applied, so the number stays one the worker
+	// once computed correctly and the finding is about freshness.
+	Recounted bool `json:"recounted"`
+	Deleted   bool `json:"deleted"`
 }
 
 type session struct {
@@ -95,7 +105,20 @@ type state struct {
 	Users    map[string]*user    `json:"users"`
 	Events   map[string]*event   `json:"events"`
 	Sessions map[string]*session `json:"sessions"`
-	Seq      int                 `json:"seq"`
+
+	// Recounts is recount id -> event id, and it exists so a RECOUNT has an
+	// identity of its own.
+	//
+	// WHY AN ENTITY AND NOT A BARE POST: the engine resolves an observation's
+	// arguments from the handles the STEP minted, and a handle resolves to an
+	// id the system gave. An observation of the worker's tally declaring the
+	// EVENT handle would be makeable on every step that touches an event --
+	// measured at step 2 of seed 2 (ibis, coop r6/100) -- and the tally is only
+	// a question once a recount has been asked for. So the recount is the
+	// subject, and `GET /recounts/<id>/tally` answers about the event it names.
+	Recounts map[string]string `json:"recounts"`
+
+	Seq int `json:"seq"`
 
 	// Jobs is the recount queue, and it is IN THE STATE FILE for the reason
 	// this struct's own comment gives: nothing about the application lives
@@ -120,15 +143,10 @@ type state struct {
 // difference between "not yet" and "never".
 type job struct {
 	EventID string `json:"event_id"`
-	// Delta is what this job adds to the worker's tally: +1 for a join, -1 for
-	// a leave.
-	//
-	// A DELTA AND NOT A RECOUNT, and the difference is the whole R6 row. The
-	// worker recomputed `len(Attendees)` at first, which makes every job
-	// IDEMPOTENT: dropping one loses nothing, because the next one computes the
-	// right answer from the current list. A dropped increment is lost for good,
-	// which is what "a retry dropped, a count that never settles" means.
-	Delta int `json:"delta"`
+	// Tries is kept for the row's own sake: a worker that retried would count
+	// here, and the plant in drainOne is that the retry is DROPPED rather than
+	// counted. It stays zero today and is not read, which is said out loud
+	// rather than left to look like an oversight.
 	Tries int `json:"tries"`
 }
 
@@ -137,6 +155,7 @@ func newState() *state {
 		Users:    map[string]*user{},
 		Events:   map[string]*event{},
 		Sessions: map[string]*session{},
+		Recounts: map[string]string{},
 	}
 }
 
@@ -301,34 +320,18 @@ func visibleTo(ev *event, role string) bool {
 
 // enqueue adds a recount for an event. The caller holds the lock.
 //
-// ONE JOB PER CHANGE AND NOT ONE PER EVENT, deliberately: collapsing them would
-// make the queue depth stop counting the work outstanding, and the queue depth
-// is what the quiesce probe reads. A depth that under-reports is a probe that
-// reads quiet while work remains, which is the one answer that must never be
-// wrong.
-func (s *server) enqueue(eventID string, delta int) {
-	// THE DEFECT, AND IT IS THE R6 LEDGER ROW: a retry dropped, a count that
-	// never settles. A second job for an event already queued is COLLAPSED onto
-	// the first instead of queued behind it, so two changes between two drains
-	// are applied once and the worker's count ends one behind -- for good,
-	// because nothing re-enqueues it.
-	//
-	// THE COMMENT ABOVE SAYS WHY IT IS A DEFECT and was written before the
-	// plant existed: collapsing makes the depth stop counting the work
-	// outstanding, so the probes read quiet with a change unapplied. That is
-	// what makes the disagreement SURVIVE quiesce, which is `stale` and not
-	// `pending` -- docs/vocabulary.md's own distinction, driven.
-	//
-	// IT IS ONE DEFECT WIDE. The job is dropped, not mis-applied: the tally
-	// stays a number the worker once computed correctly, so the finding is
-	// about freshness and not about arithmetic.
-	for _, existing := range s.st.Jobs {
-		if existing.EventID == eventID {
-			existing.Tries++
-			return
-		}
-	}
-	s.st.Jobs = append(s.st.Jobs, &job{EventID: eventID, Delta: delta})
+// ONE JOB PER ASK AND NO COLLAPSING, deliberately: the depth is what the
+// `queue_depth` probe reads, and a depth that under-reports is a probe that
+// reads quiet while work remains -- the one answer that must never be wrong.
+//
+// IT COLLAPSED A SECOND JOB ONTO THE FIRST FOR ONE AFTERNOON, as the planted
+// defect, and a WALK COULD NEVER REACH IT: every step's observations include a
+// read, a read advances the queue by one, and an action enqueues at most one,
+// so the depth oscillates between zero and one and two jobs for one event are
+// never outstanding together. The plant lives in the worker now (see
+// drainOne), where a depth of one is enough to reach it.
+func (s *server) enqueue(eventID string) {
+	s.st.Jobs = append(s.st.Jobs, &job{EventID: eventID})
 }
 
 // drainOne applies the oldest job, if any. The caller holds the lock.
@@ -351,7 +354,19 @@ func (s *server) drainOne() {
 	// until fable's ruling at coop r6/82 separated them: one number cannot be
 	// both R5's immediate count and R6's eventual one, and making it both
 	// relabelled an R5 row instead of adding an R6 one.
-	ev.Tally += j.Delta
+	//
+	// THE DEFECT, AND IT IS R6'S LEDGER ROW: a retry dropped, a count that
+	// never settles. A recount for an event this worker has already recounted
+	// is treated as redundant and DROPPED -- so the second ask is never
+	// applied, and once the attendee list has moved since the first the tally
+	// is wrong for good. The job is dropped and not mis-applied, which is what
+	// makes the finding about freshness: the number stays one the worker
+	// computed correctly, for a world that has since changed.
+	if ev.Recounted {
+		return
+	}
+	ev.Tally = len(ev.Attendees)
+	ev.Recounted = true
 	_ = s.save()
 }
 
@@ -383,6 +398,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/events/", s.handleEventPath)
 	mux.HandleFunc("/store/events/", s.handleStore)
 	mux.HandleFunc("/store/queue", s.handleQueue)
+	mux.HandleFunc("/recounts/", s.handleRecountPath)
 	mux.HandleFunc("/ui/events/", s.handleUI)
 	return s.advancing(mux)
 }
@@ -652,6 +668,8 @@ func (s *server) handleEventPath(w http.ResponseWriter, r *http.Request) {
 		s.eventCount(w, r, id)
 	case len(parts) == 2 && parts[1] == "tally" && r.Method == http.MethodGet:
 		s.eventTally(w, r, id)
+	case len(parts) == 2 && parts[1] == "recount" && r.Method == http.MethodPost:
+		s.recountEvent(w, r, id)
 	default:
 		fail(w, http.StatusNotFound, fmt.Sprintf("no route for %s %s", r.Method, r.URL.Path))
 	}
@@ -731,10 +749,15 @@ func (s *server) joinEvent(w http.ResponseWriter, r *http.Request, id string) {
 	ev.Attendees = append(ev.Attendees, sess.UserID)
 	// THE API'S COUNT MOVES WITH THE WRITE, as it did before the worker: this
 	// is the number R5's rows are about, and an eventual bound over it turns
-	// those rows into R6 findings (fable, coop r6/82). The queue's job is for
-	// the worker's OWN count below.
+	// those rows into R6 findings (fable, coop r6/82).
+	//
+	// AND IT ENQUEUES NOTHING. The worker's tally is maintained by recounts
+	// alone, which is what makes the tally a question an actor ASKS -- and the
+	// queue is then only ever as deep as the recounts outstanding, which a walk
+	// can actually reach: every step's observations include a read, and a read
+	// advances the queue by one, so a job enqueued by every join could never
+	// leave the queue deeper than one.
 	ev.Count = len(ev.Attendees)
-	s.enqueue(ev.ID, 1)
 	if err := s.save(); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
@@ -769,9 +792,9 @@ func (s *server) leaveEvent(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	ev.Attendees = kept
-	// SYNCHRONOUS, for the join's reason: this is R5's number.
+	// SYNCHRONOUS, for the join's reason: this is R5's number, and the worker's
+	// is the recount queue's business.
 	ev.Count = len(ev.Attendees)
-	s.enqueue(ev.ID, -1)
 	if err := s.save(); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
@@ -853,6 +876,77 @@ func (s *server) eventCount(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"event": ev.ID, "count": ev.Count, "deleted": ev.Deleted})
+}
+
+// recountEvent is an actor asking for the event's attendance to be recomputed.
+// It enqueues one job and answers with the RECOUNT's own id, so the walk can
+// mint a handle for it and an observation can name it as its subject.
+//
+// IT ENQUEUES AND DOES NOT RECOMPUTE, which is the whole point: the worker's
+// number is maintained by the queue, so what this returns is a promise and the
+// tally read straight after it is the old one. That gap is the `pending` an
+// eventual claim type exists for.
+func (s *server) recountEvent(w http.ResponseWriter, r *http.Request, id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := s.session(r)
+	if sess == nil {
+		fail(w, http.StatusUnauthorized, "asking for a recount needs a session")
+		return
+	}
+	ev, ok := s.st.Events[id]
+	if !ok || ev.Deleted {
+		fail(w, http.StatusNotFound, "no such event")
+		return
+	}
+	rid := s.nextID("r-")
+	s.st.Recounts[rid] = ev.ID
+	s.enqueue(ev.ID)
+	if err := s.save(); err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// THE KEY IS `id`, which is this toy's convention for a thing it just made
+	// (create_user and create_event both answer under it) and what the adapter
+	// reads to fill the execute response's `ids`. Answering under `recount`
+	// instead left that map EMPTY, and the walk refused with the right
+	// question: a handle that would resolve to nothing.
+	writeJSON(w, http.StatusOK, map[string]any{"id": rid, "event": ev.ID})
+}
+
+// handleRecountPath routes /recounts/<id>/tally and nothing else.
+func (s *server) handleRecountPath(w http.ResponseWriter, r *http.Request) {
+	rest := strings.TrimPrefix(r.URL.Path, "/recounts/")
+	parts := strings.Split(strings.Trim(rest, "/"), "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] != "tally" || r.Method != http.MethodGet {
+		fail(w, http.StatusNotFound, fmt.Sprintf("no route for %s %s", r.Method, r.URL.Path))
+		return
+	}
+	s.recountTally(w, r, parts[0])
+}
+
+// recountTally answers about the event a recount names, which is what makes the
+// RECOUNT the observation's subject.
+func (s *server) recountTally(w http.ResponseWriter, r *http.Request, rid string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := s.session(r)
+	if sess == nil {
+		fail(w, http.StatusUnauthorized, "reading a tally needs a session")
+		return
+	}
+	eid, ok := s.st.Recounts[rid]
+	if !ok {
+		fail(w, http.StatusNotFound, "no such recount")
+		return
+	}
+	ev, ok := s.st.Events[eid]
+	if !ok {
+		fail(w, http.StatusNotFound, "no such event")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"recount": rid, "event": ev.ID,
+		"tally": ev.Tally, "deleted": ev.Deleted})
 }
 
 // eventTally serves THE WORKER'S OWN COUNT, which is the number R6's eventual

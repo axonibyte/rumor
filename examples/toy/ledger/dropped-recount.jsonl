@@ -1,0 +1,10 @@
+{"kind":"claim","position":1,"actor":"alice","type":"user.created","ref":"alice.user#1","handles":["alice.user#1"]}
+{"kind":"claim","position":2,"actor":"bob","type":"user.created","ref":"bob.user#1","handles":["bob.user#1"]}
+{"kind":"claim","position":3,"actor":"carol","type":"user.created","ref":"carol.user#1","handles":["carol.user#1"]}
+{"kind":"claim","position":4,"actor":"alice","type":"event.created","ref":"alice.event#1","handles":["alice.event#1"],"visible_to":["admin","member","guest"]}
+{"kind":"told","position":5,"actor":"alice","to":"bob","claim_ref":"alice.event#1"}
+{"kind":"claim","position":6,"actor":"bob","type":"event.joined","ref":"bob.join#1","handles":["bob.join#1","alice.event#1"]}
+{"kind":"claim","position":7,"actor":"bob","type":"event.tallied","ref":"bob.tally#1","handles":["bob.tally#1","alice.event#1"]}
+{"kind":"claim","position":8,"actor":"carol","type":"event.joined","ref":"carol.join#1","handles":["carol.join#1","alice.event#1"]}
+{"kind":"told","position":9,"actor":"carol","to":"bob","claim_ref":"carol.join#1"}
+{"kind":"claim","position":10,"actor":"bob","type":"event.tallied","ref":"bob.tally#2","handles":["bob.tally#2","alice.event#1"]}

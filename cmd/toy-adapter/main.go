@@ -50,10 +50,15 @@ var (
 		{Name: "join_event", Context: "api"},
 		{Name: "leave_event", Context: "api"},
 		{Name: "delete_event", Context: "api"},
+		{Name: "recount_event", Context: "api"},
 		{Name: "join_event_ui", Context: "browser"},
 	}
 	observations = []wire.Observation{
 		{Name: "event_count", Source: wire.SourceAPI},
+		// THE WORKER'S OWN COUNT, asked about a RECOUNT and not about an event.
+		// It is an `api` observation: an actor reads it through its own
+		// session, where `direct` is the engine's look into the store.
+		{Name: "event_tally", Source: wire.SourceAPI},
 		{Name: "store_event_count", Source: wire.SourceDirect},
 	}
 	contexts = []string{"api", "browser"}
@@ -381,6 +386,13 @@ func (a *adapter) execute(id string, m wire.ExecuteRequest) any {
 		p = plan{http.MethodDelete, "/events/" + subject + "/join", nil, ""}
 	case "delete_event":
 		p = plan{http.MethodDelete, "/events/" + subject, nil, ""}
+	case "recount_event":
+		// IT CREATES A `recount`, which is what gives the observation of the
+		// worker's tally a subject of its own: the handle the walk mints for
+		// this step resolves to the recount's id, and nothing else in a run
+		// mints that kind. An observation declaring the EVENT handle instead
+		// is makeable on every step that touches an event (ibis, coop r6/100).
+		p = plan{http.MethodPost, "/events/" + subject + "/recount", nil, "recount"}
 	case "join_event_ui":
 		// THE UI ACTION GOES THROUGH THE PAGE'S OWN ROUTE, not the API's, so
 		// what the flow declares and what the browser would do in R9 are the
@@ -459,7 +471,7 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 	// says so rather than substituting one.
 	var want wire.Source
 	switch name {
-	case "event_count":
+	case "event_count", "event_tally":
 		want = wire.SourceAPI
 	case "store_event_count":
 		want = wire.SourceDirect
@@ -488,6 +500,14 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 				"event_count names one event: send it as args.event")
 		}
 		path = "/events/" + subject + "/count"
+	case "event_tally":
+		// THE SUBJECT IS A RECOUNT, so the arg is `recount` and not `event`.
+		rid, _ := m.Args["recount"].(string)
+		if rid == "" {
+			return fault(id, wire.FaultField, "args",
+				"event_tally names one recount: send it as args.recount")
+		}
+		path = "/recounts/" + rid + "/tally"
 	case "store_event_count":
 		if subject == "" {
 			return fault(id, wire.FaultField, "args",
@@ -542,6 +562,8 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 	// the whole body would never equal it, and every probe would read busy for
 	// ever -- the silent-and-total failure that package's own arms exist for.
 	switch name {
+	case "event_tally":
+		value = body.Tally
 	case "queue_depth":
 		value = body.Depth
 	case "worker_idle":

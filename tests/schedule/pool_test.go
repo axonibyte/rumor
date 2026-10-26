@@ -726,17 +726,42 @@ func TestAHandleTheActorDoesNotKnowDoesNotResolve(t *testing.T) {
 	withKnown := pool("alice.event#1")
 	withUnknown := pool("carol.event#1")
 
-	// leave_event declares `event` as a handle argument, so it is the action
-	// whose applicability turns on this and nothing else.
+	// WHICH ACTIONS TURN ON THIS IS DERIVED FROM THE BINDINGS, not named here.
+	// It said "leave_event ... is the action whose applicability turns on this
+	// and nothing else", which was true of the project when it was written and
+	// stopped being true the moment R6.3 added `recount_event` -- a second
+	// action declaring an `event` handle argument. The arm then failed on its
+	// own premise rather than on its subject.
+	//
+	// DERIVED IS STRICTLY STRONGER: every action declaring a handle argument of
+	// kind `event` must move, and every action declaring none must not, so a
+	// third such action is covered by arriving rather than by being remembered.
+	needsEventHandle := map[string]bool{}
+	for _, a := range toyActions(t) {
+		for _, arg := range a.Args {
+			if arg.Source == bindings.ArgHandle && arg.Of == "event" {
+				needsEventHandle[a.Name] = true
+			}
+		}
+	}
+	if len(needsEventHandle) == 0 {
+		t.Fatal("no action declares an `event` handle argument, so this arm has no subject")
+	}
 	const needsHandle = "leave_event"
+	if !needsEventHandle[needsHandle] {
+		t.Fatalf("%q no longer declares an `event` handle argument, so the two cells below are "+
+			"not about it", needsHandle)
+	}
 	if !slices.Contains(withKnown, needsHandle) {
 		t.Fatalf("%q is absent with a KNOWN event bound (%v), so this arm cannot show knowledge "+
 			"removing it", needsHandle, withKnown)
 	}
-	if slices.Contains(withUnknown, needsHandle) {
-		t.Errorf("%q is present with only an UNKNOWN event bound (%v): the draw would send %s an "+
-			"id it was never told of, which is the promise Arg.Of makes and the engine did not keep",
-			needsHandle, withUnknown, observer)
+	for name := range needsEventHandle {
+		if slices.Contains(withUnknown, name) {
+			t.Errorf("%q is present with only an UNKNOWN event bound (%v): the draw would send "+
+				"%s an id it was never told of, which is the promise Arg.Of makes and the engine "+
+				"did not keep", name, withUnknown, observer)
+		}
 	}
 
 	// AND NOTHING ELSE MOVED, over the project's ACTIONS. Nemesis kinds ride an
@@ -746,7 +771,7 @@ func TestAHandleTheActorDoesNotKnowDoesNotResolve(t *testing.T) {
 	nemesis := map[string]bool{schedule.Suborn: true, schedule.Canard: true,
 		schedule.Palter: true, schedule.Essoin: true}
 	for _, k := range withKnown {
-		if k == needsHandle || nemesis[k] {
+		if needsEventHandle[k] || nemesis[k] {
 			continue
 		}
 		if !slices.Contains(withUnknown, k) {

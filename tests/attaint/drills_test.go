@@ -138,7 +138,7 @@ func TestEveryDrillTripsItsOwnArm(t *testing.T) {
 			// THE COUNTS ARE ASSERTED ON EVERY DRILL, pass or fail. A damaged
 			// tree that stopped being read at all would refuse for the right
 			// clause and the wrong reason.
-			if rep.Packages != 5 || rep.Cases != 29 || rep.Mutants != 33 || rep.Rules != 26 {
+			if rep.Packages != 5 || rep.Cases != 30 || rep.Mutants != 33 || rep.Rules != 26 {
 				t.Fatalf("%s examined %d package(s), %d case(s), %d rule(s), %d mutant(s); every drill is a damaged copy of the whole tree",
 					d.id, rep.Packages, rep.Cases, rep.Rules, rep.Mutants)
 			}

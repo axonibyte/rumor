@@ -321,6 +321,9 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	// WHAT EACH PENDING CAME FROM, so the end-of-run reconciliation can re-ask
 	// it. See ask.
 	held := map[string]ask{}
+	// stopped says a finding ended the walk, so the loop breaks instead of
+	// returning and the end-of-run work below still runs.
+	stopped := false
 
 	for n := 1; n <= steps; n++ {
 		// SEAL EVERYTHING SO FAR. The seal is the prefix a precondition is
@@ -405,22 +408,30 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		// trace a shrink reads includes the step that produced the finding --
 		// without it the reduction would search a world one step short of the
 		// one that broke.
+		//
+		// AND IT BREAKS RATHER THAN RETURNING, which is what makes clause 3 of
+		// R6's control true of EVERY run. It returned here, so a run that
+		// stopped on a finding never reached the end-of-run quiesce or the
+		// reconciliation -- and seed 43 under the `settling` profile printed
+		// the contradiction out loud: "1 pending(s) open at the end;
+		// reconciliation: nothing to reconcile". A run that ends holding one is
+		// what R2.3 forbids, and a finding earlier in the walk does not excuse
+		// it: the run ended, so the register is answered for.
+		//
+		// THE FINDING IS NOT OVERWRITTEN by anything the reconciliation reads
+		// (see below), so the verdict a shrink reduces is still the first one
+		// the walk found.
 		for i := range seen {
 			if stopsTheWalk(seen[i].Value) {
 				f := seen[i]
 				rec.Finding = &f
 				rec.FoundAt = n
-				rec.Sessions = sessions.Acquired()
-				rec.Facts = l.Facts()
-				rec.PendingOpen = reg.Len()
-				rec.IDs = map[string]string{}
-				for _, h := range table.Handles() {
-					if id, ok := table.ID(h); ok {
-						rec.IDs[h] = id
-					}
-				}
-				return rec, nil
+				stopped = true
+				break
 			}
+		}
+		if stopped {
+			break
 		}
 	}
 
@@ -449,7 +460,14 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		if qerr != nil {
 			return rec, fmt.Errorf("schedule: asking whether the system settled: %w", qerr)
 		}
-		if state == engine.QuiesceTimedOut {
+		// A TIMEOUT DOES NOT OVERWRITE A FINDING THE WALK ALREADY HAS, and the
+		// guard arrived with the break above: while a finding RETURNED from the
+		// loop, this block could only ever run on a clean walk, so the question
+		// never came up. Now that every run reaches it, the first finding is
+		// still the verdict -- it is the one a shrink reduces and the one whose
+		// trace is recorded, and a probe giving up afterwards is a second thing
+		// the run found rather than a correction of the first.
+		if state == engine.QuiesceTimedOut && rec.Finding == nil {
 			reason := "the declared quiesce probes did not read quiet within their timeouts"
 			if h, ok := p.Prober.(interface{ Hang() string }); ok && h.Hang() != "" {
 				reason = h.Hang()

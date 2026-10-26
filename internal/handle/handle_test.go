@@ -71,7 +71,14 @@ func TestTheShapeAcceptsEveryHandleTheExamplesUse(t *testing.T) {
 	// the list are not new -- transitive-count already carried them -- and
 	// every one of the six is accepted by the shape below, which is the half
 	// this oracle exists to assert.
-	const wantHandles = 14
+	// 17 SINCE examples/toy/cases/dropped-recount (R6.3, 2026-10-26), RE-READ
+	// AND NOT WIDENED. That case adds exactly three: bob.tally#1 and
+	// bob.tally#2, which carry the worker's own claim type and are the two asks
+	// the row is about, and carol.user#1 -- the one user handle that WAS new,
+	// transitive-count having carried alice, bob, charlie and dana but never
+	// carol. All three are accepted by the shape below, which is the half this
+	// oracle exists to assert.
+	const wantHandles = 17
 	if len(handles) != wantHandles {
 		t.Fatalf("found %d distinct handle(s) in the examples and this test declares %d: %v. A change in the corpus must be seen, not absorbed",
 			len(handles), wantHandles, handles)
