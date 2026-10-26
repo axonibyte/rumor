@@ -3,6 +3,68 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.36 — 2026-10-26
+
+**R6.3: the toy's worker owns its own count off the clock, `stale` is decided
+where the re-check is in hand, the reconciliation that FOLLOWS the quiesce
+exists, a seed can name its profile, and R6's ledger row is FOUND rather than
+asserted.** Fifteen commits of issue 91, re-cut onto the R6 CI proof, plus the
+phase's methodology entry and its own citations.
+
+- **The planted defect is off the clock, and the SUT now has two counts with two
+  timings.** The toy's worker goroutine and its tick are gone: a read moves
+  the job queue by one after answering, so a walk drives the lag it observes
+  instead of waiting on wall time. `event.Count` is synchronous again on join and
+  leave — R5's rows read as recorded, seed 2 at step 4 and seed 40 at
+  step 3 — while `event.Tally` and `event.Recounted` are the worker's. **R6's own
+  plant is a DROPPED repeat:** `drainOne` returns early on an already-recounted
+  event, so once attendance moves after the first recount the tally is wrong for
+  good, which no single observation can tell from a lag.
+- **`stale` is a `pending` that was HELD, so `Judge` decides it and the overlay
+  never says the word.** The vocabulary's own row makes `stale` a kind under
+  `bug` — "a `pending` past its bound ... held open" — and an overlay that has no
+  re-check in hand cannot know if anything was held. `pendingOverlay` now
+  reports the fact (`pastBound`) and `Judge` composes the verdict through one
+  function, so a first-look disagreement past a bound stays `bug` plain. The
+  comment that stated the overturned rule is kept as a quotation of what was
+  wrong.
+- **The reconciliation that follows the quiesce.** Clause 3 reads "`pending`
+  until the declared probes read quiet and `stale` if the reconciliation that
+  FOLLOWS still disagrees", and the second half had nowhere to happen. After the
+  prober reads quiet, the walk re-asks exactly the pendings still open, with the
+  FRESH answer rather than the last step's; a pending nothing remembered is a
+  refusal that names it; and every run prints what it found — `quiesce -- N
+  pending(s) open at the end; reconciliation: ...` — so the clause has a reader
+  on every run and not only when it fires.
+- **A profile scopes the draw, and a promoted seed can say which one it needs.**
+  `--profile NAME` selects a `[profiles.*]` stanza; `examples/toy`'s `settling`
+  profile weights the recount action the default leaves at zero. `seeds.lock`
+  lines carry `profile=` and `steps=` tokens parsed in ONE place
+  (`platform.ParseSeedLine`), because four readers had each grown their own
+  opinion of that line; validate's arm 10b refuses a seed naming an undeclared
+  profile, listing the declared set.
+- **R6's ledger row is found, from a committed seed, as `stale`.** Seed 12 under
+  `profile=settling steps=24` reaches `FOUND bug of kind stale after step 24 --
+  engine.stale, rests_on_planted false`, out of the end-of-run reconciliation
+  with nothing left open, byte-identical across two attempts. The case and its
+  sealed ledger ship beside it.
+- **The quote count's warrant headers are checkable where they sit, and the
+  arm's two counts must PARTITION its input.** Each `N -> M` header says why the
+  count moved; the arm asserts the chain ends at `declaredQuotes`. It pinned 5 of
+  11 on its first cut because its pattern wanted one of the two markers real
+  headers carry, and its coverage line was a figure nobody could check against a
+  total — so the warrants and the exclusions are now asserted to sum to the
+  loose total, which refuses the two patterns disagreeing rather than any
+  particular coverage.
+- **The phase's methodology entry, and the entry's own citations.** A reader
+  holds the total independently of the writer's count; a pattern keyed on the
+  subject's own vocabulary excludes whatever is spelled differently — four
+  instances in one day across three agents, the fourth being the script
+  to check the third. Five instances of that class landed in one file before it
+  was done, two of them introduced while fixing the first three, which is why
+  the entry carries the line that a figure quoted in prose needs the base it was
+  measured on.
+
 ## 0.1.35 — 2026-10-26
 
 **R5's carried gate bundle: a cached pass is no longer a run, arm 19's ninth
