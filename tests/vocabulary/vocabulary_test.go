@@ -557,11 +557,26 @@ var revisionRow = regexp.MustCompile(`^\|\s*(v[0-9]+)\s*\|`)
 // constant, every header can go stale while every arm stays green. I found
 // that in my own file by driving a re-cut (r6/117); nothing would have told me.
 //
-// THE HIGHEST TARGET AND NOT THE LAST LINE, deliberately. The headers do not
-// sit in numeric order -- the gate bundle's "35 -> 44" was appended above an
-// earlier "34 -> 35" -- so "the last one in the file" is not the newest, and an
-// arm keyed on file order would fail on a tree where nothing is wrong. The
-// chain's end is the maximum target, which needs no ordering assumption.
+// THE HIGHEST TARGET AND NOT THE LAST LINE, deliberately -- and the reason is
+// that the maximum needs NO ORDERING ASSUMPTION, not that any tree here breaks
+// file order. ratchet suggested the last header and asked for the arrangement
+// where that fails (coop r6/121); I could not produce one. At every head I can
+// read, the last in file order IS the highest. So this is a form that cannot be
+// wrong about order rather than a fix for an observed failure, and my first
+// comment claimed more than I had measured.
+//
+// AND IT MATCHES BOTH SPELLINGS, which is the defect this arm had on arrival.
+// The regex wanted " AT " and the file's older headers read " in R3.1", " in
+// R5.1", " in R5.4" -- so it pinned FIVE headers of the ELEVEN there are, a
+// denominator built from the vocabulary of the newest entries while claiming to
+// pin "the headers". That is the shape quill and ratchet post-mortemed an hour
+// before I wrote it (coop r6/110, r6/111): a pattern drawn from the thing being
+// measured excludes the case whose name differs. Found by reading a157f2b for
+// ratchet's question, not by anything failing.
+//
+// `// 13 -> 14 move:` IS DELIBERATELY NOT MATCHED. It is prose ABOUT an earlier
+// transition, not a warrant for this count, so the pattern requires the run
+// marker -- " AT " or " in " -- that a real header carries.
 //
 // IT READS ITS OWN SOURCE, which is the shape tests/run uses on docs/cli.md and
 // tests/validate on ci.yml: where the claim is text, the text is the fixture.
@@ -570,10 +585,10 @@ func TestTheQuoteCountsWarrantsReachTheCountTheyDeclare(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading this arm's own source: %v", err)
 	}
-	header := regexp.MustCompile(`(?m)^// (\d+) -> (\d+) AT `)
+	header := regexp.MustCompile(`(?m)^// (\d+) -> (\d+) (?:AT|in) `)
 	found := header.FindAllStringSubmatch(string(raw), -1)
 	if len(found) == 0 {
-		t.Fatal("no `N -> M AT` warrant header found, so this arm is checking nothing: the " +
+		t.Fatal("no `N -> M AT|in` warrant header found, so this arm is checking nothing: the " +
 			"headers are what say WHY the count moved, and a count that moves without one is " +
 			"the drift this file exists to refuse")
 	}
