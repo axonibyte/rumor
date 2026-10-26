@@ -530,7 +530,10 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 	// listed for it, and seed 12's row is caught under `settling`. Replaying it
 	// under the default mix would walk a different trace entirely and this arm
 	// would report a lost promotion about a seed nobody had asked for.
-	type promoted struct{ seed, profile string }
+	type promoted struct {
+		seed, profile string
+		steps         int
+	}
 	var seeds []promoted
 	for _, line := range strings.Split(string(raw), "\n") {
 		parsed, isSeed, perr := platform.ParseSeedLine(line)
@@ -545,7 +548,8 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 			t.Fatalf("%s: %q is not one non-negative integer per line, which is the format "+
 				"docs/contract.md declares: %v", lock, parsed.Seed, cerr)
 		}
-		seeds = append(seeds, promoted{seed: parsed.Seed, profile: parsed.Profile})
+		seeds = append(seeds, promoted{seed: parsed.Seed, profile: parsed.Profile,
+			steps: parsed.Steps})
 	}
 	if len(seeds) == 0 {
 		// THE MESSAGE NAMES WHAT THE LOCK SHOULD HOLD TODAY, not what it held
@@ -569,15 +573,22 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 			// quotes it: two literals saying 10, one inside a sentence about
 			// the other, is a drift waiting to happen.
 			//
-			// AND A SEED UNDER A PROFILE GETS THE LENGTH ITS ROW NEEDS. R6's
-			// row is a SEQUENCE -- recount, change, recount again -- and it
-			// does not fit in ten steps; the default-profile rows are reached
-			// in three and four. So the length is per-seed rather than one
-			// number pretending to suit both, and the arm says which it used.
+			// AND THE LENGTH COMES OFF THE LINE, which is ratchet's finding
+			// at coop r6/106. This read `steps := 10` and 24 when a PROFILE
+			// was present -- so 24, a fact about seed 12's row, lived in the
+			// arm that replays every seed: the next profiled promotion would
+			// inherit it silently, and a row needing another length would read
+			// as a LOST PROMOTION rather than as a seed replayed too short.
+			//
+			// TEN IS STILL THE DEFAULT, and it is the arm's and not the
+			// document's: a line that says nothing replays at the control's
+			// own invocation, which is what seeds 2 and 40 have always meant.
 			steps := 10
+			if p.steps != 0 {
+				steps = p.steps
+			}
 			args := []string{"run", "../../examples/toy", "--seed", seed}
 			if p.profile != "" {
-				steps = 24
 				args = append(args, "--profile", p.profile)
 			}
 			args = append(args, "--steps", strconv.Itoa(steps))

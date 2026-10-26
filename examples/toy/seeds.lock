@@ -55,6 +55,13 @@
 # reports the number it computed at step 10, for a world that has changed, and
 # no later ask repairs it.
 #
+# `steps=24` IS ON THE LINE AND NOT IN THE ARM THAT REPLAYS IT. The row is a
+# SEQUENCE -- recount, change, recount again -- and it does not fit in the ten
+# steps seeds 2 and 40 are replayed at. The length was a fact about this seed
+# living in tests/run (ratchet, coop r6/106), so the next profiled promotion
+# would have inherited 24 and a row needing another length would have read as a
+# lost promotion.
+#
 # IT IS FOUND AS `stale` AND BY THE RECONCILIATION, which is the part the row is
 # about: the disagreement is held as `pending` while the probes read busy, and
 # the end-of-run reconciliation re-asks it after they read quiet and it still
@@ -65,4 +72,4 @@
 # false`, byte-identical across two attempts. The HONEST finding: it rests on no
 # planted claim, so it is the toy's own defect and not a lie the run told.
 # Measured 2026-10-26 at 2746f81.
-12 profile=settling
+12 profile=settling steps=24

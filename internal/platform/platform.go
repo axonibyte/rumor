@@ -23,6 +23,7 @@ package platform
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -388,6 +389,18 @@ type SeedLine struct {
 	// means, so no committed seed changes meaning by this arriving.
 	Profile string
 
+	// Steps is the `steps=N` token's value, ZERO meaning the line does not say
+	// and the replaying caller's own default stands.
+	//
+	// IT IS ON THE LINE BECAUSE THE LENGTH IS A FACT ABOUT THE ROW, which is
+	// ratchet's finding at coop r6/106: the replay arm held `24` for the one
+	// promoted seed that needed it, so "the length is per-seed" was true of
+	// the comment and false of the code -- the next profiled promotion would
+	// inherit 24 silently, and a row needing another length would read as a
+	// LOST PROMOTION rather than as a seed replayed too short. A fact about
+	// one seed, living in the arm that replays all of them.
+	Steps int
+
 	// Comment is the text after `#`, trimmed. A promotion carries one naming
 	// the defect it caught, which is what separates a regression suite from a
 	// list of numbers.
@@ -420,6 +433,21 @@ func ParseSeedLine(line string) (SeedLine, bool, error) {
 			return out, true, fmt.Errorf("%q is not a `name=value` token", tok)
 		}
 		switch name {
+		case "steps":
+			n, err := strconv.Atoi(value)
+			if err != nil {
+				return out, true, fmt.Errorf("`steps=%s` is not a number", value)
+			}
+			if n < 1 {
+				// THE SAME REFUSAL `--steps 0` GIVES, in the same words: a
+				// walk of no steps is not a walk, and a line asking for one
+				// would replay nothing and report a promotion as checked.
+				return out, true, fmt.Errorf("`steps=%d`: a walk of no steps is not a walk", n)
+			}
+			if out.Steps != 0 {
+				return out, true, fmt.Errorf("two `steps=` tokens (%d and %d): a seed replays at one length", out.Steps, n)
+			}
+			out.Steps = n
 		case "profile":
 			if value == "" {
 				// EMPTY IS REFUSED RATHER THAN READ AS THE DEFAULT, because
@@ -437,7 +465,7 @@ func ParseSeedLine(line string) (SeedLine, bool, error) {
 			// does not know is a line asking for something it will not get,
 			// and reading past it would run the seed under the default while
 			// its author believed otherwise.
-			return out, true, fmt.Errorf("%q is not a token this build knows; it knows `profile=`", name)
+			return out, true, fmt.Errorf("%q is not a token this build knows; it knows `profile=` and `steps=`", name)
 		}
 	}
 	return out, true, nil

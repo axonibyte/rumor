@@ -74,7 +74,8 @@ func TestArm10bRefusesASeedNamingAnUndeclaredProfile(t *testing.T) {
 	// THE CONTROL FIRST: the same seed, naming the profile that IS declared,
 	// and one naming none at all. Without these the refusal below could be
 	// about the token existing rather than about the name it carries.
-	for _, ok := range []string{"12 profile=settling\n", "12\n", "12  # a comment\n"} {
+	for _, ok := range []string{"12 profile=settling\n", "12\n", "12  # a comment\n",
+		"12 profile=settling steps=24\n", "12 steps=24\n"} {
 		write(ok)
 		rep := &Report{}
 		arm10b(rep, dir, p)
@@ -89,6 +90,9 @@ func TestArm10bRefusesASeedNamingAnUndeclaredProfile(t *testing.T) {
 		{"12 bogus=1\n", "is not a token this build knows"},
 		{"12 profile=settling profile=settling\n", "a seed runs under one"},
 		{"12 justaword\n", "not a `name=value` token"},
+		{"12 steps=nine\n", "is not a number"},
+		{"12 steps=0\n", "a walk of no steps is not a walk"},
+		{"12 steps=4 steps=5\n", "a seed replays at one length"},
 	} {
 		write(tc.body)
 		rep := &Report{}
