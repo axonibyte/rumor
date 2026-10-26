@@ -88,7 +88,7 @@ with their reason rather than folded into a number:
 
 ```console
 $ rumor validate examples/twin          # with the adapter on PATH
-validate: twin -- 19 of 19 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
+validate: twin -- 21 of 21 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
 ```
 
 Nineteen of nineteen is what a complete small project looks like: fable's D9
@@ -108,7 +108,7 @@ validate: arm 13 skipped: the adapter did not answer a describe, so what it can 
 validate: arm 9a skipped: the adapter did not answer a describe, so what it can do is unknown
 validate: arm 9b skipped: the adapter did not answer a describe, so what it can do is unknown
 validate: arm 9c skipped: the adapter did not answer a describe, so what it can do is unknown
-validate: twin -- 15 of 19 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
+validate: twin -- 17 of 21 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
 ```
 
 The run is could-not-run either way -- exit 2, never a refusal, because the

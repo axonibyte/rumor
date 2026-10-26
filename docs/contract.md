@@ -96,7 +96,7 @@ read identically to a real project missing its `bindings.toml`.
 | field | type | consumer |
 |---|---|---|
 | `actions` | array of `{name, context}` | validate's arm on an action with no UI flow needs the action set; the arm on a browser-stage actor reaching an API action needs each action's `context`, because "could reach" is exactly "its context is one that actor holds a session in" |
-| `observations` | array of `{name, source}` | **arm 19's observations cell**: a bindings observation the adapter does not declare is refused before any actor moves, rather than mid-run. This row said "the engine's pre-run check" in the present tense from v0.1.19 until 2026-10-19, and nothing implemented it -- every use of the bindings' observations was arm 6, a count, the wire's own validation or the fake's echo (ibis, coop r4/105). It is one of R4.3's nineteen arms now, and could-not-run when no adapter answers |
+| `observations` | array of `{name, source}` | **arm 19's observations cell**: a bindings observation the adapter does not declare is refused before any actor moves, rather than mid-run. This row said "the engine's pre-run check" in the present tense from v0.1.19 until 2026-10-19, and nothing implemented it -- every use of the bindings' observations was arm 6, a count, the wire's own validation or the fake's echo (ibis, coop r4/105). It is one of R4.3's twenty-one arms now, and could-not-run when no adapter answers |
 | `contexts` | array of strings | `session`'s `context` must name one of these, and the reachability arm above is computed over them |
 | `components` | array of `{name, stateful}` | the arm on a stateful component no rollback provider covers compares these against `[[rollback]].covers` in `platform.toml`. Without `components` that arm has nothing to compare and would pass vacuously |
 | `capabilities` | object: `{faults, volume, upgrade}`, three arrays of names | the arm on a declared fault, volume target or upgrade with no capability or path behind it. Each array may be empty, and an empty array is the answer that makes the arm fire rather than an omission that makes it vacuous |
@@ -402,7 +402,7 @@ which is issue 63's own rule:
 | table | phase | why it is named now |
 |---|---|---|
 | `[clock]` | R7 | the vocabulary's Time section puts the test clock's declaration in the bindings, and the arm on a rule reading `clock` with no clock control refuses on this table's absence -- so it has to live here to be absent from here |
-| `[quiesce]` | R6 | the second half of the eventual arm: eventual claims with no quiesce probe declared |
+| `[quiesce]` | R6 | the second half of the eventual arm: eventual claims with no quiesce probe declared (7b), plus the two probe-integrity arms R6.2 typed the probes for -- a probe with no `timeout` (7c) and a probe of a kind no adapter reports (7d). All three refuse before any actor moves, and 7b counts the TYPED probes rather than the table's keys, so a `[quiesce]` carrying only sibling keys is still a project declaring no probe |
 | `[deadline]` | R7 | deadline fields arrive with controlled time |
 | `[seeding]` | R20 | a declared seeding path, which R20 may also reach through an action |
 | `[uses]` (`faults`, `volume`, `upgrade`) | R19, R20, R21 | the arm on a declared fault, volume target or upgrade with no capability behind it. This table is the project's ASK; `describe`'s `capabilities` is what the adapter can actually do, and the arm pairs them -- live against static, which is why neither side is in the other's file |
@@ -504,7 +504,7 @@ run that silently skipped it would replay less than it reported.
 | `seeds_file` | no, defaults to `seeds.lock` | validate's arm on a missing seeds file or promoted seed; R5 writes promotions into it. Named `seeds_file` and not `seeds` because a profile's `seeds` is a **count** -- one word for a path and a count in one file is a misreading waiting to happen |
 | `[adapter].command` | yes | the engine spawns it. Nothing else in the project says how to reach the system under test |
 | `[adapter].cwd`, `[adapter].env` | no | the spawn; `env` is a list of variable **names** passed through, so a platform's secrets stay out of this file |
-| `[[venire]]` | yes, at least one | the walk draws its actors from these roles and counts. An empty venire can run nothing, which is a parse refusal rather than one of validate's nineteen |
+| `[[venire]]` | yes, at least one | the walk draws its actors from these roles and counts. An empty venire can run nothing, which is a parse refusal rather than one of validate's twenty-one |
 | `[stages.<name>].enabled` | yes, at least one enabled | stage selection and skip reasons in the report (R8); `stages.browser.enabled` is what the two browser-stage arms read, and both are vacuous without it |
 | `[weights.default]` | yes | the walk draws from the applicable set by weight (`docs/design.md`, "the engine owns the seed") |
 | `[weights.stage.<stage>]`, `[weights.profile.<profile>]` | no | the same, per stage and per profile, which is the shape design.md already relies on |

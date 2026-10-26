@@ -404,12 +404,12 @@ func Parse(doc map[string]any) Report {
 						Kind: pr.Str("kind", true),
 						// OPTIONAL AT PARSE AND REQUIRED BY validate, which is
 						// not a contradiction: a missing timeout is a thing to
-						// say about the PROJECT, so arm 7b names it with the
+						// say about the PROJECT, so arm 7c names it with the
 						// probe it belongs to and the fixture that trips it
 						// tests the arm. Required here instead, the parser
 						// refuses first and validate's refusal is unreachable
 						// -- measured: the fixture tripped bindings-refused
-						// and not 7b.
+						// and not 7c.
 						Timeout: pr.Str("timeout", false),
 						Every:   pr.Str("every", false),
 						Query:   pr.Str("query", false),

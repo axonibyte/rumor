@@ -158,6 +158,32 @@ contexts = ["browser", "api"]
     s = s.replace('timing = "immediate"', 'timing = "eventual"\nbound = "quiesce"', 1)
     open(p, "w").write("# FIXTURE for arm 7b.\n#\n# SETUP: doc.published settles EVENTUALLY rather than immediately, without\n# which a bound says nothing (bindings.go refuses a bound on an immediate type).\n#\n# CONDITION: the bound is `quiesce` and no [quiesce] probe is declared.\n" + s)
 
+    # 7c AND 7d ADD THE TABLE THE TWIN DOES NOT HAVE. The twin declares no
+    # [quiesce] at all, so the table is the SETUP and the one field inside it is
+    # the condition -- fable's r4/74 rule. 7d's probe carries a timeout it does
+    # not need, so that it cannot also trip 7c; 7c's carries a known kind, so it
+    # cannot also trip 7d. Neither trips 7b: the twin's doc.published is
+    # immediate, so no claim is bounded on quiesce.
+    d = fresh("7c-probe-without-a-timeout")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    open(p, "w").write(
+        "# FIXTURE for arm 7c.\n#\n# SETUP: the twin, plus a [quiesce] table declaring one probe.\n#\n"
+        "# CONDITION: the probe declares no `timeout`. bindings.go reads `timeout` with\n"
+        "# required=false DELIBERATELY -- required at parse, the file is refused as\n"
+        "# malformed and this arm's refusal is unreachable, which was measured before\n"
+        "# this fixture existed.\n"
+        + s.rstrip("\n") + '\n\n[quiesce]\n\n  [[quiesce.probe]]\n  kind = "queue_depth"\n  quiet = 0\n')
+
+    d = fresh("7d-probe-of-an-unknown-kind")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    open(p, "w").write(
+        "# FIXTURE for arm 7d.\n#\n# SETUP: the twin, plus a [quiesce] table declaring one probe WITH a timeout,\n"
+        "# so 7c cannot also fire -- one fixture trips exactly its own arm.\n#\n"
+        "# CONDITION: `kind` is a name no adapter reports. The parser requires the KEY\n"
+        "# and validate owns its VALUE, so an unknown kind reaches here rather than\n"
+        "# being refused as a malformed file.\n"
+        + s.rstrip("\n") + '\n\n[quiesce]\n\n  [[quiesce.probe]]\n  kind = "stares_at_it"\n  timeout = "30s"\n  quiet = 0\n')
+
     d = fresh("6-component-uncovered")
     p = os.path.join(d, "platform.toml"); s = open(p).read()
     s = s.replace('covers = ["doc_store"]', 'covers = ["some_other_store"]', 1)

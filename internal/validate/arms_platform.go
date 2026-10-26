@@ -101,16 +101,39 @@ func arm5(rep *Report, b bindings.Bindings, p platform.Platform) {
 	}
 }
 
-// arm7: AN EVENTUAL CLAIM TYPE WITH NO BOUND (7a), AND ONE BOUNDED ON QUIESCE
-// WITH NO QUIESCE PROBE DECLARED (7b).
+// probeKinds is the set [[quiesce.probe]].kind may name. It lives here and not
+// in bindings because the PARSER requires the key and validate owns its VALUE:
+// bindings.go reads `kind` with required=true so an absent key is a malformed
+// file, and an unknown one is a thing to say about the project, by name, with a
+// fixture that trips it.
+var probeKinds = map[string]bool{"queue_depth": true, "worker_idle": true, "direct": true}
+
+// arm7: AN EVENTUAL CLAIM TYPE WITH NO BOUND (7a), ONE BOUNDED ON QUIESCE WITH
+// NO QUIESCE PROBE DECLARED (7b), A PROBE WITH NO TIMEOUT (7c), AND A PROBE OF
+// AN UNKNOWN KIND (7d).
 //
 // internal/bindings leaves `bound` optional on purpose -- its comment at the
 // timing key says THE BOUND IS NOT REQUIRED HERE -- precisely so this arm can
 // fire instead of the parser refusing the file. 7b is docs/contract.md:341's
 // "second half of the eventual arm".
+//
+// 7c AND 7d ARE RULED IDS AND NOT A FOLD INTO 7b (fable, coop r6/27): "every
+// refusal gets its own id and its own fixture that trips it". Both are the same
+// SUBJECT as 7b reached from the probe's end, so folding looked right until
+// TestEveryFixtureTripsExactlyItsOwnArm refused it -- "2 fixtures claim arm 7b:
+// one fixture per arm is the invariant" -- and under 7b WITHOUT a fixture they
+// would reproduce rook's arm-19 finding exactly: a refusal nothing trips, which
+// is deletable in silence. The count moved 19 -> 21 with the accounting posted
+// at coop r6/28 first, which is breakout-r4/6's rule.
+//
+// A PROBE IS IDENTIFIED BY ITS POSITION because nothing names it. `[[quiesce.probe]]`
+// entries carry no key, so the refusal says "probe 1" in declaration order and
+// the kind beside it, which is the most a reader can be given to find the line.
 func arm7(rep *Report, b bindings.Bindings) {
 	rep.ran("7a")
 	rep.ran("7b")
+	rep.ran("7c")
+	rep.ran("7d")
 	var noBound, noProbe []string
 	for t, c := range b.Claims {
 		if c.Timing != "eventual" {
@@ -119,7 +142,13 @@ func arm7(rep *Report, b bindings.Bindings) {
 		switch {
 		case c.Bound == "":
 			noBound = append(noBound, t)
-		case c.Bound == "quiesce" && len(b.Quiesce) == 0:
+		// THE TYPED PROBES, NOT THE RESERVED MAP, and the difference is a
+		// hole the typing opened. Quiesce carries every sibling key, so
+		// `[quiesce]` holding anything at all -- including R6.2's own
+		// superseded `probe = "/test/quiet"` -- made this check pass while
+		// the project declared ZERO probes the engine can ask. Probes is
+		// what "a condition nothing can evaluate" is actually about.
+		case c.Bound == "quiesce" && len(b.Probes) == 0:
 			noProbe = append(noProbe, t)
 		}
 	}
@@ -134,22 +163,31 @@ func arm7(rep *Report, b bindings.Bindings) {
 			"the bound names a condition nothing can evaluate", strings.Join(noProbe, ", "))
 	}
 
-	// THE PROBE-INTEGRITY REFUSALS ARE NOT HERE YET, and the reason is a
-	// measurement rather than a preference. 90 asks for a refusal on a probe
-	// with no timeout and on an unknown kind. Both are the same SUBJECT as 7b's
-	// first half reached from the probe's end, so folding them in looks right
-	// -- and tests/validate's TestEveryFixtureTripsExactlyItsOwnArm refuses it:
-	// "2 fixtures claim arm 7b: one fixture per arm is the invariant". One arm
-	// id, one fixture, one condition is this suite's shape.
-	//
-	// Their own id (7c) needs the arm COUNT to move, and that is a ruled number
-	// -- tests/validate: "it moves only with a count posted in r4 first" (fable,
-	// coop breakout-r4/6) -- pinned in TotalArms, three tests and about fifteen
-	// documentation sites, with r4 now closed. Landing them under 7b WITHOUT a
-	// fixture would reproduce exactly the defect rook found in arm 19 (a
-	// refusal no fixture trips, deletable in silence), which is a patch I owe
-	// separately. So they wait on fable's count and nothing else.
-
+	var noTimeout, badKind []string
+	for i, p := range b.Probes {
+		where := fmt.Sprintf("probe %d (kind %q)", i+1, p.Kind)
+		if p.Timeout == "" {
+			noTimeout = append(noTimeout, where)
+		}
+		if !probeKinds[p.Kind] {
+			badKind = append(badKind, where)
+		}
+	}
+	if len(noTimeout) > 0 {
+		rep.refuse("7c", "[[quiesce.probe]] with no timeout: %s -- a probe without one is a wait "+
+			"with no end, and a system that never goes quiet has to be a finding rather than a hang",
+			strings.Join(noTimeout, ", "))
+	}
+	if len(badKind) > 0 {
+		kinds := make([]string, 0, len(probeKinds))
+		for k := range probeKinds {
+			kinds = append(kinds, k)
+		}
+		sort.Strings(kinds)
+		rep.refuse("7d", "[[quiesce.probe]] of an unknown kind: %s -- the kinds are %s, and nothing "+
+			"can answer a probe whose kind no adapter reports", strings.Join(badKind, ", "),
+			strings.Join(kinds, ", "))
+	}
 }
 
 // arm8: A RULE READING `clock` WITH NO CLOCK CONTROL.

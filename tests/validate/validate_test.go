@@ -20,10 +20,11 @@ import (
 )
 
 // THE DECLARED SIZE, which is the claim: C2 ships six arms, C3 brings the count
-// to eighteen, and fable's r4/113 ruling adds the nineteenth. A fixture
-// directory that vanished would otherwise leave every remaining arm passing and
-// the suite quiet about it.
-const wantFixtures = 27
+// to eighteen, fable's r4/113 ruling adds the nineteenth, and R6.2's two
+// probe-integrity arms (7c, 7d) bring it to twenty-one. A fixture directory that
+// vanished would otherwise leave every remaining arm passing and the suite quiet
+// about it.
+const wantFixtures = 29
 
 // ARM 19 IS ONE ARM WITH SEVERAL CELLS, so it is the one arm with more than one
 // fixture -- and the count is declared here for the same reason every count in
@@ -329,15 +330,21 @@ const wantArmCountClaims = 2
 // "the two browser-stage arms" are true statements about SUBSETS, and an oracle
 // that refused every number beside the word "arm" would be refusing correct
 // prose. What cannot be a subset is a count attributed to the command itself.
+// THE HYPHENATED FORMS COME FIRST AND THAT IS NOT COSMETIC. Go's regexp is
+// leftmost-FIRST, not leftmost-longest, and `twenty\b` matches INSIDE
+// "twenty-one" because the hyphen is a word boundary -- so with "twenty" ahead
+// of it in the alternation this oracle reads a correct document as saying
+// "twenty" and errors against it. Measured at the 19 -> 21 bump (R6.2).
 var armCountClaim = regexp.MustCompile(`(?i)(validate's|validate has|R4\.3's)\s+(?:own\s+)?` +
-	`(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|` +
-	`fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b`)
+	`(twenty-one|twenty-two|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|` +
+	`thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b`)
 
 // spelled is how this project writes a count in prose. An arm count past twenty
 // fails the test rather than silently stopping being checked.
 var spelled = map[int]string{
 	13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen",
 	17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
+	21: "twenty-one", 22: "twenty-two",
 }
 
 func TestTheDocumentedArmCountIsTotalArms(t *testing.T) {
@@ -678,7 +685,15 @@ var changedBy = map[string][]string{
 	"5-browser-reaches-api": {"bindings.toml", "WHY-browser-reaches-api.md"},
 	"6-component-uncovered": {"platform.toml"},
 	"7b-quiesce-no-probe":   {"bindings.toml"},
-	"10b-unreadable-seed":   {"seeds.lock"},
+
+	// 7c AND 7d EACH ADD A [quiesce] TABLE, which is one edit to one file and
+	// still ONE CONDITION under fable's r4/74 rule: the table is the setup --
+	// the twin declares no [quiesce] at all -- and the condition is the one
+	// field inside it. 7d's probe carries a timeout it does not need for its
+	// own refusal, precisely so it cannot also trip 7c.
+	"7c-probe-without-a-timeout":  {"bindings.toml"},
+	"7d-probe-of-an-unknown-kind": {"bindings.toml"},
+	"10b-unreadable-seed":         {"seeds.lock"},
 
 	// THE LIVE ARMS change the project's ASK and never the adapter's surface:
 	// changing what the adapter can do would test the fake adapter, and these
@@ -764,7 +779,7 @@ func TestEveryFixtureIsTheTwinPlusItsOwnChange(t *testing.T) {
 // allArms is the eighteen, named. fable ruled the count at coop breakout-r4/6
 // and it moves only with a count posted in r4 first.
 var allArms = []string{
-	"1", "2", "3", "4", "5", "6", "7a", "7b", "8",
+	"1", "2", "3", "4", "5", "6", "7a", "7b", "7c", "7d", "8",
 	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13", "19",
 }
 
