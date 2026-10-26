@@ -673,8 +673,37 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 				t.Errorf("seed %s does not reproduce: the two runs differ\nfirst:\n%s\n"+
 					"second:\n%s", seed, first, second)
 			}
+			// AND THE PASS SAYS WHAT IT REPLAYED, which is ratchet's second
+			// line at coop r6/107 and rook's at /1106: the length appeared in
+			// ONE `t.Fatalf` on the exit-0 path and nowhere else, so a PASSING
+			// replay recorded no length, no profile and no finding at all. A
+			// green then says "the promotions hold" without saying what was
+			// run -- and the invocation is the thing two of us have now got
+			// wrong twice in one day by reading a figure without one beside it.
+			//
+			// THE POSITIVE LINE CARRIES THE DENOMINATOR, which is ratchet's own
+			// note in its own words: name it where the check PASSED, not only
+			// in the refusal.
+			profile := p.profile
+			if profile == "" {
+				profile = "default"
+			}
+			t.Logf("PROOF seed %s replayed under profile %s at %d step(s), twice and "+
+				"byte-identical: %s", seed, profile, steps, strings.TrimSpace(findingLine(first)))
 		})
 	}
+}
+
+// findingLine is the run's FOUND line, for a PROOF line that says what the
+// replay found rather than only that it found something. Empty when there is
+// none, which a caller prints as such rather than hiding.
+func findingLine(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "run: FOUND ") {
+			return line
+		}
+	}
+	return "(no finding line)"
 }
 
 // A QUIESCE BOUND NOTHING CAN JUDGE IS REFUSED, NOT RUN QUIETLY.
