@@ -585,7 +585,27 @@ func TestTheQuoteCountsWarrantsReachTheCountTheyDeclare(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading this arm's own source: %v", err)
 	}
+	// THE DENOMINATOR IS INDEPENDENT OF THE PATTERN, which is ratchet's finding
+	// against their own clear (coop r6/123): this arm printed "PROOF 5 warrant
+	// header(s)" while eleven existed, and "the output cannot tell 5 of 5 from
+	// 5 of 11". An instrument's own count says nothing about its coverage, so
+	// the loose pattern below counts every `// N -> M ` line in the file and
+	// the strict one counts what this arm CLAIMS -- and the PROOF line carries
+	// both, with any line the strict pattern misses named by its number.
+	//
+	// SO A TWELFTH SPELLING SHOWS UP AS AN UNMATCHED LINE rather than as a
+	// silently smaller five. It is not a refusal: a prose reference to an
+	// earlier move is legitimate and `// 13 -> 14 move:` is one. What the arm
+	// owes a reader is that the gap is VISIBLE, not that it is empty.
+	// THE LOOSE PATTERN TAKES THE WHOLE LINE, which the first cut of it did not:
+	// it ended at the space, so every match was a truncated prefix the strict
+	// pattern could never match -- and the PROOF line then reported 11 of 12
+	// matched while listing all twelve as excluded. The arm caught its own
+	// arithmetic by printing both numbers beside each other, which is the whole
+	// reason ratchet asked for the denominator.
+	loose := regexp.MustCompile(`(?m)^// (\d+) -> (\d+) .*$`)
 	header := regexp.MustCompile(`(?m)^// (\d+) -> (\d+) (?:AT|in) `)
+	all := loose.FindAllString(string(raw), -1)
 	found := header.FindAllStringSubmatch(string(raw), -1)
 	if len(found) == 0 {
 		t.Fatal("no `N -> M AT|in` warrant header found, so this arm is checking nothing: the " +
@@ -608,6 +628,15 @@ func TestTheQuoteCountsWarrantsReachTheCountTheyDeclare(t *testing.T) {
 			"invisible to the sweep, because it counts quotes and not headers",
 			highest, from, declaredQuotes)
 	}
-	t.Logf("PROOF %d warrant header(s), the chain ending at %d, declaredQuotes %d",
-		len(found), highest, declaredQuotes)
+	// AND THE EXCLUDED LINES ARE NAMED, so "matched fewer than exist" is a
+	// thing a reader sees rather than a thing they would have to go and count.
+	var skipped []string
+	for _, line := range all {
+		if !header.MatchString(line) {
+			skipped = append(skipped, strings.TrimSpace(line))
+		}
+	}
+	t.Logf("PROOF %d of %d `N -> M` line(s) are warrant headers, the chain ending at %d, "+
+		"declaredQuotes %d; excluded as prose: %v", len(found), len(all), highest,
+		declaredQuotes, skipped)
 }
