@@ -158,7 +158,12 @@ const root = "../.."
 // warrant for the arm asserting Record.PendingOpen at all. The rule was
 // unmeasurable before that field existed, so the quote is what says the
 // assertion is the document's and not the arm's invention.
-const declaredQuotes = 45
+// 45 -> 46 AT R6.3's SECOND HALF: engine.Judge quotes the `stale` row's own
+// requirement -- "was inside the bound and so was held open" -- because that
+// clause is the warrant for the word being decided where the re-check is in
+// hand rather than in the overlay (fable, coop r6/87). The quote is what says
+// the gate is the document's rule and not this package's preference.
+const declaredQuotes = 46
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would

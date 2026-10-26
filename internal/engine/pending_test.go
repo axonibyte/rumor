@@ -148,19 +148,35 @@ func TestADisagreementInsideTheBoundIsPendingAndPastItIsStale(t *testing.T) {
 		t.Errorf("the statute's own definition was not kept: %v", inside.Fired)
 	}
 
-	// PAST THE BOUND IS `stale`, AND THIS ARM CHANGED AT R6.1 BY CHARTER.
+	// PAST THE BOUND IS `stale` ONLY AFTER A PENDING WAS HELD, and this arm has
+	// changed twice -- the reason each time being that the charter moved under
+	// it, never that it was inconvenient.
 	//
-	// It read: "the engine does not invent a verdict. v1 reserves `stale` for
-	// R6 and defines nothing, so what stands is what the statute said" -- and
-	// asserted `bug` with NO overlay. That was right while the word was
-	// reserved. Issue 89 is where R6 spends it, so the engine has now been
-	// given the verdict it was declining to invent, and the decline is the
-	// thing that would be wrong.
+	// IT READ, BEFORE R6.1: "the engine does not invent a verdict. v1 reserves
+	// `stale` for R6 and defines nothing, so what stands is what the statute
+	// said" -- asserting `bug` with NO overlay. Right while the word was
+	// reserved; issue 89 spent it, so the decline became the wrong answer.
 	//
-	// IT IS NOT A WEAKENED ARM: it asserts strictly more than before -- the
-	// value, the KIND, the rule, and that the statute's own verdict survives
-	// underneath. The old assertion's own stated reason is what expired.
-	outside, err := Judge(ctx, countStatute, countRules, timedLedger(t, 100, 120), chk, b, nil)
+	// IT THEN ASSERTED `stale` ON A FIRST LOOK, with `nil` for the register,
+	// and fable ruled that a defect at coop r6/87: `stale` is "a `pending` past
+	// its bound", and docs/vocabulary.md :118 requires the disagreement to have
+	// been "held open". With no register there is no pending to be past, so the
+	// arm pinned the word to a disagreement nothing had waited for.
+	//
+	// SO IT DRIVES THE SEQUENCE NOW: one register across two Judges, the first
+	// INSIDE the bound so a pending is held, the second PAST it so the held
+	// pending is re-checked. That asserts strictly more than either earlier
+	// cut -- the value, the kind, the rule, the statute's surviving verdict AND
+	// that the word rests on a re-check.
+	reg := NewRegister()
+	if _, err := Judge(ctx, countStatute, countRules, timedLedger(t, 100, 105), chk, b, reg); err != nil {
+		t.Fatal(err)
+	}
+	if reg.Len() != 1 {
+		t.Fatalf("no pending was held, so there is nothing for a stale to be past: %d open",
+			reg.Len())
+	}
+	outside, err := Judge(ctx, countStatute, countRules, timedLedger(t, 100, 120), chk, b, reg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,12 +184,33 @@ func TestADisagreementInsideTheBoundIsPendingAndPastItIsStale(t *testing.T) {
 		t.Fatalf("past the bound the finding is %v kind %q, wanted bug of kind stale",
 			outside.Value, outside.Kind)
 	}
+	if outside.ReChecked == nil {
+		t.Fatalf("the re-check that makes it a stale is not recorded on the finding")
+	}
 	if outside.Overlay == nil || outside.Overlay.Rule != "engine.stale" {
 		t.Fatalf("a stale does not name the rule that produced it: %+v", outside.Overlay)
 	}
 	if outside.StatuteValue != "bug" {
 		t.Errorf("the statute's own verdict was lost under the overlay: %v", outside.StatuteValue)
 	}
+
+	// AND THE SAME OBSERVATION ON A FIRST LOOK IS A PLAIN `bug`, which is the
+	// other half of the ruling and the half no arm asserted: past the bound
+	// with nothing ever held, the type reads as an immediate one would and the
+	// statute's own rule stands. Without this, moving the word back into
+	// pendingOverlay would pass every assertion above.
+	first, err := Judge(ctx, countStatute, countRules, timedLedger(t, 100, 120), chk, b, NewRegister())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Value != "bug" || first.Kind != "" {
+		t.Fatalf("a first look past the bound is %v kind %q, wanted a plain bug: `stale` is a "+
+			"pending past its bound and no pending was ever held", first.Value, first.Kind)
+	}
+	if first.Overlay != nil {
+		t.Errorf("a first look past the bound was overlaid: %+v", first.Overlay)
+	}
+
 	// AND IT LOCATES THE LATENESS: a stale a reader cannot place is a bug with
 	// a longer name, so the reason names the type, the bound and the position.
 	for _, want := range []string{`"item.created"`, "bound of 10", "past the bound", "position 2"} {
@@ -388,11 +425,23 @@ func TestAQuiesceBoundIsJudgedWithoutAClock(t *testing.T) {
 		t.Errorf("the statute's own verdict was lost: %v", held.StatuteValue)
 	}
 
-	// QUIET AND STILL DISAGREEING: the system was given its chance to settle
-	// and says it has, so the disagreement is past the bound.
+	// QUIET AFTER A PENDING WAS HELD IS `stale`, and the two Judges share one
+	// register on purpose. This arm passed `nil` and asserted `stale` from a
+	// single quiet call, which fable ruled a defect at coop r6/87: with no
+	// register there is no pending for the word to be past, so it pinned
+	// `stale` to a disagreement nothing had ever waited for. The busy call
+	// above is what makes the quiet one a RE-CHECK.
+	reg := NewRegister()
+	if _, err := Judge(ctx, countStatute, countRules, noClock(), waiting, b, reg); err != nil {
+		t.Fatalf("the busy check was refused: %v", err)
+	}
+	if reg.Len() != 1 {
+		t.Fatalf("the busy check held no pending, so the quiet one is not a re-check: %d open",
+			reg.Len())
+	}
 	settled := base
 	settled.Quiesce = QuiesceQuiet
-	stale, err := Judge(ctx, countStatute, countRules, noClock(), settled, b, nil)
+	stale, err := Judge(ctx, countStatute, countRules, noClock(), settled, b, reg)
 	if err != nil {
 		t.Fatalf("a quiesced check was refused: %v", err)
 	}
@@ -403,11 +452,24 @@ func TestAQuiesceBoundIsJudgedWithoutAClock(t *testing.T) {
 	if stale.Overlay == nil || stale.Overlay.Rule != "engine.stale" {
 		t.Fatalf("the stale does not name the rule that produced it: %+v", stale.Overlay)
 	}
-	for _, want := range []string{`"item.created"`, "quiesce", "position 1"} {
+	for _, want := range []string{`"item.created"`, "quiesce", "position 1", "held open"} {
 		if !strings.Contains(stale.Overlay.Reason, want) {
 			t.Errorf("the reason does not say %q: %s", want, stale.Overlay.Reason)
 		}
 	}
+
+	// AND QUIET ON A FIRST LOOK IS A PLAIN `bug` WITH THE STATUTE'S RULE: no
+	// lag was ever excused, so the type reads as an immediate one would. This
+	// is the assertion that fails if the word moves back into pendingOverlay.
+	firstLook, err := Judge(ctx, countStatute, countRules, noClock(), settled, b, NewRegister())
+	if err != nil {
+		t.Fatalf("a quiesced first look was refused: %v", err)
+	}
+	if firstLook.Value != "bug" || firstLook.Kind != "" || firstLook.Overlay != nil {
+		t.Fatalf("a first look at a quiet system is %v kind %q overlay %+v, wanted a plain bug",
+			firstLook.Value, firstLook.Kind, firstLook.Overlay)
+	}
+
 	t.Logf("PROOF quiesce bound, no clock fact: not quiet -> %v; quiet -> %v kind %q",
 		held.Value, stale.Value, stale.Kind)
 }
@@ -445,7 +507,14 @@ func TestAStaleIsNotHeldOpenForReCheck(t *testing.T) {
 		t.Fatalf("a pending was not registered for re-check: %d open", regPending.Len())
 	}
 
-	regStale := NewRegister()
+	// AND THE STALE IS THE RE-CHECK OF THAT SAME PENDING, which is what this
+	// arm had wrong: it built a FRESH register for the quiet call, so no pending
+	// existed for the query and `stale` on first sight was the expectation by
+	// construction (ratchet, coop r6/85). The word now requires the re-check,
+	// so the sequence IS the fixture -- and regPending is reused rather than
+	// replaced, which also makes the emptiness asserted below mean something:
+	// it held one a moment ago.
+	regStale := regPending
 	settled := base
 	settled.Quiesce = QuiesceQuiet
 	f, err := Judge(ctx, countStatute, countRules, l(), settled, b, regStale)
@@ -523,19 +592,27 @@ func TestAQuiesceAnswerThatIsNotAnAnswerRefuses(t *testing.T) {
 	// THE CONTROL, so the refusal above is about the ANSWER and not about
 	// quiesce bounds being unjudgeable: every real answer still reaches a
 	// verdict on the same fixture.
+	// THE KIND IS IN THE TABLE, not only the value, because with a nil register
+	// every row's value is reachable without the overlay at all: the statute's
+	// own finding for this fixture is `bug`, so a `bug` row proves nothing on
+	// its own. QUIET's row is the discriminator -- no pending was held, so it
+	// must be a PLAIN bug, and the word appearing here would be the defect
+	// fable ruled out at coop r6/87.
 	for _, tc := range []struct {
 		state QuiesceState
 		value any
-	}{{QuiesceBusy, "pending"}, {QuiesceQuiet, "bug"},
-		{QuiesceTimedOut, FindingQuiesceTimedOut}} {
+		kind  string
+	}{{QuiesceBusy, "pending", ""}, {QuiesceQuiet, "bug", ""},
+		{QuiesceTimedOut, FindingQuiesceTimedOut, ""}} {
 		c := base
 		c.Quiesce = tc.state
 		f, err := Judge(ctx, countStatute, countRules, l(), c, b, nil)
 		if err != nil {
 			t.Fatalf("%s was refused: %v", tc.state, err)
 		}
-		if f.Value != tc.value {
-			t.Errorf("%s gave %v, wanted %v", tc.state, f.Value, tc.value)
+		if f.Value != tc.value || f.Kind != tc.kind {
+			t.Errorf("%s gave %v kind %q, wanted %v kind %q", tc.state, f.Value, f.Kind,
+				tc.value, tc.kind)
 		}
 	}
 }

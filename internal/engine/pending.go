@@ -142,18 +142,18 @@ func latestClaimOf(prefix []ledger.Fact, of string) (int, bool) {
 // type with no clock fact to measure against would otherwise silently read as
 // "past the bound", turning a `pending` into a `bug` on missing data. That is
 // the R4 shape -- time the run does not control never enters a verdict.
-func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*Overlay, error) {
+func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*Overlay, *pastBound, error) {
 	if statuteValue == "consistent" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	e, ok := b.eventual(c.Of)
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 	prefix := l.SealedPrefix()
 	claimPos, ok := latestClaimOf(prefix, c.Of)
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 	// THE QUIESCE BOUND IS JUDGED WITHOUT A CLOCK, which is why R6 can judge
 	// it at all: the question is whether the system has gone quiet, not how
@@ -172,16 +172,25 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 				Reason: fmt.Sprintf("%q is eventual bounded %q and the system is still busy, "+
 					"so the disagreement on the claim at position %d is inside the bound",
 					c.Of, "quiesce", claimPos),
-			}, nil
+			}, nil, nil
 		case QuiesceQuiet:
-			return &Overlay{
-				Rule:  "engine.stale",
-				Value: "bug",
-				Kind:  "stale",
-				Reason: fmt.Sprintf("%q is eventual bounded %q, the system read quiet, and the "+
-					"observation still disagrees with the claim at position %d: the bound is past",
-					c.Of, "quiesce", claimPos),
-			}, nil
+			// QUIET IS NOT A VERDICT HERE, which is the whole of fable's
+			// ruling (coop r6/87). The system says it has settled and the
+			// observation still disagrees -- but whether that is `stale`
+			// depends on something this function cannot see: whether the
+			// disagreement was ever HELD. On a FIRST look there was no lag to
+			// excuse, so it reads as an immediate type would, a plain `bug`
+			// with the statute's own rule; after a pending was held and
+			// re-checked, it is the word. Judge has the register and decides.
+			//
+			// THREE ARMS PINNED THE OTHER ANSWER and they were rewritten with
+			// this change: each passed a register that could hold no pending
+			// for the query -- two passing nil, one building a fresh one -- so
+			// `stale` on first sight was the expectation BY CONSTRUCTION
+			// (ratchet, coop r6/85). They sat where nothing could contradict
+			// them: no production path called Judge, so the wrong word was
+			// pinned in the one region a walk never reaches.
+			return nil, &pastBound{of: c.Of, claimPos: claimPos, byQuiesce: true}, nil
 		case QuiesceTimedOut:
 			// AND IT IS REACHED HERE ONLY WITH A DISAGREEMENT OPEN, WHICH IS
 			// NARROWER THAN THE WORD. fable amended the definition at coop
@@ -229,13 +238,13 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 					"before the system went quiet, so the disagreement on the claim at "+
 					"position %d is neither inside the bound nor past it: the run found that "+
 					"the system would not settle", c.Of, "quiesce", claimPos),
-			}, nil
+			}, nil, nil
 		case QuiesceAbsent:
 			// ABSENT, which is not an answer. A caller with no prober wired
 			// must not have its silence read as "not quiet": that would hold a
 			// real disagreement open to the end of a run and report it as
 			// clean, which is the outcome ratchet drove at r6/8.
-			return nil, fmt.Errorf("engine: %q is eventual bounded %q and no quiesce answer "+
+			return nil, nil, fmt.Errorf("engine: %q is eventual bounded %q and no quiesce answer "+
 				"was supplied (%s): the bound cannot be judged, and treating silence as "+
 				"\"not quiet\" would hold this disagreement open for the whole run and "+
 				"report it as clean", c.Of, "quiesce", c.Quiesce)
@@ -248,7 +257,7 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 			// a correct refusal naming the wrong cause, which is a branch
 			// written for one state standing in for every state that reaches
 			// it.
-			return nil, fmt.Errorf("engine: %q is eventual bounded %q and the quiesce answer "+
+			return nil, nil, fmt.Errorf("engine: %q is eventual bounded %q and the quiesce answer "+
 				"is %d, a state this build does not know: it refuses rather than reading an "+
 				"unknown answer as any of quiet, busy or timed out",
 				c.Of, "quiesce", int(c.Quiesce))
@@ -264,33 +273,23 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 	now, hasNow := Now(l)
 	claimTime, hasClaimTime := timeAt(prefix, claimPos)
 	if !hasNow || !hasClaimTime {
-		return nil, fmt.Errorf("engine: %q is declared eventual with a bound of %d, but its bound "+
+		return nil, nil, fmt.Errorf("engine: %q is declared eventual with a bound of %d, but its bound "+
 			"cannot be measured: a clock fact at the seal is present=%v, and one at or before the "+
 			"last %q claim (position %d) is present=%v. Treating that as past the bound would turn "+
 			"a pending into a defect on missing data, which is the R4 shape -- time the run does "+
 			"not control never decides a verdict",
 			c.Of, e.Bound, hasNow, c.Of, claimPos, hasClaimTime)
 	}
-	// PAST THE BOUND IS `stale` NOW, where it used to decline. The comment
-	// above this function said why it declined: "v1 RESERVES `stale` for R6 and
-	// defines nothing, and tells the examples to avoid the word. So past the
-	// bound the statute's finding stands and the engine does not invent a
-	// verdict it has not been given." R6.1 is where the word is defined, so the
-	// engine has been given it and the decline becomes a finding.
-	//
-	// IT NAMES THE TYPE, THE POSITION AND THE BOUND, because a `stale` a reader
-	// cannot locate is a `bug` with a longer name: the three together say which
-	// claim was late and by what measure.
+	// PAST THE BOUND IS FACTS AND NOT THE WORD, for the quiesce arm's reason
+	// above: `stale` is a pending that WAS HELD and still disagrees, and this
+	// function cannot see the register. The duration form keeps R2.3's refusal
+	// until a later phase gives the run the clock, so nothing reaches here in
+	// R6 with a duration bound -- but the arm is written the same way as its
+	// sibling rather than left as the one place the word could still be
+	// composed from an unheld disagreement.
 	if now-claimTime > e.Bound {
-		return &Overlay{
-			Rule:  "engine.stale",
-			Value: "bug",
-			Kind:  "stale",
-			Reason: fmt.Sprintf("%q is eventual with a bound of %d; the last claim of it was made "+
-				"at %d and the run's time at the seal is %d, so the disagreement is %d past the "+
-				"bound (claim at position %d)",
-				c.Of, e.Bound, claimTime, now, (now-claimTime)-e.Bound, claimPos),
-			Until: claimTime + e.Bound,
+		return nil, &pastBound{
+			of: c.Of, claimPos: claimPos, bound: e.Bound, claimTime: claimTime, now: now,
 		}, nil
 	}
 	return &Overlay{
@@ -300,7 +299,53 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 			"and the run's time at the seal is %d, so the disagreement is inside the bound",
 			c.Of, e.Bound, claimTime, now),
 		Until: claimTime + e.Bound,
-	}, nil
+	}, nil, nil
+}
+
+// pastBound is what pendingOverlay found when a disagreement is NOT inside the
+// bound, handed back for Judge to decide on.
+//
+// IT CARRIES FACTS AND NOT A VERDICT, which is fable's ruling at coop r6/87:
+// "Judge decides `stale` ... and pendingOverlay yields `pending` or nothing and
+// never the word". The overlay can see that the bound is past; it cannot see
+// whether a pending was ever HELD, because the register is not among its
+// arguments -- and docs/vocabulary.md :118 makes being held open part of what
+// the word means. An overlay that named it anyway was answering a question it
+// could not ask.
+type pastBound struct {
+	of       string
+	claimPos int
+	// byQuiesce says the probes answered, so the message speaks of the system
+	// going quiet rather than of a duration; the clock fields are then unset.
+	byQuiesce bool
+	bound     int64
+	claimTime int64
+	now       int64
+}
+
+// stale is the ONE PLACE the word is composed, and only Judge calls it.
+func stale(p pastBound, prev Pending) *Overlay {
+	if p.byQuiesce {
+		return &Overlay{
+			Rule:  "engine.stale",
+			Value: "bug",
+			Kind:  "stale",
+			Reason: fmt.Sprintf("%q is eventual bounded %q; the disagreement on the claim at "+
+				"position %d was held open as `pending` at seal %d, the system has since read "+
+				"quiet, and it still disagrees: the bound is past",
+				p.of, "quiesce", p.claimPos, prev.At),
+		}
+	}
+	return &Overlay{
+		Rule:  "engine.stale",
+		Value: "bug",
+		Kind:  "stale",
+		Reason: fmt.Sprintf("%q is eventual with a bound of %d; the disagreement on the claim at "+
+			"position %d was held open as `pending` at seal %d, the claim was made at %d and the "+
+			"run's time at the seal is %d, so it is %d past the bound",
+			p.of, p.bound, p.claimPos, prev.At, p.claimTime, p.now, (p.now-p.claimTime)-p.bound),
+		Until: p.claimTime + p.bound,
+	}
 }
 
 // Pending is a finding held open for re-check.
@@ -369,9 +414,34 @@ func Judge(ctx context.Context, statute string, rules []string, l *ledger.Ledger
 		}
 	}
 
-	ov, err := pendingOverlay(l, c, b, f.Value)
+	ov, past, err := pendingOverlay(l, c, b, f.Value)
 	if err != nil {
 		return f, err
+	}
+	// THE WORD IS DECIDED HERE AND NOWHERE ELSE, which is fable's placement at
+	// coop r6/87. `stale` is "a `pending` past its bound" -- docs/vocabulary.md
+	// :118 requires that the disagreement "was inside the bound and so was held
+	// open", and :130 gives it only "if the reconciliation that FOLLOWS still
+	// disagrees". Both halves are in hand at this point and in no other: `past`
+	// says the bound is behind us, and f.ReChecked says this observation IS the
+	// re-check of a pending this run held.
+	//
+	// A FIRST LOOK PAST THE BOUND IS A PLAIN `bug`, deliberately, and it is not
+	// a weaker answer. There was no lag to excuse: the system reads quiet and
+	// the observation disagrees, so the type behaves exactly as an immediate one
+	// would and the statute's own finding and rule stand. Reporting `stale`
+	// there spent the word on a disagreement nothing had ever been waiting for,
+	// and it moved two of ruling 3's identity fields on an R5 row that had not
+	// changed (ibis, coop r6/84; seed 40 read engine.stale where the baseline
+	// reads the statute's rule).
+	//
+	// ReChecked STOPS BEING REPORT-ONLY. It was set here and read only into a
+	// report (ratchet, coop r6/86: "no non-test site reads it into a Value or a
+	// Kind"), which is why the register could not reach the decision.
+	if past != nil {
+		if f.ReChecked != nil {
+			ov = stale(*past, *f.ReChecked)
+		}
 	}
 	if ov != nil {
 		f.Value = ov.Value
