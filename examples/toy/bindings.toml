@@ -201,15 +201,58 @@ of = "event.joined"
 args = ["event"]
 component = "store"
 
+# THE QUIESCE PROBES (R6.2's typed table, R6.3's first real use).
+#
+# TWO KINDS AND QUIET IS THEIR CONJUNCTION, which is the point of declaring more
+# than one: the depth can reach zero in the instant between the worker taking a
+# job and finishing it, so depth alone can read quiet while work is in hand.
+# `worker_idle` is the toy's own answer to "is there anything outstanding", and
+# both must agree before a run judges (fable, coop breakout-r6/0).
+#
+# THE TIMEOUTS ARE SMALL BECAUSE THE WORK IS SMALL: one recount is a map lookup
+# and a file write, measured at 2.0ms median and 24.2ms worst over 30 requests
+# on this box. 2s is ~80x that worst, so an expiry is a STALL and not a slow
+# drain -- the distinction the budget in cmd/toy-adapter records for itself.
+[quiesce]
+
+  [[quiesce.probe]]
+  kind = "queue_depth"
+  timeout = "2s"
+  every = "5ms"
+  quiet = 0
+
+  [[quiesce.probe]]
+  kind = "worker_idle"
+  timeout = "2s"
+  every = "5ms"
+  quiet = true
+
 [claim."user.created"]
 timing = "immediate"
 
 [claim."event.created"]
 timing = "immediate"
 
+# THE COUNT'S CLAIM TYPE IS EVENTUAL AND BOUNDED ON QUIESCE (R6.3, issue 91).
+#
+# WHY THIS TYPE: both count observations declare `of = "event.joined"`, so this
+# is the claim the reported number is about. The toy maintains that number off a
+# job queue now, so a reader asking straight after a join sees the old one --
+# which docs/vocabulary.md reads as a `pending` on an eventual type rather than
+# as a defect, and which is the whole reason 90's probes came before this.
+#
+# THE BOUND IS `quiesce` AND NOT A DURATION: the question is whether the system
+# has settled, not how long ago the claim was made, and a duration bound in a
+# project with no clock control is refused by name (R2.3, R7's door still shut).
 [claim."event.joined"]
-timing = "immediate"
+timing = "eventual"
+bound = "quiesce"
 
+# `event.left` STAYS IMMEDIATE, and the asymmetry is deliberate rather than an
+# oversight. A leave enqueues a recount too, so its lag is real -- but no
+# observation declares `of = "event.left"`, so no check is judged against it and
+# making it eventual would declare a bound nothing evaluates. That is arm 7b's
+# refusal waiting to happen: a bound naming a condition no observation reaches.
 [claim."event.left"]
 timing = "immediate"
 

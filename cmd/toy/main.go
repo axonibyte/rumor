@@ -85,6 +85,31 @@ type state struct {
 	Events   map[string]*event   `json:"events"`
 	Sessions map[string]*session `json:"sessions"`
 	Seq      int                 `json:"seq"`
+
+	// Jobs is the recount queue, and it is IN THE STATE FILE for the reason
+	// this struct's own comment gives: nothing about the application lives
+	// outside the file, or the rollback provider's verify would be lying. A
+	// queue in memory would also be invisible to the `direct` source, and the
+	// engine's quiesce probe reads its depth through exactly that.
+	//
+	// EACH ENTRY IS AN EVENT ID AND A TRY COUNT. The id is what to recount;
+	// Tries is what makes "a retry dropped" a thing that can be planted (R6's
+	// ledger row) rather than a thing that has to be described.
+	Jobs []*job `json:"jobs"`
+}
+
+// job is one unit of the worker's work: recompute an event's reported count
+// from its attendee list.
+//
+// WHY THE COUNT IS NOT WRITTEN WHERE THE ATTENDEE IS ADDED, which is what makes
+// this phase's bound mean anything: the API's number becomes EVENTUALLY
+// consistent with the store's, so a reader that asks immediately after a join
+// sees the old one. docs/vocabulary.md calls that a `pending` on an eventual
+// claim type and not a defect, and the quiesce probes are how a run knows the
+// difference between "not yet" and "never".
+type job struct {
+	EventID string `json:"event_id"`
+	Tries   int    `json:"tries"`
 }
 
 func newState() *state {
@@ -109,7 +134,14 @@ func main() {
 		fmt.Fprintln(os.Stderr, "toy: --state is required: the whole world lives in one file and nothing else holds it")
 		os.Exit(2)
 	}
-	srv, err := newServer(*statePath)
+	// THE STOP IS DISCARDED HERE AND THAT IS NOT A LEAK. This function exits
+	// the process on every error path, so a deferred stop would be STRANDED --
+	// tests/hygiene's TestNoCleanupIsStrandedByOsExit said so in those words,
+	// "defers 1 call and exits the process 4 times", the moment I wrote one.
+	// The worker's lifetime is the process's, and process exit ends it; the
+	// handle exists for callers whose servers come and go inside one process,
+	// which is cmd/toy's own suite.
+	srv, _, err := newServer(*statePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "toy: %v\n", err)
 		os.Exit(1)
@@ -127,18 +159,36 @@ func main() {
 	// adapter reading this from a pipe gets the line as it is written. The
 	// buffering trap this project has been bitten by is Python's.
 	fmt.Printf("toy: listening on %s state=%s\n", ln.Addr().String(), *statePath)
+
 	if err := http.Serve(ln, srv.routes()); err != nil {
 		fmt.Fprintf(os.Stderr, "toy: serving: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func newServer(path string) (*server, error) {
+// newServer loads the world and STARTS THE WORKER, which is the only place it
+// can be started honestly.
+//
+// IT WAS IN main() FIRST AND THE SUITE CAUGHT IT. Every caller that builds a
+// server without going through main() -- cmd/toy's own arms via httptest, and
+// anything else that will ever embed this -- had no worker at all, so the
+// recount queue filled and never drained and `settle` reported the worker
+// stuck. A goroutine started beside the listener is invisible to every
+// constructor, which is the same shape as a guard that lives in one entry
+// point: the behaviour belongs to the SERVER, so it starts where the server is
+// made.
+//
+// THE CALLER OWNS THE STOP. `stop` is returned rather than hidden so a test can
+// end the goroutine with its server; main closes it on exit.
+func newServer(path string) (*server, func(), error) {
 	srv := &server{path: path, st: newState()}
 	if err := srv.load(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return srv, nil
+	stop := make(chan struct{})
+	go srv.worker(stop)
+	var once sync.Once
+	return srv, func() { once.Do(func() { close(stop) }) }, nil
 }
 
 // load reads the world, treating an absent file as an empty one: the first run
@@ -239,6 +289,86 @@ func visibleTo(ev *event, role string) bool {
 	return false
 }
 
+// workerTick is how often the worker looks for a job.
+//
+// SMALL, AND THE SMALLNESS IS NOT A WAY OF HIDING THE LAG. A tick so short that
+// no observation ever sees a stale count would make this phase's bound
+// unreachable and the probes decorative -- the flaky-by-construction shape rook
+// warned about at coop rumor/1034. It is small because the toy is a toy and a
+// run should not wait on it; what makes the lag SAFE is the eventual bound and
+// the probes, not the tick.
+const workerTick = 2 * time.Millisecond
+
+// enqueue adds a recount for an event. The caller holds the lock.
+//
+// ONE JOB PER CHANGE AND NOT ONE PER EVENT, deliberately: collapsing them would
+// make the queue depth stop counting the work outstanding, and the queue depth
+// is what the quiesce probe reads. A depth that under-reports is a probe that
+// reads quiet while work remains, which is the one answer that must never be
+// wrong.
+func (s *server) enqueue(eventID string) {
+	s.st.Jobs = append(s.st.Jobs, &job{EventID: eventID})
+}
+
+// worker drains the recount queue.
+//
+// IT TAKES THE SAME LOCK AS EVERY HANDLER, so the file and the counts move
+// together and a reader never sees half a drain. The sleep is OUTSIDE the lock:
+// holding it across a sleep would serialise the whole toy behind the tick and
+// turn a lag into a hang.
+func (s *server) worker(stop <-chan struct{}) {
+	for {
+		select {
+		case <-stop:
+			return
+		case <-time.After(workerTick):
+		}
+		s.mu.Lock()
+		s.drainOne()
+		s.mu.Unlock()
+	}
+}
+
+// drainOne applies the oldest job, if any. The caller holds the lock.
+//
+// A JOB FOR A VANISHED EVENT IS DONE, NOT FAILED: the event was deleted, so
+// there is no count to maintain and dropping it is correct rather than a
+// silent loss. That distinction is what leaves room for the R6 ledger row to
+// be about a retry that was dropped while its event still existed.
+func (s *server) drainOne() {
+	if len(s.st.Jobs) == 0 {
+		return
+	}
+	j := s.st.Jobs[0]
+	s.st.Jobs = s.st.Jobs[1:]
+	ev, ok := s.st.Events[j.EventID]
+	if !ok {
+		return
+	}
+	ev.Count = len(ev.Attendees)
+	_ = s.save()
+}
+
+// queueDepth is the work outstanding, which is what a `queue_depth` probe asks
+// for. The caller must not hold the lock.
+func (s *server) queueDepth() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.st.Jobs)
+}
+
+// handleQueue is the `direct` source's view of the worker: how much work is
+// outstanding and whether the worker has anything to do.
+//
+// IT TAKES NO SESSION, for handleStore's reason: docs/vocabulary.md makes
+// `direct` the engine's own observation and never an actor's. And it does NOT
+// drain: a probe that advanced the system it measures would make "quiet" a
+// thing the asking caused.
+func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
+	d := s.queueDepth()
+	writeJSON(w, http.StatusOK, map[string]any{"depth": d, "idle": d == 0})
+}
+
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/users", s.handleUsers)
@@ -246,6 +376,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/events", s.handleEvents)
 	mux.HandleFunc("/events/", s.handleEventPath)
 	mux.HandleFunc("/store/events/", s.handleStore)
+	mux.HandleFunc("/store/queue", s.handleQueue)
 	mux.HandleFunc("/ui/events/", s.handleUI)
 	return mux
 }
@@ -551,7 +682,7 @@ func (s *server) joinEvent(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	ev.Attendees = append(ev.Attendees, sess.UserID)
-	ev.Count = len(ev.Attendees)
+	s.enqueue(ev.ID)
 	if err := s.save(); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
@@ -586,7 +717,7 @@ func (s *server) leaveEvent(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	ev.Attendees = kept
-	ev.Count = len(ev.Attendees)
+	s.enqueue(ev.ID)
 	if err := s.save(); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return

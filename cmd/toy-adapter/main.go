@@ -463,6 +463,14 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 		want = wire.SourceAPI
 	case "store_event_count":
 		want = wire.SourceDirect
+	// THE PROBE QUERIES, which R6.2 reserved as the two reported kinds' own
+	// names. internal/quiesce asks for `queue_depth` and `worker_idle` through
+	// source `direct` and nothing else: the wire does not move, because
+	// `direct` is the engine's own observation and its Query is opaque to the
+	// decoder (docs/contract.md). An adapter that serves them answers from
+	// whatever its system exposes; this one asks the toy.
+	case "queue_depth", "worker_idle":
+		want = wire.SourceDirect
 	default:
 		return fault(id, wire.FaultInternal, "query",
 			fmt.Sprintf("%q is not an observation this adapter serves", m.Query))
@@ -486,6 +494,11 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 				"store_event_count names one event: send it as args.event")
 		}
 		path = "/store/events/" + subject + "/count"
+	// NO SUBJECT, AND THAT IS NOT AN OMISSION: the queue is the toy's and not
+	// one event's, so a probe naming an event would be asking a question this
+	// system does not have. A quiesce probe asks whether the SYSTEM settled.
+	case "queue_depth", "worker_idle":
+		path = "/store/queue"
 	}
 
 	// THE VALUE IS THE COUNT, NOT THE BODY THAT CARRIES IT, and this is the
@@ -509,7 +522,9 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 	// would be giving the statute a second, unreviewed source for something it
 	// already decides.
 	var body struct {
-		Count int `json:"count"`
+		Count int  `json:"count"`
+		Depth int  `json:"depth"`
+		Idle  bool `json:"idle"`
 	}
 	code, err := a.call(http.MethodGet, path, m.Token, nil, &body)
 	if err != nil {
@@ -520,6 +535,17 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 			fmt.Sprintf("the toy answered %s with status %d", path, code))
 	}
 	var value any = body.Count
+	// EACH PROBE'S VALUE IS THE ONE FIELD ITS KIND IS ABOUT, and a scalar for
+	// the reason the count above is one: internal/quiesce compares the answer
+	// with the project's declared `quiet`, which is a TOML scalar. Handing back
+	// the whole body would never equal it, and every probe would read busy for
+	// ever -- the silent-and-total failure that package's own arms exist for.
+	switch name {
+	case "queue_depth":
+		value = body.Depth
+	case "worker_idle":
+		value = body.Idle
+	}
 	return wire.ObserveResponse{
 		Envelope: wire.Envelope{Kind: wire.KindObserve, Contract: wire.ContractVersion, ID: id},
 		Value:    value,

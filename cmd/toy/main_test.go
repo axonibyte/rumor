@@ -19,24 +19,33 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type harness struct {
 	t   *testing.T
 	ts  *httptest.Server
 	dir string
+
+	// srv and stopWorker are the handles the lag arm needs. It stops the
+	// worker and drains BY HAND, because asserting a lag against a running
+	// goroutine would be a race: the arm would pass when the tick lost and
+	// fail when it won, which is a flaky arm about a real property.
+	srv        *server
+	stopWorker func()
 }
 
 func start(t *testing.T) *harness {
 	t.Helper()
 	dir := t.TempDir()
-	srv, err := newServer(filepath.Join(dir, "state.json"))
+	srv, stopWorker, err := newServer(filepath.Join(dir, "state.json"))
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
+	t.Cleanup(stopWorker)
 	ts := httptest.NewServer(srv.routes())
 	t.Cleanup(ts.Close)
-	return &harness{t: t, ts: ts, dir: dir}
+	return &harness{t: t, ts: ts, dir: dir, srv: srv, stopWorker: stopWorker}
 }
 
 // do sends a request and returns the status and the decoded body. A body that
@@ -316,12 +325,53 @@ func TestJoiningStopsAtCapacity(t *testing.T) {
 	if code, _ := h.do(http.MethodPost, "/events/"+id+"/join", carol, nil); code != http.StatusConflict {
 		t.Errorf("carol joining a full event: status %d, want %d", code, http.StatusConflict)
 	}
+	h.settle(t)
 	if got, want := h.count(id, alice), 1; got != want {
 		t.Errorf("the API count is %d, want %d", got, want)
 	}
 	if got, want := h.storeCount(id), 1; got != want {
 		t.Errorf("the store's count is %d, want %d", got, want)
 	}
+}
+
+// settle waits for the recount queue to empty, which is what every arm below
+// that reads the API count now has to do.
+//
+// WHY THE ARMS MOVED AT R6.3 AND WHAT THEY ASSERT INSTEAD. The count became
+// EVENTUALLY consistent: a join enqueues a recount and the worker applies it,
+// so an arm reading the API count in the next breath reads the old one. That is
+// the phase's whole point -- a lagging count is a `pending` on an eventual
+// claim type and not a defect -- so the arms wait for the system to settle
+// rather than asserting a weaker thing about it. Every value they required
+// before, they require after.
+//
+// AND THE WAIT IS THE SYSTEM'S OWN SIGNAL, not a sleep: it polls the depth the
+// `direct` source reports, which is the same number the engine's quiesce probe
+// reads. A fixed sleep would be a guess about the worker's tick and would pass
+// for the wrong reason on a loaded box.
+//
+// IT FAILS THE TEST RATHER THAN HANGING. A queue that never empties is this
+// phase's `stale` row, and an arm that waited for ever would report it as a
+// test that hung.
+func (h *harness) settle(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		code, body := h.do(http.MethodGet, "/store/queue", "", nil)
+		if code != http.StatusOK {
+			t.Fatalf("reading the queue depth: status %d (%v)", code, body)
+		}
+		d, ok := body["depth"].(float64)
+		if !ok {
+			t.Fatalf("the queue depth is not a number: %v", body)
+		}
+		if d == 0 {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("the recount queue did not empty in 5s: the worker is stuck, which is a " +
+		"FINDING about the toy and not a slow test")
 }
 
 func (h *harness) count(id, token string) int {
@@ -364,6 +414,7 @@ func TestLeavingGivesTheSeatBack(t *testing.T) {
 	if code, _ := h.do(http.MethodDelete, "/events/"+id+"/join", bob, nil); code != http.StatusConflict {
 		t.Errorf("leaving twice should conflict")
 	}
+	h.settle(t)
 	if got := h.count(id, alice); got != 0 {
 		t.Errorf("the API count after leaving is %d, want 0", got)
 	}
@@ -392,6 +443,7 @@ func TestOnlyTheAdminDeletesAndTheCountIsLeftStale(t *testing.T) {
 	// THE VALUE BEFORE, so "stale" is about a number that STAYED rather than
 	// about a coincidence: an arm that only read the count after the delete
 	// would pass if the count had been 1 for the wrong reason, or 0 all along.
+	h.settle(t)
 	if got := h.count(id, alice); got != 1 {
 		t.Fatalf("the count before the delete is %d, want 1: this arm is about a count the delete "+
 			"LEAVES, which needs a count to leave", got)
@@ -485,6 +537,7 @@ func TestThePageRendersTheEventAndItsJoinFormWorks(t *testing.T) {
 	if code, _ := h.do(http.MethodPost, "/ui/events/"+id+"/join?token="+bob, "", nil); code != http.StatusOK {
 		t.Fatalf("joining through the form: status %d", code)
 	}
+	h.settle(t)
 	if got := h.count(id, alice); got != 1 {
 		t.Errorf("after the form join the count is %d, want 1", got)
 	}
@@ -517,10 +570,11 @@ func TestTheWorldSurvivesAReopenBecauseItIsAllInTheFile(t *testing.T) {
 		t.Errorf("the state file does not carry the event:\n%s", raw)
 	}
 
-	again, err := newServer(path)
+	again, stopAgain, err := newServer(path)
 	if err != nil {
 		t.Fatalf("reopening: %v", err)
 	}
+	defer stopAgain()
 	ts2 := httptest.NewServer(again.routes())
 	defer ts2.Close()
 	h2 := &harness{t: t, ts: ts2, dir: h.dir}
@@ -539,7 +593,7 @@ func TestAnUnreadableWorldIsRefusedRatherThanStartedEmpty(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := newServer(path); err == nil {
+	if _, _, err := newServer(path); err == nil {
 		t.Error("an undecodable state file started empty, which would discard the world silently")
 	}
 	// A FIELD NOBODY WROTE IS REFUSED TOO, for the reason docs/coverage.toml's
@@ -547,17 +601,18 @@ func TestAnUnreadableWorldIsRefusedRatherThanStartedEmpty(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"users":{},"events":{},"sessions":{},"seq":0,"sorce":1}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := newServer(path); err == nil {
+	if _, _, err := newServer(path); err == nil {
 		t.Error("an unknown field in the state file was accepted")
 	}
 }
 
 func TestAnAbsentWorldIsAnEmptyOneAndNotAnError(t *testing.T) {
 	dir := t.TempDir()
-	srv, err := newServer(filepath.Join(dir, "nothing-here.json"))
+	srv, stopWorker, err := newServer(filepath.Join(dir, "nothing-here.json"))
 	if err != nil {
 		t.Fatalf("an absent state file: %v", err)
 	}
+	defer stopWorker()
 	if n := len(srv.st.Users); n != 0 {
 		t.Errorf("a fresh world holds %d user(s)", n)
 	}
@@ -671,6 +726,7 @@ func TestTheCapacityRaceIsPresentWhenDrivenConcurrently(t *testing.T) {
 			"seat count have to overrun it. If this fails, the window in joinEvent was closed and "+
 			"R8 has nothing to catch", landed, len(joiners))
 	}
+	h.settle(t)
 	if got := h.storeCount(id); got != len(joiners) {
 		t.Errorf("the store holds %d attendee(s) on a %d-seat event, want %d: every join landed "+
 			"but the list did not grow by that many", got, int(seats), len(joiners))
@@ -680,5 +736,82 @@ func TestTheCapacityRaceIsPresentWhenDrivenConcurrently(t *testing.T) {
 	}
 	if got := h.count(id, alice); got != len(joiners) {
 		t.Errorf("the API reports %d on a %d-seat event, want %d", got, int(seats), len(joiners))
+	}
+}
+
+// TestTheCountLagsUntilTheWorkerDrainsIt is the arm for R6.3's whole point, and
+// without it every other arm in this file passes against a SYNCHRONOUS worker.
+//
+// WHAT IT PINS: a join makes the store's computed count current immediately and
+// leaves the API's reported count BEHIND, with the work outstanding visible as
+// queue depth; draining makes them agree. That gap is what the eventual claim
+// type and its quiesce bound exist for -- docs/vocabulary.md reads it as
+// `pending` rather than a defect -- and an arm that only checked the settled
+// state could not tell this toy from the one before it.
+//
+// THE WORKER IS STOPPED AND THE DRAIN IS BY HAND, deliberately. Asserting a lag
+// against a running goroutine is a race: the arm would pass when the tick lost
+// and fail when it won. Stopping it makes the lag a fact rather than a timing
+// window, which is the same reason internal/quiesce's arms drive a virtual
+// clock instead of sleeping.
+func TestTheCountLagsUntilTheWorkerDrainsIt(t *testing.T) {
+	h := start(t)
+	h.stopWorker()
+
+	alice := h.actor("alice")
+	// VISIBLE TO EVERY ROLE, because an event with no `visible_to` is admin
+	// and member only and bob would be hidden from it -- a 404 about
+	// visibility would look like a worker fault here.
+	id := h.createEvent(alice, "lag", 4, []string{roleAdmin, roleMember, roleGuest})
+	bob := h.actor("bob")
+	if code, body := h.do(http.MethodPost, "/events/"+id+"/join", bob, nil); code != http.StatusOK {
+		t.Fatalf("bob joining: status %d (%v)", code, body)
+	}
+
+	// THE STORE IS CURRENT AND THE API IS NOT. Both halves are asserted: an arm
+	// checking only the API could pass on a toy that had lost the join
+	// altogether.
+	if got := h.storeCount(id); got != 1 {
+		t.Errorf("the store's computed count is %d, want 1: the join is in the attendee list "+
+			"whatever the worker has done", got)
+	}
+	if got := h.count(id, alice); got != 0 {
+		t.Errorf("the API count is %d, want 0: with the worker stopped the reported count "+
+			"cannot have caught up, and if it has then the write is still synchronous", got)
+	}
+
+	// AND THE WORK IS VISIBLE AS DEPTH, which is what the quiesce probe reads.
+	code, body := h.do(http.MethodGet, "/store/queue", "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("reading the queue: status %d (%v)", code, body)
+	}
+	if d, _ := body["depth"].(float64); d != 1 {
+		t.Errorf("the queue depth is %v, want 1: a depth that under-reports is a probe that "+
+			"reads quiet while work remains", body["depth"])
+	}
+	if idle, _ := body["idle"].(bool); idle {
+		t.Error("the queue reports idle with a job outstanding")
+	}
+
+	// DRAINING CLOSES IT, and the two sources agree afterwards.
+	h.srv.mu.Lock()
+	h.srv.drainOne()
+	h.srv.mu.Unlock()
+
+	if got := h.count(id, alice); got != 1 {
+		t.Errorf("after the drain the API count is %d, want 1", got)
+	}
+	if got := h.storeCount(id); got != 1 {
+		t.Errorf("after the drain the store's count is %d, want 1", got)
+	}
+	code, body = h.do(http.MethodGet, "/store/queue", "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("reading the queue after the drain: status %d (%v)", code, body)
+	}
+	if d, _ := body["depth"].(float64); d != 0 {
+		t.Errorf("the queue depth after the drain is %v, want 0", body["depth"])
+	}
+	if idle, _ := body["idle"].(bool); !idle {
+		t.Error("the queue does not report idle with nothing outstanding")
 	}
 }
