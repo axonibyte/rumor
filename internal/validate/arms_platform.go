@@ -298,16 +298,40 @@ func arm10b(rep *Report, dir string, p platform.Platform) {
 	rep.ran("10b")
 	var bad []string
 	for i, line := range strings.Split(string(raw), "\n") {
-		t := strings.TrimSpace(line)
-		if t == "" || strings.HasPrefix(t, "#") {
+		// THE PARSE IS platform's AND NOT A SECOND COPY. This arm had its own
+		// reading of the grammar, and so did internal/shrink, which is how a
+		// TOKEN on the line could have been read three ways (R6.3).
+		parsed, isSeed, perr := platform.ParseSeedLine(line)
+		if !isSeed {
 			continue
 		}
-		seed := t
-		if h := strings.Index(t, "#"); h >= 0 {
-			seed = strings.TrimSpace(t[:h])
+		if perr != nil {
+			bad = append(bad, fmt.Sprintf("line %d: %q -- %v", i+1, strings.TrimSpace(line), perr))
+			continue
 		}
-		if !isNonNegativeInt(seed) {
-			bad = append(bad, fmt.Sprintf("line %d: %q", i+1, t))
+		if !isNonNegativeInt(parsed.Seed) {
+			bad = append(bad, fmt.Sprintf("line %d: %q", i+1, strings.TrimSpace(line)))
+			continue
+		}
+		// AND A PROFILE A SEED NAMES MUST BE DECLARED. A seed line asking for
+		// weights the platform does not have would REPLAY UNDER THE DEFAULT
+		// MIX while its author believed otherwise -- a promoted seed that
+		// silently stops being about what it caught, which is the same shape
+		// as a seed that cannot be read at all and the reason this arm exists.
+		if parsed.Profile != "" {
+			if _, ok := p.Profiles[parsed.Profile]; !ok {
+				declared := make([]string, 0, len(p.Profiles))
+				for name := range p.Profiles {
+					declared = append(declared, name)
+				}
+				sort.Strings(declared)
+				named := "none"
+				if len(declared) > 0 {
+					named = strings.Join(declared, ", ")
+				}
+				bad = append(bad, fmt.Sprintf("line %d: seed %s names profile %q and the "+
+					"platform declares %s", i+1, parsed.Seed, parsed.Profile, named))
+			}
 		}
 	}
 	if len(bad) > 0 {

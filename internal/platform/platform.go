@@ -23,6 +23,7 @@ package platform
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
@@ -349,4 +350,79 @@ func weightsAgainstDefault(r *decl.Reader, path string, table, def map[string]in
 	for _, kind := range missing {
 		r.Refuse(path, "names action kind "+kind+", which [weights.default] does not: the default table must be complete")
 	}
+}
+
+// SeedLine is one line of a seeds file: the promoted seed, the tokens beside it
+// and the comment after it.
+//
+// THE GRAMMAR IS docs/contract.md's AND THE PARSE IS IN ONE PLACE. Three
+// readers had their own copy of "split on the first #, trim, the rest is the
+// seed" -- validate's arm 10b, internal/shrink's promotion check, and the
+// document -- and a token added to the line would have made two of them
+// disagree in the quiet direction: `shrink` compares the whole non-comment text
+// to the seed's digits, so a line reading `12 profile=settling` would have read
+// as "seed 12 is not here" and promoted it a SECOND time.
+type SeedLine struct {
+	// Seed is the digits as written, unparsed: the grammar is the document's
+	// and a caller that wants a number says so.
+	Seed string
+
+	// Profile is the `profile=NAME` token's value, EMPTY meaning the default
+	// weights -- which is what every line written before this field existed
+	// means, so no committed seed changes meaning by this arriving.
+	Profile string
+
+	// Comment is the text after `#`, trimmed. A promotion carries one naming
+	// the defect it caught, which is what separates a regression suite from a
+	// list of numbers.
+	Comment string
+}
+
+// ParseSeedLine reads one line. The second return is whether the line carries a
+// seed at all -- blank and comment-only lines carry none and are not errors --
+// and the third is why a line that tried to be a seed is not one.
+func ParseSeedLine(line string) (SeedLine, bool, error) {
+	var out SeedLine
+	t := strings.TrimSpace(line)
+	if t == "" || strings.HasPrefix(t, "#") {
+		return out, false, nil
+	}
+	if h := strings.Index(t, "#"); h >= 0 {
+		out.Comment = strings.TrimSpace(t[h+1:])
+		t = strings.TrimSpace(t[:h])
+	}
+	fields := strings.Fields(t)
+	if len(fields) == 0 {
+		// A LINE WHOSE ONLY CONTENT WAS A TRAILING COMMENT MARKER, which is a
+		// comment line written confusingly rather than a broken seed.
+		return out, false, nil
+	}
+	out.Seed = fields[0]
+	for _, tok := range fields[1:] {
+		name, value, ok := strings.Cut(tok, "=")
+		if !ok {
+			return out, true, fmt.Errorf("%q is not a `name=value` token", tok)
+		}
+		switch name {
+		case "profile":
+			if value == "" {
+				// EMPTY IS REFUSED RATHER THAN READ AS THE DEFAULT, because
+				// those are different requests: a line that MEANS the default
+				// omits the token, and one that names nothing is a line whose
+				// author was interrupted.
+				return out, true, fmt.Errorf("`profile=` names no profile; omit the token for the default weights")
+			}
+			if out.Profile != "" {
+				return out, true, fmt.Errorf("two `profile=` tokens (%q and %q): a seed runs under one", out.Profile, value)
+			}
+			out.Profile = value
+		default:
+			// AN UNKNOWN TOKEN IS REFUSED AND NOT IGNORED. A token this build
+			// does not know is a line asking for something it will not get,
+			// and reading past it would run the seed under the default while
+			// its author believed otherwise.
+			return out, true, fmt.Errorf("%q is not a token this build knows; it knows `profile=`", name)
+		}
+	}
+	return out, true, nil
 }

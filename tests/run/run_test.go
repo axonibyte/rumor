@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 )
 
 var rumorBin string
@@ -517,19 +519,33 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading %s: %v", lock, err)
 	}
-	var seeds []string
+	// THE PARSE IS platform's, AND THE PROFILE COMES WITH IT. This arm had its
+	// own reading of the grammar -- the fourth copy in the tree -- and a seed
+	// line carrying a `profile=NAME` token broke it in the loud direction,
+	// which is the lucky one: the quiet direction was internal/shrink reading
+	// the same line as "that seed is not here" (R6.3).
+	//
+	// EACH SEED RUNS UNDER ITS OWN PROFILE, which is what makes a promotion
+	// replayable at all: R6's bug ledger says a row is caught by the feature
+	// listed for it, and seed 12's row is caught under `settling`. Replaying it
+	// under the default mix would walk a different trace entirely and this arm
+	// would report a lost promotion about a seed nobody had asked for.
+	type promoted struct{ seed, profile string }
+	var seeds []promoted
 	for _, line := range strings.Split(string(raw), "\n") {
-		if i := strings.Index(line, "#"); i >= 0 {
-			line = line[:i]
-		}
-		if line = strings.TrimSpace(line); line == "" {
+		parsed, isSeed, perr := platform.ParseSeedLine(line)
+		if !isSeed {
 			continue
 		}
-		if _, perr := strconv.ParseUint(line, 10, 64); perr != nil {
-			t.Fatalf("%s: %q is not one non-negative integer per line, which is the format "+
-				"docs/contract.md declares: %v", lock, line, perr)
+		if perr != nil {
+			t.Fatalf("%s: %q is not a promoted seed in the format docs/contract.md declares: %v",
+				lock, strings.TrimSpace(line), perr)
 		}
-		seeds = append(seeds, line)
+		if _, cerr := strconv.ParseUint(parsed.Seed, 10, 64); cerr != nil {
+			t.Fatalf("%s: %q is not one non-negative integer per line, which is the format "+
+				"docs/contract.md declares: %v", lock, parsed.Seed, cerr)
+		}
+		seeds = append(seeds, promoted{seed: parsed.Seed, profile: parsed.Profile})
 	}
 	if len(seeds) == 0 {
 		// THE MESSAGE NAMES WHAT THE LOCK SHOULD HOLD TODAY, not what it held
@@ -546,14 +562,26 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 			"pass it silently", lock)
 	}
 
-	for _, seed := range seeds {
+	for _, p := range seeds {
+		seed := p.seed
 		t.Run("seed"+seed, func(t *testing.T) {
 			// ONE CONSTANT FOR THE LENGTH, because the exit-0 message below
 			// quotes it: two literals saying 10, one inside a sentence about
 			// the other, is a drift waiting to happen.
-			const steps = 10
-			first, errb, code := run(t, "run", "../../examples/toy", "--seed", seed,
-				"--steps", strconv.Itoa(steps))
+			//
+			// AND A SEED UNDER A PROFILE GETS THE LENGTH ITS ROW NEEDS. R6's
+			// row is a SEQUENCE -- recount, change, recount again -- and it
+			// does not fit in ten steps; the default-profile rows are reached
+			// in three and four. So the length is per-seed rather than one
+			// number pretending to suit both, and the arm says which it used.
+			steps := 10
+			args := []string{"run", "../../examples/toy", "--seed", seed}
+			if p.profile != "" {
+				steps = 24
+				args = append(args, "--profile", p.profile)
+			}
+			args = append(args, "--steps", strconv.Itoa(steps))
+			first, errb, code := run(t, args...)
 			// THE STATUS IS READ AS THE FOUR THINGS IT MEANS, not as "3 or not
 			// 3". ratchet found this message asserting the wrong one of them
 			// (coop r5/198): the adapter's own request budget expired, the run
@@ -626,7 +654,7 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 				t.Errorf("the promoted seed's finding is not attributed to honest claims, so it "+
 					"is not the finding seeds.lock names:\n%s", first)
 			}
-			second, _, again := run(t, "run", "../../examples/toy", "--seed", seed, "--steps", "10")
+			second, _, again := run(t, args...)
 			if again != code {
 				t.Errorf("the same seed exited %d and then %d", code, again)
 			}

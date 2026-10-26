@@ -40,3 +40,29 @@
 # witness to one defect.
 2
 40
+
+# 12 -- R6'S ROW, AND THE FIRST LINE HERE TO NAME A PROFILE. `profile=settling`
+# says which weights a replay must use; a line without the token means the
+# default mix, which is what 2 and 40 above mean and have always meant. The
+# token's grammar is docs/contract.md's, validate's arm 10b refuses one naming
+# a profile the platform does not declare, and the profile is what the bug
+# ledger's "caught by" column says for this row.
+#
+# A RETRY DROPPED, A COUNT THAT NEVER SETTLES, in twenty-four steps:
+# member_2 recounts its event at step 10 and the worker applies it, asks again
+# at 15 and the worker DROPS it as redundant, JOINS at 17 so the attendance
+# moves, and asks at 19 and 24 -- each dropped. So the worker's tally still
+# reports the number it computed at step 10, for a world that has changed, and
+# no later ask repairs it.
+#
+# IT IS FOUND AS `stale` AND BY THE RECONCILIATION, which is the part the row is
+# about: the disagreement is held as `pending` while the probes read busy, and
+# the end-of-run reconciliation re-asks it after they read quiet and it still
+# disagrees -- docs/vocabulary.md's "a `pending` past its bound". The run ends
+# with nothing held open.
+#
+# `FOUND bug of kind stale after step 24 -- engine.stale, rests_on_planted
+# false`, byte-identical across two attempts. The HONEST finding: it rests on no
+# planted claim, so it is the toy's own defect and not a lie the run told.
+# Measured 2026-10-26 at 2746f81.
+12 profile=settling

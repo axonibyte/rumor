@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 )
 
 // Promote appends a seed to the project's seeds file, in the format
@@ -114,17 +116,18 @@ func Promote(path string, seed uint64, why string) (bool, error) {
 func seedComment(content string, seed uint64) (string, bool) {
 	want := strconv.FormatUint(seed, 10)
 	for _, line := range strings.Split(content, "\n") {
-		t := strings.TrimSpace(line)
-		if t == "" || strings.HasPrefix(t, "#") {
+		// THE PARSE IS platform's, which is what makes this correct for a line
+		// carrying a TOKEN. It compared the whole non-comment text to the
+		// digits, so `12 profile=settling` read as "seed 12 is not here" and
+		// this function's caller would have promoted it a second time -- a
+		// duplicate line in the one artifact that says what a regression suite
+		// covers (R6.3).
+		parsed, isSeed, err := platform.ParseSeedLine(line)
+		if !isSeed || err != nil {
 			continue
 		}
-		comment := ""
-		if h := strings.Index(t, "#"); h >= 0 {
-			comment = strings.TrimSpace(t[h+1:])
-			t = strings.TrimSpace(t[:h])
-		}
-		if t == want {
-			return comment, true
+		if parsed.Seed == want {
+			return parsed.Comment, true
 		}
 	}
 	return "", false
