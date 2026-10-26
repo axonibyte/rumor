@@ -3,6 +3,58 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.34 — 2026-10-26
+
+**The quiesce probes are declared, asked, and a system that will not settle is
+a finding** — issue 90, the second of R6's four children. An eventual claim
+bounded `quiesce` is judged against probes the project declares, and a probe
+that gives up is reported rather than waited out.
+
+- **`[quiesce]`'s probes are TYPED and the wire does not move.** The table was
+  one of four reserved maps read whole, so every key passed and nothing was
+  required: `quiesce = {probe = "/test/quiet"}` was a valid declaration no code
+  read. It now carries `[[quiesce.probe]]` entries of `kind` (queue_depth,
+  worker_idle or direct), `timeout`, optional `every`, `query` for the `direct`
+  kind, and `quiet`; sibling keys stay carried, so a key a later phase reserves
+  there is not refused by this one. `ContractVersion` is the wire's and R6.2
+  changes no message, which is why it stands still.
+- **Three arms on a probe's integrity, each with its own id and its own
+  fixture**: no `timeout` (7c), a kind no adapter reports (7d), and `query`
+  declared on a kind that does not read an observation (7e) — a refusal
+  `bindings.go` had described in prose for a phase while nothing performed it.
+  `TotalArms` 19 → 22, and arm 19's ninth cell gained the fixture it never had.
+- **`quiesce_timeout` is the fifth finding** (vocabulary v3), beside
+  `consistent`, `explained`, `pending` and `bug`. It is the word v1 reserved and
+  not an invented one, and it is a FINDING rather than a kind under `bug`: the
+  project's declarations are right and its adapter answered, so there is nothing
+  for either reader to fix but the system under test. Exit 3. The finding is the
+  TIMEOUT and not a verdict on any claim — a system that would not settle is a
+  thing the run found whether or not a disagreement was open.
+- **The probes are asked over the protocol that exists.** A probe is an
+  `observe` with source `direct`, so `queue_depth` and `worker_idle` ask for
+  their own kind by name and `direct` asks the observation the project named.
+  Quiet is the conjunction of every declared probe, each with its own timeout,
+  and the first to pass its own ends the wait.
+- **A never-quiet probe ends the run with a hang report.** The walk asks after
+  its last step whatever it found, so the finding is produced with NO pending
+  open — the case an overlay cannot reach, since it returns before it looks when
+  the statute found agreement. The report names the probe, its declared timeout,
+  how many times it was asked and over what span. Measured: 108ms against a
+  declared 100ms, one cadence of grace.
+- **Two things the run was swallowing**, found by driving it: a finding that
+  named no rule, and the overlay's `Reason` written and never printed — true of
+  `stale` since R6.1 as well. The reason is on its own line now and is not
+  special-cased to one finding.
+- **The arm count's fifth copy had no oracle and it reddened CI twice.**
+  `ci.yml` greps the twin's and the toy's output for the literal, in YAML where
+  no Go test could see it, so a local green covered a commit that failed at the
+  last step of the run. `tests/validate` reads that file now, holds both
+  literals to the constant, and declares that there are two of them.
+- **R6's control for every child carries its invocation.** Its three toy
+  digests reproduce only under `--steps 10`, which was recorded nowhere: without
+  the flag two of the three match and the third does not, so a reader
+  re-running it matches two and reads the third as a regression of their own.
+
 ## 0.1.33 — 2026-10-25
 
 **`stale` is a kind under `bug`, and a bound nothing can judge refuses** — issue
