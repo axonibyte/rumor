@@ -337,3 +337,52 @@ func TestAQuiescePendingReCheckedAndStillOpenIsReported(t *testing.T) {
 	t.Logf("PROOF busy left 1 open and was refused by the STILL OPEN clause; quiet re-checked %d and left 0",
 		len(quiet.ReChecked))
 }
+
+// BOTH CAUSES AT ONCE, EACH MESSAGE TRUE OF WHAT IT LISTS. ratchet drove this
+// at 53818e3 (coop r6/22) and the unasked clause named BOTH pendings as "did
+// not re-check" -- it interpolated StillOpen, the union -- so item.count,
+// which had been re-checked and survived, was reported as unexamined and the
+// words STILL OPEN never appeared. A reader would fix the pass set, re-run,
+// and only then learn the system had not settled.
+func TestTheUnaskedClauseNamesOnlyTheUnasked(t *testing.T) {
+	ctx := context.Background()
+	b := Bindings{Eventual: []Eventual{{Of: "item.created", Quiesce: true}}}
+	l := ledger.New(false)
+	if _, err := l.Append(ledger.Fact{Kind: ledger.KindClaim, Actor: "alice",
+		Type: "item.created", Ref: "alice.item#1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.SealAt(1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Two pendings. The pass covers item.count only, and it comes back BUSY --
+	// so item.count is re-checked and survives, item.total is never asked.
+	reg := NewRegister()
+	for _, q := range []string{"item.count", "item.total"} {
+		if _, err := Judge(ctx, countStatute, countRules, l,
+			Check{Actor: "alice", Query: q, Of: "item.created", Source: ledger.SourceAPI,
+				Value: 0, Quiesce: QuiesceBusy}, b, reg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rep, err := Reconcile(ctx, countStatute, countRules, l,
+		[]Pass{{Query: "item.count", Of: "item.created", Source: ledger.SourceAPI,
+			Values: map[string]any{"alice": 0}, Quiesce: QuiesceBusy}}, b, reg)
+	if err == nil {
+		t.Fatal("a reconciliation leaving two pendings open was reported as clean")
+	}
+	// The unasked clause fires first and must name item.total ALONE.
+	if !strings.Contains(err.Error(), "item.total") {
+		t.Fatalf("the refusal does not name the unasked pending: %v", err)
+	}
+	if strings.Contains(err.Error(), "item.count") {
+		t.Fatalf("the unasked clause names a pending that WAS re-checked: %v", err)
+	}
+	// StillOpen is the union on purpose: it is the register's contents, and a
+	// reader needs both. The MESSAGE is what had to stop conflating them.
+	if got := rep.StillOpen["alice"]; len(got) != 2 {
+		t.Fatalf("the report names %v, wanted both pendings", got)
+	}
+	t.Logf("PROOF the unasked clause named item.total alone while StillOpen carried both")
+}

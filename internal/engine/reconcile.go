@@ -228,10 +228,17 @@ func Reconcile(ctx context.Context, statute string, rules []string, l *ledger.Le
 		}
 		sort.Strings(unasked)
 		sort.Strings(survived)
+		// EACH MESSAGE LISTS WHAT IT IS ABOUT, which it did not at 53818e3:
+		// this clause interpolated rep.StillOpen, the UNION, so with one
+		// unasked and one survived pending it named both as "did not
+		// re-check" and the words STILL OPEN never appeared. A reader fixed
+		// the pass set, re-ran, and only then learned the system had not
+		// settled (ratchet, coop r6/22). The split already computed both
+		// causes; only the message spent them together.
 		if len(unasked) > 0 {
-			return rep, fmt.Errorf("engine: %d actor(s) still hold a pending this reconciliation did "+
-				"not re-check (%v): v1 re-checks every pending at every full reconciliation, so this "+
-				"pass set was not full", len(rep.StillOpen), rep.StillOpen)
+			return rep, fmt.Errorf("engine: %d pending(s) this reconciliation did not re-check "+
+				"(%v): v1 re-checks every pending at every full reconciliation, so this "+
+				"pass set was not full", len(unasked), unasked)
 		}
 		if len(survived) > 0 {
 			return rep, fmt.Errorf("engine: %d pending(s) were re-checked by this reconciliation and "+
