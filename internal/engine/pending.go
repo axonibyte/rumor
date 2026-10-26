@@ -183,6 +183,26 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 					c.Of, "quiesce", claimPos),
 			}, nil
 		case QuiesceTimedOut:
+			// AND IT IS REACHED HERE ONLY WITH A DISAGREEMENT OPEN, WHICH IS
+			// NARROWER THAN THE WORD. fable amended the definition at coop
+			// r6/42: the finding IS the timeout -- the declared probes did not
+			// read quiet within their timeouts -- and a system that would not
+			// settle is a thing the run found "whether or not a disagreement
+			// was open at the moment it gave up". A pending is what it usually
+			// CARRIES, not what it requires.
+			//
+			// pendingOverlay CANNOT SAY THAT. It returns at the top when the
+			// statute found agreement, so with every observation consistent a
+			// probe that gave up is reported by nothing. That is not a defect
+			// of this function -- an overlay is by construction a verdict ON a
+			// finding -- it is the half of the word that belongs to whatever
+			// POLLS the probes, which is R6.2's remaining piece: the prober
+			// reports the timeout as a finding of the RUN, and this arm stays
+			// the path for the case where a pending was open too. Named here
+			// rather than left implicit, because docs/vocabulary.md's v3 row
+			// now defines the wider word and this is the only site that
+			// produces it.
+			//
 			// THE FIFTH FINDING, AND NOT A KIND UNDER `bug`. fable's D7 (coop
 			// breakout-r6/0) rules it "neither `bug` nor a refusal, and the
 			// exit is 3", and the reason is whose fault it is: the project is
