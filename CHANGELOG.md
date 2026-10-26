@@ -3,6 +3,65 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.35 — 2026-10-26
+
+**R5's carried gate bundle: a cached pass is no longer a run, arm 19's ninth
+cell is tripped, nine toy mutants were not one change, a budget is measured
+rather than guessed, and one killer per rule hid every other one.** Four items
+fable placed with me across R5 and held over, cut onto v0.1.34 as their own
+release, with a fifth that the fourth's own review found.
+
+- **`-count=1` on the test gate, and a cached verdict REFUSES.** Without the
+  flag the build cache serves a pass for any package whose inputs have not
+  moved, and the harness prints `ok <pkg> (cached)` — which the step's PROOF
+  line counted as a package that ran, while its own comment claimed an absent
+  ok-line means none ran. What the cache keys on is the files the TEST PROCESS
+  opens, so whether a mutation is seen depends on how a suite reads its subject;
+  a gate must not rest on that. The `(cached)` check is a refusal and not a
+  filter, because with the flag set a cached verdict means the flag did not take.
+- **Arm 19's ninth cell had no fixture.** Cell 2's reverse refuses on TWO loops
+  — a declared action with no weight, and an engine pool kind with no weight —
+  and only the first was ever tripped, so the second was a refusal nothing
+  reached and deletable in silence. `19/kind-without-a-weight` trips it; the ARM
+  count does not move, because a cell is not an arm.
+- **Nine of the toy's ten mutants were not one change.** Each carried the
+  sentence "One change against the statute and nothing else, which is what makes
+  `rumor attaint`'s kill attributable to the rule it names", and each had been
+  cut from the statute as it stood and never re-cut — so all nine lacked a rule
+  it had since gained. `attaint` credited ONE mutant with eight kills, seven of
+  them for rules that have mutants of their own, while the tally read "10 rule(s)
+  killed, 0 unmutated" throughout. After the re-cut every rule is killed by its
+  own mutant and **the tally is unchanged**: the number was never going to move,
+  only its meaning. The mutants are generated now, and the one-change claim has
+  an oracle that counts the contiguous regions in which a mutant differs from its
+  statute.
+- **The toy adapter's request budget is measured, and the margin was never the
+  problem.** One request to the toy is 2.0ms median and 24.2ms worst; a process
+  start to its first answered request is 10.4ms median and 27.2ms worst. So the
+  old 10s stood at ~370x the worst work observed and the test client's 5s at
+  ~185x: the budget was never below the work it measures, which was the premise
+  the placement rested on. An expiry is therefore a STALL of ten seconds or
+  more, and 60s is stall TOLERANCE rather than headroom — said in both constants,
+  so the next reader cannot raise it on the premise this release withdraws. The
+  adapter times every request and publishes count, slowest, budget and headroom
+  once at close; an expiry names the budget and the elapsed and says the
+  instrument gave up.
+- **`rumor attaint` reported ONE killer per rule, so a shadowed mutant printed
+  what a no-op prints.** The relation is many-to-many: a mutant that moves two
+  rules took both columns, and every other killer of either was absent from the
+  output — not as a kill, not as alive. So editing a shadowed mutant to do
+  nothing would have left the report byte-identical, and nothing in the suite
+  could have seen it regress. Every rule now names every killer with the path
+  each moved it on, and every mutant names every rule it moves. The
+  sole-killer count is printed per mutant and gates NOTHING: it is a coverage
+  shape of the corpus rather than a fault in one mutant, and of the toy's ten
+  rules eight have a sole killer — `has_user` by m10 alone — the two that do not
+  being `believed` and `finding`. What stays enforced is unchanged —
+  every rule killed by at least one mutant, and a mutant moving no rule refused
+  by name. The previous entry's "each rule is killed by its own mutant" was true
+  as membership and read as exclusive; this is the report that tells those
+  apart.
+
 ## 0.1.34 — 2026-10-26
 
 **The quiesce probes are declared, asked, and a system that will not settle is
