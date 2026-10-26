@@ -355,13 +355,29 @@ func weightsAgainstDefault(r *decl.Reader, path string, table, def map[string]in
 // SeedLine is one line of a seeds file: the promoted seed, the tokens beside it
 // and the comment after it.
 //
-// THE GRAMMAR IS docs/contract.md's AND THE PARSE IS IN ONE PLACE. Three
-// readers had their own copy of "split on the first #, trim, the rest is the
-// seed" -- validate's arm 10b, internal/shrink's promotion check, and the
-// document -- and a token added to the line would have made two of them
-// disagree in the quiet direction: `shrink` compares the whole non-comment text
-// to the seed's digits, so a line reading `12 profile=settling` would have read
-// as "seed 12 is not here" and promoted it a SECOND time.
+// THE GRAMMAR IS docs/contract.md's AND THE PARSE IS IN ONE PLACE. FOUR readers
+// had their own copy of "split on the first #, trim, the rest is the seed" --
+// validate's arm 10b, internal/shrink's promotion check, tests/run's
+// promoted-seed arm, and the document -- and they failed in two directions:
+//
+//	tests/run's arm   LOUD:  ParseUint on the whole remaining text, so
+//	                         `12 profile=settling` fails "is not one
+//	                         non-negative integer per line"
+//	validate's 10b    LOUD:  the same, as a refusal
+//	internal/shrink   QUIET: it compares the whole non-comment text to the
+//	                         seed's digits, so that line reads as "seed 12 is
+//	                         not here" and a re-promotion appends a SECOND
+//	                         line for it
+//	the document      neither: prose cannot fail, which is why it is the one
+//	                         reader allowed its own copy
+//
+// THIS CENSUS SAID THREE AND OMITTED tests/run's, which rook caught at coop
+// rumor/1103 by appending the token and watching that arm fail. The omission
+// inverted the interesting part: it counted the reader that cannot fail and
+// left out the one that fails loudest. The FIX was complete either way -- rook
+// drove it at /1102 by breaking this function and requiring every dependent to
+// die, four packages and four deaths with no survivor -- so what was one short
+// was the record of what it fixed, which is the half a reader acts on.
 type SeedLine struct {
 	// Seed is the digits as written, unparsed: the grammar is the document's
 	// and a caller that wants a number says so.
