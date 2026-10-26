@@ -636,6 +636,23 @@ func TestTheQuoteCountsWarrantsReachTheCountTheyDeclare(t *testing.T) {
 			skipped = append(skipped, strings.TrimSpace(line))
 		}
 	}
+	// AND THE TWO HALVES MUST PARTITION THE WHOLE, which is an invariant and not
+	// a taxonomy: every loose line is either a warrant or excluded, so the two
+	// counts sum to the total or one of the patterns is not reading what the
+	// other reads.
+	//
+	// IT ASSERTS THE STATE ROOK DROVE AT coop rumor/1153. They cut the loose
+	// pattern back to a prefix and the line printed "11 of 12 ... excluded: ALL
+	// TWELVE" -- eleven matched beside twelve excluded, which cannot both be
+	// true -- and the arm PASSED, because the coverage was a t.Logf and the
+	// only assertion was the constant. Printing both numbers catches that when
+	// somebody reads the line; this catches it when nobody does, which is the
+	// difference between a diagnostic and a check.
+	if len(found)+len(skipped) != len(all) {
+		t.Errorf("%d warrant(s) and %d excluded do not sum to the %d `N -> M` line(s) in the "+
+			"file: the two patterns are not reading the same text, so neither count is "+
+			"evidence about the other", len(found), len(skipped), len(all))
+	}
 	t.Logf("PROOF %d of %d `N -> M` line(s) are warrant headers, the chain ending at %d, "+
 		"declaredQuotes %d; excluded as prose: %v", len(found), len(all), highest,
 		declaredQuotes, skipped)
