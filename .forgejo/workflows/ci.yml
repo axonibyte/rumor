@@ -203,7 +203,22 @@ jobs:
           # by an env var moves nothing at all. So whether a mutation is seen is
           # a property of how the suite reads its subject -- which is exactly the
           # thing a gate must not depend on.
-          timeout 900 "$GO" test -count=1 ./... > ../test.log 2>&1 || rc=$?
+          # -v IS A GATE TOO, AND IT IS WHAT PUTS THE SUITE'S OWN EVIDENCE IN
+          # THE FILE. Without it `go test` discards every `t.Logf` of a PASSING
+          # test, so the project's 111 `Logf("PROOF ...` sites -- each one a
+          # suite saying what it actually drove -- were in no log this job
+          # produced: measured at dd614ba, 0 PROOF lines of 37 plain and 344 of
+          # 2275 with -v (rook, coop rumor/1119). The mining step below is what
+          # reads them; this flag is what makes them exist to read.
+          timeout 900 "$GO" test -count=1 -v ./... > ../test.log 2>&1 || rc=$?
+          # THE FAILURE VIEW IS MINED AND NOT ONLY TAILED, because -v moved what
+          # the last 20 lines contain: under -v a tail is the verbose output of
+          # whichever package finished last, so a FAIL twenty packages earlier
+          # scrolls off. The mined lines come first for the same reason the
+          # licences step mines its log -- a verdict a reader has to scroll for
+          # is a verdict that gets missed.
+          grep -nE '^(--- )?FAIL|^panic:|^\t+--- FAIL' ../test.log | head -40 \
+            || echo "(no FAIL or panic line in test.log)"
           tail -20 ../test.log
           test "$rc" -eq 124 && { echo "HANG: go test exceeded 900s. The CONSEQUENCE holds either way -- this is a finding against the test, not a red build -- but the premise does not: rc 124 proves only that 900s elapsed, and a test taking 901s terminates. Read test.log for which package started last."; exit 124; }
           test "$rc" -eq 0 || { echo "go test exited $rc"; exit "$rc"; }
@@ -228,6 +243,37 @@ jobs:
             exit 1
           fi
           echo "PROOF $(grep -cE '^ok[[:space:]]+forge\.axonibyte\.com/' ../test.log) package(s) reported ok, 0 cached"
+
+      - name: the suite's own PROOF lines (mined, not tailed)
+        run: |
+          set -o pipefail
+          # WHAT THIS EXISTS FOR. 111 sites in this tree call `t.Logf("PROOF ...`
+          # to say what an arm actually drove -- which seed, which profile, how
+          # many steps, which finding. Every one of them was invisible to this
+          # job: `go test` drops a passing test's log output without -v, and the
+          # test step echoed `tail -20`, which under -v is the last package's
+          # verbose spam rather than anybody's evidence. So the suite's own
+          # statements of what it proved reached no reader, while this file's
+          # SHELL echoes of the word PROOF always did -- two producers of one
+          # looking line, and the loud one masking the silent one (rook, coop
+          # rumor/1117; ratchet, rumor/1123).
+          #
+          # THREE CONDITIONS AND THEY ARE AND, not or (fable, coop rumor/1124):
+          # -v puts the lines in the file, this step mines them out of it, and a
+          # count of ZERO REFUSES. Without the third, a step that finds nothing
+          # prints nothing and reads exactly like a step that found everything,
+          # which is the tail -20 one layer out.
+          test -f test.log || { echo "no test.log: the test step did not run, so there is nothing to mine"; exit 1; }
+          n=$(grep -c 'PROOF ' test.log) || n=0
+          if test "$n" -eq 0; then
+            echo "NO PROOF LINE IN test.log, and this step refuses rather than passing quietly."
+            echo "The suite has 111 Logf(\"PROOF sites; zero reaching the log means either -v"
+            echo "was dropped from the test step above, or the lines were renamed. Either way"
+            echo "the evidence a reader would act on is not in this job's output."
+            exit 1
+          fi
+          echo "PROOF $n test-side PROOF line(s) mined from test.log:"
+          grep -n 'PROOF ' test.log
 
       - name: fmt
         run: |
