@@ -347,6 +347,51 @@ var spelled = map[int]string{
 	21: "twenty-one", 22: "twenty-two",
 }
 
+// TestTheArmCountOracleReadsAHyphenatedNumberWhole is the control over the
+// alternation's ORDER, which is load-bearing and was not asserted by anything.
+//
+// WHAT IT CATCHES: `twenty\b` matches inside "twenty-one" -- the hyphen is a
+// word boundary -- so an alternation listing "twenty" before "twenty-one" reads
+// a CORRECT document as claiming twenty and errors against it. Nothing about
+// that is visible in the regexp's source; it reads as a list of words.
+//
+// AND IT IS SPECIFICALLY GO'S SEMANTICS, verified by ratchet at coop r6/29
+// under go126: `(twenty|twenty-one)\b` yields "twenty" and this package's order
+// yields "twenty-one", while the SAME wrong order under MustCompilePOSIX yields
+// "twenty-one" because POSIX mode is leftmost-LONGEST and order-independent. So
+// leftmost-first is what makes the order matter, not the alternation itself.
+// Their caveat, recorded because it costs the next reader an afternoon: `\b` is
+// not a valid escape in POSIX mode and panics, so a POSIX control cannot simply
+// reuse this pattern.
+func TestTheArmCountOracleReadsAHyphenatedNumberWhole(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"one of validate's twenty-one", "twenty-one"},
+		{"one of validate's twenty-two", "twenty-two"},
+		{"one of validate's twenty", "twenty"},
+		{"one of validate's nineteen", "nineteen"},
+	} {
+		m := armCountClaim.FindStringSubmatch(c.in)
+		if m == nil {
+			t.Errorf("%q matched nothing: the oracle cannot check a claim it does not see", c.in)
+			continue
+		}
+		if m[2] != c.want {
+			t.Errorf("%q read as %q, want %q: a hyphenated number read as its first word "+
+				"makes this oracle error against a correct document", c.in, m[2], c.want)
+		}
+	}
+	// EVERY COUNT `spelled` KNOWS MUST BE READABLE, so adding a word to one and
+	// not the other cannot pass. This is the drift the pair invites.
+	for n, word := range spelled {
+		in := "validate has " + word
+		m := armCountClaim.FindStringSubmatch(in)
+		if m == nil || m[2] != word {
+			t.Errorf("spelled[%d] is %q and the claim pattern reads %v: a count this project "+
+				"can write is a count it must be able to check", n, word, m)
+		}
+	}
+}
+
 func TestTheDocumentedArmCountIsTotalArms(t *testing.T) {
 	want, ok := spelled[validate.TotalArms]
 	if !ok {
