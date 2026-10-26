@@ -193,7 +193,17 @@ jobs:
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
           rc=0
-          timeout 900 "$GO" test ./... > ../test.log 2>&1 || rc=$?
+          # -count=1 IS A GATE AND NOT A PREFERENCE. Without it the build cache
+          # serves a PASS for any package whose inputs have not moved, and the
+          # harness prints `ok <pkg> (cached)` -- which this step's own PROOF
+          # line counted as a package that ran. rook r5/231 and ratchet r5/232
+          # and /233 settled what the cache actually keys on: the files the TEST
+          # PROCESS ITSELF opens, so a suite reading .go files with WalkDir moves
+          # the key while one spawning `go build` does not, and a mutant selected
+          # by an env var moves nothing at all. So whether a mutation is seen is
+          # a property of how the suite reads its subject -- which is exactly the
+          # thing a gate must not depend on.
+          timeout 900 "$GO" test -count=1 ./... > ../test.log 2>&1 || rc=$?
           tail -20 ../test.log
           test "$rc" -eq 124 && { echo "HANG: go test exceeded 900s. The CONSEQUENCE holds either way -- this is a finding against the test, not a red build -- but the premise does not: rc 124 proves only that 900s elapsed, and a test taking 901s terminates. Read test.log for which package started last."; exit 124; }
           test "$rc" -eq 0 || { echo "go test exited $rc"; exit "$rc"; }
@@ -203,7 +213,21 @@ jobs:
           # build-only success looks like.
           grep -E '^ok[[:space:]]+forge\.axonibyte\.com/' ../test.log \
             || { echo "no ok-package line: the harness did not run any package"; exit 1; }
-          echo "PROOF $(grep -cE '^ok[[:space:]]+forge\.axonibyte\.com/' ../test.log) package(s) reported ok"
+          # A `(cached)` LINE IS THE ORACLE FOR THE FLAG ABOVE, and the reason
+          # this is a refusal rather than a filter: with -count=1 the cache is
+          # bypassed, so a cached verdict means the flag did not take -- a
+          # future edit dropping it, a wrapper re-adding GOFLAGS, a toolchain
+          # that ignores it. Merely subtracting them from the count would hide
+          # exactly that. The comment above claims an absent ok-line means no
+          # package ran; `ok <pkg> (cached)` is a present ok-line for a package
+          # that did not run, which is the claim it falsifies.
+          if grep -qE '^ok[[:space:]]+forge\.axonibyte\.com/.*\(cached\)' ../test.log; then
+            echo "CACHED VERDICT with -count=1 set, so the flag did not take:"
+            grep -nE '^ok[[:space:]]+forge\.axonibyte\.com/.*\(cached\)' ../test.log
+            echo "a cached pass is not a run, and this step's PROOF counts runs"
+            exit 1
+          fi
+          echo "PROOF $(grep -cE '^ok[[:space:]]+forge\.axonibyte\.com/' ../test.log) package(s) reported ok, 0 cached"
 
       - name: fmt
         run: |
