@@ -177,7 +177,7 @@ demonstrated what it was cut to demonstrate.
 Plus four counting guards — no package, no case, no rule, no mutant — because
 every arm above is satisfied for free by an empty walk.
 
-**Six kinds of line**, then a tally. Over `examples/` the run prints 51 of them;
+**Seven kinds of line**, then a tally. Over `examples/` the run prints 84 of them;
 one of each kind is shown here, and the counts in the tally are the whole run's:
 
 ```sh run
@@ -237,6 +237,7 @@ while IFS= read -r line; do
 done <<'LINES'
 planted-lie      with-planted               planted lie corroborated   bug rests on the lie
 planted-lie      believed                   killed by m1-ignores-position (from the cases)
+planted-lie      m1-ignores-position        moves believed, finding, honest_total; sole killer of 1 rule(s)
 planted-lie      m1-ignores-position        alive from the cases only (the seal reaches its clause)
 planted-lie      bug                        reached by stripped-tag
 planted-lie      with-planted               cleared by removing 1 planted claim(s)
@@ -277,7 +278,8 @@ got=$(printf '%s\n' "$out" | grep -vc '^attaint:')
 | line | what it records |
 |---|---|
 | `planted lie corroborated` | a control fired and the bug rests on the lie |
-| `killed by <mutant> (from the <path>)` | a rule some mutant moves, naming which and on which path |
+| `killed by <mutant> (from the <path>)` | a rule some mutant moves, naming EVERY one and the path each moved it on |
+| `moves <rule>, ...; sole killer of N rule(s)` | a mutant that attacks something, naming every rule it moves — so a mutant shadowed behind another is named rather than silent, and one that stops attacking loses a rule here. The sole-killer count is a FIGURE and gates nothing: it is a coverage shape of the corpus, not a fault in one mutant (fable, coop rumor/1064) |
 | `alive from the cases only` | a mutant inert on the ledger because the seal reaches its clause — R2.3's equivalence set, measured |
 | `reached by <case>` | a finding the package can still produce |
 | `cleared by removing N planted claim(s)` | the strip's second direction: the bug went when the lie did |

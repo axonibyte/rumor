@@ -402,8 +402,19 @@ func mutate(ctx context.Context, p pkg, rep *Report, out io.Writer) error {
 		cleanCase[i] = g
 	}
 
-	type kill struct{ mutant, path string }
-	killed := map[string]kill{}
+	// EVERY KILLER PER RULE AND EVERY RULE PER MUTANT, which is fable's ruling
+	// at coop rumor/1057 on rook's /1055. This pass used to keep the FIRST
+	// killer of each rule and nothing else, over a relation that is
+	// many-to-many: m1-ignores-position moves both `believed` and `finding`, so
+	// m2-finding-ignores-delete -- which moves `finding` too -- appeared
+	// NOWHERE in the output, not as a kill and not as alive. rook drove it:
+	// hold m1 aside and `finding` goes to m2, `believed` to m5. A mutant
+	// shadowed that way prints exactly what a no-op prints, so editing m2 to do
+	// nothing would leave the output identical and nothing in the suite could
+	// see it regress. Both directions are recorded now, so a mutant that stops
+	// attacking loses a line.
+	killers := map[string]map[string]string{}  // rule -> mutant -> path
+	movesRules := map[string]map[string]bool{} // mutant -> rules it moves
 	movedBy := map[string]bool{}
 	movedLedger := map[string]bool{}
 	movedCases := map[string]bool{}
@@ -443,23 +454,50 @@ func mutate(ctx context.Context, p pkg, rep *Report, out io.Writer) error {
 				if onLedger || onCases {
 					movedBy[mid] = true
 				}
-				if _, already := killed[rule]; already {
+				if !onLedger && !onCases {
 					continue
 				}
-				if onLedger {
-					killed[rule] = kill{mid, "ledger"}
-				} else if onCases {
-					killed[rule] = kill{mid, "cases"}
+				if movesRules[mid] == nil {
+					movesRules[mid] = map[string]bool{}
+				}
+				movesRules[mid][rule] = true
+				if killers[rule] == nil {
+					killers[rule] = map[string]string{}
+				}
+				// THE LEDGER PATH WINS THE LABEL where a mutant moves the rule
+				// on both, because the ledger is the path the product takes: a
+				// killer reported "from the cases" when it also moves the rule
+				// from a sealed prefix would send a reader to the weaker
+				// evidence. The pair is recorded once per (rule, mutant)
+				// however many cases move it, the question being whether this
+				// mutant attacks this rule at all.
+				if killers[rule][mid] != "ledger" {
+					if onLedger {
+						killers[rule][mid] = "ledger"
+					} else {
+						killers[rule][mid] = "cases"
+					}
 				}
 			}
 		}
 	}
 
 	for _, rule := range p.rules {
-		if k, ok := killed[rule]; ok {
+		if ks, ok := killers[rule]; ok && len(ks) > 0 {
 			rep.KilledRules++
-			if _, werr := fmt.Fprintf(out, "%-16s %-26s killed by %s (from the %s)\n",
-				p.name, rule, k.mutant, k.path); werr != nil {
+			mids := make([]string, 0, len(ks))
+			for mid := range ks {
+				mids = append(mids, mid)
+			}
+			// SORTED, so the line is a fact about the package and not about
+			// map order: two runs over one tree must print the same bytes.
+			sort.Strings(mids)
+			named := make([]string, 0, len(mids))
+			for _, mid := range mids {
+				named = append(named, fmt.Sprintf("%s (from the %s)", mid, ks[mid]))
+			}
+			if _, werr := fmt.Fprintf(out, "%-16s %-26s killed by %s\n",
+				p.name, rule, strings.Join(named, ", ")); werr != nil {
 				return fmt.Errorf("writing the kill line for %s/%s: %w", p.name, rule, werr)
 			}
 			continue
@@ -488,6 +526,52 @@ func mutate(ctx context.Context, p pkg, rep *Report, out io.Writer) error {
 	for _, mp := range p.mutants {
 		mid := strings.TrimSuffix(filepath.Base(mp), ".rego")
 		if movedBy[mid] {
+			// WHAT THIS MUTANT MOVES, BY NAME, which is the half that was
+			// missing. A mutant whose rules were all credited to an earlier
+			// mutant printed nothing at all, so being shadowed and being a
+			// no-op were the same observation (rook, coop rumor/1055). Every
+			// mutant that attacks anything now names what it attacks, and one
+			// that stops attacking loses a rule from this line or the line
+			// altogether.
+			rules := make([]string, 0, len(movesRules[mid]))
+			for rule := range movesRules[mid] {
+				rules = append(rules, rule)
+			}
+			sort.Strings(rules)
+			// AND HOW MANY OF THEM IT IS THE ONLY KILLER OF, WHICH IS A FIGURE
+			// AND NOT A GATE. fable ruled it at coop rumor/1064 on rook's
+			// /1061: "sole killer of no rule" is a coverage SHAPE of the corpus
+			// and not a fault in one mutant, and a refusal that fires on eight
+			// of ten blocks every release while naming nothing a commit can
+			// fix. What stays enforced is the mutant that moves NO rule, which
+			// claims to break something and breaks nothing.
+			//
+			// IT IS WORTH PRINTING BECAUSE IT IS THE THING A READER WANTED
+			// when they read the old one-killer-per-rule column as exclusive
+			// attribution. Which rules are pinned by one mutant alone was
+			// unknowable from that column: it kept whichever killer sorted
+			// first and said nothing about the rest, so a rule with one killer
+			// and a rule with nine printed the same line.
+			//
+			// AND NO FIGURE FROM ANY CORPUS IS QUOTED HERE, deliberately. This
+			// comment carried "of the toy's ten rules, exactly two have a sole
+			// killer" and that number was WRONG -- measured on a branch whose
+			// examples/toy still held the pre-regeneration mutants, where one
+			// mutant kills eight rules by absence (rook, coop rumor/1077). A
+			// count of someone else's corpus, written into this package's
+			// source, rots the first time that corpus changes and cannot be
+			// checked from here. The report prints the number; this says what
+			// it means.
+			sole := 0
+			for _, rule := range rules {
+				if len(killers[rule]) == 1 {
+					sole++
+				}
+			}
+			if _, werr := fmt.Fprintf(out, "%-16s %-26s moves %s; sole killer of %d rule(s)\n",
+				p.name, mid, strings.Join(rules, ", "), sole); werr != nil {
+				return fmt.Errorf("writing the moves line for %s/%s: %w", p.name, mid, werr)
+			}
 			// ALIVE. Report the ones alive ONLY from the cases: the sealed
 			// prefix has made their clause unreachable, which is a fact about
 			// the bound and not about the mutant.

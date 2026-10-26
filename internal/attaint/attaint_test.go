@@ -728,6 +728,8 @@ func TestAFailedWriteIsAFailedPass(t *testing.T) {
 			return "writing the corroboration line"
 		case strings.Contains(line, "killed by"):
 			return "writing the kill line"
+		case strings.Contains(line, " moves "):
+			return "writing the moves line"
 		case strings.Contains(line, "alive from the cases only"):
 			return "writing the inert line"
 		case strings.Contains(line, "reached by"):
@@ -964,4 +966,100 @@ func TestADuplicatedRefAcrossPlantedAndHonestIsRefused(t *testing.T) {
 		t.Fatalf("refused for the wrong reason: %v", err)
 	}
 	t.Logf("PROOF %v", err)
+}
+
+// TestEveryKillerIsNamedAndEveryMutantNamesWhatItMoves is the arm for rook's
+// finding at coop rumor/1055, ruled into the tool by fable at /1057: attaint
+// reported ONE killer per rule over a relation that is many-to-many, so a
+// mutant whose every rule had been credited to an earlier mutant appeared
+// nowhere in the output -- not as a kill, not as alive. A shadowed mutant and a
+// no-op mutant printed the same thing, which means editing one to do nothing
+// could not be seen by anything in the suite.
+//
+// IT READS BOTH DIRECTIONS AND REQUIRES THEM TO AGREE. The per-rule lines give
+// rule -> killers and the per-mutant lines give mutant -> rules; a pair present
+// in one and missing from the other is the defect in either direction, and
+// neither list alone could catch it. The healthy fixture carries the shape
+// already: `believed` is moved by m1-believed-constant AND m3-ignores-position,
+// so the old code credited m1 (sorted first) and dropped m3's claim on it.
+func TestEveryKillerIsNamedAndEveryMutantNamesWhatItMoves(t *testing.T) {
+	dir := build(t, healthy())
+	var out bytes.Buffer
+	if _, err := Run(context.Background(), dir, &out); err != nil {
+		t.Fatalf("the healthy package did not run: %v", err)
+	}
+
+	fromRules := map[string]map[string]bool{} // mutant -> rules, read off the kill lines
+	fromMutants := map[string]map[string]bool{}
+	for _, line := range strings.Split(strings.TrimRight(out.String(), "\n"), "\n") {
+		f := strings.Fields(line)
+		switch {
+		case strings.Contains(line, "killed by"):
+			rule := f[1]
+			for _, tok := range f[2:] {
+				// The killers read "m1 (from the ledger), m2 (from the cases)",
+				// so a token starting "m" and ending in a comma or standing
+				// alone is a mutant id.
+				id := strings.TrimSuffix(tok, ",")
+				if !strings.HasPrefix(id, "m") || strings.Contains(id, "(") {
+					continue
+				}
+				if id == "moves" || id == "killed" {
+					continue
+				}
+				if fromRules[id] == nil {
+					fromRules[id] = map[string]bool{}
+				}
+				fromRules[id][rule] = true
+			}
+		case strings.Contains(line, " moves "):
+			// THE RULES END AT THE SEMICOLON. The line carries a figure after
+			// them -- "; sole killer of N rule(s)" -- and reading past it put
+			// `sole`, `killer`, `of` and `rule(s)` in as rule names, which the
+			// cross-check below then reported as rules no kill line names. The
+			// arm failed for a true reason about the wrong thing.
+			mid := f[1]
+			rest := line[strings.Index(line, " moves ")+len(" moves "):]
+			if i := strings.Index(rest, ";"); i >= 0 {
+				rest = rest[:i]
+			}
+			for _, tok := range strings.Fields(rest) {
+				if fromMutants[mid] == nil {
+					fromMutants[mid] = map[string]bool{}
+				}
+				fromMutants[mid][strings.TrimSuffix(tok, ",")] = true
+			}
+		}
+	}
+
+	// THE PAIR THE OLD CODE DROPPED, NAMED, so this arm fails for the specific
+	// reason and not only on the aggregate.
+	if !fromRules["m3-ignores-position"]["believed"] {
+		t.Errorf("`believed` does not name m3-ignores-position as a killer, though m3 moves it: "+
+			"one killer per rule hides every later one\n%s", out.String())
+	}
+	if len(fromMutants["m3-ignores-position"]) == 0 {
+		t.Errorf("m3-ignores-position names no rule it moves, so being shadowed and being a "+
+			"no-op print the same thing\n%s", out.String())
+	}
+
+	// AND THE TWO DIRECTIONS AGREE, which is what makes either readable as
+	// evidence: a pair in one and not the other is a report of a relation the
+	// pass did not measure.
+	for mid, rules := range fromRules {
+		for rule := range rules {
+			if !fromMutants[mid][rule] {
+				t.Errorf("%s is named as a killer of %s and its own line does not name %s",
+					mid, rule, rule)
+			}
+		}
+	}
+	for mid, rules := range fromMutants {
+		for rule := range rules {
+			if !fromRules[mid][rule] {
+				t.Errorf("%s says it moves %s and %s does not name it as a killer",
+					mid, rule, rule)
+			}
+		}
+	}
 }
