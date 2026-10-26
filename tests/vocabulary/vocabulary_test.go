@@ -547,3 +547,52 @@ func versionNumber(v string) int {
 }
 
 var revisionRow = regexp.MustCompile(`^\|\s*(v[0-9]+)\s*\|`)
+
+// TestTheQuoteCountsWarrantsReachTheCountTheyDeclare pins the `N -> M` headers
+// above declaredQuotes to the constant itself.
+//
+// ratchet's suggestion at coop r6/119, and it is in this file because the
+// defect was: the headers NAME their transitions -- "35 -> 36", "36 -> 37" --
+// and the sweep counts QUOTES, not headers. So on a rebase that moves the
+// constant, every header can go stale while every arm stays green. I found
+// that in my own file by driving a re-cut (r6/117); nothing would have told me.
+//
+// THE HIGHEST TARGET AND NOT THE LAST LINE, deliberately. The headers do not
+// sit in numeric order -- the gate bundle's "35 -> 44" was appended above an
+// earlier "34 -> 35" -- so "the last one in the file" is not the newest, and an
+// arm keyed on file order would fail on a tree where nothing is wrong. The
+// chain's end is the maximum target, which needs no ordering assumption.
+//
+// IT READS ITS OWN SOURCE, which is the shape tests/run uses on docs/cli.md and
+// tests/validate on ci.yml: where the claim is text, the text is the fixture.
+func TestTheQuoteCountsWarrantsReachTheCountTheyDeclare(t *testing.T) {
+	raw, err := os.ReadFile("vocabulary_test.go")
+	if err != nil {
+		t.Fatalf("reading this arm's own source: %v", err)
+	}
+	header := regexp.MustCompile(`(?m)^// (\d+) -> (\d+) AT `)
+	found := header.FindAllStringSubmatch(string(raw), -1)
+	if len(found) == 0 {
+		t.Fatal("no `N -> M AT` warrant header found, so this arm is checking nothing: the " +
+			"headers are what say WHY the count moved, and a count that moves without one is " +
+			"the drift this file exists to refuse")
+	}
+	highest, from := 0, ""
+	for _, m := range found {
+		to, cerr := strconv.Atoi(m[2])
+		if cerr != nil {
+			t.Fatalf("header %q does not name a number: %v", m[0], cerr)
+		}
+		if to > highest {
+			highest, from = to, strings.TrimSpace(m[0])
+		}
+	}
+	if highest != declaredQuotes {
+		t.Errorf("the warrant headers reach %d (%q) and declaredQuotes is %d: a header naming a "+
+			"transition the constant does not confirm is prose that has gone stale -- which is "+
+			"invisible to the sweep, because it counts quotes and not headers",
+			highest, from, declaredQuotes)
+	}
+	t.Logf("PROOF %d warrant header(s), the chain ending at %d, declaredQuotes %d",
+		len(found), highest, declaredQuotes)
+}
