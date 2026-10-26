@@ -75,7 +75,8 @@ type Prober struct {
 	// internal/schedule's and returns a state, and widening a published
 	// interface to carry one implementation's detail is the wrong direction.
 	// The caller that produced the finding reads it here.
-	hang string
+	hang         string
+	hangMeasured string
 }
 
 // Option configures a Prober. The clock options exist for the arms.
@@ -158,8 +159,54 @@ func query(pr bindings.Probe) (string, error) {
 	}
 }
 
-// Hang is the report for the probe that gave up, or empty.
+// Hang is the report for the probe that gave up, or empty. IT IS CLOCK-FREE, so
+// a caller may print it where the control reads: see the split at Quiesce.
 func (p *Prober) Hang() string { return p.hang }
+
+// HangMeasured is the clock-derived half of the same report -- how many times
+// the probes were asked and over what span -- or empty. A CALLER MUST NOT PRINT
+// IT WHERE THE CONTROL READS: it differs between two attempts of one seed,
+// which is what D1 forbids.
+func (p *Prober) HangMeasured() string { return p.hangMeasured }
+
+// State is ONE round of the probes, with no waiting: quiet if every declared
+// probe reads its quiet value right now, busy otherwise.
+//
+// WHY A SECOND METHOD AND NOT A FLAG ON Quiesce. The two answer different
+// questions and only one of them may block. A RECONCILIATION asks "has it
+// settled?" and is entitled to wait out the bound the project declared --
+// that is Quiesce. A CHECK MID-WALK asks "is it settled YET?", and must not
+// wait: fable's ruling at coop r6/73 is that such a check reads `pending`
+// rather than `bug`, which is an answer about the moment and not a reason to
+// stop the walk. A per-step check that waited would serialise the whole run
+// behind the worker and turn every lag into a stall.
+//
+// IT NEVER ANSWERS QuiesceTimedOut, deliberately: nothing here gave up, because
+// nothing here was waiting. A timeout is Quiesce's verdict alone.
+func (p *Prober) State(ctx context.Context) (engine.QuiesceState, error) {
+	if err := ctx.Err(); err != nil {
+		return engine.QuiesceAbsent, fmt.Errorf("quiesce: reading the probes: %w", err)
+	}
+	for i, pr := range p.probes {
+		q, err := query(pr)
+		if err != nil {
+			return engine.QuiesceAbsent, fmt.Errorf("quiesce: probe %d: %w", i+1, err)
+		}
+		resp, oerr := p.obs.Observe(wire.ObserveRequest{
+			Envelope: wire.Envelope{Kind: wire.KindObserve},
+			Query:    q,
+			Source:   wire.SourceDirect,
+		})
+		if oerr != nil {
+			return engine.QuiesceAbsent, fmt.Errorf(
+				"quiesce: probe %d (kind %q, query %q): %w", i+1, pr.Kind, q, oerr)
+		}
+		if !quiet(resp.Value, pr.Quiet) {
+			return engine.QuiesceBusy, nil
+		}
+	}
+	return engine.QuiesceQuiet, nil
+}
 
 // Quiesce asks every probe until all read quiet or one passes its timeout.
 //
@@ -176,6 +223,7 @@ func (p *Prober) Hang() string { return p.hang }
 // gives up at 5s, and the report names that probe rather than the slowest one.
 func (p *Prober) Quiesce(ctx context.Context) (engine.QuiesceState, error) {
 	p.hang = ""
+	p.hangMeasured = ""
 	start := p.now()
 	// deadline per probe, computed once from one `start` so a slow round cannot
 	// extend a budget.
@@ -238,10 +286,28 @@ func (p *Prober) Quiesce(ctx context.Context) (engine.QuiesceState, error) {
 		if len(expired) > 0 {
 			sort.Strings(expired)
 			sort.Strings(busy)
-			p.hang = fmt.Sprintf("the system did not go quiet: %s. Asked %d time(s) over %s. "+
-				"Still busy at the end: %s",
-				strings.Join(expired, "; "), rounds, now.Sub(start).Round(time.Millisecond),
-				strings.Join(busy, "; "))
+			// TWO REPORTS, AND THE SPLIT IS D1. The ask count and the elapsed
+			// span are CLOCK-DERIVED: "Asked 343 time(s) over 2.002s" and
+			// "Asked 340 time(s) over 2.005s" are the same run twice, and
+			// fable's ruling 2 (coop r6/78) requires two attempts of a seed to
+			// be byte-identical. A hang report on stdout carrying either number
+			// makes D1 UNREACHABLE for every run that ends on a timeout, however
+			// deterministic the system under test is -- the control cannot
+			// compare what the clock wrote.
+			//
+			// SO THE VERDICT IS CLOCK-FREE AND THE MEASUREMENT KEEPS ITS PLACE.
+			// Hang() names the probes, their kinds, their DECLARED timeouts and
+			// what each still reads -- every byte of it a declaration or a
+			// reading -- and HangMeasured() carries the two numbers for the
+			// caller that prints to stderr, where the adapter's own timings
+			// already go. Dropping them was the other option and it is worse:
+			// the ask count against the cadence is what says a probe was
+			// actually being asked, which is how R6.2 measured 108ms against a
+			// declared 100ms.
+			p.hang = fmt.Sprintf("the system did not go quiet: %s. Still busy at the end: %s",
+				strings.Join(expired, "; "), strings.Join(busy, "; "))
+			p.hangMeasured = fmt.Sprintf("asked %d time(s) over %s",
+				rounds, now.Sub(start).Round(time.Millisecond))
 			return engine.QuiesceTimedOut, nil
 		}
 

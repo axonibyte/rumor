@@ -29,6 +29,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/quiesce"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback/toyrestart"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
@@ -85,7 +86,10 @@ func TestMain(m *testing.M) {
 // than shared because there is no loader to share yet: the verb composes these
 // three reads inline, and a helper invented here would be a second definition
 // of what a project is.
-func load(t *testing.T) schedule.Project {
+// IT RETURNS THE PROBES BESIDE THE PROJECT because the Prober needs the
+// adapter session, which is opened per walk: the declarations are read here and
+// wired there, which is the same two-step cmd/rumor/run.go performs.
+func load(t *testing.T) (schedule.Project, []bindings.Probe) {
 	t.Helper()
 	prep, err := platform.Load(filepath.Join(project, "platform.toml"), decl.TOML)
 	if err != nil || !prep.OK() {
@@ -106,7 +110,18 @@ func load(t *testing.T) schedule.Project {
 		Venire:       prep.Platform.Venire,
 		Roles:        brep.Bindings.Roles,
 		Observations: brep.Bindings.Observations,
-	}
+		// THE EVENTUAL TYPES, BECAUSE THE PRODUCT PASSES THEM. This harness
+		// built its Project without them and drove a walk cmd/rumor never
+		// runs: with no Eventual the overlay cannot engage, so every cell here
+		// measured a toy whose declared quiesce bound had no effect. That is
+		// fable's ruling 3 (coop r6/78) one layer out, and ratchet's sixth
+		// check at /79 in its own words -- ask whether the live path reaches
+		// the code an arm drives.
+		//
+		// THE PROBER IS NOT SET HERE because it needs the adapter session,
+		// which is opened per walk below; the caller wires it.
+		Eventual: schedule.EventualOf(brep.Bindings),
+	}, brep.Bindings.Probes
 }
 
 // kindsDrawn is the action kinds the trace actually used, which is what kind
@@ -181,7 +196,7 @@ func TestTheToyBugsAreFoundByAWalkAndShrinkToUnderFiveActions(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("seed%d", tc.seed), func(t *testing.T) {
 			ctx := context.Background()
-			p := load(t)
+			p, declared := load(t)
 
 			prov, err := rollback.Open(toyrestart.Name, rollback.Options{Dir: project})
 			if err != nil {
@@ -229,6 +244,17 @@ func TestTheToyBugsAreFoundByAWalkAndShrinkToUnderFiveActions(t *testing.T) {
 			sess, err := sessionNow()
 			if err != nil {
 				t.Fatalf("opening the adapter on the provider's world: %v", err)
+			}
+			// THE PROBER, for Eventual's reason: a project declaring probes and
+			// walked without one has its bound judged QuiesceAbsent, which
+			// engine.Judge refuses rather than reading as "not quiet". The
+			// product builds it from the same declarations (cmd/rumor/run.go).
+			if len(declared) > 0 {
+				pr, qerr := quiesce.New(declared, sess)
+				if qerr != nil {
+					t.Fatalf("building the prober the project declares: %v", qerr)
+				}
+				p.Prober = pr
 			}
 			rec, werr := schedule.Walk(ctx, p, sess, tc.seed, 10, 1)
 			_ = sess.Close()
@@ -291,7 +317,24 @@ func TestTheToyBugsAreFoundByAWalkAndShrinkToUnderFiveActions(t *testing.T) {
 							"restored world: %w", oerr)
 					}
 					defer func() { _ = s.Close() }()
-					f, ran, rerr := schedule.Replay(c, p, s, tc.seed, 1, steps, without)
+					// THE PROBER IS REBUILT ON THIS SESSION, and that is not
+					// bookkeeping: a Prober holds the session it asks through,
+					// so the one the WALK used is closed by the time a
+					// candidate replays. Carrying it over gave "write |1: file
+					// already closed" from the first probe read of the first
+					// replay -- a dead instrument reported as a failure to
+					// reproduce, which would have made every candidate look
+					// too small.
+					rp := p
+					if len(declared) > 0 {
+						pr, qerr := quiesce.New(declared, s)
+						if qerr != nil {
+							return engine.Finding{}, nil, fmt.Errorf("building the prober for "+
+								"the replay: %w", qerr)
+						}
+						rp.Prober = pr
+					}
+					f, ran, rerr := schedule.Replay(c, rp, s, tc.seed, 1, steps, without)
 					if rerr != nil {
 						return engine.Finding{}, nil, rerr
 					}

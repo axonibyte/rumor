@@ -67,7 +67,18 @@ type event struct {
 	// the store's own count is computed from Attendees. Two sources for one
 	// fact is where the ledger's "stale count after delete" row lives, and the
 	// honest version keeps them equal.
-	Count   int  `json:"count"`
+	Count int `json:"count"`
+	// Tally is THE WORKER'S OWN NUMBER and nothing else reads or writes it.
+	// Count above is maintained by the write that changes it, which is what
+	// R5's rows rest on; Tally is maintained by the recount queue, so a reader
+	// asking straight after a join sees the old one until the queue advances.
+	//
+	// TWO COUNTS WITH TWO TIMINGS, which is fable's ruling at coop r6/82: "the
+	// eventual type is the WORKER'S OWN claim, not the count R5 planted its
+	// rows in". One field with both roles made seed 40's R5 finding read as
+	// engine.stale at step 4 behind a delete -- the child losing a row rather
+	// than finding it late, where the ledger needs both.
+	Tally   int  `json:"tally"`
 	Deleted bool `json:"deleted"`
 }
 
@@ -109,7 +120,16 @@ type state struct {
 // difference between "not yet" and "never".
 type job struct {
 	EventID string `json:"event_id"`
-	Tries   int    `json:"tries"`
+	// Delta is what this job adds to the worker's tally: +1 for a join, -1 for
+	// a leave.
+	//
+	// A DELTA AND NOT A RECOUNT, and the difference is the whole R6 row. The
+	// worker recomputed `len(Attendees)` at first, which makes every job
+	// IDEMPOTENT: dropping one loses nothing, because the next one computes the
+	// right answer from the current list. A dropped increment is lost for good,
+	// which is what "a retry dropped, a count that never settles" means.
+	Delta int `json:"delta"`
+	Tries int `json:"tries"`
 }
 
 func newState() *state {
@@ -134,14 +154,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "toy: --state is required: the whole world lives in one file and nothing else holds it")
 		os.Exit(2)
 	}
-	// THE STOP IS DISCARDED HERE AND THAT IS NOT A LEAK. This function exits
-	// the process on every error path, so a deferred stop would be STRANDED --
-	// tests/hygiene's TestNoCleanupIsStrandedByOsExit said so in those words,
-	// "defers 1 call and exits the process 4 times", the moment I wrote one.
-	// The worker's lifetime is the process's, and process exit ends it; the
-	// handle exists for callers whose servers come and go inside one process,
-	// which is cmd/toy's own suite.
-	srv, _, err := newServer(*statePath)
+	srv, err := newServer(*statePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "toy: %v\n", err)
 		os.Exit(1)
@@ -166,29 +179,26 @@ func main() {
 	}
 }
 
-// newServer loads the world and STARTS THE WORKER, which is the only place it
-// can be started honestly.
+// newServer loads the world. THERE IS NO WORKER GOROUTINE AND THERE MUST NOT
+// BE ONE: fable's ruling 1 at coop r6/78 is that R5's D1 -- two attempts from
+// one seed are byte-identical -- is a property of the whole system under a
+// seed, worker included, so "a toy whose counts drain on a wall clock makes
+// the walk's observations depend on load". It did: five repeats of seed 1 gave
+// three digests and an attribution that flipped. The queue advances on the
+// REQUEST SEQUENCE instead (see advancing), which is drawn from nothing the
+// clock touches.
 //
-// IT WAS IN main() FIRST AND THE SUITE CAUGHT IT. Every caller that builds a
-// server without going through main() -- cmd/toy's own arms via httptest, and
-// anything else that will ever embed this -- had no worker at all, so the
-// recount queue filled and never drained and `settle` reported the worker
-// stuck. A goroutine started beside the listener is invisible to every
-// constructor, which is the same shape as a guard that lives in one entry
-// point: the behaviour belongs to the SERVER, so it starts where the server is
-// made.
-//
-// THE CALLER OWNS THE STOP. `stop` is returned rather than hidden so a test can
-// end the goroutine with its server; main closes it on exit.
-func newServer(path string) (*server, func(), error) {
+// THE GOROUTINE WAS HERE AND NOT IN main() FIRST, which was the right fix to
+// the wrong mechanism: a constructor is where a server's behaviour belongs, and
+// every caller that built a server without main() had no worker at all. That
+// reasoning still holds -- it is why the drain now rides routes() rather than
+// the listener -- but a timer was never a thing a deterministic run could own.
+func newServer(path string) (*server, error) {
 	srv := &server{path: path, st: newState()}
 	if err := srv.load(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	stop := make(chan struct{})
-	go srv.worker(stop)
-	var once sync.Once
-	return srv, func() { once.Do(func() { close(stop) }) }, nil
+	return srv, nil
 }
 
 // load reads the world, treating an absent file as an empty one: the first run
@@ -289,16 +299,6 @@ func visibleTo(ev *event, role string) bool {
 	return false
 }
 
-// workerTick is how often the worker looks for a job.
-//
-// SMALL, AND THE SMALLNESS IS NOT A WAY OF HIDING THE LAG. A tick so short that
-// no observation ever sees a stale count would make this phase's bound
-// unreachable and the probes decorative -- the flaky-by-construction shape rook
-// warned about at coop rumor/1034. It is small because the toy is a toy and a
-// run should not wait on it; what makes the lag SAFE is the eventual bound and
-// the probes, not the tick.
-const workerTick = 2 * time.Millisecond
-
 // enqueue adds a recount for an event. The caller holds the lock.
 //
 // ONE JOB PER CHANGE AND NOT ONE PER EVENT, deliberately: collapsing them would
@@ -306,27 +306,29 @@ const workerTick = 2 * time.Millisecond
 // is what the quiesce probe reads. A depth that under-reports is a probe that
 // reads quiet while work remains, which is the one answer that must never be
 // wrong.
-func (s *server) enqueue(eventID string) {
-	s.st.Jobs = append(s.st.Jobs, &job{EventID: eventID})
-}
-
-// worker drains the recount queue.
-//
-// IT TAKES THE SAME LOCK AS EVERY HANDLER, so the file and the counts move
-// together and a reader never sees half a drain. The sleep is OUTSIDE the lock:
-// holding it across a sleep would serialise the whole toy behind the tick and
-// turn a lag into a hang.
-func (s *server) worker(stop <-chan struct{}) {
-	for {
-		select {
-		case <-stop:
+func (s *server) enqueue(eventID string, delta int) {
+	// THE DEFECT, AND IT IS THE R6 LEDGER ROW: a retry dropped, a count that
+	// never settles. A second job for an event already queued is COLLAPSED onto
+	// the first instead of queued behind it, so two changes between two drains
+	// are applied once and the worker's count ends one behind -- for good,
+	// because nothing re-enqueues it.
+	//
+	// THE COMMENT ABOVE SAYS WHY IT IS A DEFECT and was written before the
+	// plant existed: collapsing makes the depth stop counting the work
+	// outstanding, so the probes read quiet with a change unapplied. That is
+	// what makes the disagreement SURVIVE quiesce, which is `stale` and not
+	// `pending` -- docs/vocabulary.md's own distinction, driven.
+	//
+	// IT IS ONE DEFECT WIDE. The job is dropped, not mis-applied: the tally
+	// stays a number the worker once computed correctly, so the finding is
+	// about freshness and not about arithmetic.
+	for _, existing := range s.st.Jobs {
+		if existing.EventID == eventID {
+			existing.Tries++
 			return
-		case <-time.After(workerTick):
 		}
-		s.mu.Lock()
-		s.drainOne()
-		s.mu.Unlock()
 	}
+	s.st.Jobs = append(s.st.Jobs, &job{EventID: eventID, Delta: delta})
 }
 
 // drainOne applies the oldest job, if any. The caller holds the lock.
@@ -345,7 +347,11 @@ func (s *server) drainOne() {
 	if !ok {
 		return
 	}
-	ev.Count = len(ev.Attendees)
+	// THE WORKER MAINTAINS ITS OWN COUNT AND NOT THE API'S. It wrote ev.Count
+	// until fable's ruling at coop r6/82 separated them: one number cannot be
+	// both R5's immediate count and R6's eventual one, and making it both
+	// relabelled an R5 row instead of adding an R6 one.
+	ev.Tally += j.Delta
 	_ = s.save()
 }
 
@@ -378,7 +384,46 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/store/events/", s.handleStore)
 	mux.HandleFunc("/store/queue", s.handleQueue)
 	mux.HandleFunc("/ui/events/", s.handleUI)
-	return mux
+	return s.advancing(mux)
+}
+
+// advancing is the worker: A READ ADVANCES THE QUEUE BY ONE, AFTER IT HAS
+// ANSWERED, and a write only adds to it. That is fable's ruling 1 (coop r6/78)
+// -- the queue advances on the request sequence, "drawn from nothing the clock
+// touches" -- so the lag is a fact of the step ORDER and two attempts of a seed
+// are byte-identical as D1 requires. A goroutine on a 2ms tick gave three
+// digests for seed 1 and an attribution that flipped.
+//
+// AFTER AND NOT BEFORE, which is what makes the lag observable at all: a drain
+// in front of a read would serve the freshly-applied tally, so the gap would
+// exist and nothing could ever see it. The reader is served what the worker
+// has, and then the worker takes one step.
+//
+// A WRITE DOES NOT DRAIN, and this is the half I had wrong first. With writes
+// draining too, every write drained one job and enqueued one, so the queue
+// never held more than a single job -- and the R6 row needs two changes to one
+// event to be outstanding TOGETHER. The depth that `queue_depth` reports was
+// structurally incapable of exceeding 1, which made the probe decorative and
+// the ledger's row unreachable. My own arm caught it (TestASecondChange...)
+// where no reasoning had.
+//
+// THE PROBE ENDPOINTS ARE EXEMPT BY NAME, which handleQueue states as its own
+// rule: "a probe that advanced the system it measures would make quiet a thing
+// the asking caused". /store/events/ and /store/queue are the engine's `direct`
+// observations, and nothing else may join that set without the same argument.
+//
+// ONE JOB, NOT THE QUEUE: draining to empty would make the depth a probe reads
+// never exceed one read's worth of work, which is the same defect as above
+// wearing different clothes.
+func (s *server) advancing(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.ServeHTTP(w, r)
+		if r.Method == http.MethodGet && !strings.HasPrefix(r.URL.Path, "/store/") {
+			s.mu.Lock()
+			s.drainOne()
+			s.mu.Unlock()
+		}
+	})
 }
 
 type apiError struct {
@@ -605,6 +650,8 @@ func (s *server) handleEventPath(w http.ResponseWriter, r *http.Request) {
 		s.leaveEvent(w, r, id)
 	case len(parts) == 2 && parts[1] == "count" && r.Method == http.MethodGet:
 		s.eventCount(w, r, id)
+	case len(parts) == 2 && parts[1] == "tally" && r.Method == http.MethodGet:
+		s.eventTally(w, r, id)
 	default:
 		fail(w, http.StatusNotFound, fmt.Sprintf("no route for %s %s", r.Method, r.URL.Path))
 	}
@@ -682,7 +729,12 @@ func (s *server) joinEvent(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	ev.Attendees = append(ev.Attendees, sess.UserID)
-	s.enqueue(ev.ID)
+	// THE API'S COUNT MOVES WITH THE WRITE, as it did before the worker: this
+	// is the number R5's rows are about, and an eventual bound over it turns
+	// those rows into R6 findings (fable, coop r6/82). The queue's job is for
+	// the worker's OWN count below.
+	ev.Count = len(ev.Attendees)
+	s.enqueue(ev.ID, 1)
 	if err := s.save(); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
@@ -717,7 +769,9 @@ func (s *server) leaveEvent(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	ev.Attendees = kept
-	s.enqueue(ev.ID)
+	// SYNCHRONOUS, for the join's reason: this is R5's number.
+	ev.Count = len(ev.Attendees)
+	s.enqueue(ev.ID, -1)
 	if err := s.save(); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
@@ -799,6 +853,33 @@ func (s *server) eventCount(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"event": ev.ID, "count": ev.Count, "deleted": ev.Deleted})
+}
+
+// eventTally serves THE WORKER'S OWN COUNT, which is the number R6's eventual
+// claim type is about: it lags a write until the recount queue advances, and a
+// reader asking in between is reading a `pending` rather than a defect.
+//
+// IT IS A SEPARATE ROUTE AND NOT A FIELD ON THE COUNT RESPONSE, deliberately.
+// An observation names one value, and two numbers in one body would make the
+// adapter choose which the statute judges -- a choice that belongs in the
+// project's declarations, where `of` and `query` already say it.
+//
+// IT TAKES A SESSION, like the count: this is an `api` observation and not the
+// engine's `direct` one. The store's own route stays the second oracle.
+func (s *server) eventTally(w http.ResponseWriter, r *http.Request, id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := s.session(r)
+	if sess == nil {
+		fail(w, http.StatusUnauthorized, "reading a tally needs a session")
+		return
+	}
+	ev, ok := s.st.Events[id]
+	if !ok {
+		fail(w, http.StatusNotFound, "no such event")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"event": ev.ID, "tally": ev.Tally, "deleted": ev.Deleted})
 }
 
 // handleStore is the `direct` source: the engine's own query against the

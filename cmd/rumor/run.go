@@ -128,6 +128,13 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		// walked as before, which is what keeps every pre-R5.5 fixture's
 		// meaning.
 		Observations: brep.Bindings.Observations,
+		// THE EVENTUAL TYPES, so the walk can judge a lagging observation as
+		// `pending` instead of `bug` (R6.3). Only the quiesce form is passed
+		// through with a zero bound: a DURATION bound needs the run to control
+		// the clock, which R7 brings, and engine.Judge refuses one rather than
+		// reading it as past -- so handing it through here would move that
+		// refusal from the engine to a silent truncation.
+		Eventual: schedule.EventualOf(brep.Bindings),
 	}
 
 	// A QUIESCE BOUND NOTHING CAN JUDGE IS A REFUSAL, NOT A QUIET RUN.
@@ -316,6 +323,19 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 				_, _ = fmt.Fprintf(stderr, "run: writing the finding's reason: %v\n", err)
 				return 2
 			}
+		}
+		// AND THE CLOCK-DERIVED HALF ON STDERR, NEVER BESIDE THE VERDICT. The
+		// comment above still describes the report, but one sentence of it
+		// moved: "how many times it was asked and over what span" is written by
+		// the CLOCK, and two attempts of one seed gave "343 time(s) over
+		// 2.002s" and "340 time(s) over 2.005s". fable's ruling 2 (coop r6/78)
+		// requires those two attempts to be byte-identical, so a measurement on
+		// stdout would make D1 unreachable for every run that ends on a
+		// timeout. It is not dropped -- the ask count against the declared
+		// cadence is what shows a probe was really being asked -- it is printed
+		// where the adapter's own timings already go.
+		if hm, ok := p.Prober.(interface{ HangMeasured() string }); ok && hm.HangMeasured() != "" {
+			_, _ = fmt.Fprintf(stderr, "run: quiesce probes %s\n", hm.HangMeasured())
 		}
 	}
 	// THE SESSION COUNT IS IN THE VERDICT for the provider count's reason: a

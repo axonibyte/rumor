@@ -233,20 +233,18 @@ timing = "immediate"
 [claim."event.created"]
 timing = "immediate"
 
-# THE COUNT'S CLAIM TYPE IS EVENTUAL AND BOUNDED ON QUIESCE (R6.3, issue 91).
+# `event.joined` IS IMMEDIATE AND MUST STAY SO. It was eventual for one
+# afternoon and fable ruled it back at coop r6/82: "an eventual count does not
+# re-label the R5 rows, and the baseline does not move to fit the child". Both
+# count observations declare `of = "event.joined"`, so a bound here is a bound
+# over the number R5 planted its rows in -- and with it, seed 40's R5 finding
+# read as engine.stale at step 4 behind a delete instead of bug at step 3. The
+# child had not found the R5 row late; it had lost it and found an R6 row in its
+# place, where the ledger needs both.
 #
-# WHY THIS TYPE: both count observations declare `of = "event.joined"`, so this
-# is the claim the reported number is about. The toy maintains that number off a
-# job queue now, so a reader asking straight after a join sees the old one --
-# which docs/vocabulary.md reads as a `pending` on an eventual type rather than
-# as a defect, and which is the whole reason 90's probes came before this.
-#
-# THE BOUND IS `quiesce` AND NOT A DURATION: the question is whether the system
-# has settled, not how long ago the claim was made, and a duration bound in a
-# project with no clock control is refused by name (R2.3, R7's door still shut).
+# THE EVENTUAL TYPE IS THE WORKER'S OWN, BELOW.
 [claim."event.joined"]
-timing = "eventual"
-bound = "quiesce"
+timing = "immediate"
 
 # `event.left` STAYS IMMEDIATE, and the asymmetry is deliberate rather than an
 # oversight. A leave enqueues a recount too, so its lag is real -- but no

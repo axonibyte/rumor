@@ -523,6 +523,7 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 	// already decides.
 	var body struct {
 		Count int  `json:"count"`
+		Tally int  `json:"tally"`
 		Depth int  `json:"depth"`
 		Idle  bool `json:"idle"`
 	}

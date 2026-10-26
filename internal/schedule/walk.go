@@ -36,6 +36,22 @@ type Project struct {
 	// written against R5.1-R5.4 keeps its meaning.
 	Observations []bindings.Observation
 
+	// Eventual is the claim types the project declares eventual, with their
+	// bounds, and it is what makes a lagging observation a `pending`.
+	//
+	// WITHOUT IT THE BOUND WAS DECLARED AND INERT. The walk judged every
+	// observation with engine.Evaluate, which takes no bindings and so never
+	// reaches pendingOverlay -- so `timing = "eventual"` with `bound =
+	// "quiesce"` had NO EFFECT on a run, and a system that had simply not
+	// settled yet was reported as a `bug`. Measured at coop r6/77: the toy's
+	// seed 1 stopped at a different step one run in five, because which bug the
+	// walk met first depended on the worker's timing.
+	//
+	// A PROJECT DECLARING NONE IS WALKED AS BEFORE, which keeps every pre-R6.3
+	// fixture's meaning: with no eventual type the overlay declines and Judge
+	// returns exactly what Evaluate did.
+	Eventual []engine.Eventual
+
 	// Prober answers whether the system under test has settled, which is what
 	// a `quiesce` bound is judged against.
 	//
@@ -64,7 +80,21 @@ type Prober interface {
 	// be determined. A prober that gave up answers QuiesceTimedOut rather than
 	// an error: the engine treats a probe that ran and stopped as a finding of
 	// its own kind, not as a failure to run.
+	//
+	// IT MAY WAIT, up to the bound the project declared. A caller that cannot
+	// wait uses State.
 	Quiesce(ctx context.Context) (engine.QuiesceState, error)
+
+	// State is the reading at this moment, and it NEVER WAITS.
+	//
+	// THE WALK NEEDS BOTH, AND THEY ANSWER DIFFERENT QUESTIONS (R6.3). A check
+	// taken mid-walk asks "is it settled YET?" -- fable's ruling at coop r6/73
+	// is that a disagreement seen while the system is still working reads
+	// `pending` and not `bug`, which is an answer about the moment. A check
+	// that waited for the bound would serialise the run behind the system it
+	// observes and turn every ordinary lag into a stall. Quiesce is for the
+	// end, where waiting is the whole point.
+	State(ctx context.Context) (engine.QuiesceState, error)
 }
 
 // Step is one step of a walk, RECORDED OVER HANDLES AND NEVER OVER IDS. That is
@@ -99,6 +129,26 @@ type Step struct {
 	// HANDLES AND NOT IDS, like everything else in a Step: two attempts from
 	// one seed consume the same handles while the ids behind them differ.
 	Used []string
+
+	// Verdicts are what this step's observations were judged to be, in order,
+	// each as engine.Finding.Says renders it: "consistent", "pending", "bug of
+	// kind stale".
+	//
+	// WITHOUT IT A WALK THAT HELD A PENDING RECORDED NOTHING ABOUT IT. Observed
+	// counts the observations and rec.Finding keeps only the one that STOPPED
+	// the walk, and a `pending` stops nothing -- so a run that held a
+	// disagreement open and a run where everything agreed left identical
+	// records. fable's ruling 3 (coop r6/78) asks for an arm that reads
+	// `pending` then `consistent` after the drain, and there was no surface to
+	// read it from; R2.3's rule that a run ends with no pending open was
+	// equally unmeasurable from the record.
+	//
+	// IT CARRIES NO REASON AND NO CLOCK. Says renders the value and the kind
+	// and nothing else, which is three of the five fields fable's ruling 2
+	// compares; an Overlay's Reason names positions and bounds, and the
+	// duration form's names the run's time, so a record carrying reasons could
+	// not be compared between two attempts.
+	Verdicts []string
 
 	// Planted says the step appended a planted claim -- a lie the engine knows
 	// it told, because it told it.
@@ -175,6 +225,18 @@ type Record struct {
 	Finding *engine.Finding
 	FoundAt int
 
+	// PendingOpen is how many findings the run still holds open for re-check
+	// when it ends, read off the register after the last step.
+	//
+	// IT EXISTS SO "NO TRAILING PENDING" CAN BE CHECKED AT ALL. docs/vocabulary
+	// says a `stale` is terminal and "a run that ends on one leaves no pending
+	// open", and fable's ruling 2 (coop r6/78) makes a trailing pending part of
+	// 91's control. Neither was measurable: the register is local to the walk,
+	// a `pending` stops nothing, and the record kept only the finding that
+	// ENDED the run. A rule nothing can read is a rule the next change breaks
+	// quietly.
+	PendingOpen int
+
 	// Sessions is how many `session` requests the attempt sent.
 	//
 	// IT IS HERE BECAUSE THE PROPERTY IS OTHERWISE UNOBSERVABLE. A token is
@@ -243,6 +305,12 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	// second world with its own ids, and reusing the first attempt's tokens
 	// would carry one attempt's state into another.
 	sessions := NewSessions(sess)
+	// ONE REGISTER FOR THE WHOLE ATTEMPT, for the reason the holder is one: a
+	// `pending` opened at step 2 is re-checked at the actor's next observation
+	// of the same query, which is a fact about the attempt and not about a
+	// step. A fresh register per step would re-open every pending and never
+	// re-check one.
+	reg := engine.NewRegister()
 
 	for n := 1; n <= steps; n++ {
 		// SEAL EVERYTHING SO FAR. The seal is the prefix a precondition is
@@ -298,11 +366,27 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		// AND THE WALK OBSERVES, after every step (fable, coop r5/152). The
 		// facts go in the ledger at this step's position; nothing is drawn, so
 		// the step above replays identically with or without this call.
-		seen, oerr := observe(ctx, p.Statute, sess, sessions, table, p.Observations, l, &step)
+		// THE READING IS TAKEN ONCE PER STEP AND NOT ONCE PER OBSERVATION: the
+		// step's checks are judged against one answer about the system, and
+		// asking the probes between two observations of the same step would let
+		// them disagree about a moment they share.
+		qs := engine.QuiesceAbsent
+		if p.Prober != nil && len(p.Eventual) > 0 {
+			st, qerr := p.Prober.State(ctx)
+			if qerr != nil {
+				return rec, fmt.Errorf("schedule: reading the probes after step %d: %w", n, qerr)
+			}
+			qs = st
+		}
+		seen, oerr := observe(ctx, p.Statute, sess, sessions, table, p.Observations, l, &step,
+			engine.Bindings{Eventual: p.Eventual}, reg, qs)
 		if oerr != nil {
 			return rec, fmt.Errorf("schedule: step %d: %w", n, oerr)
 		}
 		step.Observed = len(seen)
+		for i := range seen {
+			step.Verdicts = append(step.Verdicts, seen[i].Says())
+		}
 		rec.Observations += len(seen)
 		rec.Steps = append(rec.Steps, step)
 
@@ -318,6 +402,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 				rec.FoundAt = n
 				rec.Sessions = sessions.Acquired()
 				rec.Facts = l.Facts()
+				rec.PendingOpen = reg.Len()
 				rec.IDs = map[string]string{}
 				for _, h := range table.Handles() {
 					if id, ok := table.ID(h); ok {
@@ -380,6 +465,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 
 	rec.Sessions = sessions.Acquired()
 	rec.Facts = l.Facts()
+	rec.PendingOpen = reg.Len()
 	rec.IDs = map[string]string{}
 	for _, h := range table.Handles() {
 		if id, ok := table.ID(h); ok {
@@ -438,7 +524,8 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 // door.
 func observe(ctx context.Context, statute string, sess *wire.Session, sessions *Sessions,
 	table *handle.Table, obs []bindings.Observation, l *ledger.Ledger,
-	step *Step) ([]engine.Finding, error) {
+	step *Step, eb engine.Bindings, reg *engine.Register,
+	qs engine.QuiesceState) ([]engine.Finding, error) {
 
 	if len(obs) == 0 {
 		return nil, nil
@@ -539,10 +626,19 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 		// tell them apart. Naming a rule the statute does not declare is not an
 		// error -- Rules simply carries no entry for it -- so a project with no
 		// planted cases is unaffected.
-		found, err := engine.Evaluate(ctx, statute,
-			[]string{engine.FindingRule, engine.AttributionRule}, l, check)
+		// AND THE QUIESCE READING, which is what makes an eventual bound mean
+		// anything mid-walk: pendingOverlay refuses QuiesceAbsent rather than
+		// reading silence as "not quiet", so a project with a quiesce bound and
+		// no prober is a refusal and not a quiet run (ratchet, coop r6/8).
+		check.Quiesce = qs
+
+		// JUDGE AND NOT Evaluate, because Evaluate takes no bindings and so can
+		// never reach the overlay. That was the defect: `bound = "quiesce"`
+		// parsed, validated, and did nothing to a walk.
+		found, err := engine.Judge(ctx, statute,
+			[]string{engine.FindingRule, engine.AttributionRule}, l, check, eb, reg)
 		if err != nil {
-			return nil, fmt.Errorf("evaluating %s (%s) after step %d: %w",
+			return nil, fmt.Errorf("judging %s (%s) after step %d: %w",
 				decl.Name, decl.Source, step.N, err)
 		}
 		made = append(made, found)
@@ -1439,4 +1535,31 @@ func falsifyVisibleTo(a bindings.Action, truth []string, src *Source) ([]string,
 		return nil, fmt.Errorf("drawing the false %s for %s: %w", argVisibleTo, a.Name, err)
 	}
 	return others[i], nil
+}
+
+// EventualOf is the project's eventual claim types, as the walk takes them.
+//
+// IT IS HERE AND EXPORTED BECAUSE TWO CALLERS NEED IT AND ONE OF THEM IS A
+// HARNESS. It lived unexported in cmd/rumor, so tests/shrink built its Project
+// with no Eventual and no Prober and drove a walk the product never runs --
+// fable's ruling 3 (coop r6/78) one layer out: an arm that cannot apply the
+// overlay cannot see a bound that does. A derivation the product performs is
+// not the command's private business.
+//
+// ONLY THE QUIESCE FORM CARRIES THROUGH with a zero bound, which is the
+// comment cmd/rumor had at the call site: a DURATION bound needs the run to
+// control the clock, and engine.Judge refuses one rather than reading it as
+// past, so flattening it here would move that refusal into a silent truncation.
+func EventualOf(b bindings.Bindings) []engine.Eventual {
+	var out []engine.Eventual
+	for name, c := range b.Claims {
+		if c.Timing != "eventual" {
+			continue
+		}
+		out = append(out, engine.Eventual{Of: name, Quiesce: c.Bound == bindings.Quiesce})
+	}
+	// SORTED, because a map's order is not a fact about the project and two
+	// runs of one seed must not differ by it.
+	sort.Slice(out, func(i, j int) bool { return out[i].Of < out[j].Of })
+	return out
 }

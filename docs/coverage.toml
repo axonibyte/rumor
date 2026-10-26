@@ -157,6 +157,19 @@ path = "tests/shrink/*.go"
 docs = ["docs/contract.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# R6.3's walk-level quiesce arms: the bound a project declares has an effect on
+# a WALK, which is the path the product runs. Mapped to the VOCABULARY because
+# `pending` and `stale` are its definitions and this is where they are driven
+# end to end, and to the design because the walk's shape is design.md's.
+#
+# IT IS A SUITE OF ITS OWN FOR THE REASON ITS OWN HEADER GIVES: every earlier
+# `pending` arm drove engine.Judge on a fixture, and no production path called
+# Judge at all (quill, coop r6/80). An arm proving a mechanism the live path
+# never reaches is the defect this suite exists to make impossible.
+path = "tests/quiesce/*.go"
+docs = ["docs/vocabulary.md", "docs/design.md"]
+
+[[entry]]
 # The tree-wide hygiene arms: checks no single package can make about itself.
 # Mapped to the testing methodology because the transferable part is the
 # method -- find a defect class by its SHAPE across the whole tree, and make

@@ -153,7 +153,12 @@ const root = "../.."
 // because R6.2 added the `quiesce_timeout` overlay's quotation, so the same +9
 // lands on 44. 0 absent, as at every move above, so the count alone is what
 // refused.
-const declaredQuotes = 44
+// 44 -> 45 AT R6.3: tests/quiesce quotes the `stale` row's own rule -- "a run
+// that ends on one leaves no pending open" -- because that clause is the
+// warrant for the arm asserting Record.PendingOpen at all. The rule was
+// unmeasurable before that field existed, so the quote is what says the
+// assertion is the document's and not the arm's invention.
+const declaredQuotes = 45
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would
