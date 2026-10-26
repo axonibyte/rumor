@@ -62,11 +62,19 @@ package rumor.statute
 # count across both. R5.3 needs `handles` in the projection, or an observation
 # that names its subject in a field of its own.
 #
-# AND THAT IS RULED: fable chose the projection at coop r5/16, so `handles` will
-# be in the input the run-local way, never ids. The engine does not pass them
-# yet, so every rule below still reads as if there were one subject -- when the
-# projection lands, the counts here are the ones that gain a filter, and this
-# comment is the note saying they were written without one on purpose.
+# AND IT LANDED: fable chose the projection at coop r5/16, and R5.3's 226acbb
+# ("engine: project a claim's handles") emits `handles` on a claim whenever the
+# fact carries any -- internal/engine/engine.go, present only when non-empty.
+# So the sentence that stood here until R6.2, "the engine does not pass them
+# yet", was true when written on 2026-10-19 and false six days later, and the
+# rules below still read as if there were one subject by their own choice
+# rather than for want of the field.
+#
+# WHAT THAT LEAVES OPEN, said plainly so this comment is not the next stale
+# one: the counts here do NOT filter on `handles`, which is safe only while
+# every package in examples/ is single-subject, as this one is. A walk creating
+# two events would need the filter, and nothing here refuses such a project --
+# that remains R5.3's note and is not closed by the field arriving.
 
 # The claims the observer holds at the observation's position: the ones it made
 # and the ones it was told, flattened by the engine and handed in as `known`.

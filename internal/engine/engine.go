@@ -766,11 +766,19 @@ func KnownAt(l *ledger.Ledger, actor string) ([]string, error) {
 // for the reason stated on CanardSubjects -- a second computation of what an
 // actor knows would be free to disagree with the first.
 //
-// IT READS ledger.Fact.Handles AND NOT THE STATUTE PROJECTION, because the
-// projection does not carry handles yet: fable ruled it at r5/16 and
-// docs/design.md says plainly that "the engine does not do it yet". The ledger
-// has carried the field all along, so this needs no projection change and makes
-// no claim about one.
+// IT READS ledger.Fact.Handles AND NOT THE STATUTE PROJECTION, which is now a
+// CHOICE rather than a necessity. This comment used to say the projection does
+// not carry handles yet and quoted docs/design.md's "the engine does not do it
+// yet" for it. Both halves are stale: R5.3's 226acbb projects a claim's handles
+// above (present when non-empty), and design.md carries that sentence nowhere
+// any more -- measured, zero hits in docs/. A quote the document no longer
+// holds is the class tests/vocabulary exists for, and it caught nothing here
+// because that sweep reads quotes attributed to docs/vocabulary.md alone.
+//
+// WHY IT STILL READS THE LEDGER: this function answers what an actor KNOWS,
+// and the projection is what a STATUTE is shown -- a second computation from
+// the statute's input would be free to disagree with the first, which is the
+// reason stated on CanardSubjects. The ledger has carried the field all along.
 func KnownHandlesAt(l *ledger.Ledger, actor string) ([]string, error) {
 	known, err := KnownAt(l, actor)
 	if err != nil {

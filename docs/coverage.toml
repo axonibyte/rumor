@@ -439,6 +439,17 @@ path = "tools/make-validate-fixtures.py"
 docs = ["docs/testing-methodology.md", "docs/contract.md"]
 
 [[entry]]
+# THE TOY'S MUTANTS ARE GENERATED FOR THE SAME REASON ITS FIXTURES' SIBLINGS
+# ARE: a hand-cut copy of a moving file is stale from its second edit. Nine of
+# the ten had drifted, every one missing a rule the statute had gained, so
+# `attaint` credited ONE mutant with eight kills -- seven of them for rules that
+# have mutants of their own. Mapped to testing-methodology.md because the
+# one-change invariant is a method, and to design.md because the mutants are the
+# statute's own rules and that is where they are described.
+path = "tools/make-toy-mutants.py"
+docs = ["docs/testing-methodology.md", "docs/design.md"]
+
+[[entry]]
 # The tag pipeline's verdict on `git verify-tag`. Mapped to release.md because
 # what it decides is whether a tag publishes, and to the testing methodology
 # because its whole reason for being a file rather than four lines of YAML is

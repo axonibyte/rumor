@@ -138,11 +138,22 @@ const root = "../.."
 // reserved it as rather than as a fifth finding. A quote inside the document
 // about the document, which this sweep counts like any other -- and the quote
 // is the warrant for the shape, so it is worth the count moving.
-// 34 -> 35 AT R6.2: the engine's `quiesce_timeout` overlay quotes the SAME v1
-// sentence from the other side -- "one finding beside these four" -- because
-// that clause is the warrant for this word being a finding rather than a second
-// kind, which is the one question the shape turned on.
-const declaredQuotes = 35
+// 35 -> 44 AT R6's GATE BUNDLE, AND NOT ONE NEW QUOTATION: examples/toy's ten
+// mutants are COPIES of its statute, and NINE had been cut from older revisions
+// of it and never re-cut, so each was missing the comment blocks that carry the
+// statute's quotes. Regenerating all ten from the current statute
+// (tools/make-toy-mutants.py) gives each of those nine the quote its statute has
+// carried all along: +1 per mutant, +9. Same mechanism as 29 -> 31 in R5.4, when
+// m10 was added -- this sweep counts the quotes the TREE MAKES and not the
+// distinct sentences, because its job is to notice a document that stopped
+// saying something.
+//
+// THE NUMBER IS THE SWEEP'S AND THE BASE IS NAMED. This commit's first cut said
+// 34 -> 43 on a v0.1.33 base; re-cut onto v0.1.34 (21fd1a0) the base is 35,
+// because R6.2 added the `quiesce_timeout` overlay's quotation, so the same +9
+// lands on 44. 0 absent, as at every move above, so the count alone is what
+// refused.
+const declaredQuotes = 44
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would

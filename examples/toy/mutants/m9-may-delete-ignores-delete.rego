@@ -65,6 +65,20 @@ package rumor.statute
 # for both into one ledger, and a statute that cannot tell them apart would
 # count across both. R5.3 needs `handles` in the projection, or an observation
 # that names its subject in a field of its own.
+#
+# AND IT LANDED: fable chose the projection at coop r5/16, and R5.3's 226acbb
+# ("engine: project a claim's handles") emits `handles` on a claim whenever the
+# fact carries any -- internal/engine/engine.go, present only when non-empty.
+# So the sentence that stood here until R6.2, "the engine does not pass them
+# yet", was true when written on 2026-10-19 and false six days later, and the
+# rules below still read as if there were one subject by their own choice
+# rather than for want of the field.
+#
+# WHAT THAT LEAVES OPEN, said plainly so this comment is not the next stale
+# one: the counts here do NOT filter on `handles`, which is safe only while
+# every package in examples/ is single-subject, as this one is. A walk creating
+# two events would need the filter, and nothing here refuses such a project --
+# that remains R5.3's note and is not closed by the field arriving.
 
 # The claims the observer holds at the observation's position: the ones it made
 # and the ones it was told, flattened by the engine and handed in as `known`.
@@ -96,6 +110,17 @@ role_sees_subject if {
 	c.type == "event.created"
 	input.observation.role in c.visible_to
 }
+
+# AN OBSERVATION WITH NO ROLE IS NOT RESTRICTED, which is v1's conditional read
+# exactly: "WHERE A PROJECT HAS ROLES, an observer's expectation is what it
+# knows restricted to what its `role` may see". A `direct` observation is the
+# engine's and never an actor's, so it bears no role and there is nothing to
+# restrict by -- the second oracle reads the store, not a principal's view.
+#
+# `not input.observation.role` and not `== ""`: the engine emits the key only
+# when the role is non-empty (internal/engine's prefixFacts), so for a direct
+# observation the field is UNDEFINED rather than blank.
+role_sees_subject if not input.observation.role
 
 joined_by_observer contains c.ref if {
 	some c in held_claims
@@ -186,6 +211,29 @@ made_user if {
 	c.type == "user.created"
 	c.actor == input.observation.actor
 }
+
+# THE SESSION ORDERING, which every `api` action but create_user requires.
+#
+# WHY IT IS A PRECONDITION AND NOT A 401. cmd/toy keys a session by user NAME,
+# so an actor can speak through the API only after some create_user made a user
+# of its own name. Driving seed 4242 to step 3, guest_1 was refused outright
+# because it had no user (quill, coop r5/89). The walk could have caught that as
+# a fault, but an action the actor cannot take is an action that was never
+# applicable: applicability is where this belongs, and fable ruled it so at
+# r5/92. The engine then never asks for a session an actor cannot hold.
+#
+# IT IS `made_user` READ ON THE PRECONDITION PATH, and a listed rule of its own
+# rather than a second use of the helper, for two reasons that both come from
+# other files: `requires` may only name a rule rules.json declares
+# (internal/validate arm 19, cell 1), and the helpers are deliberately unlisted
+# so attaint does not demand a mutant restating a listed rule's reading. This
+# one is listed, so examples/toy/mutants carries m10 for it.
+#
+# DEFAULTED, like the five around it: an undefined rule and a false one must not
+# be the same answer to the scheduler.
+default has_user := false
+
+has_user if made_user
 
 # One event per actor. The same shape as the twin's `may_publish`, and for the
 # same reason: a precondition has to be false SOMETIMES or the arm that reads it

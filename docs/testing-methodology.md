@@ -1190,3 +1190,45 @@ than asserted:
 case it is and show the evidence for it: the document that contradicted the old
 arm, or the charter line that spends what the old arm was waiting for. Then show
 the new arm asserts more, and rename it if its name described the old answer.
+
+### A hand-cut copy of a moving file is stale from its second edit
+
+`examples/*/mutants/` holds one mutant per rule, each carrying the sentence
+**"One change against the statute and nothing else, which is what makes `rumor
+attaint`'s kill attributable to the rule it names"**. Nothing checked it, and on
+2026-10-26 nine of `examples/toy`'s ten were false: each had been cut from the
+statute as it stood and never re-cut, so all nine lacked a rule the statute had
+since gained and five lacked a whole block of them.
+
+**A mutant missing a rule kills it by ABSENCE**, which is not the deviation the
+mutant exists to assert — and `attaint` said so in its own output, crediting
+one mutant with eight kills, seven of them for rules that have mutants of their
+own. The tally read `10 rule(s) killed, 0 unmutated` throughout. After the
+re-cut every rule is killed by its own mutant and **the tally is unchanged**:
+the number was never going to move, only its meaning, which is why no figure
+could have found this.
+
+Two things close it, and the second is the transferable one:
+
+- **The mutants are generated, not maintained** (`tools/make-toy-mutants.py`),
+  the same answer `tools/make-validate-fixtures.py` gives for the validate
+  fixtures. Each entry declares the mutant's own change and asserts its anchor
+  is UNIQUE in the statute, so a rename cannot silently mutate a different rule.
+- **The one-change claim has an oracle** that reads the files rather than a
+  table: `tests/statute`'s `TestEveryMutantIsItsStatutePlusOneChange` strips
+  comments and counts the contiguous regions in which a mutant differs from its
+  statute, requiring exactly one. It is a region count and not a line count,
+  because replacing a four-line rule body with one line is one change; what is
+  not one change is a second region elsewhere in the file.
+
+**The four mutants that are not one hunk are DECLARED with their counts, not
+excluded.** They are hand-cut mutants in R1–R3 packages, none shown to need
+more than one region, and the declaration is pinned in both directions — repair
+one and the test fails because its count moved, which is the signal to delete
+its row. A filter would have made them permanently invisible; a declaration
+makes them a list someone can finish.
+
+**How to apply.** Any artifact that is a COPY of something under active edit
+needs a generator and an oracle over the copy's own claim about itself. Look for
+the claim first: here it was written in every mutant's header, in prose, for
+months, and was the only statement of the invariant anywhere.

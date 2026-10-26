@@ -596,3 +596,162 @@ finding := "consistent" if {
 		t.Logf("PROOF the hook alone is silent (%d captured) -- EnablePrintStatements(true) is load-bearing, not decoration", len(off.seen))
 	}
 }
+
+// knownMultiHunkMutants are the mutants whose code diff against their statute
+// is NOT one contiguous hunk, with the count measured 2026-10-26.
+//
+// THEY ARE DECLARED AND NOT EXCLUDED, which is the difference between a
+// narrowing with a reason and a filter. Each is a hand-cut mutant in an R1-R3
+// package that is not mine to re-cut, and none has been shown to NEED more than
+// one hunk -- so the entry records what is, not what is right. The count is
+// pinned in BOTH directions: repair one and this test fails because its count
+// moved, which is the signal to delete its row rather than to re-measure it.
+var knownMultiHunkMutants = map[string]int{
+	"planted-lie/m1-ignores-position.rego":      2,
+	"role-visibility/m1-role-ignored.rego":      3,
+	"role-visibility/m3-ignores-position.rego":  3,
+	"transitive-count/m1-ignores-position.rego": 3,
+}
+
+// TestEveryMutantIsItsStatutePlusOneChange is the invariant every mutant's own
+// header already claims, and which nothing checked.
+//
+// WHAT IT CATCHES, measured rather than imagined. Every mutant carries the
+// sentence "One change against <statute> and nothing else, which is what makes
+// `rumor attaint`'s kill attributable to the rule it names". On 2026-10-26 NINE
+// of examples/toy's ten were false: each had been cut from the statute as it
+// stood and never re-cut, so they lacked rules the statute had since gained --
+// all nine missing `role_sees_subject if not input.observation.role`, five of
+// them missing the whole precondition block.
+//
+// A MUTANT MISSING A RULE KILLS IT BY ABSENCE, which is not the deviation the
+// mutant is supposed to assert, and attaint said so in its own output:
+//
+//	toy  has_user          killed by m1-believed-ignores-visibility
+//	toy  may_create_user   killed by m1-believed-ignores-visibility
+//	toy  may_leave         killed by m1-believed-ignores-visibility
+//	... eight rules in all, seven of which have mutants of their own
+//
+// "10 rule(s) killed, 0 unmutated" was GREEN on that, so the figure measured a
+// corpus that could not say which mutation killed what. After the re-cut each
+// rule is killed by its own mutant and the totals are unchanged -- which is the
+// point: the number was never going to move, only its meaning.
+//
+// COMMENTS ARE STRIPPED BEFORE COMPARING, deliberately. A mutant's header is
+// its own prose and its body carries the statute's; neither is the mutation,
+// and a comment that drifts is a different (and lesser) defect than a rule that
+// does. This test is about the rules.
+func TestEveryMutantIsItsStatutePlusOneChange(t *testing.T) {
+	pkgs, err := filepath.Glob(filepath.Join("..", "..", "examples", "*", "mutants"))
+	if err != nil || len(pkgs) == 0 {
+		t.Fatalf("no mutant directories found, so this test asserts nothing: %v %v", pkgs, err)
+	}
+	sort.Strings(pkgs)
+
+	seen, checked := map[string]bool{}, 0
+	for _, dir := range pkgs {
+		pkg := filepath.Base(filepath.Dir(dir))
+		statute := stripComments(t, filepath.Join(filepath.Dir(dir), "statute.rego"))
+		files, gerr := filepath.Glob(filepath.Join(dir, "*.rego"))
+		if gerr != nil || len(files) == 0 {
+			t.Fatalf("%s has no mutants: %v %v", pkg, files, gerr)
+		}
+		sort.Strings(files)
+		for _, f := range files {
+			key := pkg + "/" + filepath.Base(f)
+			hunks := countHunks(statute, stripComments(t, f))
+			checked++
+			want, declared := knownMultiHunkMutants[key]
+			if declared {
+				seen[key] = true
+				if hunks != want {
+					t.Errorf("%s has %d hunk(s) and is declared at %d: if it was repaired, "+
+						"delete its row; if it grew, it is drifting further", key, hunks, want)
+				}
+				continue
+			}
+			if hunks != 1 {
+				t.Errorf("%s changes %d hunk(s) of its statute, want 1: its own header says "+
+					"one change and nothing else, and attaint's kill attribution rests on "+
+					"that -- a mutant missing a rule kills it by ABSENCE", key, hunks)
+			}
+		}
+	}
+	for key := range knownMultiHunkMutants {
+		if !seen[key] {
+			t.Errorf("%s is declared multi-hunk and no mutant of that name was found: a "+
+				"declared exception for a file that is gone exempts nothing", key)
+		}
+	}
+	if checked < 30 {
+		t.Fatalf("only %d mutant(s) compared: the walk is broken, not the corpus", checked)
+	}
+	t.Logf("PROOF %d mutant(s) compared across %d package(s), %d declared multi-hunk",
+		checked, len(pkgs), len(knownMultiHunkMutants))
+}
+
+// stripComments returns a rego file's code lines: no comments, no blank lines.
+func stripComments(t *testing.T, path string) []string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	var out []string
+	for _, line := range strings.Split(string(raw), "\n") {
+		s := strings.TrimSpace(line)
+		if s == "" || strings.HasPrefix(s, "#") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// countHunks is the number of contiguous regions in which a and b differ.
+//
+// IT IS A LONGEST-COMMON-SUBSEQUENCE COUNT AND NOT A LINE COUNT, because a
+// one-line change and a five-line change are both ONE change -- m4 replaces a
+// four-line rule body with a one-line one and that is a single deviation. What
+// is NOT one change is a second region somewhere else in the file, which is
+// exactly the shape nine stale mutants had.
+func countHunks(a, b []string) int {
+	n, m := len(a), len(b)
+	lcs := make([][]int, n+1)
+	for i := range lcs {
+		lcs[i] = make([]int, m+1)
+	}
+	for i := n - 1; i >= 0; i-- {
+		for j := m - 1; j >= 0; j-- {
+			if a[i] == b[j] {
+				lcs[i][j] = lcs[i+1][j+1] + 1
+			} else if lcs[i+1][j] >= lcs[i][j+1] {
+				lcs[i][j] = lcs[i+1][j]
+			} else {
+				lcs[i][j] = lcs[i][j+1]
+			}
+		}
+	}
+	hunks, i, j, inHunk := 0, 0, 0, false
+	for i < n && j < m {
+		if a[i] == b[j] {
+			i, j, inHunk = i+1, j+1, false
+			continue
+		}
+		if !inHunk {
+			hunks++
+			inHunk = true
+		}
+		if lcs[i+1][j] >= lcs[i][j+1] {
+			i++
+		} else {
+			j++
+		}
+	}
+	if i < n || j < m {
+		if !inHunk {
+			hunks++
+		}
+	}
+	return hunks
+}
