@@ -339,8 +339,8 @@ contexts = ["api"]             # the session contexts an actor of this role may 
 saying so is the price of making `touches` optional: an action naming nothing is
 read as mutating nothing, exactly as an action with no `requires` is read as
 having no precondition -- the difference being that arm 3 refuses the second and
-no arm refuses the first. **This stays true for `touches` after the nineteenth
-arm landed** (fable, coop r4/113, 2026-10-19): arm 19 refuses a reference to a
+no arm refuses the first. **This stays true for `touches` after arm 19
+landed** (fable, coop r4/113, 2026-10-19): arm 19 refuses a reference to a
 declaration that is not there, and what an action touches is a claim about the
 WORLD rather than a name looked up in a document. The count is fable's and the
 hole is written down here instead of being closed by invention. `component` on an observation stays
@@ -524,7 +524,7 @@ would make the file say something it does not.
 
 **None of this file's refusals are `rumor validate`'s arms.** A document that
 cannot be read as a platform at all is **could-not-run**, and it arrives before
-any of the nineteen arms evaluates. Validate's refusals are about a project
+any of the twenty-one arms evaluates. Validate's refusals are about a project
 whose statute, bindings and platform disagree.
 
 ### Reserved for the phase that owns them

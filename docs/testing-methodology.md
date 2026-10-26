@@ -129,19 +129,27 @@ file, and emptying the recorded knowledge each turn the suite red.
 ## Self-test the oracle
 
 An oracle is checked before it is trusted, in the same run that trusts it.
-`rumor validate` declares **nineteen** arms, and the count is pinned in three
-places that move together (`internal/validate.TotalArms`, `ci.yml`'s literal,
-and this sentence), the way the release gate's own case count is. The invariant
+`rumor validate` declares **twenty-one** arms, and the count is pinned in FIVE
+places that move together -- `internal/validate.TotalArms`, that package's own
+`allArmIDs` (which `unreached` walks), `tests/validate`'s `allArms`, `ci.yml`'s
+literal and this sentence -- the way the release gate's own case count is. It
+was three until R6.2 found the other two the hard way: `allArmIDs` is
+unexported, so no external suite could read it and nothing did, and `ci.yml`'s
+is a grep in YAML that no Go test could see. Both have oracles now
+(`TestAllArmIDsIsTotalArms`, in-package, and `TestTheWorkflowsArmCountIsTotalArms`),
+because a copy with no oracle is found by whoever bumps next. The invariant
 is an ACCOUNTING one rather than a per-project number (fable, coop r4/77): every
-run accounts for all nineteen as evaluated or skipped-with-its-reason, never
+run accounts for all twenty-one as evaluated or skipped-with-its-reason, never
 silently and never twice, and across `tests/validate/fixtures/` every arm is
-evaluated at least once. The permitted twin evaluates all nineteen, which is
-what fable's D9 drill requires of it; a project declaring no browser stage
-honestly reports **seventeen**, and one whose adapter cannot be reached reports
-**fifteen** -- the skips named, and could-not-run rather than refused. Each of
-those three figures is measured here rather than computed: the nineteenth arm
-evaluates on an unreachable adapter because eight of its nine cells read
-documents alone, so that reading moved by one and not by two.
+evaluated at least once. The permitted twin evaluates all twenty-one, which
+is what fable's D9 drill requires of it; a project declaring no browser stage
+honestly reports **nineteen**, and one whose adapter cannot be reached reports
+**seventeen** -- the skips named, and could-not-run rather than refused. Each of
+those three figures is measured here rather than computed, at R6.2 as at R4.3:
+arm 19 evaluates on an unreachable adapter because eight of its nine cells read
+documents alone, so that reading moved by one and not by two; and the two arms
+R6.2 added read the bindings alone, so they evaluate in all three conditions and
+every figure moved by exactly two.
 
 `tools/release-gate.py --self-test` drives twenty cases, fifteen trailer checks
 and seven docs-verdict checks, and asserts that **each arm fires alone**. Each

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -992,5 +993,47 @@ func TestTheDocumentedTalliesAreTheBinarys(t *testing.T) {
 			}
 			t.Errorf("docs/cli.md quotes:\n%s\n\nrumor %s printed:\n%s", line, verb, out)
 		})
+	}
+}
+
+// TestTheWorkflowsArmCountIsTotalArms holds CI's own literal to the constant.
+//
+// WHY IT EXISTS, and it is the fourth copy of this number rather than a
+// hypothetical: the R6.2 bump moved TotalArms, tests/validate's `allArms`,
+// internal/validate's `allArmIDs` and both docs -- and `.forgejo/workflows/ci.yml`
+// greps the twin's and the toy's output for `19 of 19 arm(s) evaluated`. Nothing
+// in Go could see that string, so `go test ./...`, `go vet`, gofmt and
+// golangci-lint were all green on a commit whose CI failed at the last step of
+// the run, with a message that reads like an arm was dropped.
+//
+// IT IS NOT A DUPLICATE OF TestTheDocumentedOutputIsTheBinarysOutput. That one
+// compares docs/cli.md's console blocks to what the binary prints; the gate's
+// literal is in a workflow, is a grep rather than a block, and is the one copy
+// whose failure costs a CI round trip instead of a local second.
+//
+// AND IT CHECKS THE COUNT OF LITERALS TOO. A gate whose assertion was deleted
+// passes forever, so the number of places ci.yml makes this claim is declared:
+// two, the twin's and the toy's.
+func TestTheWorkflowsArmCountIsTotalArms(t *testing.T) {
+	const wantClaims = 2
+	path := filepath.Join("..", "..", ".forgejo", "workflows", "ci.yml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("the CI workflow could not be read, so its arm-count gate is unchecked: %v", err)
+	}
+	claim := regexp.MustCompile(`(\d+) of (\d+) arm\(s\) evaluated`)
+	found := claim.FindAllStringSubmatch(string(raw), -1)
+	if len(found) != wantClaims {
+		t.Fatalf("ci.yml makes the arm-count claim %d time(s), want %d: a deleted gate passes "+
+			"forever, and a new one needs this number moved deliberately", len(found), wantClaims)
+	}
+	for _, m := range found {
+		for _, n := range m[1:] {
+			if n != strconv.Itoa(validate.TotalArms) {
+				t.Errorf("ci.yml greps for %q and validate.TotalArms is %d: the gate would refuse "+
+					"a correct run, and it refuses it in CI rather than here",
+					m[0], validate.TotalArms)
+			}
+		}
 	}
 }
