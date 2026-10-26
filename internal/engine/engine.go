@@ -68,6 +68,21 @@ type Check struct {
 	Quiesce QuiesceState
 }
 
+// FindingQuiesceTimedOut is the FIFTH FINDING of docs/vocabulary.md, beside
+// `consistent`, `explained`, `pending` and `bug`.
+//
+// IT IS A FINDING AND NOT A KIND, which is fable's D7 (coop breakout-r6/0):
+// "the quiesce timeout's kind is in the vocabulary and in the run's output; it
+// is neither `bug` nor a refusal, and the exit is 3". A probe that ran and gave
+// up means the SYSTEM would not go quiet -- the project's declarations are
+// right and its adapter answered -- so there is nothing for a refusal to tell
+// anyone to fix.
+//
+// THE CONSTANT EXISTS SO THE WORD HAS ONE HOME. `bug` is spelled literally in
+// four packages and `stale` in two, which is how a finding value drifts; a walk
+// stopping on this one reads the constant rather than retyping the string.
+const FindingQuiesceTimedOut = "quiesce_timeout"
+
 // QuiesceState is a prober's answer about the system having settled.
 //
 // FOUR VALUES AND NOT A BOOL, which is fable's ruling 1(b) at coop r6/10 on

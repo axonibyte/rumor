@@ -138,7 +138,11 @@ const root = "../.."
 // reserved it as rather than as a fifth finding. A quote inside the document
 // about the document, which this sweep counts like any other -- and the quote
 // is the warrant for the shape, so it is worth the count moving.
-const declaredQuotes = 34
+// 34 -> 35 AT R6.2: the engine's `quiesce_timeout` overlay quotes the SAME v1
+// sentence from the other side -- "one finding beside these four" -- because
+// that clause is the warrant for this word being a finding rather than a second
+// kind, which is the one question the shape turned on.
+const declaredQuotes = 35
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would

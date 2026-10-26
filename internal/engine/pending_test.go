@@ -494,7 +494,11 @@ func TestAQuiesceAnswerThatIsNotAnAnswerRefuses(t *testing.T) {
 		says  string
 	}{
 		{"absent, the zero value", QuiesceAbsent, "no quiesce answer"},
-		{"a probe that gave up", QuiesceTimedOut, "TIMED OUT"},
+		// TIMED OUT LEFT THIS TABLE AT R6.2 AND DID NOT LEAVE THE FILE: it is
+		// a verdict now -- the `quiesce_timeout` finding -- and it is asserted
+		// as one in the control below and in
+		// TestAProbeThatGaveUpIsTheQuiesceTimeoutFinding. It refused here only
+		// because the word did not exist, which the clause said at the time.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := base
@@ -516,13 +520,14 @@ func TestAQuiesceAnswerThatIsNotAnAnswerRefuses(t *testing.T) {
 		})
 	}
 
-	// THE CONTROL, so the two refusals above are about the ANSWER and not about
-	// quiesce bounds being unjudgeable: the two real answers still reach a
+	// THE CONTROL, so the refusal above is about the ANSWER and not about
+	// quiesce bounds being unjudgeable: every real answer still reaches a
 	// verdict on the same fixture.
 	for _, tc := range []struct {
 		state QuiesceState
 		value any
-	}{{QuiesceBusy, "pending"}, {QuiesceQuiet, "bug"}} {
+	}{{QuiesceBusy, "pending"}, {QuiesceQuiet, "bug"},
+		{QuiesceTimedOut, FindingQuiesceTimedOut}} {
 		c := base
 		c.Quiesce = tc.state
 		f, err := Judge(ctx, countStatute, countRules, l(), c, b, nil)
@@ -645,4 +650,68 @@ func TestAQuiesceStateThisBuildDoesNotKnowIsNamedByItsNumber(t *testing.T) {
 				"this build does know", int(tc.state), got, tc.name)
 		}
 	}
+}
+
+// TestAProbeThatGaveUpIsTheQuiesceTimeoutFinding drives the fifth finding whole:
+// the value, the absence of a kind, the rule, and what the reason says.
+//
+// IT IS NOT ENOUGH TO ASSERT THE VALUE. The question this phase turned on was
+// whether a timeout is a `bug` with a kind or a finding of its own, and only
+// one of those is wrong in a way a reader notices: a `bug` with kind
+// `quiesce_timeout` would satisfy a value assertion AND reach every reader
+// keying on `bug`, which is exactly what fable's D7 forbids -- "neither `bug`
+// nor a refusal". So Kind is asserted EMPTY, which is the assertion that tells
+// the two shapes apart.
+//
+// AND THE REASON MUST NOT BORROW `stale`'s WORDS. A quiesced disagreement is
+// past its bound; this one is neither inside nor past, because the bound was
+// never reached. A reason saying "the bound is past" would send a reader
+// looking for a late system when what they have is one that never settled.
+func TestAProbeThatGaveUpIsTheQuiesceTimeoutFinding(t *testing.T) {
+	ctx := context.Background()
+	b := Bindings{Eventual: []Eventual{{Of: "item.created", Quiesce: true}}}
+	l := ledger.New(false)
+	if _, err := l.Append(ledger.Fact{Kind: ledger.KindClaim, Actor: "alice",
+		Type: "item.created", Ref: "alice.item#1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.SealAt(1); err != nil {
+		t.Fatal(err)
+	}
+	c := Check{Actor: "alice", Query: "item.count", Of: "item.created",
+		Source: ledger.SourceAPI, Value: 0, Quiesce: QuiesceTimedOut}
+
+	f, err := Judge(ctx, countStatute, countRules, l, c, b, nil)
+	if err != nil {
+		t.Fatalf("a probe that gave up was refused rather than found: %v", err)
+	}
+	if f.Value != FindingQuiesceTimedOut {
+		t.Errorf("the finding is %v, want %q", f.Value, FindingQuiesceTimedOut)
+	}
+	if f.Kind != "" {
+		t.Errorf("the finding carries kind %q: a finding of its own needs no kind, and one "+
+			"here would reach every reader keying on `bug`", f.Kind)
+	}
+	if f.Value == "bug" {
+		t.Error("a quiesce timeout read as a bug: the project and its adapter are both right")
+	}
+	if f.Overlay == nil {
+		t.Fatal("no overlay recorded: the statute's own verdict must stay visible beneath it")
+	}
+	if f.Overlay.Rule != "engine.quiesce_timeout" {
+		t.Errorf("the overlay rule is %q, want engine.quiesce_timeout", f.Overlay.Rule)
+	}
+	if f.StatuteValue != "bug" {
+		t.Errorf("the statute's own verdict is %v, want bug: the overlay must not erase it",
+			f.StatuteValue)
+	}
+	for _, want := range []string{"gave up", "neither inside the bound nor past it", "position 1"} {
+		if !strings.Contains(f.Overlay.Reason, want) {
+			t.Errorf("the reason does not say %q: %s", want, f.Overlay.Reason)
+		}
+	}
+	if strings.Contains(f.Overlay.Reason, "the bound is past") {
+		t.Errorf("the reason borrows `stale`'s words: %s", f.Overlay.Reason)
+	}
+	t.Logf("PROOF %s", f.Says())
 }

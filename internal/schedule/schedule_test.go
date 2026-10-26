@@ -7,6 +7,8 @@ package schedule
 import (
 	"sort"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 )
 
 // draws is enough to make a coincidence absurd rather than merely unlikely:
@@ -317,4 +319,41 @@ func TestAnAllZeroPoolIsANoOpAndNotARefusal(t *testing.T) {
 	}
 	t.Log("PROOF all-zero -> (\"\", nil); empty -> (\"\", nil); zero beside 3 -> create_event " +
 		"over 8 seeds; negative -> refusal")
+}
+
+// TestOnlyTheFindingsThatStopAWalkStopIt pins the stopping set to exactly two
+// values, from inside the package, because the set grew and had no oracle.
+//
+// WHAT IT CATCHES. The check was inline as `v == findingBug`, and R6.2 added a
+// second finding that must also end a walk -- `quiesce_timeout`, the system
+// refusing to settle. A value added to the vocabulary with no single place to
+// decide this is a value some paths stop on and others walk past, and the
+// walk-past direction is the quiet one: the run would keep stepping after it
+// had something to report, and a shrink would reduce against a world one step
+// too far.
+//
+// THE CONTINUING VALUES ARE ASSERTED TOO, which is the half that would catch
+// the opposite error. Making `pending` stop a walk would end a run on a
+// disagreement that is INSIDE its bound -- the thing `pending` exists to hold
+// open -- and a test naming only the stoppers would pass.
+func TestOnlyTheFindingsThatStopAWalkStopIt(t *testing.T) {
+	for _, v := range []any{"bug", engine.FindingQuiesceTimedOut} {
+		if !stopsTheWalk(v) {
+			t.Errorf("%v does not stop the walk: the run would step past something it found", v)
+		}
+	}
+	for _, v := range []any{"consistent", "explained", "pending"} {
+		if stopsTheWalk(v) {
+			t.Errorf("%v stops the walk: a walk ending here reports a verdict it did not reach", v)
+		}
+	}
+	// A FINDING THE STATUTE LEFT UNDEFINED IS NOT A STOP, and it is not a
+	// string either -- engine.Finding.Value is `any` and nil when the statute
+	// yielded nothing, so a type assertion is the only safe read.
+	if stopsTheWalk(nil) {
+		t.Error("an undefined finding stops the walk: nothing was found, so nothing ends it")
+	}
+	if stopsTheWalk(3) {
+		t.Error("a non-string finding value stops the walk")
+	}
 }

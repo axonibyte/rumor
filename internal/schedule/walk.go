@@ -306,12 +306,13 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		rec.Observations += len(seen)
 		rec.Steps = append(rec.Steps, step)
 
-		// THE FIRST BUG ENDS IT. Checked after the step is recorded, so the
+		// THE FIRST FINDING THAT STOPS A WALK ENDS IT -- a `bug`, or R6.2's
+		// `quiesce_timeout`. Checked after the step is recorded, so the
 		// trace a shrink reads includes the step that produced the finding --
 		// without it the reduction would search a world one step short of the
 		// one that broke.
 		for i := range seen {
-			if v, ok := seen[i].Value.(string); ok && v == findingBug {
+			if stopsTheWalk(seen[i].Value) {
 				f := seen[i]
 				rec.Finding = &f
 				rec.FoundAt = n
@@ -538,11 +539,26 @@ func observeHandles(decl bindings.Observation, table *handle.Table,
 	return chosen, true
 }
 
-// findingBug is the one finding value a walk stops on. The four values are
-// docs/vocabulary.md's and `bug` is the only one that means the system and the
-// statute disagree; `consistent` and `explained` are a walk continuing, and
-// `pending` is R9's.
+// findingBug is the first of the two finding values a walk stops on. The values
+// are docs/vocabulary.md's: `bug` means the system and the statute disagree,
+// `consistent` and `explained` are a walk continuing, and `pending` is R9's.
 const findingBug = "bug"
+
+// stopsTheWalk says whether a finding value ends the walk.
+//
+// TWO VALUES NOW, AND THE SECOND IS NOT A BUG. R6.2's `quiesce_timeout` is a
+// finding of its own -- the system would not go quiet -- so it ends a walk for
+// the same reason a bug does: the run has something to report and continuing
+// would search past it. It is NOT folded into findingBug, because every reader
+// keying on `bug` must not see one here (fable's D7, coop breakout-r6/0).
+//
+// WHY A FUNCTION AND NOT A SECOND COMPARISON AT THE CALL SITE: the check sat
+// inline as `v == findingBug`, and a value added to the vocabulary with no
+// single place to add it is a value some paths stop on and others walk past.
+func stopsTheWalk(v any) bool {
+	s, ok := v.(string)
+	return ok && (s == findingBug || s == engine.FindingQuiesceTimedOut)
+}
 
 // take performs one drawn kind: the honest action, or the lie.
 func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions,

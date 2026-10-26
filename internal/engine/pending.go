@@ -183,18 +183,35 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 					c.Of, "quiesce", claimPos),
 			}, nil
 		case QuiesceTimedOut:
-			// THE SLOT R6.2's FINDING KIND FILLS (fable, coop r6/10 ruling
-			// 1(b)). A prober that ran and gave up is a thing the run FOUND --
-			// the system would not go quiet -- and it is neither this
-			// disagreement being inside the bound nor past it. The vocabulary
-			// does not define that kind yet, so R6.1 refuses rather than
-			// inventing a word, which is exactly how `stale` was handled until
-			// this phase spent it.
-			return nil, fmt.Errorf("engine: %q is eventual bounded %q and the quiesce probe "+
-				"TIMED OUT, which is a finding of its own kind and not a verdict on the "+
-				"claim at position %d: the kind is R6.2's to define and this build cannot "+
-				"name it, so it refuses rather than reading a probe that gave up as either "+
-				"inside or past the bound", c.Of, "quiesce", claimPos)
+			// THE FIFTH FINDING, AND NOT A KIND UNDER `bug`. fable's D7 (coop
+			// breakout-r6/0) rules it "neither `bug` nor a refusal, and the
+			// exit is 3", and the reason is whose fault it is: the project is
+			// not wrong and its adapter is not wrong, the SYSTEM would not go
+			// quiet, which is a thing the run FOUND. A refusal would tell the
+			// project's reader to fix their declarations, and there is nothing
+			// there to fix.
+			//
+			// THE WORD IS v1'S OWN RESERVATION, not one invented here.
+			// docs/vocabulary.md reserved "kinds under `bug` and one finding
+			// beside these four" and listed `stale`, a quiesce timeout,
+			// `ui_timeout` and `trespass`; `stale` was spent as a KIND at v2
+			// and `trespass` is already "not a finding here", so the one
+			// finding beside the four is this. The spelling follows
+			// `ui_timeout`, which v1 tokenized where it left this as prose
+			// (ibis, coop r6/31).
+			//
+			// IT CARRIES NO KIND, deliberately. Kind narrows a `bug` by saying
+			// why it is one; a finding of its own needs no narrowing, and
+			// setting both would make a reader keying on Value see a bug that
+			// this is not.
+			return &Overlay{
+				Rule:  "engine.quiesce_timeout",
+				Value: FindingQuiesceTimedOut,
+				Reason: fmt.Sprintf("%q is eventual bounded %q and the quiesce probe gave up "+
+					"before the system went quiet, so the disagreement on the claim at "+
+					"position %d is neither inside the bound nor past it: the run found that "+
+					"the system would not settle", c.Of, "quiesce", claimPos),
+			}, nil
 		case QuiesceAbsent:
 			// ABSENT, which is not an answer. A caller with no prober wired
 			// must not have its silence read as "not quiet": that would hold a
