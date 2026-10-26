@@ -948,6 +948,17 @@ still late. And the three findings the engine already produced are unmoved —
 toy seeds 2, 40 and 1 are byte-identical to v0.1.31's output (786416e6925acf7c,
 dff917a0f6c74983, ba42d0333035a0aa), which is R6's control for every child.
 
+**The control carries its invocation, because without it the control bites the
+reader it was written for.** It is `rumor run examples/toy --seed N --steps 10`,
+stdout only, `sha256` truncated to sixteen. The flag is load-bearing and the
+figures above are the flag's: with default steps, seeds 2 and 40 are
+byte-identical to the triple above and seed 1 is `80d212c53f606e6d`. So a reader
+re-running this from the numbers alone matches two of three and reads the third
+as a regression of their own — which happened in R6.2, cost an hour, and was
+settled by ratchet naming the flag at coop r6/4–/5. A partial match is worse
+evidence than none: a full mismatch would have been read as a method error at
+once, where two-of-three bought a confident wrong conclusion about the record.
+
 **The re-check is keyed on the pair.** v1 re-checks a `pending` "at the actor's
 next observation of the same query and at every full reconciliation", so
 another query from the same actor does not clear it, and a re-check clears the
