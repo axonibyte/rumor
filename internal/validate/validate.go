@@ -167,8 +167,17 @@ func (r *Report) unreached(f string, a ...any) {
 	}
 }
 
-// allArmIDs is every arm, for the accounting above. tests/validate asserts this
-// list against TotalArms so the two cannot drift.
+// allArmIDs is every arm, for the accounting above.
+//
+// WHAT ASSERTS IT IS internal/validate's OWN TEST, and this sentence used to say
+// tests/validate did -- which is the claim that was false of every test in the
+// tree, the one that sent me looking in the first place (coop r6/30), and which
+// I LEFT BEHIND when I closed the gap it named. rook found it still here at
+// rumor/1026: the fix landed and its own false comment stayed, now pointing at
+// the wrong suite. tests/validate CANNOT assert this list -- allArmIDs is
+// unexported and that package is external -- so the claim was not merely stale,
+// it was impossible by Go's rules, which is rook's rumor/1028 point: that
+// subclass needs no judgement to decide.
 //
 // IT IS THE SECOND COPY OF THE LIST and the R6.2 bump proved it: tests/validate
 // has its own `allArms`, and adding 7c and 7d there left THIS one at nineteen,

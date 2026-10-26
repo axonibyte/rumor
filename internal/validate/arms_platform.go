@@ -152,10 +152,19 @@ func arm7(rep *Report, b bindings.Bindings) {
 			noBound = append(noBound, t)
 		// THE TYPED PROBES, NOT THE RESERVED MAP, and the difference is a
 		// hole the typing opened. Quiesce carries every sibling key, so
-		// `[quiesce]` holding anything at all -- including R6.2's own
-		// superseded `probe = "/test/quiet"` -- made this check pass while
-		// the project declared ZERO probes the engine can ask. Probes is
-		// what "a condition nothing can evaluate" is actually about.
+		// `[quiesce]` holding ANY of them while declaring no probe made this
+		// check pass with ZERO probes the engine can ask. Probes is what "a
+		// condition nothing can evaluate" is actually about.
+		//
+		// THE LIVE SHAPE IS A SIBLING KEY AND NOT THE OLD SPELLING. This
+		// comment cited `probe = "/test/quiet"` as the example, and rook
+		// measured at coop rumor/1026 that it cannot occur at this head: the
+		// typed array-of-tables took that key at 4045c16, so the old form is a
+		// PARSE refusal -- "quiesce.probe: string: wanted an array of tables"
+		// -- before any arm runs. An illustration of a state the parser refuses
+		// reads as a live hazard, which is worse than no example. Driven, the
+		// shape that does occur: the twin plus `[quiesce]` with `note = "..."`
+		// and an eventual quiesce bound refuses 7b by name.
 		case c.Bound == "quiesce" && len(b.Probes) == 0:
 			noProbe = append(noProbe, t)
 		}
