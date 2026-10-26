@@ -166,7 +166,7 @@ docs = ["docs/contract.md", "docs/testing-methodology.md"]
 # `pending` arm drove engine.Judge on a fixture, and no production path called
 # Judge at all (quill, coop r6/80). An arm proving a mechanism the live path
 # never reaches is the defect this suite exists to make impossible.
-path = "tests/quiesce/*.go"
+path = "tests/quiesce/**"
 docs = ["docs/vocabulary.md", "docs/design.md"]
 
 [[entry]]

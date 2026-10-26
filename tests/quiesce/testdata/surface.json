@@ -1,0 +1,20 @@
+{
+  "actions": [
+    {"name": "create_event", "context": "api"},
+    {"name": "join_event", "context": "api"},
+    {"name": "leave_event", "context": "api"}
+  ],
+  "observations": [
+    {"name": "attendance", "source": "direct"}
+  ],
+  "contexts": ["api"],
+  "components": [{"name": "store", "stateful": true}],
+  "capabilities": {"faults": [], "volume": [], "upgrade": []},
+  "execute": {
+    "create_event": {"ids": {"event": "e-1"}, "response": {"status": 201}},
+    "join_event": {"ids": {}, "response": {"status": 200}},
+    "leave_event": {"ids": {}, "response": {"status": 200}}
+  },
+  "observe": {"attendance": 0},
+  "token": "fake-token"
+}

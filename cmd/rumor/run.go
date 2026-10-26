@@ -354,6 +354,31 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, stdout, stder
 		_, _ = fmt.Fprintf(stderr, "run: writing the verdict: %v\n", err)
 		return 2
 	}
+	// AND WHAT THE RUN DID WITH ITS PENDINGS, which fable ruled a line of the
+	// product at coop r6/92 on rook's rumor/1071: clause 3 of the control is
+	// "no trailing pending", and it had no reader outside this repository's own
+	// tests. rook measured that exactly: the record carried PendingOpen and the
+	// run never printed it, so "a trailing pending is computed and never leaves
+	// the process" -- the gate had no instrument and only the author could see
+	// it. A control clause whose only reader is a test is the dead-region shape
+	// one layer out.
+	//
+	// IT IS PRINTED EVEN WHEN NOTHING WAS RECONCILED, because zero is the
+	// answer the gate is checking for. A line that appeared only on a non-empty
+	// reconciliation would make "clean" and "not printed" the same observation,
+	// which is the absence-is-not-evidence shape this project keeps finding.
+	//
+	// THE VERDICTS ARE SORTED BY THE WALK and carry no clock, so this line is
+	// byte-identical across two attempts of a seed as D1 requires.
+	reconciled := "nothing to reconcile"
+	if len(rec.Reconciled) > 0 {
+		reconciled = strings.Join(rec.Reconciled, ", ")
+	}
+	if _, err := fmt.Fprintf(stdout, "run:   quiesce -- %d pending(s) open at the end; "+
+		"reconciliation: %s\n", rec.PendingOpen, reconciled); err != nil {
+		_, _ = fmt.Fprintf(stderr, "run: writing the quiesce line: %v\n", err)
+		return 2
+	}
 	// EXIT 3 AND NOT 1. A refusal (1) means the PROJECT is wrong and its
 	// reader fixes their declarations; a finding means the SYSTEM UNDER TEST is
 	// wrong and its reader fixes their application. Folding the product into

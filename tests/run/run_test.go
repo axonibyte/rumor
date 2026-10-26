@@ -890,8 +890,19 @@ func TestANeverQuietProbeEndsTheRunAsAFinding(t *testing.T) {
 			}
 			// NO PENDING WAS OPEN: nothing here is eventual, so the finding
 			// cannot have come from the overlay.
-			if strings.Contains(out, "pending") {
-				t.Errorf("a pending appears in a run with no eventual type:\n%s", out)
+			//
+			// READ OFF THE RUN'S OWN QUIESCE LINE, not from the ABSENCE of the
+			// word. This searched stdout for "pending" and passed because the
+			// string did not appear -- then R6.3 gave every run a line that
+			// says how many are open, which contains the word and broke the
+			// arm while its subject was unchanged. An absence that any new
+			// output can end was never the assertion; the number is.
+			if !strings.Contains(out, "0 pending(s) open at the end") {
+				t.Errorf("the run does not report zero pendings open, and nothing here is "+
+					"eventual so the finding cannot have come from the overlay:\n%s", out)
+			}
+			if strings.Contains(out, "FOUND pending") || strings.Contains(out, "kind stale") {
+				t.Errorf("a pending or a stale appears in a run with no eventual type:\n%s", out)
 			}
 			// INSIDE THE DECLARED TIMEOUT PLUS GRACE. One direction only: the
 			// floor would be timing the box.

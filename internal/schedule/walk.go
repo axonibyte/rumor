@@ -225,8 +225,15 @@ type Record struct {
 	Finding *engine.Finding
 	FoundAt int
 
+	// Reconciled is what the end-of-run reconciliation judged, one entry per
+	// pending it re-asked, each as engine.Finding.Says renders it and sorted so
+	// two attempts of a seed cannot differ by map order.
+	Reconciled []string
+
 	// PendingOpen is how many findings the run still holds open for re-check
-	// when it ends, read off the register after the last step.
+	// when it ends, read off the register after the last step AND after the
+	// reconciliation -- so a run that ends with one is a run where re-asking
+	// did not close it, which is the only case R2.3 forbids.
 	//
 	// IT EXISTS SO "NO TRAILING PENDING" CAN BE CHECKED AT ALL. docs/vocabulary
 	// says a `stale` is terminal and "a run that ends on one leaves no pending
@@ -311,6 +318,9 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	// step. A fresh register per step would re-open every pending and never
 	// re-check one.
 	reg := engine.NewRegister()
+	// WHAT EACH PENDING CAME FROM, so the end-of-run reconciliation can re-ask
+	// it. See ask.
+	held := map[string]ask{}
 
 	for n := 1; n <= steps; n++ {
 		// SEAL EVERYTHING SO FAR. The seal is the prefix a precondition is
@@ -379,7 +389,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 			qs = st
 		}
 		seen, oerr := observe(ctx, p.Statute, sess, sessions, table, p.Observations, l, &step,
-			engine.Bindings{Eventual: p.Eventual}, reg, qs)
+			engine.Bindings{Eventual: p.Eventual}, reg, qs, held)
 		if oerr != nil {
 			return rec, fmt.Errorf("schedule: step %d: %w", n, oerr)
 		}
@@ -461,6 +471,67 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 			}
 			rec.FoundAt = len(rec.Steps)
 		}
+
+		// AND THEN THE RECONCILIATION THAT FOLLOWS, which is
+		// docs/vocabulary.md's own phrase for this: the quiesce form is
+		// "`pending` until the declared probes read quiet and `stale` if the
+		// reconciliation that follows still disagrees". Until it existed the
+		// second half of that sentence had nowhere to happen -- a `pending` is
+		// re-checked "at the actor's next observation of the same query", and
+		// for a pending opened at the last step there is no next observation,
+		// so seeds 1 and 3 ended with one held open (ibis, coop r6/84) and
+		// R2.3's "a run that ends on one leaves no pending open" was false.
+		//
+		// IT RE-ASKS EXACTLY WHAT IS OPEN, from `held`: the register keys a
+		// pending by (actor, query) and engine.Check carries no subject, so
+		// the walk is the only thing that knows which observation to re-issue.
+		// A full pass over every declared observation would also re-check
+		// them, and would ask questions about subjects no pending was about.
+		//
+		// THE FRESH QUIESCE ANSWER IS WHAT MAKES IT A VERDICT: the probes have
+		// just been asked, so a disagreement that survives here is a pending
+		// past its bound -- `stale`, decided by engine.Judge where the
+		// re-check is in hand (fable, coop r6/87) -- and one that has resolved
+		// reads `consistent` and clears.
+		if len(held) > 0 && reg.Len() > 0 {
+			open := reg.Open()
+			for actor, queries := range open {
+				for _, query := range queries {
+					a, ok := held[askKey(actor, query)]
+					if !ok {
+						// A PENDING NOTHING REMEMBERED, NAMED RATHER THAN
+						// SKIPPED: it would otherwise sit open to the end of
+						// the run and be reported as clean, which is the
+						// outcome this whole arm exists to prevent.
+						return rec, fmt.Errorf("schedule: a %q pending is open for %s and the "+
+							"walk did not record what produced it, so it cannot be re-checked",
+							query, actor)
+					}
+					f, made, oerr := observeOne(ctx, p.Statute, sess, sessions, table, a.decl,
+						a.chosen, a.actor, l, engine.Bindings{Eventual: p.Eventual}, reg, state,
+						"reconciling after the last step")
+					if oerr != nil {
+						return rec, oerr
+					}
+					if !made {
+						continue
+					}
+					rec.Reconciled = append(rec.Reconciled, f.Says())
+					// A FINDING THE RECONCILIATION PRODUCES ENDS THE RUN LIKE
+					// ANY OTHER, and it does not overwrite one the walk
+					// already has: the earlier finding is what a shrink
+					// reduces, and the trace that reaches it is recorded.
+					if stopsTheWalk(f.Value) && rec.Finding == nil {
+						found := f
+						rec.Finding = &found
+						rec.FoundAt = len(rec.Steps)
+						rec.Sessions = sessions.Acquired()
+						rec.Facts = l.Facts()
+					}
+				}
+			}
+			sort.Strings(rec.Reconciled)
+		}
 	}
 
 	rec.Sessions = sessions.Acquired()
@@ -525,7 +596,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 func observe(ctx context.Context, statute string, sess *wire.Session, sessions *Sessions,
 	table *handle.Table, obs []bindings.Observation, l *ledger.Ledger,
 	step *Step, eb engine.Bindings, reg *engine.Register,
-	qs engine.QuiesceState) ([]engine.Finding, error) {
+	qs engine.QuiesceState, held map[string]ask) ([]engine.Finding, error) {
 
 	if len(obs) == 0 {
 		return nil, nil
@@ -558,92 +629,132 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 		if !ok {
 			continue
 		}
-		args, err := ObserveArgs(decl, chosen, table)
-		if err != nil {
-			// A HANDLE THAT WILL NOT RESOLVE IS A SKIP AND NOT A REFUSAL, for
-			// the suborn reason above: the step named something unbound, so
-			// this observation has no subject at this position.
+		found, made1, oerr := observeOne(ctx, statute, sess, sessions, table, decl, chosen,
+			step.Actor, l, eb, reg, qs, fmt.Sprintf("after step %d", step.N))
+		if oerr != nil {
+			return nil, oerr
+		}
+		if !made1 {
 			continue
 		}
-
-		// THE TOKEN IS THE SOURCE'S, which is the ruling's second clause: an
-		// `api` observation goes through the acting actor's own session, and a
-		// `direct` one is the engine's own and carries none.
-		var token string
-		if decl.Source == wire.SourceAPI || decl.Source == wire.SourceUI {
-			t, terr := sessions.Token(step.Actor, string(decl.Source))
-			if terr != nil {
-				// THE ACTOR CANNOT MAKE IT, which is "every declared
-				// observation whose actor CAN make it". An actor with no
-				// session in that context observes nothing through it, and
-				// that is the project's role model answering rather than a
-				// fault.
-				continue
-			}
-			token = t
-		}
-
-		resp, err := sess.Observe(wire.ObserveRequest{
-			Query: decl.Name, Source: decl.Source, Token: token, Args: args,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("observing %s (%s) after step %d: %w",
-				decl.Name, decl.Source, step.N, err)
-		}
-
-		// THE OBSERVER IS THE STEP'S ACTOR FOR api AND THE ENGINE FOR direct,
-		// which is what `role` then reads off: a direct observation bears no
-		// role, because it is nobody's view (engine.Input's own rule) and a
-		// statute's role_sees_subject reads its ABSENCE rather than a blank.
-		check := engine.Check{
-			Query:  decl.Name,
-			Of:     decl.Of,
-			Source: ledger.Source(decl.Source),
-			Value:  resp.Value,
-		}
-		if decl.Source != wire.SourceDirect {
-			check.Actor = step.Actor
-			if role, rok := RoleOf(step.Actor); rok {
-				check.Role = role
-			}
-		} else {
-			// A CHECK ALWAYS NAMES AN ACTOR -- engine.Input refuses one that
-			// does not, because "a finding is always some actor's". For a
-			// direct observation that actor is the one whose step produced the
-			// subject: the engine asks the store about what this actor just
-			// did. The ROLE is still omitted, which is the half that decides
-			// what a statute may see.
-			check.Actor = step.Actor
-		}
-
-		// THE ONE EVALUATOR, as a case's check goes through: a second path
-		// running statutes would be free to disagree, and a walk and a case
-		// contradicting each other about one world is what D14 exists to catch.
-		// THE ATTRIBUTION IS ASKED FOR ALONGSIDE THE FINDING, because it is
-		// part of the finding's identity and not a second question: `bug`
-		// resting on a planted claim is a different finding from `bug` resting
-		// on none (docs/design.md), and a caller handed only the value cannot
-		// tell them apart. Naming a rule the statute does not declare is not an
-		// error -- Rules simply carries no entry for it -- so a project with no
-		// planted cases is unaffected.
-		// AND THE QUIESCE READING, which is what makes an eventual bound mean
-		// anything mid-walk: pendingOverlay refuses QuiesceAbsent rather than
-		// reading silence as "not quiet", so a project with a quiesce bound and
-		// no prober is a refusal and not a quiet run (ratchet, coop r6/8).
-		check.Quiesce = qs
-
-		// JUDGE AND NOT Evaluate, because Evaluate takes no bindings and so can
-		// never reach the overlay. That was the defect: `bound = "quiesce"`
-		// parsed, validated, and did nothing to a walk.
-		found, err := engine.Judge(ctx, statute,
-			[]string{engine.FindingRule, engine.AttributionRule}, l, check, eb, reg)
-		if err != nil {
-			return nil, fmt.Errorf("judging %s (%s) after step %d: %w",
-				decl.Name, decl.Source, step.N, err)
+		if found.Value == "pending" && held != nil {
+			// WHAT PRODUCED THIS PENDING, REMEMBERED SO IT CAN BE RE-ASKED.
+			// The register keys a pending by (actor, query) alone and
+			// engine.Check carries no subject, so nothing in the engine can
+			// re-issue the observation this came from -- and "a `pending` is
+			// re-checked at the actor's next observation of the same query"
+			// (docs/vocabulary.md) needs that observation to be MAKEABLE at
+			// the end of a run, when no step is supplying handles.
+			held[askKey(step.Actor, decl.Name)] = ask{decl: decl, chosen: chosen, actor: step.Actor}
 		}
 		made = append(made, found)
 	}
 	return made, nil
+}
+
+// ask is one observation the walk can re-issue: the declaration, the handles it
+// was given, and the actor who made it.
+type ask struct {
+	decl   bindings.Observation
+	chosen map[string]string
+	actor  string
+}
+
+func askKey(actor, query string) string { return actor + "\x00" + query }
+
+// observeOne makes ONE declared observation and judges it. It is the body the
+// step loop and the end-of-run reconciliation share, so neither can judge by a
+// route the other does not -- two paths running statutes would be free to
+// disagree, which is the reason this package has one evaluator at all.
+func observeOne(ctx context.Context, statute string, sess *wire.Session, sessions *Sessions,
+	table *handle.Table, decl bindings.Observation, chosen map[string]string, actor string,
+	l *ledger.Ledger, eb engine.Bindings, reg *engine.Register, qs engine.QuiesceState,
+	when string) (engine.Finding, bool, error) {
+
+	args, err := ObserveArgs(decl, chosen, table)
+	if err != nil {
+		// A HANDLE THAT WILL NOT RESOLVE IS A SKIP AND NOT A REFUSAL, for
+		// the suborn reason above: the step named something unbound, so
+		// this observation has no subject at this position.
+		return engine.Finding{}, false, nil
+	}
+
+	// THE TOKEN IS THE SOURCE'S, which is the ruling's second clause: an
+	// `api` observation goes through the acting actor's own session, and a
+	// `direct` one is the engine's own and carries none.
+	var token string
+	if decl.Source == wire.SourceAPI || decl.Source == wire.SourceUI {
+		t, terr := sessions.Token(actor, string(decl.Source))
+		if terr != nil {
+			// THE ACTOR CANNOT MAKE IT, which is "every declared
+			// observation whose actor CAN make it". An actor with no
+			// session in that context observes nothing through it, and
+			// that is the project's role model answering rather than a
+			// fault.
+			return engine.Finding{}, false, nil
+		}
+		token = t
+	}
+
+	resp, err := sess.Observe(wire.ObserveRequest{
+		Query: decl.Name, Source: decl.Source, Token: token, Args: args,
+	})
+	if err != nil {
+		return engine.Finding{}, false, fmt.Errorf("observing %s (%s) %s: %w",
+			decl.Name, decl.Source, when, err)
+	}
+
+	// THE OBSERVER IS THE STEP'S ACTOR FOR api AND THE ENGINE FOR direct,
+	// which is what `role` then reads off: a direct observation bears no
+	// role, because it is nobody's view (engine.Input's own rule) and a
+	// statute's role_sees_subject reads its ABSENCE rather than a blank.
+	check := engine.Check{
+		Query:  decl.Name,
+		Of:     decl.Of,
+		Source: ledger.Source(decl.Source),
+		Value:  resp.Value,
+	}
+	if decl.Source != wire.SourceDirect {
+		check.Actor = actor
+		if role, rok := RoleOf(actor); rok {
+			check.Role = role
+		}
+	} else {
+		// A CHECK ALWAYS NAMES AN ACTOR -- engine.Input refuses one that
+		// does not, because "a finding is always some actor's". For a
+		// direct observation that actor is the one whose step produced the
+		// subject: the engine asks the store about what this actor just
+		// did. The ROLE is still omitted, which is the half that decides
+		// what a statute may see.
+		check.Actor = actor
+	}
+
+	// THE ONE EVALUATOR, as a case's check goes through: a second path
+	// running statutes would be free to disagree, and a walk and a case
+	// contradicting each other about one world is what D14 exists to catch.
+	// THE ATTRIBUTION IS ASKED FOR ALONGSIDE THE FINDING, because it is
+	// part of the finding's identity and not a second question: `bug`
+	// resting on a planted claim is a different finding from `bug` resting
+	// on none (docs/design.md), and a caller handed only the value cannot
+	// tell them apart. Naming a rule the statute does not declare is not an
+	// error -- Rules simply carries no entry for it -- so a project with no
+	// planted cases is unaffected.
+	// AND THE QUIESCE READING, which is what makes an eventual bound mean
+	// anything mid-walk: pendingOverlay refuses QuiesceAbsent rather than
+	// reading silence as "not quiet", so a project with a quiesce bound and
+	// no prober is a refusal and not a quiet run (ratchet, coop r6/8).
+	check.Quiesce = qs
+
+	// JUDGE AND NOT Evaluate, because Evaluate takes no bindings and so can
+	// never reach the overlay. That was the defect: `bound = "quiesce"`
+	// parsed, validated, and did nothing to a walk.
+	found, err := engine.Judge(ctx, statute,
+		[]string{engine.FindingRule, engine.AttributionRule}, l, check, eb, reg)
+	if err != nil {
+		return engine.Finding{}, false, fmt.Errorf("judging %s (%s) %s: %w",
+			decl.Name, decl.Source, when, err)
+	}
+	return found, true, nil
 }
 
 // observeHandles resolves an observation's declared argument names against THE

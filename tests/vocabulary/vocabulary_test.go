@@ -163,7 +163,13 @@ const root = "../.."
 // clause is the warrant for the word being decided where the re-check is in
 // hand rather than in the overlay (fable, coop r6/87). The quote is what says
 // the gate is the document's rule and not this package's preference.
-const declaredQuotes = 46
+// 46 -> 47 AT R6.3's END-OF-RUN RECONCILIATION: internal/schedule quotes the
+// quiesce form's own sentence -- "`pending` until the declared probes read quiet
+// and `stale` if the reconciliation that follows still disagrees" -- because the
+// second half of it had nowhere to happen until that code existed. The quote is
+// the warrant for re-asking at all, and for re-asking with the FRESH probe
+// answer rather than the last step's.
+const declaredQuotes = 47
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would
