@@ -3,6 +3,50 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.38 — 2026-10-27
+
+**The R6 gate's four verdicts, answered where they were unreadable** — the
+gate-patch bundle for R6, carrying no new capability and making four
+conditions readable that the product could not show.
+
+- **A pending's life is on stdout, with where it was held.** The walk computed
+  a per-step verdict that can say `pending`, and the run printed a COUNT of
+  what was left open and nothing about what became of the rest — so "held at
+  step 22 and then judged" and "never held one" were the same output, and D1
+  and both of D3's clearing paths had no witness outside a debugger. Each
+  pending now prints its own sentence: where it began, whether it was
+  re-checked, and what the re-check decided. Clock-free and sorted, so two
+  attempts of a seed stay byte-identical.
+- **A pending cleared MID-WALK says which step re-checked it.** `engine.Judge`
+  has set `ReChecked` since R6.3 and nothing outside the engine read it, so
+  every clearing looked like the reconciliation's. The committed seed 12 shows
+  both paths in one run — one pending re-checked at step 24 and cleared, the
+  other stale at the seal.
+- **"Did not run" and "ran, found nothing" are two sentences.**
+  `reconciliation: nothing to reconcile` was printed in three states: no
+  probes declared, probes that never read quiet, and probes quiet with nothing
+  pending. The never-quiet one now names the probes, from the hang report's
+  clock-free half so the control still holds still.
+- **`seeds.lock` rows can say what they WITNESS.** The file is defined as
+  lines naming the defect they found and the replay arm requires exit 3 of
+  each; a seed proving a pending was held and then cleared exits 0 and finds
+  nothing. `witness=cleared` carries it, checked in the one parser with the
+  known set printed on a refusal, and a row without the token keeps exit 3 and
+  its defect comment exactly as before. Seed 66 is that row.
+- **A finding's identity is four parts everywhere the tree said three.** Rule,
+  value, attribution AND kind — ruled at R6.3 and carried by `Says` ever
+  since, while eight sites still said three, one of them a line an operator
+  reads. The printed line now reads what the code does.
+- **Two guards that nothing would have noticed losing are armed.** The
+  refusal on a candidate that did not settle, and the sentence for a pending
+  the run ends holding: both correct, both unreachable through the product
+  today, and both now armed at the unit tier with the structural reason and
+  the door — R7's clock or R14's repeated check — recorded beside them.
+
+The control digests move, and for one reason: the quiesce line's wording. The
+FOUND line is byte-identical either side, so the five fields a control
+compares are unchanged.
+
 ## 0.1.37 — 2026-10-27
 
 **The shrinker gets a path the product takes, and every candidate quiesces
