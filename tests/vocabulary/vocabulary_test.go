@@ -163,13 +163,24 @@ const root = "../.."
 // clause is the warrant for the word being decided where the re-check is in
 // hand rather than in the overlay (fable, coop r6/87). The quote is what says
 // the gate is the document's rule and not this package's preference.
+// 47 -> 46 AT R6.4: THE ONLY COUNT IN THIS CHAIN THAT GOES DOWN. engine's
+// `Reconcile` is removed with its five parts (fable, coop r6/153: R10 does not
+// inherit dead engine code), and its doc comment held this tree's one quotation
+// of v1's "at every full reconciliation" -- measured, not inferred: that file
+// carried exactly one attributed quote and actors.go, what is left of it,
+// carries none.
+//
+// THE QUOTE WAS NOT WRONG AND IS NOT REPLACED. v1 still says a pending is
+// re-checked at every full reconciliation, and the walk still does it; what
+// went is the engine-level function nothing called, so the sentence lost its
+// subject rather than its truth.
 // 46 -> 47 AT R6.3's END-OF-RUN RECONCILIATION: internal/schedule quotes the
 // quiesce form's own sentence -- "`pending` until the declared probes read quiet
 // and `stale` if the reconciliation that follows still disagrees" -- because the
 // second half of it had nowhere to happen until that code existed. The quote is
 // the warrant for re-asking at all, and for re-asking with the FRESH probe
 // answer rather than the last step's.
-const declaredQuotes = 47
+const declaredQuotes = 46
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would
@@ -612,18 +623,44 @@ func TestTheQuoteCountsWarrantsReachTheCountTheyDeclare(t *testing.T) {
 			"headers are what say WHY the count moved, and a count that moves without one is " +
 			"the drift this file exists to refuse")
 	}
-	highest, from := 0, ""
+	// THE CHAIN'S END IS THE GREATEST `from`, NOT THE GREATEST `to`, AND THE
+	// DIFFERENCE IS A COUNT THAT GOES DOWN.
+	//
+	// ibis took the maximum TARGET to remove an ordering assumption (coop
+	// r6/120, rook /1143 driving the planted 99: "an arm that cannot be wrong
+	// about order beats one that happens to be right about today's"). That
+	// reason stands and this keeps it -- nothing here reads file order. But the
+	// maximum target silently assumed the count only ever RISES, and R6.4's
+	// removal of a dead function took one attributed quote with it: with a
+	// `47 -> 46` header the greatest target is 47 while the constant is 46, so
+	// the arm failed on a correct tree. Found by this suite refusing my commit,
+	// which is the arm working on a case nobody had.
+	//
+	// THE GREATEST `from` IS THE LAST TRANSITION IN EITHER DIRECTION, because
+	// every header's `from` is the count before it and the newest header is the
+	// only one whose `from` no later header has superseded.
+	//
+	// A TIE REFUSES rather than picking: two headers claiming the same starting
+	// count are two accounts of one transition, and choosing between them is
+	// not this arm's to do.
+	highest, from, fromN := 0, "", -1
 	for _, m := range found {
+		f, ferr := strconv.Atoi(m[1])
 		to, cerr := strconv.Atoi(m[2])
-		if cerr != nil {
-			t.Fatalf("header %q does not name a number: %v", m[0], cerr)
+		if ferr != nil || cerr != nil {
+			t.Fatalf("header %q does not name two numbers: %v %v", m[0], ferr, cerr)
 		}
-		if to > highest {
-			highest, from = to, strings.TrimSpace(m[0])
+		if f == fromN {
+			t.Fatalf("two warrant headers start from %d (%q and %q): one transition with two "+
+				"accounts, and which of them the constant confirms is not this arm's to choose",
+				f, from, strings.TrimSpace(m[0]))
+		}
+		if f > fromN {
+			highest, from, fromN = to, strings.TrimSpace(m[0]), f
 		}
 	}
 	if highest != declaredQuotes {
-		t.Errorf("the warrant headers reach %d (%q) and declaredQuotes is %d: a header naming a "+
+		t.Errorf("the warrant chain ends at %d (%q) and declaredQuotes is %d: a header naming a "+
 			"transition the constant does not confirm is prose that has gone stale -- which is "+
 			"invisible to the sweep, because it counts quotes and not headers",
 			highest, from, declaredQuotes)

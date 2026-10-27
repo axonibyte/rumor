@@ -127,36 +127,9 @@ func shrinkFound(ctx context.Context, dir string, prep platform.Report, p schedu
 		}
 	}()
 
-	at, ok := prov.(interface{ Addr() string })
-	if !ok {
-		_, werr := fmt.Fprintf(stdout, "shrink: REFUSED %s does not expose the address of the "+
-			"world it owns, so the adapter cannot be pointed at it and every candidate would "+
-			"run against a system this provider cannot put back\n", name)
-		return 1, werr
-	}
-	ae, ok := prov.(interface{ AddrEnv() string })
-	if !ok {
-		_, werr := fmt.Fprintf(stdout, "shrink: REFUSED %s does not name the environment "+
-			"variable its adapter reads the address from, and guessing one out of the "+
-			"adapter's env list would be this code choosing a convention\n", name)
-		return 1, werr
-	}
-	// AND THE PROJECT HAS TO PASS IT THROUGH. docs/testing-methodology.md
-	// records this exact defect: an adapter whose `env` list omitted TOY_ADDR
-	// meant the value could never reach it, so the adapter started a toy of its
-	// own and every candidate ran against a world the provider did not control
-	// -- a reproduction that proves nothing, with nothing to notice.
-	passed := false
-	for _, e := range prep.Platform.Adapter.Env {
-		if e == ae.AddrEnv() {
-			passed = true
-		}
-	}
-	if !passed {
-		_, werr := fmt.Fprintf(stdout, "shrink: REFUSED %s owns its world's address and reads "+
-			"it from %s, which [adapter] env does not pass through (%v): the adapter would "+
-			"start a system of its own and the candidates would not be replays\n",
-			name, ae.AddrEnv(), prep.Platform.Adapter.Env)
+	at, ae, refusal := providerAddress(prov, name, prep.Platform.Adapter.Env)
+	if refusal != "" {
+		_, werr := fmt.Fprintf(stdout, "shrink: REFUSED %s\n", refusal)
 		return 1, werr
 	}
 
@@ -279,4 +252,48 @@ func kindsDrawn(steps []schedule.Step) []string {
 		out = append(out, s.Kind)
 	}
 	return out
+}
+
+// providerAddress answers whether the adapter can be pointed at the world this
+// provider owns, and names the reason when it cannot.
+//
+// IT IS A FUNCTION SO THE THREE REFUSALS HAVE A FIXTURE. No committed project
+// can reach them: the product registers exactly one provider and it implements
+// both methods, and examples/toy passes TOY_ADDR through, so a refusal driven
+// only from the CLI would be a refusal nothing trips -- arm 19's shape, which I
+// named at coop r6/148 rather than leave for the review. A provider is an
+// interface value, so a stub missing a method is expressible in a test and not
+// in a project document.
+//
+// THE ENV CHECK IS HERE WITH THEM BECAUSE IT IS THE SAME QUESTION ONE STEP ON:
+// a provider can own an address and name its variable, and the project can
+// still fail to pass that variable to the adapter -- docs/testing-methodology.md
+// records exactly that defect, where an `env` list omitting TOY_ADDR meant the
+// value could never reach the adapter, so it started a system of its own and
+// every candidate ran against a world the provider did not control. A
+// reproduction that proves nothing, with nothing to notice.
+//
+// IT RETURNS THE REASON RATHER THAN PRINTING IT, so the caller owns the one
+// "shrink: REFUSED" prefix and an arm can read the words without a stdout.
+func providerAddress(prov any, name string, env []string) (interface{ Addr() string }, interface{ AddrEnv() string }, string) {
+	at, ok := prov.(interface{ Addr() string })
+	if !ok {
+		return nil, nil, fmt.Sprintf("%s does not expose the address of the world it owns, so "+
+			"the adapter cannot be pointed at it and every candidate would run against a "+
+			"system this provider cannot put back", name)
+	}
+	ae, ok := prov.(interface{ AddrEnv() string })
+	if !ok {
+		return nil, nil, fmt.Sprintf("%s does not name the environment variable its adapter "+
+			"reads the address from, and guessing one out of the adapter's env list would be "+
+			"this code choosing a convention", name)
+	}
+	for _, e := range env {
+		if e == ae.AddrEnv() {
+			return at, ae, ""
+		}
+	}
+	return nil, nil, fmt.Sprintf("%s owns its world's address and reads it from %s, which "+
+		"[adapter] env does not pass through (%v): the adapter would start a system of its own "+
+		"and the candidates would not be replays", name, ae.AddrEnv(), env)
 }

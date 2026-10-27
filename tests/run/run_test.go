@@ -1263,3 +1263,80 @@ func TestADeclaredProviderThisBuildDoesNotRegisterIsNotAFailure(t *testing.T) {
 // did, and the four exit statuses are one named constant in the product for
 // exactly that reason (fable, coop r5/176).
 const findingStatusWanted = 3
+
+// MORE THAN ONE DECLARED PROVIDER IS A REFUSAL AND NOT A FIRST-WINS, and this
+// is the fourth of the four refusals I shipped with no fixture at coop r6/148.
+// The other three are a provider's SURFACE and are driven in cmd/rumor's own
+// package, a missing method not being something a platform.toml can express;
+// this one is a document and belongs here.
+//
+// WHY IT REFUSES AT ALL: which world a shrink replays in is the project's
+// statement, and `covers` names components rather than ranking providers, so
+// nothing in the format says which to use. Picking the first would be the
+// product inventing a precedence the document does not have.
+//
+// AND THE FINDING STILL STANDS, which is the decision this arm pins: the run
+// exits with the finding's status, because a project's rollback declarations
+// being wrong does not make a found bug unfound and a gate reading the
+// refusal's 1 would lose a finding it exists to catch.
+func TestTwoDeclaredRollbackProvidersRefuseTheShrink(t *testing.T) {
+	dir := t.TempDir()
+	ents, err := os.ReadDir("../../examples/toy")
+	if err != nil {
+		t.Fatalf("reading examples/toy: %v", err)
+	}
+	for _, e := range ents {
+		if e.IsDir() {
+			continue
+		}
+		b, rerr := os.ReadFile(filepath.Join("../../examples/toy", e.Name()))
+		if rerr != nil {
+			t.Fatalf("reading %s: %v", e.Name(), rerr)
+		}
+		if e.Name() == "platform.toml" {
+			const was = "provider = \"toy-process-restart\""
+			if !strings.Contains(string(b), was) {
+				t.Fatal("examples/toy no longer declares the provider this arm adds a " +
+					"second one beside, so the refusal below could not fire")
+			}
+			b = append(b, []byte("\n[[rollback]]\nprovider = \"a-second-world\"\n"+
+				"covers = [\"store\"]\n")...)
+		}
+		if werr := os.WriteFile(filepath.Join(dir, e.Name()), b, 0o600); werr != nil {
+			t.Fatalf("writing %s: %v", e.Name(), werr)
+		}
+	}
+
+	out, errb, code := run(t, "run", dir, "--seed", "2", "--steps", "10")
+	if code != findingStatusWanted {
+		t.Fatalf("exit %d, want %d: a shrink refusal does not overturn the finding"+
+			"\nstdout:\n%s\nstderr:\n%s", code, findingStatusWanted, out, errb)
+	}
+	if !strings.Contains(out, "shrink: REFUSED the project declares 2 rollback providers") ||
+		!strings.Contains(out, "toy-process-restart") ||
+		!strings.Contains(out, "a-second-world") {
+		t.Errorf("the refusal does not name both declared providers:\n%s", out)
+	}
+	if !strings.Contains(out, "nothing says which owns the world a shrink replays in") {
+		t.Errorf("the refusal does not say WHY two is not a choice this code may make:\n%s", out)
+	}
+	// AND NO SHRINK WAS ATTEMPTED: the words the report prints when one runs
+	// must be absent, or the refusal would be a line beside a shrink that
+	// happened anyway.
+	if strings.Contains(out, "candidate(s)") || strings.Contains(out, "trace: seed") {
+		t.Errorf("a shrink ran despite the refusal:\n%s", out)
+	}
+	// THE CONTROL IS THE SAME PROJECT UNEDITED, so the refusal is about the
+	// second declaration and not about this copy of the toy.
+	cout, cerrb, ccode := run(t, "run", "../../examples/toy", "--seed", "2", "--steps", "10")
+	if ccode != findingStatusWanted {
+		t.Fatalf("the control exited %d\nstdout:\n%s\nstderr:\n%s", ccode, cout, cerrb)
+	}
+	if strings.Contains(cout, "REFUSED") {
+		t.Errorf("the unedited toy is refused too, so the arm is not about the second "+
+			"declaration:\n%s", cout)
+	}
+	if !strings.Contains(cout, "candidate(s)") {
+		t.Errorf("the control did not shrink, so the absence above proves nothing:\n%s", cout)
+	}
+}
