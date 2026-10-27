@@ -1326,7 +1326,7 @@ default may_join := true
 
 	// CELL 1: the whole trace, nothing dropped.
 	withSession("whole", func(sess *wire.Session) {
-		_, got, err := schedule.Replay(ctx, project(), sess, seed, 1, steps, nil)
+		_, got, _, err := schedule.Replay(ctx, project(), sess, seed, 1, steps, nil)
 		if err != nil {
 			t.Fatalf("replaying the whole trace: %v", err)
 		}
@@ -1338,7 +1338,7 @@ default may_join := true
 
 	// CELL 2: a shorter count is a prefix.
 	withSession("short", func(sess *wire.Session) {
-		_, got, err := schedule.Replay(ctx, project(), sess, seed, 1, steps-2, nil)
+		_, got, _, err := schedule.Replay(ctx, project(), sess, seed, 1, steps-2, nil)
 		if err != nil {
 			t.Fatalf("replaying a prefix: %v", err)
 		}
@@ -1355,7 +1355,7 @@ default may_join := true
 		t.Fatalf("the original trace %v draws no join_event, so dropping it proves nothing", original)
 	}
 	withSession("dropped", func(sess *wire.Session) {
-		_, got, err := schedule.Replay(ctx, project(), sess, seed, 1, steps, []string{"join_event"})
+		_, got, _, err := schedule.Replay(ctx, project(), sess, seed, 1, steps, []string{"join_event"})
 		if err != nil {
 			t.Fatalf("replaying without join_event: %v", err)
 		}
@@ -1370,7 +1370,7 @@ default may_join := true
 
 	// AND A KIND NOTHING WEIGHTS IS REFUSED.
 	withSession("unknown", func(sess *wire.Session) {
-		if _, _, err := schedule.Replay(ctx, project(), sess, seed, 1, steps,
+		if _, _, _, err := schedule.Replay(ctx, project(), sess, seed, 1, steps,
 			[]string{"no_such_kind"}); err == nil {
 			t.Error("dropping a kind the project never weighted must refuse: silently succeeding " +
 				"would report that removing it changed nothing")

@@ -27,7 +27,6 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
-	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 	"forge.axonibyte.com/axonibyte/rumor/internal/quiesce"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
@@ -309,11 +308,11 @@ func TestTheToyBugsAreFoundByAWalkAndShrinkToUnderFiveActions(t *testing.T) {
 				Provider:   prov,
 				Checkpoint: cp,
 				SeedsFile:  filepath.Join(t.TempDir(), "seeds.lock"),
-				Replay: func(c context.Context, steps int, without []string) (engine.Finding, []schedule.Step, error) {
+				Replay: func(c context.Context, steps int, without []string) (shrink.Candidate, error) {
 					probes++
 					s, oerr := sessionNow()
 					if oerr != nil {
-						return engine.Finding{}, nil, fmt.Errorf("re-opening the adapter on the "+
+						return shrink.Candidate{}, fmt.Errorf("re-opening the adapter on the "+
 							"restored world: %w", oerr)
 					}
 					defer func() { _ = s.Close() }()
@@ -329,22 +328,22 @@ func TestTheToyBugsAreFoundByAWalkAndShrinkToUnderFiveActions(t *testing.T) {
 					if len(declared) > 0 {
 						pr, qerr := quiesce.New(declared, s)
 						if qerr != nil {
-							return engine.Finding{}, nil, fmt.Errorf("building the prober for "+
+							return shrink.Candidate{}, fmt.Errorf("building the prober for "+
 								"the replay: %w", qerr)
 						}
 						rp.Prober = pr
 					}
-					f, ran, rerr := schedule.Replay(c, rp, s, tc.seed, 1, steps, without)
+					f, ran, open, rerr := schedule.Replay(c, rp, s, tc.seed, 1, steps, without)
 					if rerr != nil {
-						return engine.Finding{}, nil, rerr
+						return shrink.Candidate{Steps: ran, PendingOpen: open}, rerr
 					}
 					if f == nil {
 						// NO FINDING IS NOT AN ERROR: it is the candidate
 						// failing to reproduce, which is what the reduction
 						// reads to decide the candidate is too small.
-						return engine.Finding{}, ran, nil
+						return shrink.Candidate{Steps: ran, PendingOpen: open}, nil
 					}
-					return *f, ran, nil
+					return shrink.Candidate{Finding: *f, Steps: ran, PendingOpen: open}, nil
 				},
 			})
 			if serr != nil {

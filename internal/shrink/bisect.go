@@ -59,7 +59,7 @@ type Reduction struct {
 // not there, and every length it reports would be meaningless.
 func Bisect(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
 	want engine.Finding, n int,
-	run func(ctx context.Context, steps int) (engine.Finding, error)) (Reduction, error) {
+	run func(ctx context.Context, steps int) (Candidate, error)) (Reduction, error) {
 
 	if n < 1 {
 		return Reduction{}, fmt.Errorf("shrink: a trace of %d step(s) cannot be bisected: there is "+
@@ -72,7 +72,7 @@ func Bisect(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
 	var probes int
 	reproduces := func(k int) (bool, error) {
 		probes++
-		v, err := Once(ctx, pr, cp, want, func(c context.Context) (engine.Finding, error) {
+		v, err := Once(ctx, pr, cp, want, func(c context.Context) (Candidate, error) {
 			return run(c, k)
 		})
 		if err != nil {

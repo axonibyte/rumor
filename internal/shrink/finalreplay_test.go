@@ -37,7 +37,7 @@ func TestAFinalReplayThatDoesNotReproduceIsAnError(t *testing.T) {
 	//    reduction never got as far as a final replay.
 	base, err := Shrink(context.Background(), Request{
 		Seed: 42, Steps: steps(12), Kinds: kinds, Want: bug(),
-		Provider: &fake{}, Checkpoint: cp, Replay: newWorld().replay,
+		Provider: &fake{}, Checkpoint: cp, Replay: settledReplay(newWorld().replay),
 	})
 	if err != nil {
 		t.Fatalf("the clean run must succeed or this arm proves nothing: %v", err)
@@ -65,7 +65,7 @@ func TestAFinalReplayThatDoesNotReproduceIsAnError(t *testing.T) {
 
 	got, err := Shrink(context.Background(), Request{
 		Seed: 42, Steps: steps(12), Kinds: kinds, Want: bug(),
-		Provider: &fake{}, Checkpoint: cp, Replay: flip,
+		Provider: &fake{}, Checkpoint: cp, Replay: settledReplay(flip),
 	})
 	if err == nil {
 		t.Fatal("a final replay that did not reproduce was reported as a shrink, so the " +
@@ -98,7 +98,7 @@ func TestAFinalReplayThatDoesNotReproduceIsAnError(t *testing.T) {
 	}
 	ctl, cerr := Shrink(context.Background(), Request{
 		Seed: 42, Steps: steps(12), Kinds: kinds, Want: bug(),
-		Provider: &fake{}, Checkpoint: cp, Replay: early,
+		Provider: &fake{}, Checkpoint: cp, Replay: settledReplay(early),
 	})
 	if cerr != nil && strings.Contains(cerr.Error(), "final clean replay") {
 		t.Errorf("a disagreement at the GATE reached the final-replay branch: %v", cerr)

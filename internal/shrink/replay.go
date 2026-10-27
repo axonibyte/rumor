@@ -22,7 +22,31 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
+	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 )
+
+// Candidate is one replayed trace and what is known about the run that
+// produced it.
+//
+// IT EXISTS BECAUSE A FINDING ALONE CANNOT SAY WHETHER THE RUN SETTLED. R6.4's
+// first done-when is that every candidate quiesces BEFORE it is judged, and the
+// old replay signature returned the finding and the steps and nothing else --
+// so a candidate whose walk ended with a disagreement still held open as
+// `pending` was compared against the original as though it had finished. That
+// is not a reduction that reproduces; it is a reduction nobody waited for.
+//
+// PendingOpen IS THE WALK'S OWN FIGURE, schedule.Record.PendingOpen, which
+// R2.3 requires to be zero at the end of a run and which 91 made readable from
+// the product. Zero is "it settled"; anything else is a candidate still
+// waiting, and the judge refuses rather than reading it as a verdict.
+type Candidate struct {
+	Finding engine.Finding
+	Steps   []schedule.Step
+
+	// PendingOpen is how many findings the candidate's run still held open
+	// when it ended. Zero is the only value a judgment may rest on.
+	PendingOpen int
+}
 
 // Verdict is what the one replay establishes.
 type Verdict struct {
@@ -37,6 +61,12 @@ type Verdict struct {
 	// Why names, in one sentence, what separated Got from the original. Empty
 	// when they matched.
 	Why string
+
+	// PendingOpen is what the replay's own run left open. It is carried so a
+	// reader of the verdict can see that the comparison rested on a settled
+	// run, and so Shrink can say so in the product's output rather than assert
+	// it (fable, coop r6/153 ruling 1).
+	PendingOpen int
 
 	// AttributionCompared says the third part of the vocabulary's comparison
 	// actually happened. It is false when neither finding carries the
@@ -98,7 +128,7 @@ var ErrDirty = fmt.Errorf("shrink: refusing to replay: %w", rollback.ErrDirty)
 // project with no planted claims need not define the rule and a reader must be
 // able to tell "all three agreed" from "two were available".
 func Once(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
-	want engine.Finding, replay func(context.Context) (engine.Finding, error)) (Verdict, error) {
+	want engine.Finding, replay func(context.Context) (Candidate, error)) (Verdict, error) {
 
 	if pr == nil {
 		return Verdict{}, fmt.Errorf("shrink: no rollback provider: a trace cannot be replayed on " +
@@ -127,15 +157,36 @@ func Once(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
 			"checkpoint %s, which is not the same as clean: %w", cp.ID, err)
 	}
 
-	got, err := replay(ctx)
+	cand, err := replay(ctx)
 	if err != nil {
 		return Verdict{}, fmt.Errorf("shrink: replaying the failure on the clean world: %w", err)
+	}
+	got := cand.Finding
+
+	// EVERY CANDIDATE QUIESCES BEFORE IT IS JUDGED, which is R6.4's first
+	// done-when and the reason Candidate carries the figure at all. A run that
+	// ended holding a disagreement open as `pending` has not finished settling,
+	// so its finding is not the finding that trace produces -- it is whatever
+	// the trace had reached when the walk stopped asking. Comparing it would
+	// make a candidate look like a reproduction or a failure to reproduce on
+	// the strength of where the clock happened to be.
+	//
+	// IT REFUSES RATHER THAN REPORTING "did not reproduce", because the two are
+	// different facts and a reader acts on them differently: one says the trace
+	// no longer causes the finding, the other says nobody waited to find out.
+	// R2.3's rule is that a run ends with no pending open, so a non-zero figure
+	// here is a defect in the candidate's run and not a verdict about the
+	// trace.
+	if cand.PendingOpen != 0 {
+		return Verdict{}, fmt.Errorf("shrink: refusing to judge a candidate that did not settle: "+
+			"its run ended with %d finding(s) still held open as `pending`, so what it found is "+
+			"where the walk stopped asking rather than what the trace causes", cand.PendingOpen)
 	}
 
 	wantAttr, wantHas := want.Rules[attributionRule]
 	gotAttr, gotHas := got.Rules[attributionRule]
 
-	v := Verdict{Got: got, AttributionCompared: wantHas || gotHas}
+	v := Verdict{Got: got, PendingOpen: cand.PendingOpen, AttributionCompared: wantHas || gotHas}
 	switch {
 	case want.Defined != got.Defined:
 		v.Why = fmt.Sprintf("the original %s and the replay %s", defined(want.Defined), defined(got.Defined))

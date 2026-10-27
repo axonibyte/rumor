@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
-	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 )
 
 // THE PRECONDITION FOR FABLE'S PLACEMENT AT coop r5/206 (5), handed over rather
@@ -32,7 +31,7 @@ import (
 func TestAPartialReproductionIsReachable(t *testing.T) {
 	// Exactly what a statute declaring no rests_on_planted produces twice.
 	v, err := Once(context.Background(), &fake{}, cp, bug(),
-		func(context.Context) (engine.Finding, error) { return bug(), nil })
+		settled(func(context.Context) (engine.Finding, error) { return bug(), nil }))
 	if err != nil {
 		t.Fatalf("Once: %v", err)
 	}
@@ -49,7 +48,7 @@ func TestAPartialReproductionIsReachable(t *testing.T) {
 	planted := engine.Finding{Defined: true, Value: "bug", Rule: "data.rumor.statute.finding",
 		Rules: map[string]any{"rests_on_planted": true}}
 	full, err := Once(context.Background(), &fake{}, cp, planted,
-		func(context.Context) (engine.Finding, error) { return planted, nil })
+		settled(func(context.Context) (engine.Finding, error) { return planted, nil }))
 	if err != nil {
 		t.Fatalf("Once: %v", err)
 	}
@@ -98,12 +97,12 @@ func TestShrinkSaysWhenTheReproductionWasPartial(t *testing.T) {
 				Seed: 42, Steps: steps(12),
 				Kinds: []string{"create_event", "join_event", "leave_event"},
 				Want:  f, Provider: &fake{}, Checkpoint: cp,
-				Replay: func(c context.Context, n int, without []string) (engine.Finding, []schedule.Step, error) {
+				Replay: func(c context.Context, n int, without []string) (Candidate, error) {
 					was, ran, rerr := w.replay(c, n, without)
 					if rerr != nil || was.Value != "bug" {
-						return was, ran, rerr
+						return Candidate{Finding: was, Steps: ran}, rerr
 					}
-					return f, ran, nil
+					return Candidate{Finding: f, Steps: ran}, nil
 				},
 			})
 			if err != nil {

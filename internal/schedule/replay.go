@@ -46,24 +46,31 @@ import (
 // world is the Provider's and the Checkpoint's, which shrink.Once owns and
 // drives with its own verify. A replay that restored as a side effect would
 // make "was this world clean" unanswerable from outside it.
+// AND IT CARRIES THE RUN'S SETTLING, which the first version discarded. R6.4's
+// first done-when is that every candidate quiesces before it is judged, and the
+// walk already computes the figure -- Record.PendingOpen, the findings still
+// held open when the run ended, which R2.3 requires to be zero. Returning the
+// finding and the steps alone left a judge unable to tell a trace that no
+// longer causes the finding from a run nobody waited for, and those are
+// different facts a reader acts on differently.
 func Replay(ctx context.Context, p Project, sess *wire.Session, seed uint64, attempt, steps int,
-	without []string) (*engine.Finding, []Step, error) {
+	without []string) (*engine.Finding, []Step, int, error) {
 
 	if steps <= 0 {
-		return nil, nil, fmt.Errorf("schedule: a replay of %d steps is not a replay", steps)
+		return nil, nil, 0, fmt.Errorf("schedule: a replay of %d steps is not a replay", steps)
 	}
 	if len(without) > 0 {
 		dropped, err := withoutKinds(p.Weights, without)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, 0, err
 		}
 		p.Weights = dropped
 	}
 	rec, err := Walk(ctx, p, sess, seed, steps, attempt)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
-	return rec.Finding, rec.Steps, nil
+	return rec.Finding, rec.Steps, rec.PendingOpen, nil
 }
 
 // withoutKinds is the weight table with each named kind set to ZERO at every

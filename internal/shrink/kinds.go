@@ -49,7 +49,7 @@ type KindReduction struct {
 // one point where the trace stops existing.
 func RemoveKinds(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
 	want engine.Finding, kinds []string,
-	run func(ctx context.Context, without []string) (engine.Finding, error)) (KindReduction, error) {
+	run func(ctx context.Context, without []string) (Candidate, error)) (KindReduction, error) {
 
 	if run == nil {
 		return KindReduction{}, fmt.Errorf("shrink: no run function, so no candidate trace can be " +
@@ -83,7 +83,7 @@ func RemoveKinds(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoi
 		empty := len(candidate) == len(ordered)
 
 		out.Probes++
-		v, err := Once(ctx, pr, cp, want, func(c context.Context) (engine.Finding, error) {
+		v, err := Once(ctx, pr, cp, want, func(c context.Context) (Candidate, error) {
 			return run(c, candidate)
 		})
 		if err != nil {

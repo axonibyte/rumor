@@ -33,7 +33,12 @@ type Request struct {
 	// reporting what it ASKED for rather than what happened -- and the two
 	// differ exactly when a step stalls because its precondition no longer
 	// holds in the shortened world, which is the case a shrink creates.
-	Replay func(ctx context.Context, steps int, without []string) (engine.Finding, []schedule.Step, error)
+	// IT RETURNS A Candidate AND NOT A BARE FINDING, which is R6.4's first
+	// done-when: every candidate quiesces before it is judged. The finding
+	// alone cannot say whether the run that produced it had settled, so a
+	// candidate still holding a `pending` would be compared as though it had
+	// finished -- a reduction nobody waited for.
+	Replay func(ctx context.Context, steps int, without []string) (Candidate, error)
 }
 
 // Result is what a shrink established.
@@ -53,6 +58,13 @@ type Result struct {
 	// Promoted says a seed was written to SeedsFile. False when no file was
 	// named, and false when the seed was already there.
 	Promoted bool
+
+	// From is the length of the trace this reduction started with, so the
+	// result can say what it reduced FROM. The figure is the caller's input and
+	// is carried because a reader of "12 step(s)" cannot tell a reduction from
+	// a trace that was always that long -- rook showed D11 cannot be gated from
+	// an output that never says a candidate ran (fable, coop r6/153 ruling 1).
+	From int
 
 	// Probes is every candidate world rebuilt, the gate's included.
 	Probes int
@@ -95,6 +107,43 @@ func (r Result) Render() string {
 		// it.
 		fmt.Fprintf(&b, "shrink: UNSTABLE -- %s\n", r.Why)
 		return b.String()
+	}
+	// WHAT IT REDUCED, FROM WHAT, AT WHAT COST, AND ON WHAT -- fable's ruling 1
+	// at coop r6/153. Before this line the output was the trace alone, so a
+	// reader could not tell a reduction from a trace that was always that
+	// length, could not see how many worlds it cost, and had nothing saying a
+	// candidate had been run on a clean world at all. rook's point is that D11
+	// cannot be GATED from an output that never says a candidate ran or
+	// quiesced; mine is that 14 and 12 sat fifteen lines apart and the
+	// subtraction was the reader's to do.
+	//
+	// THE CLEAN WORLD AND THE SETTLING ARE TRUE BY CONSTRUCTION AND NOT BY
+	// CLAIM, which is what lets one line say them: every candidate goes through
+	// Once, which restores and VERIFIES and refuses a world it cannot prove is
+	// the checkpoint; and since R6.4 it refuses a candidate whose run ended
+	// holding anything open as `pending`. A result that is Stable with no error
+	// therefore had every candidate verified and settled -- the sentence is a
+	// report of the refusals above it, and if either is ever removed this line
+	// becomes false and its arm says so.
+	// THE "TO" IS THE TRACE'S OWN LENGTH AND NOT THE BISECTION'S PREFIX, which
+	// the first cut got wrong and the product said out loud: "REDUCED 0 step(s)
+	// to 14" beside "trace: seed 1, 12 step(s)". Reduction.Steps is the
+	// shortest PROBED PREFIX, measured before the kind-removal pass, so a
+	// reduction that then dropped a kind reports a longer figure than the trace
+	// it printed two lines down. The trace is what a reader replays, so the
+	// trace's length is the number that belongs here.
+	to := len(r.Trace.Steps)
+	if to < r.From {
+		fmt.Fprintf(&b, "shrink: REDUCED %d step(s) to %d -- %d candidate(s), each replayed on a "+
+			"verified clean world and each settled with no pending left open\n",
+			r.From, to, r.Probes)
+	} else {
+		fmt.Fprintf(&b, "shrink: NOT REDUCED -- %d step(s) is the shortest trace that "+
+			"reproduces; %d candidate(s), each replayed on a verified clean world and each "+
+			"settled with no pending left open\n", r.From, r.Probes)
+	}
+	if len(r.Kinds.Removed) > 0 {
+		fmt.Fprintf(&b, "shrink: without %s\n", strings.Join(r.Kinds.Removed, ", "))
 	}
 	if !r.AttributionCompared {
 		fmt.Fprintf(&b, "shrink: PARTIAL REPRODUCTION -- the rule and the value agreed; the "+
@@ -139,41 +188,38 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 
 	// 1. THE GATE.
 	v, err := Once(ctx, req.Provider, req.Checkpoint, req.Want,
-		func(c context.Context) (engine.Finding, error) {
-			f, _, rerr := req.Replay(c, len(req.Steps), nil)
-			return f, rerr
+		func(c context.Context) (Candidate, error) {
+			return req.Replay(c, len(req.Steps), nil)
 		})
 	probes++
 	if err != nil {
-		return Result{Probes: probes}, err
+		return Result{From: len(req.Steps), Probes: probes}, err
 	}
 	if !v.Reproduced {
-		return Result{Stable: false, Why: v.Why, Probes: probes,
+		return Result{Stable: false, Why: v.Why, From: len(req.Steps), Probes: probes,
 			AttributionCompared: v.AttributionCompared}, nil
 	}
 
 	// 2. LENGTH BISECTION.
 	red, err := Bisect(ctx, req.Provider, req.Checkpoint, req.Want, len(req.Steps),
-		func(c context.Context, steps int) (engine.Finding, error) {
-			f, _, rerr := req.Replay(c, steps, nil)
-			return f, rerr
+		func(c context.Context, steps int) (Candidate, error) {
+			return req.Replay(c, steps, nil)
 		})
 	probes += red.Probes
 	if err != nil {
-		return Result{Stable: true, Reduction: red, Probes: probes,
+		return Result{Stable: true, Reduction: red, From: len(req.Steps), Probes: probes,
 			AttributionCompared: v.AttributionCompared}, err
 	}
 
 	// 3. KIND REMOVAL, over the SHORTENED trace: the cheap pass went first, so
 	// this one has fewer candidates to rebuild a world for.
 	kr, err := RemoveKinds(ctx, req.Provider, req.Checkpoint, req.Want, req.Kinds,
-		func(c context.Context, without []string) (engine.Finding, error) {
-			f, _, rerr := req.Replay(c, red.Steps, without)
-			return f, rerr
+		func(c context.Context, without []string) (Candidate, error) {
+			return req.Replay(c, red.Steps, without)
 		})
 	probes += kr.Probes
 	if err != nil {
-		return Result{Stable: true, Reduction: red, Kinds: kr, Probes: probes,
+		return Result{Stable: true, Reduction: red, Kinds: kr, From: len(req.Steps), Probes: probes,
 			AttributionCompared: v.AttributionCompared}, err
 	}
 
@@ -201,10 +247,10 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 	// one observed to carry the finding rather than one assumed to.
 	var steps []schedule.Step
 	fv, err := Once(ctx, req.Provider, req.Checkpoint, req.Want,
-		func(c context.Context) (engine.Finding, error) {
-			f, ran, rerr := req.Replay(c, red.Steps, kr.Removed)
-			steps = ran
-			return f, rerr
+		func(c context.Context) (Candidate, error) {
+			cand, rerr := req.Replay(c, red.Steps, kr.Removed)
+			steps = cand.Steps
+			return cand, rerr
 		})
 	probes++
 	if err == nil && !fv.Reproduced {
@@ -212,14 +258,14 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 		// is a contradiction and not a shrink: reporting the trace anyway would
 		// promote a seed whose own final run disagreed with the reduction that
 		// chose it.
-		return Result{Stable: true, Reduction: red, Kinds: kr, Probes: probes,
+		return Result{Stable: true, Reduction: red, Kinds: kr, From: len(req.Steps), Probes: probes,
 				AttributionCompared: v.AttributionCompared},
 			fmt.Errorf("shrink: the surviving shape did not reproduce on its final clean "+
 				"replay though the reduction kept it: %s", fv.Why)
 	}
 	finding := fv.Got
 	if err != nil {
-		return Result{Stable: true, Reduction: red, Kinds: kr, Probes: probes,
+		return Result{Stable: true, Reduction: red, Kinds: kr, From: len(req.Steps), Probes: probes,
 				AttributionCompared: v.AttributionCompared},
 			fmt.Errorf("shrink: the final replay of the shortened trace: %w", err)
 	}
@@ -228,6 +274,7 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 		Reduction: red,
 		Kinds:     kr,
 		Trace:     Trace{Seed: req.Seed, Steps: steps, Finding: finding},
+		From:      len(req.Steps),
 		Probes:    probes,
 		// THE GATE'S, carried so Render can say whether "the same finding"
 		// was established on three parts or two.

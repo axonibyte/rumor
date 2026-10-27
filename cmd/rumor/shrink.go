@@ -6,11 +6,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
-	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 	"forge.axonibyte.com/axonibyte/rumor/internal/quiesce"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
@@ -80,9 +80,38 @@ func shrinkFound(ctx context.Context, dir string, prep platform.Report, p schedu
 	}
 
 	name := prep.Platform.Rollback[0].Provider
+
+	// A DECLARED PROVIDER THIS BUILD DOES NOT REGISTER IS A CARRIED NAME, NOT A
+	// FAILURE (fable, coop rumor/1202, on rook's /1197). examples/twin declares
+	// `doc-store-truncate` and says in its own comment that the name is carried
+	// AS DECLARED until docs/rollback.md defines the interface in R13, so the
+	// contract permits a name nothing can open yet. My first cut sent that
+	// through the could-not-run path, which printed "run: could not shrink: no
+	// provider named ..." on stderr for a shipped R4 example -- a misleading
+	// line on a row that is behaving exactly as its document says.
+	//
+	// IT IS CHECKED BEFORE Open AND NOT FROM Open's ERROR, because an error
+	// string is not a state: "not registered" and "registered but would not
+	// start" are different facts and only the first is the contract's.
+	registered := rollback.Registered()
+	known := false
+	for _, r := range registered {
+		if r == name {
+			known = true
+		}
+	}
+	if !known {
+		sort.Strings(registered)
+		_, werr := fmt.Fprintf(stdout, "shrink: NOT SHRUNK -- the project declares the rollback "+
+			"provider %q, which this build does not register (%s): the name is carried as "+
+			"declared until the interface is defined, so no shrink was attempted\n",
+			name, strings.Join(registered, ", "))
+		return 0, werr
+	}
+
 	prov, err := rollback.Open(name, rollback.Options{Dir: dir, Env: prep.Platform.Adapter.Env})
 	if err != nil {
-		// COULD-NOT-RUN: the provider is registered and declared, and opening
+		// COULD-NOT-RUN: the provider IS registered and declared, and opening
 		// it failed, which is the machine and not the document.
 		return 2, fmt.Errorf("opening the rollback provider %q: %w", name, err)
 	}
@@ -180,10 +209,10 @@ func shrinkFound(ctx context.Context, dir string, prep platform.Report, p schedu
 		// what goes in it is for whoever is adding to the suite -- not for
 		// whatever happened to run last.
 		SeedsFile: "",
-		Replay: func(c context.Context, steps int, without []string) (engine.Finding, []schedule.Step, error) {
+		Replay: func(c context.Context, steps int, without []string) (shrink.Candidate, error) {
 			s, oerr := sessionNow()
 			if oerr != nil {
-				return engine.Finding{}, nil, fmt.Errorf("re-opening the adapter on the "+
+				return shrink.Candidate{}, fmt.Errorf("re-opening the adapter on the "+
 					"restored world: %w", oerr)
 			}
 			defer func() { _ = s.Close() }()
@@ -195,27 +224,27 @@ func shrinkFound(ctx context.Context, dir string, prep platform.Report, p schedu
 			// first probe read -- a dead instrument reported as a failure to
 			// reproduce, which makes every candidate look too small (R5.5, in
 			// tests/shrink's own comment).
-			cand := p
+			proj := p
 			if len(probes) > 0 {
 				pr, qerr := quiesce.New(probes, s)
 				if qerr != nil {
-					return engine.Finding{}, nil, fmt.Errorf("rebuilding the project's "+
+					return shrink.Candidate{}, fmt.Errorf("rebuilding the project's "+
 						"prober on the candidate's session: %w", qerr)
 				}
-				cand.Prober = pr
+				proj.Prober = pr
 			}
-			f, ran, rerr := schedule.Replay(c, cand, s, seed, 1, steps, without)
+			f, ran, open, rerr := schedule.Replay(c, proj, s, seed, 1, steps, without)
 			if rerr != nil {
-				return engine.Finding{}, ran, rerr
+				return shrink.Candidate{Steps: ran, PendingOpen: open}, rerr
 			}
 			// NO FINDING IS THE ZERO Finding AND NOT AN ERROR: schedule.Replay
 			// returns a pointer so that "walked and found nothing" is
 			// expressible, and shrink.Once compares `Defined` -- so the zero
 			// value is exactly the shape it reads as "found none".
 			if f == nil {
-				return engine.Finding{}, ran, nil
+				return shrink.Candidate{Steps: ran, PendingOpen: open}, nil
 			}
-			return *f, ran, nil
+			return shrink.Candidate{Finding: *f, Steps: ran, PendingOpen: open}, nil
 		},
 	})
 	if serr != nil {

@@ -1055,3 +1055,89 @@ func TestANeverQuietProbeEndsTheRunAsAFinding(t *testing.T) {
 		})
 	}
 }
+
+// THE SHRINK SAYS WHAT IT DID, ON THE LIVE PATH -- fable's ruling 1 at coop
+// r6/153, and rook's gate blocker at rumor/1195: D11 reads "with every
+// candidate quiesced" and the output had ZERO occurrences of `candidate`, so the
+// condition could not be gated from the product at all. The two quiesce lines
+// that existed are the RUN's own pending, not a candidate's.
+//
+// IT DRIVES THE BINARY AND NOT shrink.Result.Render, which is the whole point:
+// the words have to reach a reader through `rumor run`, and a unit arm over the
+// renderer would pass while nothing carried its output to the product -- the
+// defect R6.1 shipped and r6/78 ruling 3 forbids.
+//
+// SEED 2 AT TEN STEPS IS THE CHEAP CELL and it exercises the shared clause: its
+// bug is at step 4 of a 4-step trace, so nothing shortens and the NOT REDUCED
+// branch prints, with the candidate count, the verified clean world and the
+// settling. Measured on this box at 3d5d5d7 plus this commit: 1.31s, against the 57.82s
+// seed 12 costs in the promoted-seed arm.
+func TestTheShrinkSaysWhatItDidAndOnWhatKindOfWorld(t *testing.T) {
+	out, errb, code := run(t, "run", "../../examples/toy", "--seed", "2", "--steps", "10")
+	if code != findingStatusWanted {
+		t.Fatalf("exit %d, want %d\nstdout:\n%s\nstderr:\n%s", code, findingStatusWanted, out, errb)
+	}
+	// THE WORD D11 ASKS FOR. rook could not gate the condition because this
+	// token did not appear anywhere in a run's output.
+	if !strings.Contains(out, "candidate(s)") {
+		t.Fatalf("the output never says how many candidates ran, so D11's \"every candidate "+
+			"quiesced\" cannot be read from the product:\n%s", out)
+	}
+	for _, want := range []string{
+		"shrink: NOT REDUCED",
+		"4 step(s) is the shortest trace that reproduces",
+		"verified clean world",
+		"settled with no pending left open",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the shrink's report does not say %q\n%s", want, out)
+		}
+	}
+	// AND THE FIGURES AGREE WITH THE TRACE PRINTED BELOW THEM, which the first
+	// cut of this line got wrong in the product: it read the bisection's
+	// shortest PROBED PREFIX, so a reduction that then dropped a kind reported
+	// "REDUCED 0 step(s) to 14" beside "trace: seed 1, 12 step(s)".
+	if !strings.Contains(out, "trace: seed 2, 4 step(s)") {
+		t.Errorf("the trace's own length is not 4, so the figures above it describe "+
+			"a different trace\n%s", out)
+	}
+}
+
+// AND A DECLARED PROVIDER THIS BUILD DOES NOT REGISTER IS A CARRIED NAME --
+// fable's ruling at coop rumor/1202 on rook's /1197. examples/twin declares
+// `doc-store-truncate` and says in its own comment that the name is carried AS
+// DECLARED until R13 defines the interface, so the contract permits a name
+// nothing can open yet. The wiring's first cut sent it through the
+// could-not-run path and printed "run: could not shrink: no provider named ..."
+// on STDERR for a shipped R4 example that was behaving exactly as documented.
+//
+// THE ASSERTION IS TWO-SIDED: the honest line is present AND the misleading one
+// is absent, because a fix that added the first without removing the second
+// would read as correct in a grep for the new words.
+func TestADeclaredProviderThisBuildDoesNotRegisterIsNotAFailure(t *testing.T) {
+	out, errb, code := run(t, "run", "../../examples/twin", "--seed", "1", "--steps", "10")
+	if code != findingStatusWanted {
+		t.Fatalf("exit %d, want %d\nstdout:\n%s\nstderr:\n%s", code, findingStatusWanted, out, errb)
+	}
+	if !strings.Contains(out, "shrink: NOT SHRUNK") ||
+		!strings.Contains(out, `"doc-store-truncate"`) ||
+		!strings.Contains(out, "carried as declared") {
+		t.Errorf("twin's carried provider name is not reported as carried:\n%s", out)
+	}
+	if strings.Contains(errb, "could not shrink") || strings.Contains(out, "could not shrink") {
+		t.Errorf("a carried provider name is still reported as a failure to shrink:\n"+
+			"stdout:\n%s\nstderr:\n%s", out, errb)
+	}
+	// THE REGISTERED SET IS NAMED, so a reader is told what this build could
+	// have opened rather than only what it could not.
+	if !strings.Contains(out, "toy-process-restart") {
+		t.Errorf("the line does not name the providers this build does register:\n%s", out)
+	}
+}
+
+// findingStatusWanted is the exit status a found bug reports (cmd/rumor's
+// findingStatus, which is unexported). Named here rather than written as 3 at
+// four call sites: a literal would not move if the statute's exit codes ever
+// did, and the four exit statuses are one named constant in the product for
+// exactly that reason (fable, coop r5/176).
+const findingStatusWanted = 3
