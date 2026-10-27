@@ -1685,7 +1685,15 @@ func EventualOf(b bindings.Bindings) []engine.Eventual {
 		if c.Timing != "eventual" {
 			continue
 		}
-		out = append(out, engine.Eventual{Of: name, Quiesce: c.Bound == bindings.Quiesce})
+		// THE BOUND TRAVELS, and leaving it out is what made every duration
+		// read as zero: this is the ONLY producer of engine.Eventual in
+		// non-test code, so a field it omits is a field the product never has
+		// (rook, coop rumor/1191; ratchet /1192).
+		out = append(out, engine.Eventual{
+			Of:      name,
+			Quiesce: c.Bound == bindings.Quiesce,
+			Bound:   int64(c.BoundFor),
+		})
 	}
 	// SORTED, because a map's order is not a fact about the project and two
 	// runs of one seed must not differ by it.

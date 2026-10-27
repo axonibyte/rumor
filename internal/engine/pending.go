@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
 )
@@ -36,8 +37,20 @@ import (
 // WHERE THESE COME FROM IS R4's. The bindings artefact declares them; this is
 // the shape the engine needs to apply one, and nothing here reads a file.
 type Eventual struct {
-	Of    string // the claim type, e.g. "user.created"
-	Bound int64  // how long after the claim a disagreement is tolerated
+	Of string // the claim type, e.g. "user.created"
+
+	// Bound is how long after the claim a disagreement is tolerated, in
+	// NANOSECONDS -- time.Duration's own unit, which is what the bindings
+	// parser produces from `bound = "30s"`.
+	//
+	// THE UNIT IS NAMED HERE BECAUSE NOTHING NAMED IT, and the field was
+	// silently zero in every Eventual the product built until coop
+	// rumor/1191. The comparison below is against a CLOCK FACT's `t`, whose
+	// unit is R7's to settle when the run controls the clock; until then the
+	// duration form is refused before the comparison is reached, so this
+	// field's job is to be NAMED in that refusal rather than to decide a
+	// verdict. R7: make a clock fact's `t` nanoseconds too, or convert here.
+	Bound int64
 
 	// Quiesce says the bound is "until the system settles" rather than a
 	// duration, which is `bindings.Quiesce` as the artefact spells it.
@@ -286,12 +299,12 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 	now, hasNow := Now(l)
 	claimTime, hasClaimTime := timeAt(prefix, claimPos)
 	if !hasNow || !hasClaimTime {
-		return nil, nil, fmt.Errorf("engine: %q is declared eventual with a bound of %d, but its bound "+
+		return nil, nil, fmt.Errorf("engine: %q is declared eventual with a bound of %s, but its bound "+
 			"cannot be measured: a clock fact at the seal is present=%v, and one at or before the "+
 			"last %q claim (position %d) is present=%v. Treating that as past the bound would turn "+
 			"a pending into a defect on missing data, which is the R4 shape -- time the run does "+
 			"not control never decides a verdict",
-			c.Of, e.Bound, hasNow, c.Of, claimPos, hasClaimTime)
+			c.Of, time.Duration(e.Bound), hasNow, c.Of, claimPos, hasClaimTime)
 	}
 	// PAST THE BOUND IS FACTS AND NOT THE WORD, for the quiesce arm's reason
 	// above: `stale` is a pending that WAS HELD and still disagrees, and this
@@ -308,9 +321,9 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 	return &Overlay{
 		Rule:  "engine.pending",
 		Value: "pending",
-		Reason: fmt.Sprintf("%q is eventual with a bound of %d; the last claim of it was made at %d "+
+		Reason: fmt.Sprintf("%q is eventual with a bound of %s; the last claim of it was made at %d "+
 			"and the run's time at the seal is %d, so the disagreement is inside the bound",
-			c.Of, e.Bound, claimTime, now),
+			c.Of, time.Duration(e.Bound), claimTime, now),
 		Until: claimTime + e.Bound,
 	}, nil, nil
 }
@@ -353,10 +366,11 @@ func stale(p pastBound, prev Pending) *Overlay {
 		Rule:  "engine.stale",
 		Value: "bug",
 		Kind:  "stale",
-		Reason: fmt.Sprintf("%q is eventual with a bound of %d; the disagreement on the claim at "+
+		Reason: fmt.Sprintf("%q is eventual with a bound of %s; the disagreement on the claim at "+
 			"position %d was held open as `pending` at seal %d, the claim was made at %d and the "+
 			"run's time at the seal is %d, so it is %d past the bound",
-			p.of, p.bound, p.claimPos, prev.At, p.claimTime, p.now, (p.now-p.claimTime)-p.bound),
+			p.of, time.Duration(p.bound), p.claimPos, prev.At, p.claimTime, p.now,
+			(p.now-p.claimTime)-p.bound),
 		Until: p.claimTime + p.bound,
 	}
 }

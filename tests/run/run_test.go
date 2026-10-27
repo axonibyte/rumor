@@ -721,6 +721,80 @@ func findingLine(out string) string {
 // the no-weight arm builds its own, and the arm asserts the change landed: a
 // bound on an IMMEDIATE claim is refused by the decoder, so the timing moves
 // with it and a reader can see why both lines are edited.
+// A DURATION BOUND IS REFUSED NAMING THE DURATION, which is the arm ratchet
+// asked for at coop rumor/1192 and fable placed in 92's branch at r6/153.
+//
+// IT IS IN tests/run AND NOT internal/engine FOR THE REASON THE DEFECT HAD.
+// Every `Bound:` in the tree was a test literal inside internal/engine --
+// pending_test.go and reconcile_test.go hand the field in -- while the only
+// producer the product has, schedule.EventualOf, never set it. An arm that
+// passes a value in cannot see a writer that omitted it, so this one declares
+// the bound in a PROJECT and drives the binary: the walk's own constructor
+// builds the Eventual and the refusal has to name what the project said.
+//
+// AND IT DRIVES examples/toy RATHER THAN fixtures/walkable, because the
+// refusal is judged LAZILY. It fires where a disagreement on that claim type
+// is judged, so a project that walks cleanly never reaches it -- the walkable
+// fixture exits 0 with the bound declared, which is what this arm looked like
+// before it was driven. Seed 12 under `settling` is the committed row that
+// disagrees on `event.tallied` (examples/toy/seeds.lock), so it is the drive
+// that reaches the code.
+func TestADurationBoundIsRefusedNamingTheDuration(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego", "seeds.lock"} {
+		b, err := os.ReadFile(filepath.Join("../../examples/toy", f))
+		if err != nil {
+			t.Fatalf("reading %s: %v", f, err)
+		}
+		if f == "bindings.toml" {
+			const was = "[claim.\"event.tallied\"]\ntiming = \"eventual\"\nbound = \"quiesce\""
+			if !strings.Contains(string(b), was) {
+				t.Fatal("examples/toy's `event.tallied` claim is not the quiesce-bounded block " +
+					"this arm edits, so the duration bound below would not be declared and " +
+					"the refusal could not fire")
+			}
+			b = []byte(strings.Replace(string(b), was,
+				"[claim.\"event.tallied\"]\ntiming = \"eventual\"\nbound = \"30s\"", 1))
+		}
+		if err := os.WriteFile(filepath.Join(dir, f), b, 0o600); err != nil {
+			t.Fatalf("writing %s: %v", f, err)
+		}
+	}
+
+	out, errb, code := run(t, "run", dir, "--profile", "settling", "--seed", "12", "--steps", "24")
+	if code != 2 {
+		t.Fatalf("exit %d, want 2: a duration bound with no clock fact is COULD-NOT-RUN -- the "+
+			"bound cannot be measured, which is not a refusal of the project (1) and not a "+
+			"finding (3)\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	}
+	// ON STDERR AND NOT STDOUT, which this arm had wrong until it was driven:
+	// a REFUSAL of the project prints to stdout with the run's own lines (the
+	// quiesce arm below reads it there), while a COULD-NOT-RUN is the error
+	// stream's. Asserting the wrong stream would have passed on an empty
+	// string once the message moved anywhere.
+	//
+	// THE DURATION THE PROJECT DECLARED. This is the whole arm: the figure
+	// comes from the field the only live writer sets, so "30s" can appear only
+	// if the parse reached it.
+	if !strings.Contains(errb, "bound of 30s") {
+		t.Errorf("the refusal does not name the declared bound, so a project is told its "+
+			"declaration cannot be measured without being told which declaration:\n%s", errb)
+	}
+	// AND NEVER THE ZERO VALUE, which is the live symptom rook found at coop
+	// rumor/1191: the parse was validated and discarded, so 30s, 5m and 250ms
+	// all printed the same figure and a reader could not tell a parsed
+	// declaration from an unparsed one. Driven on v0.1.36's binary this exact
+	// project prints "a bound of 0".
+	if strings.Contains(errb, "bound of 0") {
+		t.Errorf("the refusal reports a bound of 0 for a project declaring 30s, so the parse "+
+			"is being discarded again:\n%s", errb)
+	}
+	if !strings.Contains(errb, "event.tallied") {
+		t.Errorf("the refusal names no claim type, so a project with several eventual types "+
+			"cannot tell which bound is unmeasurable:\n%s", errb)
+	}
+}
+
 func TestAQuiesceBoundWithNoProberIsRefused(t *testing.T) {
 	dir := t.TempDir()
 	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego"} {

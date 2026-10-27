@@ -244,6 +244,18 @@ type Observation struct {
 type Claim struct {
 	Timing string
 	Bound  string
+
+	// BoundFor is the DURATION form of Bound, parsed where it is validated and
+	// kept rather than discarded. Zero for the quiesce form, for an absent
+	// bound and for an immediate claim, none of which measure a duration.
+	//
+	// IT EXISTS BECAUSE THE PARSE WAS THROWN AWAY AND A READER PAID FOR IT.
+	// This parser validated `bound = "30s"` and kept only the string, so the
+	// walk's engine.Eventual carried Bound 0 and the run's refusal said "a
+	// bound of 0" for every duration a project could declare (rook, coop
+	// rumor/1191). One parse, one place, and the value travels with the
+	// string it came from.
+	BoundFor time.Duration
 }
 
 // Role is a role from the statute and the session contexts an actor of it may
@@ -366,10 +378,12 @@ func Parse(doc map[string]any) Report {
 				// no bound" is one of validate's arms, and a parser that
 				// refused it would make that arm unreachable.
 				if claim.Bound != "" && claim.Bound != Quiesce {
-					if _, err := time.ParseDuration(claim.Bound); err != nil {
+					d, err := time.ParseDuration(claim.Bound)
+					if err != nil {
 						c.Refuse("bound", fmt.Sprintf(
 							"%q: wanted a duration such as 30s, or %q", claim.Bound, Quiesce))
 					}
+					claim.BoundFor = d
 				}
 			case "":
 				// already refused as a missing key
