@@ -163,6 +163,12 @@ const root = "../.."
 // clause is the warrant for the word being decided where the re-check is in
 // hand rather than in the overlay (fable, coop r6/87). The quote is what says
 // the gate is the document's rule and not this package's preference.
+// 46 -> 47 AT R6.3's END-OF-RUN RECONCILIATION: internal/schedule quotes the
+// quiesce form's own sentence -- "`pending` until the declared probes read quiet
+// and `stale` if the reconciliation that follows still disagrees" -- because the
+// second half of it had nowhere to happen until that code existed. The quote is
+// the warrant for re-asking at all, and for re-asking with the FRESH probe
+// answer rather than the last step's.
 // 47 -> 46 AT R6.4: THE ONLY COUNT IN THIS CHAIN THAT GOES DOWN. engine's
 // `Reconcile` is removed with its five parts (fable, coop r6/153: R10 does not
 // inherit dead engine code), and its doc comment held this tree's one quotation
@@ -174,13 +180,32 @@ const root = "../.."
 // re-checked at every full reconciliation, and the walk still does it; what
 // went is the engine-level function nothing called, so the sentence lost its
 // subject rather than its truth.
-// 46 -> 47 AT R6.3's END-OF-RUN RECONCILIATION: internal/schedule quotes the
-// quiesce form's own sentence -- "`pending` until the declared probes read quiet
-// and `stale` if the reconciliation that follows still disagrees" -- because the
-// second half of it had nowhere to happen until that code existed. The quote is
-// the warrant for re-asking at all, and for re-asking with the FRESH probe
-// answer rather than the last step's.
 const declaredQuotes = 46
+
+// knownChainGaps are the places where this file's warrant chain does NOT join,
+// each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which
+// is the shape this project already uses for the four hand-cut mutants
+// internal/attaint cannot regenerate: the list is pinned in BOTH directions, so
+// a gap that is not here refuses, and a gap that is repaired refuses too
+// because its row stopped describing the file. A filter would have made these
+// three permanently invisible; a declaration makes them a list someone can
+// finish.
+//
+// THE CONTIGUITY CHECK FOUND THEM, which neither earlier form could: the
+// greatest target and the greatest `from` both read the extremes of the set and
+// so could not see a hole in the middle. Eleven quotes arrived between R3.2 and
+// R5.1 with no header in this file at all.
+var knownChainGaps = map[[2]int]string{
+	{15, 26}: "the moves between R3.2 and R5.1 are recorded in the commits that made " +
+		"them and in docs/vocabulary.md's Revisions table, and never in this file. " +
+		"Eleven quotes, no warrant here. I have not reconstructed them: a header " +
+		"invented now would be prose about a commit I did not read.",
+	{32, 33}: "the same, one quote, between R5.5 and R6.1.",
+	{34, 35}: "DELIBERATE. R6.2's `34 -> 35` block was deleted by R6's gate bundle, " +
+		"whose own `35 -> 44` prose carries that move instead, and the re-cut was " +
+		"told not to re-add it (fable, coop r6/115). Repairing this one means " +
+		"deciding that the bundle's prose is not enough, which is not this arm's call.",
+}
 
 // citation names the ways this tree attributes a quote to the vocabulary. It is
 // written out rather than inferred: a regexp that matched any nearby word would
@@ -623,40 +648,70 @@ func TestTheQuoteCountsWarrantsReachTheCountTheyDeclare(t *testing.T) {
 			"headers are what say WHY the count moved, and a count that moves without one is " +
 			"the drift this file exists to refuse")
 	}
-	// THE CHAIN'S END IS THE GREATEST `from`, NOT THE GREATEST `to`, AND THE
-	// DIFFERENCE IS A COUNT THAT GOES DOWN.
+	// THE CHAIN IS WALKED IN FILE ORDER AND ITS CONTIGUITY IS ASSERTED, which
+	// is this arm's THIRD form in a day and fable ruled it the last (coop
+	// r6/170). The two before it both tried to be order-free and both failed
+	// on a correct tree:
 	//
-	// ibis took the maximum TARGET to remove an ordering assumption (coop
-	// r6/120, rook /1143 driving the planted 99: "an arm that cannot be wrong
-	// about order beats one that happens to be right about today's"). That
-	// reason stands and this keeps it -- nothing here reads file order. But the
-	// maximum target silently assumed the count only ever RISES, and R6.4's
-	// removal of a dead function took one attributed quote with it: with a
-	// `47 -> 46` header the greatest target is 47 while the constant is 46, so
-	// the arm failed on a correct tree. Found by this suite refusing my commit,
-	// which is the arm working on a case nobody had.
+	//	greatest TARGET   mine. Assumed the count only ever RISES. R6.4's
+	//	                  removal of a dead function took one attributed quote
+	//	                  with it, and with a `47 -> 46` header the greatest
+	//	                  target is 47 against a constant of 46.
+	//	greatest `from`   quill's fix for that (4981fb0), right at its own head
+	//	                  and wrong at the next addition: I planted the
+	//	                  ordinary `46 -> 47` with declaredQuotes 47 and it
+	//	                  failed, naming `47 -> 46` as the chain's end, because
+	//	                  after a fall `from` is no longer monotone. Its tie
+	//	                  check also compared against the running MAXIMUM
+	//	                  rather than the set of starts, so two `45 -> 46`
+	//	                  headers passed (ibis, coop r6/169).
 	//
-	// THE GREATEST `from` IS THE LAST TRANSITION IN EITHER DIRECTION, because
-	// every header's `from` is the count before it and the newest header is the
-	// only one whose `from` no later header has superseded.
+	// WHY NO ORDER-FREE RULE CAN WORK HERE, which is the thing worth keeping:
+	// once a count returns to a value it held before, `46 -> 47` and `47 -> 46`
+	// are both present and the header SET contains a 2-cycle. Two different
+	// transitions then have equal claim to being last, and nothing in the set
+	// distinguishes them -- the information that does is TEMPORAL. The file has
+	// that information and the set does not.
 	//
-	// A TIE REFUSES rather than picking: two headers claiming the same starting
-	// count are two accounts of one transition, and choosing between them is
-	// not this arm's to do.
-	highest, from, fromN := 0, "", -1
-	for _, m := range found {
+	// SO ORDER BECOMES A CHECKED PROPERTY INSTEAD OF AN ASSUMPTION. Each
+	// header's `from` must equal the previous header's `to`; the last `to` must
+	// equal the constant. A gap, a repeat and a reordering each refuse by name,
+	// and the arm no longer has an opinion about which direction a count moves.
+	highest, from := 0, ""
+	seenGaps := map[[2]int]bool{}
+	for i, m := range found {
 		f, ferr := strconv.Atoi(m[1])
 		to, cerr := strconv.Atoi(m[2])
 		if ferr != nil || cerr != nil {
 			t.Fatalf("header %q does not name two numbers: %v %v", m[0], ferr, cerr)
 		}
-		if f == fromN {
-			t.Fatalf("two warrant headers start from %d (%q and %q): one transition with two "+
-				"accounts, and which of them the constant confirms is not this arm's to choose",
-				f, from, strings.TrimSpace(m[0]))
+		this := strings.TrimSpace(m[0])
+		if i > 0 && f != highest {
+			if _, known := knownChainGaps[[2]int{highest, f}]; !known {
+				why := "a gap"
+				if f == fromOf(found, i-1) {
+					why = "a repeated start, so one transition has two accounts"
+				}
+				t.Errorf("the warrant chain breaks between %q and %q: %s -- the first ends "+
+					"at %d and the second starts from %d. Either the header that carries "+
+					"that move is missing, or the two are out of order; if the break is "+
+					"deliberate it belongs in knownChainGaps with its reason",
+					from, this, why, highest, f)
+			}
+			seenGaps[[2]int{highest, f}] = true
 		}
-		if f > fromN {
-			highest, from, fromN = to, strings.TrimSpace(m[0]), f
+		highest, from = to, this
+	}
+	// AND EVERY DECLARED GAP MUST STILL BE THERE. This is the half that makes
+	// the list a declaration rather than an exemption: repair a gap by adding
+	// its header and this refuses until the row is deleted, so the list can
+	// only ever shrink.
+	for g, why := range knownChainGaps {
+		if !seenGaps[g] {
+			t.Errorf("knownChainGaps declares a break from %d to %d (%s) and the chain does "+
+				"not have it: if the header arrived, delete the row -- a declaration that "+
+				"outlives what it describes is the drift this file exists to refuse",
+				g[0], g[1], why)
 		}
 	}
 	if highest != declaredQuotes {
@@ -693,4 +748,12 @@ func TestTheQuoteCountsWarrantsReachTheCountTheyDeclare(t *testing.T) {
 	t.Logf("PROOF %d of %d `N -> M` line(s) are warrant headers, the chain ending at %d, "+
 		"declaredQuotes %d; excluded as prose: %v", len(found), len(all), highest,
 		declaredQuotes, skipped)
+}
+
+// fromOf is the `from` of the header at index i, for naming a repeated start.
+// The slice came from a pattern with two numeric groups, so this cannot fail on
+// a match the loop above has already parsed.
+func fromOf(found [][]string, i int) int {
+	n, _ := strconv.Atoi(found[i][1])
+	return n
 }
