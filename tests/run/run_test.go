@@ -1340,3 +1340,82 @@ func TestTwoDeclaredRollbackProvidersRefuseTheShrink(t *testing.T) {
 		t.Errorf("the control did not shrink, so the absence above proves nothing:\n%s", cout)
 	}
 }
+
+// THE SURFACE REFUSAL REACHES STDOUT, AND THE RUN STILL EXITS 3 -- ratchet's
+// finding at coop r6/171 and fable's ruling at /175 item 2: the half that
+// ships is the half that is read, and nothing checked that any of these
+// verdicts leaves the process.
+//
+// ONE OF THE THREE IS REACHABLE FROM A PROJECT and the other two are not: a
+// provider that owns no address, or names no variable for it, cannot be
+// declared into existence by a platform.toml, so those two are driven against
+// stub providers in cmd/rumor's own package. This one is a DOCUMENT -- the
+// adapter's `env` list failing to pass through the variable the provider names
+// -- which is the defect docs/testing-methodology.md already records: the
+// adapter then starts a system of its own and every candidate replays against
+// a world the provider does not control.
+//
+// THE STATUS ASSERTED IS THE RUN'S, NOT THE SHRINK'S (ratchet, coop r6/179).
+// shrinkFound returns an int and run.go:365 DISCARDS it -- `_ = st`, with the
+// reason in the comment above -- so pinning 1 would pin a value nothing reads.
+// What cli.md documents, and what a pipeline acts on, is that a shrink refusal
+// does not take the finding's 3 away.
+func TestASurfaceRefusalReachesStdoutAndKeepsTheFindingsStatus(t *testing.T) {
+	dir := t.TempDir()
+	ents, err := os.ReadDir("../../examples/toy")
+	if err != nil {
+		t.Fatalf("reading examples/toy: %v", err)
+	}
+	for _, e := range ents {
+		if e.IsDir() {
+			continue
+		}
+		b, rerr := os.ReadFile(filepath.Join("../../examples/toy", e.Name()))
+		if rerr != nil {
+			t.Fatalf("reading %s: %v", e.Name(), rerr)
+		}
+		if e.Name() == "platform.toml" {
+			const was = `env = ["TOY_ADDR"]`
+			if !strings.Contains(string(b), was) {
+				t.Fatal("examples/toy's adapter no longer passes TOY_ADDR through, so removing " +
+					"it cannot be what this arm removes")
+			}
+			b = []byte(strings.Replace(string(b), was, `env = []`, 1))
+		}
+		if werr := os.WriteFile(filepath.Join(dir, e.Name()), b, 0o600); werr != nil {
+			t.Fatalf("writing %s: %v", e.Name(), werr)
+		}
+	}
+
+	out, errb, code := run(t, "run", dir, "--seed", "2", "--steps", "10")
+	if code != findingStatusWanted {
+		t.Fatalf("exit %d, want %d: a shrink refusal does not take the finding's status away"+
+			"\nstdout:\n%s\nstderr:\n%s", code, findingStatusWanted, out, errb)
+	}
+	// ON STDOUT AND NOT STDERR, which is the half ratchet found unchecked: a
+	// verdict written where nothing collects it has not been reported.
+	if !strings.Contains(out, "shrink: REFUSED") {
+		t.Fatalf("the surface refusal did not reach stdout:\nstdout:\n%s\nstderr:\n%s", out, errb)
+	}
+	if !strings.Contains(out, "TOY_ADDR") || !strings.Contains(out, "does not pass through") {
+		t.Errorf("the refusal does not name the variable or what the project failed to do:\n%s", out)
+	}
+	if strings.Contains(errb, "REFUSED") {
+		t.Errorf("the refusal also went to stderr, so a reader gets it twice in one stream "+
+			"and a pipeline reading one of them sees a different run:\n%s", errb)
+	}
+	// AND NO SHRINK RAN: the words a report prints must be absent, or the
+	// refusal would be a line beside a reduction that happened anyway.
+	if strings.Contains(out, "candidate(s)") {
+		t.Errorf("a shrink ran despite the refusal:\n%s", out)
+	}
+	// THE CONTROL IS THE SAME PROJECT WITH THE VARIABLE PASSED THROUGH, so the
+	// refusal is about the env list and not about this copy of the toy.
+	cout, cerrb, ccode := run(t, "run", "../../examples/toy", "--seed", "2", "--steps", "10")
+	if ccode != findingStatusWanted {
+		t.Fatalf("the control exited %d\nstdout:\n%s\nstderr:\n%s", ccode, cout, cerrb)
+	}
+	if strings.Contains(cout, "shrink: REFUSED") || !strings.Contains(cout, "candidate(s)") {
+		t.Errorf("the control did not shrink cleanly, so the refusal above proves nothing:\n%s", cout)
+	}
+}

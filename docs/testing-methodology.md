@@ -1319,8 +1319,8 @@ that preserves every other one.**
 tying them to the constant took the greatest TARGET, deliberately, so that no
 reading depended on file order (coop r6/120, with a planted out-of-order header
 driving it at rumor/1143). That reason was right and the rule still broke: R6.4
-removed a dead function whose doc comment held the tree's only quotation of a
-vocabulary sentence, so the count went DOWN, and with a `47 -> 46` header the
+removed a dead function whose doc comment carried an attributed quotation, so
+the count went DOWN, and with a `47 -> 46` header the
 greatest target is 47 against a constant of 46 — a correct tree, refused.
 Switching to the greatest `from` survived the fall and failed the next rise, and
 the two headers together are a 2-cycle: **no order-free rule can name the last
@@ -1334,6 +1334,15 @@ code was removed, not because a quotation was edited: the sentence lost its
 subject rather than its truth. A sweep that counts attributed quotes across a
 tree will therefore fire on a pure deletion, and the warrant header is what
 tells the next reader which of those two things happened.
+
+**AND SAY WHAT WENT, NOT WHAT IS LEFT.** The first draft of this entry said the
+removed comment held the tree's ONLY quotation of that sentence. It did not:
+`internal/engine/pending.go` still quotes the vocabulary's "at every full
+reconciliation" inside a longer span, and the phrase is in two documents
+besides. What was true is narrower and is the only part the count rests on —
+that file carried one attributed quote and what replaced it carries none. A
+claim about a whole tree needs the whole tree searched; a claim about one file
+needs one file, and the two are a `grep` apart.
 
 **How to apply.** When a signature grows, ask what every existing caller was
 assuming that it had no way to state — then make the carrier say it, and check
