@@ -40,6 +40,7 @@
 package vocabulary_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -212,6 +213,14 @@ var knownChainGaps = map[[2]int]string{
 // collect the epic's and the issue's quotes too, which is the measured failure
 // described above.
 var attributed = regexp.MustCompile(`(?i)(?:vocabulary\.md|the vocabulary(?:'s)?|v1(?:'s)?)[^"]{0,60}?"([^"]{15,})"`)
+
+// chainLoose counts every `// N -> M ` line in this file and chainHeader counts
+// the ones that are warrant HEADERS. They are package-level beside the file's
+// other patterns because TestTheChainCheckFires drives the strict one over
+// planted text: an arm that built its own regex would be checking a copy of the
+// rule rather than the rule.
+var chainLoose = regexp.MustCompile(`(?m)^// (\d+) -> (\d+) .*$`)
+var chainHeader = regexp.MustCompile(`(?m)^// (\d+) -> (\d+) (?:AT|in) `)
 
 var commentLine = regexp.MustCompile(`^(?://+|#+)\s?(.*)$`)
 
@@ -639,10 +648,8 @@ func TestTheQuoteCountsWarrantsReachTheCountTheyDeclare(t *testing.T) {
 	// matched while listing all twelve as excluded. The arm caught its own
 	// arithmetic by printing both numbers beside each other, which is the whole
 	// reason ratchet asked for the denominator.
-	loose := regexp.MustCompile(`(?m)^// (\d+) -> (\d+) .*$`)
-	header := regexp.MustCompile(`(?m)^// (\d+) -> (\d+) (?:AT|in) `)
-	all := loose.FindAllString(string(raw), -1)
-	found := header.FindAllStringSubmatch(string(raw), -1)
+	all := chainLoose.FindAllString(string(raw), -1)
+	found := chainHeader.FindAllStringSubmatch(string(raw), -1)
 	if len(found) == 0 {
 		t.Fatal("no `N -> M AT|in` warrant header found, so this arm is checking nothing: the " +
 			"headers are what say WHY the count moved, and a count that moves without one is " +
@@ -677,42 +684,9 @@ func TestTheQuoteCountsWarrantsReachTheCountTheyDeclare(t *testing.T) {
 	// header's `from` must equal the previous header's `to`; the last `to` must
 	// equal the constant. A gap, a repeat and a reordering each refuse by name,
 	// and the arm no longer has an opinion about which direction a count moves.
-	highest, from := 0, ""
-	seenGaps := map[[2]int]bool{}
-	for i, m := range found {
-		f, ferr := strconv.Atoi(m[1])
-		to, cerr := strconv.Atoi(m[2])
-		if ferr != nil || cerr != nil {
-			t.Fatalf("header %q does not name two numbers: %v %v", m[0], ferr, cerr)
-		}
-		this := strings.TrimSpace(m[0])
-		if i > 0 && f != highest {
-			if _, known := knownChainGaps[[2]int{highest, f}]; !known {
-				why := "a gap"
-				if f == fromOf(found, i-1) {
-					why = "a repeated start, so one transition has two accounts"
-				}
-				t.Errorf("the warrant chain breaks between %q and %q: %s -- the first ends "+
-					"at %d and the second starts from %d. Either the header that carries "+
-					"that move is missing, or the two are out of order; if the break is "+
-					"deliberate it belongs in knownChainGaps with its reason",
-					from, this, why, highest, f)
-			}
-			seenGaps[[2]int{highest, f}] = true
-		}
-		highest, from = to, this
-	}
-	// AND EVERY DECLARED GAP MUST STILL BE THERE. This is the half that makes
-	// the list a declaration rather than an exemption: repair a gap by adding
-	// its header and this refuses until the row is deleted, so the list can
-	// only ever shrink.
-	for g, why := range knownChainGaps {
-		if !seenGaps[g] {
-			t.Errorf("knownChainGaps declares a break from %d to %d (%s) and the chain does "+
-				"not have it: if the header arrived, delete the row -- a declaration that "+
-				"outlives what it describes is the drift this file exists to refuse",
-				g[0], g[1], why)
-		}
+	highest, from, findings := walkChain(found, knownChainGaps)
+	for _, f := range findings {
+		t.Error(f)
 	}
 	if highest != declaredQuotes {
 		t.Errorf("the warrant chain ends at %d (%q) and declaredQuotes is %d: a header naming a "+
@@ -724,7 +698,7 @@ func TestTheQuoteCountsWarrantsReachTheCountTheyDeclare(t *testing.T) {
 	// thing a reader sees rather than a thing they would have to go and count.
 	var skipped []string
 	for _, line := range all {
-		if !header.MatchString(line) {
+		if !chainHeader.MatchString(line) {
 			skipped = append(skipped, strings.TrimSpace(line))
 		}
 	}
@@ -750,10 +724,169 @@ func TestTheQuoteCountsWarrantsReachTheCountTheyDeclare(t *testing.T) {
 		declaredQuotes, skipped)
 }
 
-// fromOf is the `from` of the header at index i, for naming a repeated start.
-// The slice came from a pattern with two numeric groups, so this cannot fail on
-// a match the loop above has already parsed.
-func fromOf(found [][]string, i int) int {
-	n, _ := strconv.Atoi(found[i][1])
-	return n
+// walkChain walks the warrant headers IN THE ORDER GIVEN and reports every way
+// the chain fails to account for itself. It returns the count the chain ends at,
+// the header that ends it, and one finding per fault.
+//
+// IT IS A FUNCTION SO THAT A SECOND ARM CAN DRIVE IT, which is ratchet's finding
+// against my own commit (coop r6/173): with the break refusal disabled --
+// `!known && false`, every variable still used, vet clean -- this package stayed
+// GREEN, because the file it reads has no undeclared break. The declared-gap
+// half was armed by the file itself and the refusal half was armed by nothing
+// but four drives recorded in a commit message, which nobody replants. The same
+// shape rook caught in this arm's coverage line hours earlier: reported, not
+// asserted.
+//
+// SO THE ORDER COMES FROM THE CALLER and nothing here reads a file. The headers
+// arrive as the strict pattern matched them, which is file order for the real
+// arm and planted order for TestTheChainCheckFires.
+func walkChain(found [][]string, gaps map[[2]int]string) (end int, last string, findings []string) {
+	seen := map[[2]int]bool{}
+	prevFrom := -1
+	for i, m := range found {
+		f, ferr := strconv.Atoi(m[1])
+		to, cerr := strconv.Atoi(m[2])
+		if ferr != nil || cerr != nil {
+			findings = append(findings, fmt.Sprintf("header %q does not name two numbers: %v %v",
+				m[0], ferr, cerr))
+			continue
+		}
+		this := strings.TrimSpace(m[0])
+		if i > 0 && f != end {
+			if _, known := gaps[[2]int{end, f}]; !known {
+				why := "a gap"
+				if f == prevFrom {
+					why = "a repeated start, so one transition has two accounts"
+				}
+				findings = append(findings, fmt.Sprintf("the warrant chain breaks between %q "+
+					"and %q: %s -- the first ends at %d and the second starts from %d. Either "+
+					"the header that carries that move is missing, or the two are out of "+
+					"order; if the break is deliberate it belongs in knownChainGaps with its "+
+					"reason", last, this, why, end, f))
+			}
+			seen[[2]int{end, f}] = true
+		}
+		end, last, prevFrom = to, this, f
+	}
+	// AND EVERY DECLARED GAP MUST STILL BE THERE. This is the half that makes
+	// the list a declaration rather than an exemption: repair a gap by adding
+	// its header and this refuses until the row is deleted, so the list can
+	// only ever shrink.
+	for g, why := range gaps {
+		if !seen[g] {
+			findings = append(findings, fmt.Sprintf("knownChainGaps declares a break from %d "+
+				"to %d (%s) and the chain does not have it: if the header arrived, delete the "+
+				"row -- a declaration that outlives what it describes is the drift this file "+
+				"exists to refuse", g[0], g[1], why))
+		}
+	}
+	return end, last, findings
+}
+
+// TestTheChainCheckFires plants each fault the chain walk exists to catch and
+// requires it to be REPORTED, which is ratchet's finding against the commit
+// that added the walk (coop r6/173).
+//
+// THE GAP IT CLOSES, stated so nobody has to rediscover it: with the break
+// refusal disabled the whole package stayed green. The file the real arm reads
+// has declared gaps, so the declaration half was armed by the tree itself --
+// but it has no UNDECLARED break and never will while the file is correct, so
+// that half was armed only by four drives in a commit message. A drive nobody
+// replants is a figure reported rather than asserted, which is the same defect
+// rook caught in this arm's own coverage line (rumor/1153).
+//
+// IT DRIVES THE RULE OVER PLANTED TEXT, not over a temp file, which is what
+// TestTheQuoteCheckFires above does for the attribution rule: the strict
+// pattern runs over the planted block, so the arm exercises the real regex and
+// the real walk together, and the ORDER it sees is the order written here.
+func TestTheChainCheckFires(t *testing.T) {
+	const (
+		rise = "// 44 -> 45 AT a first move\n// 45 -> 46 AT a second\n"
+		fall = "// 46 -> 47 AT a third\n// 47 -> 46 AT a removal\n"
+	)
+	for _, tc := range []struct {
+		name    string
+		text    string
+		gaps    map[[2]int]string
+		wantEnd int
+		want    string // a substring every finding set must contain; "" means none at all
+	}{
+		{
+			name:    "a contiguous chain reports nothing",
+			text:    rise + fall,
+			wantEnd: 46,
+		},
+		{
+			// THE CASE THAT KILLED BOTH EARLIER FORMS: a rise after a fall.
+			// Greatest-target named 47 and greatest-`from` named the removal;
+			// file order with contiguity names 47, which is the truth.
+			name:    "the next addition after a fall is the chain's end",
+			text:    rise + fall + "// 46 -> 47 AT the next addition\n",
+			wantEnd: 47,
+		},
+		{
+			name:    "an undeclared break refuses",
+			text:    rise + "// 48 -> 49 AT a move with no bridge\n",
+			wantEnd: 49,
+			want:    "the warrant chain breaks",
+		},
+		{
+			name:    "a repeated start is named as one",
+			text:    rise + "// 45 -> 46 AT a second account of one transition\n",
+			wantEnd: 46,
+			want:    "a repeated start",
+		},
+		{
+			// 4981fb0's OWN mistake, and ratchet planted it again at r6/173
+			// without meaning to: the removal header above the header it
+			// supersedes.
+			name:    "a header above the one it supersedes refuses",
+			text:    rise + "// 47 -> 46 AT a removal, misplaced\n// 46 -> 47 AT a third\n",
+			wantEnd: 47,
+			want:    "the warrant chain breaks",
+		},
+		{
+			name:    "a declared break the chain does not have refuses",
+			text:    rise + fall,
+			gaps:    map[[2]int]string{{99, 100}: "a row describing nothing"},
+			wantEnd: 46,
+			want:    "knownChainGaps declares a break from 99 to 100",
+		},
+		{
+			// AND THE DECLARATION WORKS IN THE OTHER DIRECTION: a break that
+			// IS declared is silent, which is what lets the three historical
+			// gaps live in the file without disarming the check.
+			name:    "a declared break is silent",
+			text:    rise + "// 48 -> 49 AT a move the list accounts for\n",
+			gaps:    map[[2]int]string{{46, 48}: "declared for this cell"},
+			wantEnd: 49,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			found := chainHeader.FindAllStringSubmatch(tc.text, -1)
+			if len(found) == 0 {
+				t.Fatal("the planted block matched no header, so this cell drives nothing: " +
+					"the text must use the same spelling the strict pattern requires")
+			}
+			end, _, findings := walkChain(found, tc.gaps)
+			if end != tc.wantEnd {
+				t.Errorf("the chain ends at %d, want %d", end, tc.wantEnd)
+			}
+			if tc.want == "" {
+				if len(findings) != 0 {
+					t.Errorf("a correct chain reported %d finding(s): %v", len(findings), findings)
+				}
+				return
+			}
+			var hit bool
+			for _, f := range findings {
+				if strings.Contains(f, tc.want) {
+					hit = true
+				}
+			}
+			if !hit {
+				t.Errorf("no finding contains %q; got %v", tc.want, findings)
+			}
+		})
+	}
 }
