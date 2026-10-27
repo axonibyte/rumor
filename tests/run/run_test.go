@@ -1498,3 +1498,82 @@ func TestAPendingsLifeIsPrintedWithWhereItWasHeld(t *testing.T) {
 		})
 	}
 }
+
+// "DID NOT RUN" AND "RAN, FOUND NOTHING" ARE TWO SENTENCES, which is D6's
+// first half. rook drove it against v0.1.37 (coop rumor/1223) and could not
+// answer it: the quiesce line read `reconciliation: nothing to reconcile` in
+// THREE different states, so the only evidence for the condition could not
+// distinguish the condition.
+//
+// ALL THREE ARE CELLS HERE AND THAT IS THE POINT. Any one of them alone
+// passes against a build that prints its own string unconditionally -- which
+// is precisely the build being replaced, where one string covered all three.
+// The arm is the SET: each state must say something the other two do not.
+func TestTheQuiesceLineSaysWhichOfTheThreeHappened(t *testing.T) {
+	toy, err := filepath.Abs(filepath.Join("..", "..", "examples", "toy"))
+	if err != nil {
+		t.Fatalf("resolving examples/toy: %v", err)
+	}
+	neverQuiet := "\n[quiesce]\n\n  [[quiesce.probe]]\n  kind = \"direct\"\n" +
+		"  timeout = \"100ms\"\n  every = \"10ms\"\n  query = \"attendance\"\n  quiet = 0\n"
+	for _, c := range []struct {
+		what string
+		// from is the project copied, extra what is appended to its bindings.
+		from, extra string
+		seed, steps string
+		want        string
+		// absent is what this state must NOT say, which is the other states'
+		// wording: a cell asserting only its own string cannot see a build
+		// that prints every string at once.
+		absent []string
+	}{
+		{"no probes are declared, so nothing was asked", fixture, "", "7", "5",
+			"no quiesce probes are declared, so nothing was asked",
+			[]string{"every probe read quiet", "did NOT reconcile"}},
+		{"probes read quiet and nothing was pending", toy, "", "12", "10",
+			"every probe read quiet and nothing was pending",
+			[]string{"nothing was asked", "did NOT reconcile"}},
+		{"probes never read quiet, so it did not reconcile", fixture, neverQuiet, "7", "5",
+			"did NOT reconcile: no probe read quiet",
+			[]string{"nothing was asked", "every probe read quiet and nothing was pending"}},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego"} {
+				b, rerr := os.ReadFile(filepath.Join(c.from, f))
+				if rerr != nil {
+					t.Fatalf("reading %s: %v", f, rerr)
+				}
+				if f == "bindings.toml" && c.extra != "" {
+					b = append(b, []byte(c.extra)...)
+				}
+				if werr := os.WriteFile(filepath.Join(dir, f), b, 0o600); werr != nil {
+					t.Fatalf("writing %s: %v", f, werr)
+				}
+			}
+			args := []string{"run", dir, "--seed", c.seed, "--steps", c.steps}
+			if c.from == toy {
+				args = append(args, "--profile", "settling")
+			}
+			out, errb, _ := run(t, args...)
+
+			if !strings.Contains(out, c.want) {
+				t.Errorf("the quiesce line does not say which of the three happened.\n"+
+					"want a line containing:\n  %s\ngot:\n%s\nstderr:\n%s", c.want, out, errb)
+			}
+			for _, no := range c.absent {
+				if strings.Contains(out, no) {
+					t.Errorf("this state also printed another state's wording (%q), so the "+
+						"line still cannot tell them apart:\n%s", no, out)
+				}
+			}
+			// AND THE NOT-QUIET STATE NAMES THE PROBES, which is what fable
+			// asked for at coop rumor/1224: a reader told only that nothing
+			// reconciled cannot tell which probe kept the system busy.
+			if strings.Contains(c.want, "did NOT reconcile") &&
+				!strings.Contains(out, "probe 1 (kind \"direct\")") {
+				t.Errorf("the not-quiet line does not name the probes:\n%s", out)
+			}
+		})
+	}
+}

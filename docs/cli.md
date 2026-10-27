@@ -488,7 +488,7 @@ run:   3 member_1 join_event [member_1.join_event#1] <- [member_1.event#1]
 run:   4 member_1 join_event [member_1.join_event#2] <- [member_1.event#1]
 run:   5 member_1 create_event [member_1.event#2]
 run: walkable -- seed 42, 5 step(s), 4 handle(s), 1 session(s), 5 observation(s); 1 rollback provider(s) registered
-run:   quiesce -- 0 pending(s) open at the end; reconciliation: nothing to reconcile
+run:   quiesce -- 0 pending(s) open at the end; reconciliation: no quiesce probes are declared, so nothing was asked and nothing reconciled
 ```
 
 **The quiesce line is printed by every run, including one with no `[quiesce]`
@@ -496,10 +496,19 @@ block.** It carries the two halves of R6's third control clause: how many
 findings the run still holds open for re-check when it ends, which
 `docs/vocabulary.md` requires to be none — "a run that ends on one leaves no
 pending open" — and what the end-of-run reconciliation judged when it re-asked
-them. A project declaring no eventual type reads `0` and `nothing to
-reconcile`, which is the answer a gate is checking for: a line that appeared
-only when something was reconciled would make a clean run and an unprinted line
-the same observation.
+them. A line that appeared only when something was reconciled would make a
+clean run and an unprinted line the same observation.
+
+**And it names WHICH of three states produced it**, because until v0.1.38 all
+three read `nothing to reconcile`: a project declaring no probes, probes that
+never read quiet, and probes that went quiet over nothing pending. rook drove
+D6's first half against v0.1.37 and could not answer it from this line (coop
+rumor/1223) -- "did not run" and "ran, found nothing" were one string, so the
+only evidence for the condition could not distinguish the condition. The run
+above is the first of those states, which is why it says so in those words;
+a never-quiet run reads `did NOT reconcile: no probe read quiet` and names
+the probes from the hang report, and a quiet one with nothing outstanding
+reads `every probe read quiet and nothing was pending`.
 
 `join_event` cannot appear at step 1, and two separate things say so: its
 precondition is that an event exists in the sealed prefix, and it declares an

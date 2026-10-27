@@ -401,8 +401,32 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 	//
 	// THE VERDICTS ARE SORTED BY THE WALK and carry no clock, so this line is
 	// byte-identical across two attempts of a seed as D1 requires.
-	reconciled := "nothing to reconcile"
-	if len(rec.Reconciled) > 0 {
+	// "DID NOT RUN" AND "RAN, FOUND NOTHING" ARE NOW TWO SENTENCES, which is
+	// D6's first half. rook drove it against v0.1.37 (coop rumor/1223) and
+	// could not answer it: this read `nothing to reconcile` in THREE
+	// different states -- no probes declared at all, probes that never read
+	// quiet, and probes that read quiet over nothing pending -- so the only
+	// evidence for the condition could not distinguish the condition.
+	//
+	// THE UNASKED CASE IS NAMED FIRST because it is the one a reader is most
+	// likely to mistake for a clean result: a project with no [quiesce]
+	// block reconciles nothing, and said so in the same words as a project
+	// whose probes went quiet with nothing outstanding.
+	//
+	// AND THE NOT-QUIET CASE NAMES THE PROBES, from Prober.Hang(), which the
+	// type documents as the clock-free half of its report and therefore safe
+	// where the control reads; HangMeasured() is the half that must not come
+	// here, and does not.
+	reconciled := "every probe read quiet and nothing was pending"
+	switch {
+	case !rec.QuiesceAsked:
+		reconciled = "no quiesce probes are declared, so nothing was asked and nothing reconciled"
+	case !rec.QuiesceQuiet:
+		reconciled = "did NOT reconcile: no probe read quiet"
+		if rec.QuiesceProbes != "" {
+			reconciled += " -- " + rec.QuiesceProbes
+		}
+	case len(rec.Reconciled) > 0:
 		reconciled = strings.Join(rec.Reconciled, ", ")
 	}
 	if _, err := fmt.Fprintf(stdout, "run:   quiesce -- %d pending(s) open at the end; "+

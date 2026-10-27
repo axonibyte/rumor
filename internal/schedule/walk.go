@@ -230,6 +230,26 @@ type Record struct {
 	// two attempts of a seed cannot differ by map order.
 	Reconciled []string
 
+	// Quiesce records WHETHER THE QUESTION WAS ASKED and what it answered, so
+	// a reader can tell "did not run" from "ran, found nothing".
+	//
+	// THOSE TWO WERE ONE STRING. rook drove D6's first half against v0.1.37
+	// (coop rumor/1223) and it asks exactly which of them happened: with
+	// probes that never read quiet the run printed `reconciliation: nothing
+	// to reconcile`, byte-identical to a quiet run with nothing pending, and
+	// identical again to a project declaring no probes at all. Three
+	// different states, one sentence -- so the line could not answer the
+	// condition it was the only evidence for.
+	//
+	// IT IS TWO BOOLS AND A NAMING RATHER THAN A VERDICT STRING, because the
+	// walk should not compose the operator's prose: cmd/rumor owns the
+	// wording and this owns the facts. QuiesceProbes is clock-free (it is
+	// Prober.Hang()'s report, which the type documents as safe where the
+	// control reads) so putting it in the stream cannot break D1.
+	QuiesceAsked  bool
+	QuiesceQuiet  bool
+	QuiesceProbes string
+
 	// Pendings is one sentence per pending the run held, in its own words:
 	// where it was held, whether it was re-checked, and what the re-check
 	// decided. Sorted, and carrying no clock, so two attempts of one seed
@@ -480,6 +500,16 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		state, qerr := p.Prober.Quiesce(ctx)
 		if qerr != nil {
 			return rec, fmt.Errorf("schedule: asking whether the system settled: %w", qerr)
+		}
+		// RECORDED WHATEVER THE ANSWER, including the timeout: the question
+		// having been ASKED is the fact D6's first half turns on, and a field
+		// set only on success would make "asked and gave up" indistinguishable
+		// from "never asked" -- the defect one layer in from the one this
+		// fixes.
+		rec.QuiesceAsked = true
+		rec.QuiesceQuiet = state != engine.QuiesceTimedOut
+		if h, ok := p.Prober.(interface{ Hang() string }); ok {
+			rec.QuiesceProbes = h.Hang()
 		}
 		// A TIMEOUT DOES NOT OVERWRITE A FINDING THE WALK ALREADY HAS, and the
 		// guard arrived with the break above: while a finding RETURNED from the
