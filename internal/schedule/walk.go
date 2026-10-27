@@ -433,7 +433,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 			qs = st
 		}
 		seen, oerr := observe(ctx, p.Statute, sess, sessions, table, p.Observations, l, &step,
-			engine.Bindings{Eventual: p.Eventual}, reg, qs, held)
+			engine.Bindings{Eventual: p.Eventual}, reg, qs, held, &rec.Pendings)
 		if oerr != nil {
 			return rec, fmt.Errorf("schedule: step %d: %w", n, oerr)
 		}
@@ -622,23 +622,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	// line that omitted the first would make a run that never asked look
 	// exactly like a run that asked and got agreement -- the same collapse
 	// rook found in the reconciliation string itself.
-	for actor, queries := range reg.Open() {
-		for _, query := range queries {
-			at := -1
-			if a, ok := held[askKey(actor, query)]; ok {
-				at = a.at
-			}
-			if at < 0 {
-				rec.Pendings = append(rec.Pendings, fmt.Sprintf(
-					"%s/%s still open at the end, and the walk did not record where it began",
-					actor, query))
-				continue
-			}
-			rec.Pendings = append(rec.Pendings, fmt.Sprintf(
-				"%s/%s held at step %d, never re-checked: still open at the end",
-				actor, query, at))
-		}
-	}
+	rec.Pendings = append(rec.Pendings, stillOpen(reg.Open(), held)...)
 	// SORTED FOR THE SAME REASON Reconciled IS: reg.Open() is a map, so
 	// without this the line order differs between two attempts of one seed
 	// and the control's own comparison fails on an artifact of iteration.
@@ -706,7 +690,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 func observe(ctx context.Context, statute string, sess *wire.Session, sessions *Sessions,
 	table *handle.Table, obs []bindings.Observation, l *ledger.Ledger,
 	step *Step, eb engine.Bindings, reg *engine.Register,
-	qs engine.QuiesceState, held map[string]ask) ([]engine.Finding, error) {
+	qs engine.QuiesceState, held map[string]ask, lives *[]string) ([]engine.Finding, error) {
 
 	if len(obs) == 0 {
 		return nil, nil
@@ -747,6 +731,34 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 		if !made1 {
 			continue
 		}
+		// A PENDING CLEARED MID-WALK IS D3's FIRST PATH, and it left no
+		// sentence at all until rook drove it (coop rumor/1232). All three
+		// clearing seeds cleared at the RECONCILIATION -- "after the last
+		// step" -- because that was the only place this record was written,
+		// so "cleared at the actor's next observation of the same query" was
+		// unwitnessed not for want of a run but for want of a line.
+		//
+		// engine.Judge ALREADY HAD THE FACT: it is the re-check, and it sets
+		// Finding.ReChecked before deleting the pending from the register.
+		// Nothing outside the engine read it, so a pending that resolved at a
+		// later step vanished between the two states this record did cover.
+		//
+		// READ BEFORE THE OVERWRITE on the next line: `held` still carries the
+		// ask this re-check answers, and with it the step the pending began
+		// at. One line later that entry is replaced by this step's.
+		if found.ReChecked != nil && lives != nil {
+			at := -1
+			if a, ok := held[askKey(step.Actor, decl.Name)]; ok {
+				at = a.at
+			}
+			where := fmt.Sprintf("step %d", at)
+			if at < 0 {
+				where = "a step the walk did not record"
+			}
+			*lives = append(*lives, fmt.Sprintf(
+				"%s/%s held at %s, re-checked at step %d: %s",
+				step.Actor, decl.Name, where, step.N, found.Says()))
+		}
 		if found.Value == "pending" && held != nil {
 			// WHAT PRODUCED THIS PENDING, REMEMBERED SO IT CAN BE RE-ASKED.
 			// The register keys a pending by (actor, query) alone and
@@ -761,6 +773,51 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 		made = append(made, found)
 	}
 	return made, nil
+}
+
+// stillOpen is the sentence for every pending the run ends holding, one per
+// (actor, query), naming where it began when the walk recorded that.
+//
+// IT IS A FUNCTION SO IT CAN BE DRIVEN. Inline in Walk it was reachable only
+// through a walk that leaves a pending open, and ratchet measured that nothing
+// asserted it: mutating all three occurrences left internal/schedule,
+// tests/quiesce, tests/run and internal/engine green (coop r6/185). The
+// sentence added so that silence would not pass was itself unwitnessed, which
+// is the defect it exists to prevent, one layer out.
+//
+// WHY THE PRODUCT CANNOT DRIVE IT TODAY, and this is a narrower claim than
+// "unreachable". The end-of-run reconciliation re-asks every open pending, so
+// one survives only where the re-ask CANNOT BE MADE -- observeOne returns
+// not-made for a handle that will not resolve and for an actor with no session
+// in the observation's context, and `if !made { continue }` leaves that
+// pending in the register. Both conditions are real and neither has a
+// committed run that reaches them at the reconciliation; a project with no
+// prober cannot hold a pending at all, since a quiesce bound without probes is
+// refused (run_test.go:920) and a duration bound is refused for want of a
+// clock fact no non-test writer makes (run_test.go:864, quill coop r6/186,
+// ratchet r6/188). So this is armed where it CAN be driven, and the drive
+// through the product waits on R7's clock or R14's repeated check.
+func stillOpen(open map[string][]string, held map[string]ask) []string {
+	var out []string
+	for actor, queries := range open {
+		for _, query := range queries {
+			a, ok := held[askKey(actor, query)]
+			if !ok {
+				// NAMED RATHER THAN OMITTED. A pending the walk cannot place
+				// is still a pending the run ended holding, and dropping it
+				// here would make the register and the report disagree about
+				// how many there were.
+				out = append(out, fmt.Sprintf(
+					"%s/%s still open at the end, and the walk did not record where it began",
+					actor, query))
+				continue
+			}
+			out = append(out, fmt.Sprintf(
+				"%s/%s held at step %d, never re-checked: still open at the end",
+				actor, query, a.at))
+		}
+	}
+	return out
 }
 
 // ask is one observation the walk can re-issue: the declaration, the handles it

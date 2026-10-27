@@ -471,3 +471,62 @@ func TestLoadKeepsTheTwoErrorShapesApart(t *testing.T) {
 		t.Errorf("an absent file produced refusals: %v", rep.Refusals)
 	}
 }
+
+// THE WITNESS TOKEN IS REFUSED BY NAME WITH THE KNOWN SET PRINTED, which is
+// fable's ruling at coop rumor/1241 and the half a reader needs: a row asking
+// for a check this build will not perform must say so in words that let the
+// author fix the line, and a refusal listing words the parser no longer takes
+// is worse than none because the reader edits toward it.
+//
+// THE SET COMES FROM THE SAME LIST THE CHECK USES, so this arm cannot pass
+// while the message drifts: it asserts every word Witnesses() returns appears
+// in the refusal, rather than matching a literal.
+func TestAnUnknownWitnessIsRefusedNamingTheKnownSet(t *testing.T) {
+	for _, c := range []struct {
+		what, line string
+		// wantErr is whether the line must be refused.
+		wantErr bool
+		// witness is what a good line must parse to.
+		witness string
+	}{
+		{"a word this build does not know", "66 witness=recovered", true, ""},
+		{"the token naming nothing", "66 witness=", true, ""},
+		{"the token twice", "66 witness=cleared witness=cleared", true, ""},
+		{"the known word", "66 profile=settling steps=24 witness=cleared", false, "cleared"},
+		// THE ROWS WITHOUT IT ARE THE CONTROL, and they carry the weight: the
+		// token must not change what a line written before it existed means.
+		{"a bare defect row", "2", false, ""},
+		{"a profiled defect row", "12 profile=settling steps=24", false, ""},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			parsed, isSeed, err := ParseSeedLine(c.line)
+			if !isSeed {
+				t.Fatalf("%q did not read as a seed line at all", c.line)
+			}
+			if !c.wantErr {
+				if err != nil {
+					t.Fatalf("%q was refused and should not be: %v", c.line, err)
+				}
+				if parsed.Witness != c.witness {
+					t.Errorf("%q parsed witness %q, want %q", c.line, parsed.Witness, c.witness)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("%q was accepted, so a row can ask for a check this build will "+
+					"not perform", c.line)
+			}
+			// Only the unknown-WORD refusal must print the set; the empty and
+			// duplicate forms are about the token's shape.
+			if !strings.Contains(c.line, "witness=recovered") {
+				return
+			}
+			for _, w := range Witnesses() {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("the refusal does not name the known witness %q, so a reader "+
+						"cannot tell what to write: %v", w, err)
+				}
+			}
+		})
+	}
+}

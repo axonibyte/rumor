@@ -401,10 +401,53 @@ type SeedLine struct {
 	// one seed, living in the arm that replays all of them.
 	Steps int
 
+	// Witness is the `witness=WORD` token's value, EMPTY meaning the row is a
+	// promotion of a DEFECT -- which is what every line written before this
+	// field existed means, so no committed seed changes meaning by this
+	// arriving, exactly as `profile=` was added.
+	//
+	// IT EXISTS BECAUSE A ROW CAN CARRY SOMETHING THAT IS NOT A BUG. seeds.lock
+	// is defined by docs/contract.md as lines ending in "a comment naming the
+	// DEFECT it found", and the arm that replays every row requires exit 3 of
+	// each. A seed proving that a pending was held and then CLEARED exits 0
+	// and finds nothing -- that is the point of it -- so adding one broke the
+	// arm on its own terms (ibis, coop rumor/1238) rather than being carried
+	// by the format. fable ruled the token at rumor/1241: a row that says what
+	// it WITNESSES is replayed against that, and a row that says nothing keeps
+	// exit 3 and its defect comment unchanged.
+	//
+	// ONE WORD TODAY. `cleared` is a pending held and then found consistent.
+	// An unknown word is REFUSED by name with the known set printed, for the
+	// reason the unknown-token refusal below gives: a word this build does not
+	// know is a row asking for a check it will not get.
+	Witness string
+
 	// Comment is the text after `#`, trimmed. A promotion carries one naming
 	// the defect it caught, which is what separates a regression suite from a
 	// list of numbers.
 	Comment string
+}
+
+// WitnessCleared is the one witness word this build knows: the row proves a
+// pending was held and then found consistent, so the run exits 0 and finds
+// nothing. docs/vocabulary.md's "`pending` until the declared probes read
+// quiet" had no committed run to read it from until seed 66 (coop rumor/1241).
+const WitnessCleared = "cleared"
+
+// Witnesses is the known set, in the order a refusal prints it. IT IS A
+// FUNCTION AND NOT A LITERAL IN THE MESSAGE so the refusal cannot drift from
+// the check: a message listing words the parser no longer accepts is worse
+// than no list, because a reader fixes their line to match it.
+func Witnesses() []string { return []string{WitnessCleared} }
+
+// KnownWitness reports whether the word is one this build checks a row against.
+func KnownWitness(word string) bool {
+	for _, w := range Witnesses() {
+		if w == word {
+			return true
+		}
+	}
+	return false
 }
 
 // ParseSeedLine reads one line. The second return is whether the line carries a
@@ -460,12 +503,28 @@ func ParseSeedLine(line string) (SeedLine, bool, error) {
 				return out, true, fmt.Errorf("two `profile=` tokens (%q and %q): a seed runs under one", out.Profile, value)
 			}
 			out.Profile = value
+		case "witness":
+			if value == "" {
+				return out, true, fmt.Errorf("`witness=` names nothing; omit the token for a row that promotes a defect")
+			}
+			if out.Witness != "" {
+				return out, true, fmt.Errorf("two `witness=` tokens (%q and %q): a row witnesses one thing", out.Witness, value)
+			}
+			// THE WORD IS CHECKED HERE AND NOT BY THE CALLER, so every reader
+			// of the grammar refuses the same set. A caller left to validate
+			// it would be the second copy of the rule, which is how `steps`
+			// came to be read two ways (ratchet, coop r6/106).
+			if !KnownWitness(value) {
+				return out, true, fmt.Errorf("`witness=%s` is not a witness this build knows; it knows %s",
+					value, strings.Join(Witnesses(), ", "))
+			}
+			out.Witness = value
 		default:
 			// AN UNKNOWN TOKEN IS REFUSED AND NOT IGNORED. A token this build
 			// does not know is a line asking for something it will not get,
 			// and reading past it would run the seed under the default while
 			// its author believed otherwise.
-			return out, true, fmt.Errorf("%q is not a token this build knows; it knows `profile=` and `steps=`", name)
+			return out, true, fmt.Errorf("%q is not a token this build knows; it knows `profile=`, `steps=` and `witness=`", name)
 		}
 	}
 	return out, true, nil

@@ -73,3 +73,30 @@
 # planted claim, so it is the toy's own defect and not a lie the run told.
 # Measured 2026-10-26 at 2746f81.
 12 profile=settling steps=24
+# 66 -- NOT A DEFECT, AND THE `witness=` TOKEN IS WHY THIS LINE CAN SAY SO.
+# Every other row here promotes a bug and the replay arm requires exit 3 of
+# it. This one proves a pending was HELD AND THEN CLEARED: it exits 0 and
+# finds nothing, which is the point of it, and adding it without the token
+# broke that arm on its own terms (ibis, coop rumor/1238; fable's ruling,
+# rumor/1241).
+#
+# WHAT IT WITNESSES: D1's case and docs/vocabulary.md's clearing half,
+# "`pending` until the declared probes read quiet". rook drove fourteen seeds
+# at settling/24 and every pending found went stale (coop rumor/1230), so the
+# half had no run to read it from.
+#
+# A BOUNDED SCAN FOUND IT, and the bound is part of the result: seeds 1-200 at
+# `rumor run examples/toy --seed N --steps 24 --profile settling`. 74 held a
+# pending, THREE cleared -- 66, 75 and 140. Had none cleared the claim would
+# have been "not in the first two hundred", never "the toy cannot".
+#
+# 66 AND NOT 75 OR 140 because it holds TWO, at steps 11 and 20, both
+# re-checked consistent, so it exercises the plural case and the sort as well
+# as the clearing.
+#
+# NO NEW PROFILE WAS NEEDED. `settling`'s weights make the dropped retry
+# LIKELY, not certain -- recount_event 40 against create_event 8 -- so the
+# recoverable window is still reached when the first recount is the observed
+# one. fable took the committed seed over a `recovering` profile as the
+# smaller change (rumor/1235).
+66 profile=settling steps=24 witness=cleared

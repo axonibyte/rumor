@@ -181,7 +181,16 @@ const root = "../.."
 // re-checked at every full reconciliation, and the walk still does it; what
 // went is the engine-level function nothing called, so the sentence lost its
 // subject rather than its truth.
-const declaredQuotes = 46
+// 46 -> 47 AT R6.4's WITNESS TOKEN: internal/platform quotes the quiesce
+// form's own sentence -- "`pending` until the declared probes read quiet" --
+// on WitnessCleared, because that clause is the warrant for the word
+// `cleared` existing in seeds.lock's grammar at all. The half of the sentence
+// before `stale` had no committed run to read it from until seed 66 (rook,
+// coop rumor/1230), so the token names what the run witnesses and the quote
+// says whose sentence it is. The chain goes up again after R6.4's one
+// decrease, which is why this row reads 46 -> 47 a second time: the figure is
+// the count at each landing and not a high-water mark.
+const declaredQuotes = 47
 
 // knownChainGaps are the places where this file's warrant chain does NOT join,
 // each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which

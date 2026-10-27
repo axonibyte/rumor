@@ -533,6 +533,9 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 	type promoted struct {
 		seed, profile string
 		steps         int
+		// witness is the row's `witness=` word, EMPTY for a row that promotes
+		// a defect -- which is every row written before the token existed.
+		witness string
 	}
 	var seeds []promoted
 	for _, line := range strings.Split(string(raw), "\n") {
@@ -549,7 +552,7 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 				"docs/contract.md declares: %v", lock, parsed.Seed, cerr)
 		}
 		seeds = append(seeds, promoted{seed: parsed.Seed, profile: parsed.Profile,
-			steps: parsed.Steps})
+			steps: parsed.Steps, witness: parsed.Witness})
 	}
 	if len(seeds) == 0 {
 		// THE MESSAGE NAMES WHAT THE LOCK SHOULD HOLD TODAY, not what it held
@@ -608,6 +611,52 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 			// whose defect could not be checked has not been shown to
 			// reproduce, and passing here would report an unmeasured promotion
 			// as a measured one.
+			// A ROW THAT WITNESSES SOMETHING IS CHECKED AGAINST THAT, AND NOT
+			// AGAINST exit 3. seeds.lock is defined as lines naming the defect
+			// they found (docs/contract.md), and this arm enforced that of
+			// every row -- correctly, until a row had to carry a run that
+			// finds NOTHING. A pending held and then cleared exits 0, so
+			// reading it as "the promotion has lost its defect" was the arm
+			// being right about a rule that did not cover the new case (ibis,
+			// coop rumor/1238; fable's ruling, rumor/1241).
+			//
+			// THE ROWS WITHOUT THE TOKEN ARE UNTOUCHED, which is the half that
+			// matters: exit 3 is still required of them, their defect comment
+			// still means what it meant, and no committed seed changes meaning
+			// by this arriving.
+			if p.witness == platform.WitnessCleared {
+				if code != 0 {
+					t.Fatalf("exit %d: seed %s is promoted as `witness=%s`, so it must walk "+
+						"CLEAN -- a pending held and then found consistent finds no defect. "+
+						"A non-zero status here means the row no longer witnesses what it "+
+						"says\nstdout:\n%s\nstderr:\n%s",
+						code, seed, p.witness, first, errb)
+				}
+				// AND THE WITNESS ITSELF, not merely the status. rc 0 alone is
+				// also what a seed that never held a pending prints, so an arm
+				// reading only the code would pass on a row that had quietly
+				// stopped witnessing anything -- the vacuity this token exists
+				// to make visible.
+				if !strings.Contains(first, "re-checked") ||
+					!strings.Contains(first, "consistent") {
+					t.Fatalf("seed %s exits 0 but its output carries no pending that was "+
+						"re-checked and found consistent, so `witness=%s` is not what this "+
+						"run shows\nstdout:\n%s", seed, p.witness, first)
+				}
+				var held int
+				for _, line := range strings.Split(first, "\n") {
+					if strings.Contains(line, "run:   pending --") &&
+						strings.Contains(line, "consistent") {
+						held++
+					}
+				}
+				if held == 0 {
+					t.Fatalf("seed %s prints no `pending --` line that cleared:\n%s", seed, first)
+				}
+				t.Logf("seed %s witnesses %s: %d pending(s) held and cleared", seed, p.witness, held)
+				return
+			}
+
 			switch code {
 			case 3:
 				// The promotion holds. The assertions below say what it holds.
@@ -1486,8 +1535,16 @@ func TestAPendingsLifeIsPrintedWithWhereItWasHeld(t *testing.T) {
 			// line, so an arm reading only for that string would pass against
 			// a build that printed no pending line at all -- which is exactly
 			// the output rook could not tell apart.
+			// SCOPED TO THE PENDING THIS CELL IS ABOUT, and it was not at
+			// first. This read EVERY `pending --` line and required the stale
+			// verdict of each, which held only while the reconciliation was
+			// the one path that printed. Seed 12 holds TWO pendings and they
+			// take different paths -- the other clears at step 24 -- so the
+			// arm asserted a property of ALL pendings when it meant one, and
+			// the commit that made the second path visible failed it. The
+			// subject of the assertion is the line the cell names.
 			for _, line := range strings.Split(out, "\n") {
-				if !strings.Contains(line, "run:   pending --") {
+				if !strings.Contains(line, "run:   pending -- guest_1/event_tally") {
 					continue
 				}
 				if !strings.Contains(line, "bug of kind stale") {
@@ -1575,5 +1632,64 @@ func TestTheQuiesceLineSaysWhichOfTheThreeHappened(t *testing.T) {
 				t.Errorf("the not-quiet line does not name the probes:\n%s", out)
 			}
 		})
+	}
+}
+
+// A PENDING CLEARED MID-WALK IS D3's FIRST PATH, and it is a SEPARATE line
+// from the reconciliation's. rook drove the three clearing seeds and found
+// every one of them clearing "after the last step" (coop rumor/1232), so
+// "cleared at the actor's NEXT OBSERVATION of the same query" looked
+// unwitnessed. It was not unreached -- it was unprinted: engine.Judge has set
+// Finding.ReChecked since R6.3 and nothing outside the engine read it.
+//
+// THE SEED WAS ALREADY COMMITTED. seeds.lock's `12 profile=settling steps=24`
+// holds TWO pendings and they take DIFFERENT paths: one goes stale at the
+// reconciliation, the other is re-checked at step 24 and clears. The run that
+// proves D3a has been in the lock file since R6.4 and no output said so.
+//
+// BOTH LINES ARE ASSERTED FROM ONE RUN, which is what makes this an arm for
+// the distinction rather than for either half: a build that printed the
+// reconciliation wording for a mid-walk re-check passes any cell reading only
+// for "consistent", and fails this one.
+func TestAPendingClearedMidWalkSaysWhichStepRecheckedIt(t *testing.T) {
+	toy, err := filepath.Abs(filepath.Join("..", "..", "examples", "toy"))
+	if err != nil {
+		t.Fatalf("resolving examples/toy: %v", err)
+	}
+	dir := t.TempDir()
+	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego", "seeds.lock"} {
+		b, rerr := os.ReadFile(filepath.Join(toy, f))
+		if rerr != nil {
+			t.Fatalf("reading %s: %v", f, rerr)
+		}
+		if werr := os.WriteFile(filepath.Join(dir, f), b, 0o600); werr != nil {
+			t.Fatalf("writing %s: %v", f, werr)
+		}
+	}
+	out, errb, _ := run(t, "run", dir, "--seed", "12", "--steps", "24", "--profile", "settling")
+
+	// D3a: re-checked AT A STEP, and the step is named.
+	midWalk := "pending -- member_2/event_tally held at step 19, re-checked at step 24: consistent"
+	if !strings.Contains(out, midWalk) {
+		t.Errorf("the run does not report the pending that cleared MID-WALK, which is D3's "+
+			"first path.\nwant a line containing:\n  %s\ngot:\n%s\nstderr:\n%s",
+			midWalk, out, errb)
+	}
+	// D3b, from the SAME run: the other pending went stale at the seal.
+	atSeal := "pending -- guest_1/event_tally held at step 22, re-checked after the last step: " +
+		"bug of kind stale"
+	if !strings.Contains(out, atSeal) {
+		t.Errorf("the run does not report the pending judged at the RECONCILIATION:\n"+
+			"want a line containing:\n  %s\ngot:\n%s", atSeal, out)
+	}
+	// AND THE TWO WORDINGS ARE NOT INTERCHANGEABLE. Without this a build
+	// saying "after the last step" for both still passes the first check by
+	// accident of the verdict matching.
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "member_2/event_tally held at step 19") &&
+			strings.Contains(line, "after the last step") {
+			t.Errorf("a pending re-checked at a STEP is reported as the reconciliation's, so "+
+				"D3's two paths are one string again:\n  %s", line)
+		}
 	}
 }

@@ -357,3 +357,73 @@ func TestOnlyTheFindingsThatStopAWalkStopIt(t *testing.T) {
 		t.Error("a non-string finding value stops the walk")
 	}
 }
+
+// THE SENTENCE FOR A PENDING THE RUN ENDS HOLDING, driven. ratchet measured
+// that nothing asserted it (coop r6/185): mutating all three occurrences left
+// four packages green, so the line added so that silence would not pass was
+// itself unwitnessed -- the defect it exists to prevent, one layer out.
+//
+// AT THE UNIT TIER BECAUSE THE PRODUCT CANNOT REACH IT TODAY, which is fable's
+// shape for quill's PendingOpen refusal at coop rumor/1235: the guard is
+// correct, it sits on a path the product takes, and the walk that leaves a
+// pending open waits on R7's clock or R14's repeated check. stillOpen is a
+// function so that this can drive it at all.
+func TestTheSentenceForAPendingLeftOpen(t *testing.T) {
+	for _, c := range []struct {
+		what string
+		open map[string][]string
+		held map[string]ask
+		want []string
+	}{
+		{
+			what: "the walk recorded where it began",
+			open: map[string][]string{"member_1": {"event_tally"}},
+			held: map[string]ask{askKey("member_1", "event_tally"): {at: 7}},
+			want: []string{"member_1/event_tally held at step 7, never re-checked: " +
+				"still open at the end"},
+		},
+		{
+			// THE HALF THAT WOULD OTHERWISE VANISH. A pending nothing
+			// remembered is still one the run ended holding, and omitting it
+			// would make the register and the report disagree on the count.
+			what: "nothing remembered where it began",
+			open: map[string][]string{"guest_1": {"event_tally"}},
+			held: map[string]ask{},
+			want: []string{"guest_1/event_tally still open at the end, and the walk did " +
+				"not record where it began"},
+		},
+		{
+			// THE CONTROL, and it carries the weight: a build appending a
+			// sentence unconditionally passes both cells above and fails this.
+			what: "nothing open",
+			open: map[string][]string{},
+			held: map[string]ask{askKey("member_1", "event_tally"): {at: 3}},
+			want: nil,
+		},
+		{
+			what: "two queries for one actor are two sentences",
+			open: map[string][]string{"member_1": {"event_tally", "attendance"}},
+			held: map[string]ask{
+				askKey("member_1", "event_tally"): {at: 4},
+				askKey("member_1", "attendance"):  {at: 9},
+			},
+			want: []string{
+				"member_1/attendance held at step 9, never re-checked: still open at the end",
+				"member_1/event_tally held at step 4, never re-checked: still open at the end",
+			},
+		},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			got := stillOpen(c.open, c.held)
+			sort.Strings(got)
+			if len(got) != len(c.want) {
+				t.Fatalf("got %d sentence(s) %q, want %d %q", len(got), got, len(c.want), c.want)
+			}
+			for i := range c.want {
+				if got[i] != c.want[i] {
+					t.Errorf("sentence %d:\n got %q\nwant %q", i, got[i], c.want[i])
+				}
+			}
+		})
+	}
+}
