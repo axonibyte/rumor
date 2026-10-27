@@ -721,6 +721,128 @@ func findingLine(out string) string {
 // the no-weight arm builds its own, and the arm asserts the change landed: a
 // bound on an IMMEDIATE claim is refused by the decoder, so the timing moves
 // with it and a reader can see why both lines are edited.
+// THE HANG REPORT NAMES THE PROBES THAT DID NOT READ QUIET, which is rook's
+// finding at coop rumor/1205 and fable's placement at /1206.
+//
+// 90's quiesce loop built its "did not read quiet" list from each probe's
+// DEADLINE alone while the not-quiet list came from the probes' ANSWERS, so a
+// probe that read quiet every round was named as one that had hung. Driven on
+// 3d5d5d7, a copy of examples/toy whose `worker_idle` can never read quiet:
+//
+//	both probes 2s       named probe 1 AND probe 2 -- probe 1 read quiet
+//	worker_idle at 30s   named probe 1 ALONE -- the quiet one, and not the
+//	                     never-quiet one, which is the exactly-wrong answer
+//	queue_depth at 30s   named probe 2 -- right, by the accident of which
+//	                     deadline was shorter
+//
+// 92 NEEDS IT TRUE AND NOT ONLY TIDY: its candidates quiesce through this
+// report, so an arm asserting "every candidate quiesced" over a message that
+// can name the wrong probe would prove the word on a lie (fable, /1206).
+//
+// THE TIMEOUTS HERE ARE 200ms AND 2s WHERE rook DROVE 2s AND 30s, and the
+// difference is wall time rather than shape: the long one is only "the
+// deadline that has not passed when the short one has". A long declared
+// timeout is multiplied by the shrink now -- every candidate replay waits it
+// out again -- so rook's 30s cell took over two minutes on this box once the
+// finding was shrunk. The three shapes are rook's; the figures are the
+// cheapest that hold them apart.
+func TestTheHangReportNamesOnlyProbesThatDidNotReadQuiet(t *testing.T) {
+	const (
+		queueDepth = "  [[quiesce.probe]]\n  kind = \"queue_depth\"\n  timeout = \"2s\""
+		workerIdle = "  [[quiesce.probe]]\n  kind = \"worker_idle\"\n  timeout = \"2s\""
+	)
+	for _, c := range []struct {
+		what    string
+		long    string // the probe whose timeout is raised, or none
+		mirror  bool   // make queue_depth the never-quiet probe instead
+		quiet   int    // the probe expected in the report: 1 or 2
+		settled int    // the probe that reads quiet and must NOT be named
+	}{
+		{"both probes expire together", "", false, 2, 1},
+		{"the never-quiet probe has the LONGER deadline", workerIdle, false, 2, 1},
+		{"the never-quiet probe has the SHORTER deadline", queueDepth, false, 2, 1},
+		// MIRRORED, because an intersection can be written the wrong way round
+		// and still satisfy three cells that all name probe 2. This is also
+		// ratchet's own fixture at coop r6/162 -- they made queue_depth
+		// unsatisfiable where I made worker_idle -- so the arm covers the
+		// reproduction they will clear against as well as mine.
+		{"the never-quiet probe is the FIRST one declared", "", true, 1, 2},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego", "seeds.lock"} {
+				b, err := os.ReadFile(filepath.Join("../../examples/toy", f))
+				if err != nil {
+					t.Fatalf("reading %s: %v", f, err)
+				}
+				if f == "bindings.toml" {
+					txt := string(b)
+					// THE ONE CHANGE THAT MAKES A PROBE NEVER QUIET: worker_idle
+					// wants the worker BUSY, and the worker is idle once the
+					// queue drains. Same shape as the never-quiet cell below,
+					// which asks a count for a value it never reaches.
+					was, now := "  quiet = true", "  quiet = false"
+					if c.mirror {
+						// queue_depth is quiet at 0 and the queue never reaches
+						// this, which is ratchet's change at r6/162.
+						was, now = "  quiet = 0", "  quiet = 999999"
+					}
+					if !strings.Contains(txt, was) {
+						t.Fatalf("examples/toy declares no %q probe line, so no probe would be "+
+							"unsatisfiable and no hang could be reported", was)
+					}
+					txt = strings.Replace(txt, was, now, 1)
+					// EVERY timeout to 200ms, then the long one back up.
+					txt = strings.ReplaceAll(txt, "  timeout = \"2s\"", "  timeout = \"200ms\"")
+					if c.long != "" {
+						long := strings.Replace(c.long, "\"2s\"", "\"2s\"", 1)
+						short := strings.Replace(c.long, "\"2s\"", "\"200ms\"", 1)
+						if !strings.Contains(txt, short) {
+							t.Fatalf("the probe block this cell lengthens is not present:\n%s", short)
+						}
+						txt = strings.Replace(txt, short, long, 1)
+					}
+					b = []byte(txt)
+				}
+				if err := os.WriteFile(filepath.Join(dir, f), b, 0o600); err != nil {
+					t.Fatalf("writing %s: %v", f, err)
+				}
+			}
+
+			out, errb, code := run(t, "run", dir, "--seed", "1", "--steps", "3")
+			if code != 3 {
+				t.Fatalf("exit %d, want 3: a probe that can never read quiet is the "+
+					"quiesce_timeout FINDING\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+			}
+			// THE NEVER-QUIET PROBE IS NAMED. worker_idle is probe 2 in
+			// examples/toy's declaration order, and it is the only one that
+			// cannot read quiet in any cell.
+			kind := map[int]string{1: "queue_depth", 2: "worker_idle"}
+			named := fmt.Sprintf("probe %d (kind %q) did not read quiet", c.quiet, kind[c.quiet])
+			if !strings.Contains(out, named) {
+				t.Errorf("the hang report does not name %s, the probe that never read quiet:"+
+					"\n%s", named, out)
+			}
+			// AND THE QUIET ONE IS NOT. This is the finding: queue_depth reads
+			// quiet in every cell, and naming it tells a reader to go and look
+			// at a probe that is working.
+			settled := fmt.Sprintf("probe %d (kind %q) did not read quiet", c.settled, kind[c.settled])
+			if strings.Contains(out, settled) {
+				t.Errorf("the hang report names %s, which read quiet: a deadline is a fact about "+
+					"TIME and quietness is a fact about the SYSTEM, and the report must come "+
+					"from the second\n%s", settled, out)
+			}
+			// THE TWO HALVES AGREE, which is what makes the sentence readable:
+			// whatever is named as hung is named as busy.
+			busy := fmt.Sprintf("Still busy at the end: probe %d (kind %q)", c.quiet, kind[c.quiet])
+			if !strings.Contains(out, busy) {
+				t.Errorf("the still-busy half does not name %s, so the two halves of the report "+
+					"disagree about one reading of one system:\n%s", kind[c.quiet], out)
+			}
+		})
+	}
+}
+
 // A DURATION BOUND IS REFUSED NAMING THE DURATION, which is the arm ratchet
 // asked for at coop rumor/1192 and fable placed in 92's branch at r6/153.
 //

@@ -243,6 +243,7 @@ func (p *Prober) Quiesce(ctx context.Context) (engine.QuiesceState, error) {
 	for {
 		rounds++
 		var busy []string
+		notQuiet := make([]bool, len(p.probes))
 		for i, pr := range p.probes {
 			q, err := query(pr)
 			if err != nil {
@@ -264,6 +265,7 @@ func (p *Prober) Quiesce(ctx context.Context) (engine.QuiesceState, error) {
 					"quiesce: probe %d (kind %q, query %q): %w", i+1, pr.Kind, q, oerr)
 			}
 			if !quiet(resp.Value, pr.Quiet) {
+				notQuiet[i] = true
 				busy = append(busy, fmt.Sprintf("probe %d (kind %q) reads %v, wants %v",
 					i+1, pr.Kind, resp.Value, pr.Quiet))
 			}
@@ -272,13 +274,27 @@ func (p *Prober) Quiesce(ctx context.Context) (engine.QuiesceState, error) {
 			return engine.QuiesceQuiet, nil
 		}
 
-		// WHICH PROBE GAVE UP, by its own deadline. Checked AFTER a round so a
-		// probe is always asked at least once: a timeout of 0 would otherwise
-		// report a hang without ever having put the question.
+		// WHICH PROBE GAVE UP: ITS OWN DEADLINE *AND* ITS OWN ANSWER. Checked
+		// AFTER a round so a probe is always asked at least once: a timeout of
+		// 0 would otherwise report a hang without ever having put the question.
+		//
+		// THE INTERSECTION IS THE WHOLE OF rook's coop rumor/1205. A deadline
+		// is a fact about TIME and quietness is a fact about the SYSTEM, and
+		// this loop read only the first: every probe past its deadline was
+		// named as one that "did not read quiet", including probes that read
+		// quiet every round. examples/toy declares both probes at 2s, so one
+		// never-quiet probe named BOTH; and with the never-quiet probe's own
+		// timeout raised to 30s the report named ONLY the probe that had gone
+		// quiet -- the exactly-wrong answer, which rook measured across three
+		// invocations where nothing but the timeouts moved.
+		//
+		// `busy` already holds the not-quiet of THIS round, so the report's two
+		// halves now come from one reading of the system rather than two
+		// different questions that happened to be printed in one sentence.
 		now := p.now()
 		var expired []string
 		for i := range p.probes {
-			if !now.Before(deadline[i]) {
+			if notQuiet[i] && !now.Before(deadline[i]) {
 				expired = append(expired, fmt.Sprintf("probe %d (kind %q) did not read quiet "+
 					"within its declared timeout of %s", i+1, p.probes[i].Kind, p.probes[i].Timeout))
 			}
