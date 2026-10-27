@@ -1292,3 +1292,52 @@ the relationship between the numbers ASSERTED — not merely visible — so that
 set of figures which cannot all be true fails the run? Any arm that reports
 coverage of a corpus it also selects needs both; the second is one line, and
 without it the first is a courtesy to whoever happens to read the log.
+
+### A wrapper that hides a nil, and a rule that assumed the count only rises
+
+R6.4 widened one signature and changed one arm's rule, and each change was
+caught by a suite rather than by a reviewer — both for the same reason: the
+thing the change quietly assumed was never written down anywhere an instrument
+could read it.
+
+**A LIFT THAT PRESERVES EVERYTHING BUT NIL-NESS CHANGES WHAT THE CALLEE CAN
+REFUSE.** `shrink.Request.Replay` grew a field, which meant thirty-two existing
+fixtures no longer type-checked. Rewriting thirty-two closure bodies would have
+made the diff about punctuation, so a test-only lift carried them across and its
+name carried the assumption: `settledN(needs(3))` says *this fixture's runs
+settle*, which is what makes those arms about length rather than about waiting.
+The lift returned a non-nil closure over whatever it was handed — including
+`nil`. `TestBisectRefusals` passes `nil` to assert the "no run function"
+refusal, and that refusal became unreachable: the arm panicked inside a
+candidate instead of reading the message it was written to read. The lift passes
+nil through now. **A wrapper is transparent only in the dimensions you checked;
+a callee that refuses on a property of its argument can be blinded by a wrapper
+that preserves every other one.**
+
+**AN ARM THAT REMOVES AN ORDERING ASSUMPTION CAN INTRODUCE A MONOTONICITY ONE.**
+`declaredQuotes` carries warrant headers — `// N -> M AT <phase>` — and the arm
+tying them to the constant took the greatest TARGET, deliberately, so that no
+reading depended on file order (coop r6/120, with a planted out-of-order header
+driving it at rumor/1143). That reason was right and the rule still broke: R6.4
+removed a dead function whose doc comment held the tree's only quotation of a
+vocabulary sentence, so the count went DOWN, and with a `47 -> 46` header the
+greatest target is 47 against a constant of 46 — a correct tree, refused.
+Switching to the greatest `from` survived the fall and failed the next rise, and
+the two headers together are a 2-cycle: **no order-free rule can name the last
+transition of a sequence that can move in both directions.** The final form
+asserts file order as a property instead of assuming it — each `from` equals the
+previous `to`, the last `to` equals the constant, a gap or a repeated start
+refuses by name — which also catches a break no maximum ever could.
+
+**AND A DELETION CAN CARRY A QUOTATION OUT WITH IT.** The count moved because
+code was removed, not because a quotation was edited: the sentence lost its
+subject rather than its truth. A sweep that counts attributed quotes across a
+tree will therefore fire on a pure deletion, and the warrant header is what
+tells the next reader which of those two things happened.
+
+**How to apply.** When a signature grows, ask what every existing caller was
+assuming that it had no way to state — then make the carrier say it, and check
+the carrier preserves the properties the callee refuses on. When an arm's rule
+is chosen to remove one assumption, name the assumption it adds: a maximum
+assumes monotonicity, a last-in-file assumes order, and a chain assumes only
+what it asserts.
