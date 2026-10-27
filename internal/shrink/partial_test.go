@@ -75,6 +75,16 @@ func TestAPartialReproductionIsReachable(t *testing.T) {
 func TestShrinkSaysWhenTheReproductionWasPartial(t *testing.T) {
 	carried := engine.Finding{Defined: true, Value: "bug", Rule: "data.rumor.statute.finding",
 		Rules: map[string]any{"rests_on_planted": false}}
+	// A KIND THAT IS PRESENT ON BOTH SIDES, because ratchet measured at coop
+	// r6/193 that the cell above drives the sentence with `bug()`, which
+	// carries NO kind either side: "the kind agreed" was then two absences
+	// agreeing, and the line's own attribution half draws the distinction its
+	// kind half does not -- "was NOT compared" says the comparison did not
+	// happen, while an agreeing kind and a missing one read alike. This cell
+	// is the same partial comparison with the kind actually agreeing, so the
+	// clause is witnessed as an agreement rather than as a shared silence.
+	kinded := engine.Finding{Defined: true, Value: "bug", Kind: "stale",
+		Rule: "data.rumor.statute.finding"}
 
 	for _, tc := range []struct {
 		name    string
@@ -82,6 +92,7 @@ func TestShrinkSaysWhenTheReproductionWasPartial(t *testing.T) {
 		partial bool
 	}{
 		{"neither side carries the attribution", bug(), true},
+		{"neither carries it and both carry a kind", kinded, true},
 		{"both sides carry it", carried, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
