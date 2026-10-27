@@ -1038,7 +1038,9 @@ trace. Two runs disagreeing means the seed is not the reproducer it was promoted
 as. And an attribution that moved to `rests_on_planted true` means the finding
 became the engine catching a planted lie rather than the application being
 wrong: a different finding under the same name, since "two findings are the same
-when the rule that fired, the finding's value, and its attribution all agree".
+when the rule that fired, the finding's value, its attribution and its kind all
+agree" -- four fields, corrected here with `docs/design.md` after coop
+rumor/1225 found this quotation and the renderer disagreeing at three.
 
 **The file is also the arm's own vacuity guard.** A `seeds.lock` with no seed
 makes the arm fail rather than pass over an empty set, because "there are no

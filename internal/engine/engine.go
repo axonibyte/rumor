@@ -26,9 +26,12 @@ const StatutePackage = "data.rumor.statute"
 const FindingRule = "finding"
 
 // AttributionRule is the rule a finding's ATTRIBUTION is read from, and it is
-// the third part of a finding's identity: "two findings are the same when the
-// rule that fired, the finding's value, and its attribution
-// (`rests_on_planted`) all agree" (docs/design.md). A `bug` resting on a
+// one of the four parts of a finding's identity: "two findings are the same
+// when the rule that fired, the finding's value, its attribution
+// (`rests_on_planted`) and its kind all agree" (docs/design.md). It said
+// "the third part" against a three-field quotation until coop rumor/1225;
+// Says() below has named four since fable's ruling at r6/15, and a comment
+// counting one of them as the last is a reader's next wrong assumption. A `bug` resting on a
 // planted claim and a `bug` resting on none are different findings sharing one
 // name, so a reader handed the value alone cannot tell the engine catching a
 // lie from the system under test being wrong.

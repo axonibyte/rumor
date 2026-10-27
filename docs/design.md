@@ -541,23 +541,43 @@ clean rollback.
 reproduces the same finding, and that identity is stated here because R14 later
 builds its deterministic-or-unstable classification on it and the first
 shrinker would otherwise choose silently. Two findings are the same when the
-rule that fired, the finding's value, and its attribution (`rests_on_planted`)
-all agree. The attribution is part of the identity because `bug` resting on a
+rule that fired, the finding's value, its attribution (`rests_on_planted`) and
+its kind all agree.
+
+**The kind was added to this sentence after R2 wrote it, and the warrant is
+recorded rather than assumed.** This paragraph named three parts until fable
+ruled the fourth in at coop r6/15 -- "the renderers follow the comparison's
+basis" -- and `engine.Finding.Says` was written to carry it, because a
+renderer showing the value alone makes a `stale` and a plain `bug` look
+identical; `internal/engine/engine.go:230` states the four in those terms. A
+sentence left at three while the code compared four is the kind of drift that
+reads as agreement: rook drove the question at coop rumor/1225 precisely
+because the document and the renderer disagreed and neither said which was
+current.
+
+**Identity is four; the CONTROL is five.** A control run is a different
+question -- a run against its own recorded self -- and there the step the
+finding was found after is the walk's own fact, so the comparison is the four
+identity fields plus the step (fable, coop rumor/1039). Ruling 3 asks for one
+thing more than either: no trailing pending, which no field on the FOUND line
+carries at all. Do not read this paragraph as the control's basis.
+
+The attribution is part of the identity because `bug` resting on a
 planted claim and `bug` resting on none are different findings sharing one
 value, which is the difference the corroboration arm exists to see; a shrinker
 that let a trace drift from one to the other would be shrinking toward a
 different defect.
 
-**And when the third part cannot be compared, the operator is told rather than
-refused.** A project with no planted claims need not define `rests_on_planted`
+**And when the attribution cannot be compared, the operator is told rather
+than refused.** A project with no planted claims need not define `rests_on_planted`
 at all -- `rumor attaint` requires it only of a project carrying planted cases
 -- and then neither the original finding nor the replayed one carries it, so
 "the same finding" is established on the rule and the value alone. That is not a
 failure of the comparison: with no attribution, two `bug` findings reached
 through `default finding := "bug"` differ in no field a finding carries, so
-there is nothing to distinguish. It is a narrower claim than the three-part one,
-and the shrinker says so in a line beside the trace rather than refusing a
-legitimate project or letting a two-part agreement read as a three-part one.
+there is nothing to distinguish. It is a narrower claim than the full one, and
+the shrinker says so in a line beside the trace rather than refusing a
+legitimate project or letting a narrower agreement read as a whole one.
 Measured 2026-10-24: the gate recorded this and nothing downstream read it, so
 an operator could shrink on a partial reproduction and never learn it was
 partial (ratchet, coop r5/203; the remedy placed at r5/206).
@@ -742,7 +762,8 @@ names its subject in a field of its own.
 
 **That fork is closed and the projection now carries `handles`.** fable ruled it
 at coop r5/16 — the run-local names, never ids, which is already how the
-vocabulary compares findings (rule, value, attribution over handles), so
+vocabulary compares findings (rule, value, attribution and kind, over
+handles), so
 projecting them follows the discipline and projecting ids would breach it. A
 statute may then group claims by entity, and "an actor can join only an event it
 knows of" means something with two events in one ledger.

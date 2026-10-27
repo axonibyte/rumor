@@ -457,8 +457,12 @@ on its own carries no kind and the line is as above.
 
 It sits between the trace and the verdict and names a finding's whole identity
 off the record: "two findings are the same when the rule that fired, the
-finding's value, and its attribution (`rests_on_planted`) all agree"
-(`docs/design.md`), plus the step it came after. The step it names is the LAST
+finding's value, its attribution (`rests_on_planted`) and its kind all agree"
+(`docs/design.md`), plus the step it came after -- so the line carries FIVE
+varying facts where identity is four, and that extra one is the step. The
+distinction is not pedantry: a control compares the five (fable, coop
+rumor/1039) and this quotation stood at three until coop rumor/1225 found the
+document and the renderer disagreeing. The step it names is the LAST
 line of the trace, because the first bug ends the walk -- the trace a shrink
 reads has to include the step that broke the system, and nothing may follow it.
 

@@ -1419,3 +1419,82 @@ func TestASurfaceRefusalReachesStdoutAndKeepsTheFindingsStatus(t *testing.T) {
 		t.Errorf("the control did not shrink cleanly, so the refusal above proves nothing:\n%s", cout)
 	}
 }
+
+// A PENDING'S LIFE IS READABLE FROM THE RUN'S OUTPUT, which is D1 and both of
+// D3's clearing paths. rook drove them against v0.1.37 and reached neither
+// (coop rumor/1223): the walk computed a per-step verdict that can say
+// "pending", and the run printed a COUNT of what was left open and nothing
+// about what became of the rest. "Held at step 22 and then judged" and "never
+// held one" produced the same output, so the clearing paths had no witness
+// outside a debugger.
+//
+// IT DRIVES THE COMMITTED ROW AND NOT A SEED I LIKED. examples/toy/seeds.lock
+// carries `12 profile=settling steps=24`, and the parameters are part of the
+// row: I first drove seed 12 at the default 10 steps, got zero pendings and
+// briefly believed nothing in the tree could hold one. The pending is held at
+// step 22, so a 10-step walk ends eleven steps before it exists.
+//
+// THE CONTROL IS THE SAME SEED AT TEN STEPS, which is the strongest one
+// available: same project, same profile, same probes, one parameter different.
+// A build that printed a pending line unconditionally -- or printed one per
+// observation -- passes the first half and fails this one.
+func TestAPendingsLifeIsPrintedWithWhereItWasHeld(t *testing.T) {
+	toy, err := filepath.Abs(filepath.Join("..", "..", "examples", "toy"))
+	if err != nil {
+		t.Fatalf("resolving examples/toy: %v", err)
+	}
+	for _, c := range []struct {
+		what  string
+		steps string
+		// want is the pending line's text, or empty when the run must print none.
+		want string
+	}{
+		{"the committed row holds one and judges it", "24",
+			"pending -- guest_1/event_tally held at step 22, re-checked after the last step:"},
+		{"the same seed too short to reach it", "10", ""},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego", "seeds.lock"} {
+				b, rerr := os.ReadFile(filepath.Join(toy, f))
+				if rerr != nil {
+					t.Fatalf("reading %s: %v", f, rerr)
+				}
+				if werr := os.WriteFile(filepath.Join(dir, f), b, 0o600); werr != nil {
+					t.Fatalf("writing %s: %v", f, werr)
+				}
+			}
+			out, errb, _ := run(t, "run", dir, "--seed", "12", "--steps", c.steps,
+				"--profile", "settling")
+
+			if c.want == "" {
+				// THE WHOLE CLASS AND NOT THIS ONE LINE: any pending line at
+				// all is wrong here, because the walk never held one.
+				if strings.Contains(out, "run:   pending --") {
+					t.Errorf("a %s step walk printed a pending's life and held no pending:\n%s",
+						c.steps, out)
+				}
+				return
+			}
+			if !strings.Contains(out, c.want) {
+				t.Errorf("the run does not say where the pending was held or that it was "+
+					"re-checked.\nwant a line containing:\n  %s\ngot:\n%s\nstderr:\n%s",
+					c.want, out, errb)
+			}
+			// AND THE VERDICT IS ON THE SAME LINE as the pending it belongs
+			// to. `Reconciled` already put "bug of kind stale" in the quiesce
+			// line, so an arm reading only for that string would pass against
+			// a build that printed no pending line at all -- which is exactly
+			// the output rook could not tell apart.
+			for _, line := range strings.Split(out, "\n") {
+				if !strings.Contains(line, "run:   pending --") {
+					continue
+				}
+				if !strings.Contains(line, "bug of kind stale") {
+					t.Errorf("the pending's line does not carry what the re-check decided, so "+
+						"the clearing cannot be paired with the thing it cleared:\n  %s", line)
+				}
+			}
+		})
+	}
+}

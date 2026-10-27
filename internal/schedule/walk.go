@@ -230,6 +230,27 @@ type Record struct {
 	// two attempts of a seed cannot differ by map order.
 	Reconciled []string
 
+	// Pendings is one sentence per pending the run held, in its own words:
+	// where it was held, whether it was re-checked, and what the re-check
+	// decided. Sorted, and carrying no clock, so two attempts of one seed
+	// produce byte-identical lines.
+	//
+	// IT EXISTS BECAUSE "HELD THEN CLEARED" HAD NO WITNESS OUTSIDE THE
+	// PROCESS. rook's gate verdict (coop rumor/1223) drove D1 and both of
+	// D3's clearing paths and could reach neither: walk.go computes a
+	// per-step verdict that can read "pending", the run never printed it and
+	// persisted nothing -- no WriteFile, no --out -- so a pending held and
+	// then cleared left exactly the same output as a run that never held one.
+	// Reconciled came close and is not enough: it records what the re-check
+	// SAID without saying which pending it was about or where that pending
+	// began, so a reader cannot pair a clearing with the thing it cleared.
+	//
+	// A COUNT IS NOT A LIFE, which is why this is beside PendingOpen rather
+	// than replacing it. PendingOpen answers "did the run end holding one",
+	// the question R2.3 forbids a yes to; this answers "what happened to each
+	// one", which is the question D3 asks and the count cannot.
+	Pendings []string
+
 	// PendingOpen is how many findings the run still holds open for re-check
 	// when it ends, read off the register after the last step AND after the
 	// reconciliation -- so a run that ends with one is a run where re-asking
@@ -535,6 +556,13 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 						continue
 					}
 					rec.Reconciled = append(rec.Reconciled, f.Says())
+					// AND THE PENDING'S OWN SENTENCE, pairing the clearing
+					// with the thing it cleared. Reconciled says only what
+					// the re-check decided; this says which pending, where it
+					// began, and that it was re-checked here.
+					rec.Pendings = append(rec.Pendings, fmt.Sprintf(
+						"%s/%s held at step %d, re-checked after the last step: %s",
+						actor, query, a.at, f.Says()))
 					// A FINDING THE RECONCILIATION PRODUCES ENDS THE RUN LIKE
 					// ANY OTHER, and it does not overwrite one the walk
 					// already has: the earlier finding is what a shrink
@@ -551,6 +579,40 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 			sort.Strings(rec.Reconciled)
 		}
 	}
+
+	// A PENDING THAT WAS NEVER RE-CHECKED STILL GETS A SENTENCE, and this is
+	// the half a reader would otherwise have to infer from a count. The
+	// reconciliation above runs only when a prober is wired AND something was
+	// held AND the register is non-empty; every pending outside that gate --
+	// a run with no probes, or one whose probes never read quiet -- reaches
+	// the end unexamined, and said nothing about itself at all.
+	//
+	// NAMED AS UNEXAMINED RATHER THAN AS CLEAN. "still open at the end" and
+	// "re-checked and cleared" are the two outcomes R2.3 distinguishes, and a
+	// line that omitted the first would make a run that never asked look
+	// exactly like a run that asked and got agreement -- the same collapse
+	// rook found in the reconciliation string itself.
+	for actor, queries := range reg.Open() {
+		for _, query := range queries {
+			at := -1
+			if a, ok := held[askKey(actor, query)]; ok {
+				at = a.at
+			}
+			if at < 0 {
+				rec.Pendings = append(rec.Pendings, fmt.Sprintf(
+					"%s/%s still open at the end, and the walk did not record where it began",
+					actor, query))
+				continue
+			}
+			rec.Pendings = append(rec.Pendings, fmt.Sprintf(
+				"%s/%s held at step %d, never re-checked: still open at the end",
+				actor, query, at))
+		}
+	}
+	// SORTED FOR THE SAME REASON Reconciled IS: reg.Open() is a map, so
+	// without this the line order differs between two attempts of one seed
+	// and the control's own comparison fails on an artifact of iteration.
+	sort.Strings(rec.Pendings)
 
 	rec.Sessions = sessions.Acquired()
 	rec.Facts = l.Facts()
@@ -663,7 +725,8 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 			// re-checked at the actor's next observation of the same query"
 			// (docs/vocabulary.md) needs that observation to be MAKEABLE at
 			// the end of a run, when no step is supplying handles.
-			held[askKey(step.Actor, decl.Name)] = ask{decl: decl, chosen: chosen, actor: step.Actor}
+			held[askKey(step.Actor, decl.Name)] = ask{decl: decl, chosen: chosen,
+				actor: step.Actor, at: step.N}
 		}
 		made = append(made, found)
 	}
@@ -671,11 +734,19 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 }
 
 // ask is one observation the walk can re-issue: the declaration, the handles it
-// was given, and the actor who made it.
+// was given, the actor who made it, and the step it was held at.
+//
+// AT IS HERE SO A PENDING'S LIFE HAS A BEGINNING. D1 and both of D3's clearing
+// paths ask for "held then cleared" to be readable from the run's output, and
+// a re-check that cannot say WHEN the pending was opened reports half an
+// event: `Reconciled` carried the verdict and nothing carried the step, so two
+// runs holding a pending at step 2 and at step 9 printed the same line. It is
+// Step.N, which the walk already assigns, and it is clock-free.
 type ask struct {
 	decl   bindings.Observation
 	chosen map[string]string
 	actor  string
+	at     int
 }
 
 func askKey(actor, query string) string { return actor + "\x00" + query }

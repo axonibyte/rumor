@@ -281,8 +281,10 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 	if rec.Finding != nil {
 		// THE ATTRIBUTION IS PART OF THE IDENTITY, which is why it is on this
 		// line and not inferred from the trace: "two findings are the same when
-		// the rule that fired, the finding's value, and its attribution
-		// (`rests_on_planted`) all agree" (docs/design.md), and `bug` resting
+		// the rule that fired, the finding's value, its attribution
+		// (`rests_on_planted`) and its kind all agree" (docs/design.md), and
+		// this line carries those four plus the step, which is the FIVE a
+		// control compares (fable, coop rumor/1039). `bug` resting
 		// on a planted claim is the engine catching a LIE rather than the
 		// system under test being wrong. A statute that declares no such rule
 		// says so in that word: the attribution is then UNKNOWN, and printing
@@ -407,6 +409,27 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		"reconciliation: %s\n", rec.PendingOpen, reconciled); err != nil {
 		_, _ = fmt.Fprintf(stderr, "run: writing the quiesce line: %v\n", err)
 		return 2
+	}
+	// AND EACH PENDING'S LIFE, which is what D1 and both of D3's clearing
+	// paths read. rook's gate verdict (coop rumor/1223) drove them against
+	// v0.1.37 and reached none: the walk computed a per-step verdict that can
+	// say "pending", and the run printed a COUNT of what was left open and
+	// nothing about what happened to the rest. "Held at step 3 and cleared"
+	// and "never held one" were the same output, so the clearing paths had no
+	// witness outside a debugger.
+	//
+	// ON STDOUT AND NOT A FILE, deliberately. A --out would put the evidence
+	// somewhere the control does not hash, which is how PendingOpen came to
+	// be computed and never read; these lines go in the stream the control
+	// compares, so a change to them moves a digest and a reader is told.
+	//
+	// EACH LINE IS CLOCK-FREE AND THE SET IS SORTED, so D1's "two attempts of
+	// one seed are byte-identical" holds over them.
+	for _, pending := range rec.Pendings {
+		if _, err := fmt.Fprintf(stdout, "run:   pending -- %s\n", pending); err != nil {
+			_, _ = fmt.Fprintf(stderr, "run: writing a pending's line: %v\n", err)
+			return 2
+		}
 	}
 	// EXIT 3 AND NOT 1. A refusal (1) means the PROJECT is wrong and its
 	// reader fixes their declarations; a finding means the SYSTEM UNDER TEST is
