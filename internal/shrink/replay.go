@@ -113,11 +113,20 @@ var ErrDirty = fmt.Errorf("shrink: refusing to replay: %w", rollback.ErrDirty)
 // Collapsing the last two into one is the failure the sentinel exists to
 // prevent -- it would read an unanswerable question as a passing one.
 //
-// WHAT "REPRODUCED" MEANS IS THE VOCABULARY'S, AND IT HAS THREE PARTS: rule,
-// value AND ATTRIBUTION. The CHANGELOG fixed that at 0.1.17 with the reason --
+// WHAT "REPRODUCED" MEANS IS THE VOCABULARY'S, AND IT HAS FOUR PARTS: rule,
+// value, ATTRIBUTION and KIND. The CHANGELOG fixed the first three at 0.1.17
+// with the reason --
 // "'the same finding' is rule, value and attribution agreeing, so a shrinker
 // cannot drift from a `bug` resting on a planted claim to one resting on none"
-// -- and my first version of this gate compared two of the three, with a
+// -- and the kind joined them at R6.1, fable ruling it in at coop r6/15 so a
+// `stale` and a plain `bug` are not traded for one another; the paragraph
+// docs/design.md heads on what the same finding means carries that warrant
+// rather than assuming it, and the clause below compares the kind.
+//
+// THIS SENTENCE SAID THREE UNTIL ratchet SWEPT IT at coop r6/185, which is the
+// drift that document warns about: a comment left at three while the code
+// compared four reads as agreement with the code instead of as a claim about
+// it. My first version of this gate compared two of the four, with a
 // comment claiming attribution "compares TRACES rather than one finding". That
 // was wrong on its own terms: the attribution the vocabulary names sits BESIDE
 // A FINDING (`rests_on_planted`) and reaches this function through Rules, so it

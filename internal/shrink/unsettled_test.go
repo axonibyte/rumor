@@ -34,7 +34,13 @@ import (
 // `if p.Prober != nil`, so a project WITH a prober always resolves what it
 // held, and a project WITHOUT one cannot hold a pending at all -- a quiesce
 // bound with no prober is refused by run.go and a duration bound is refused for
-// want of a clock. So `PendingOpen != 0` is a guard against a walk that does
+// want of a clock. BOTH OF THOSE DOORS ARE SHUT BY ARMS AND NOT ONLY BY THE
+// CODE, which ratchet measured at coop r6/188 and this comment understated:
+// `TestAQuiesceBoundWithNoProberIsRefused` and
+// `TestADurationBoundIsRefusedNamingTheDuration`, both in tests/run, assert
+// the two refusals, so "unreachable through the product" is a property the
+// suite holds rather than a reading of the source taken on trust.
+// So `PendingOpen != 0` is a guard against a walk that does
 // not exist yet: R14's repeated check and R7's clock are the doors that make it
 // reachable, and the arm has to stand at this layer until one of them opens.
 //

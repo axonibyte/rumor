@@ -393,6 +393,25 @@ refuses both a world it cannot prove is the checkpoint and a candidate whose run
 ended holding anything open as `pending`. A trace that did not shorten says
 `shrink: NOT REDUCED` with the same clause.
 
+**A reproduction can rest on three of four parts, and a second line says so.**
+Two findings are the same when the rule that fired, the finding's value, its
+attribution (`rests_on_planted`) and its kind all agree — `docs/design.md`
+fixes that identity. A project with no planted claims need not define the
+attribution rule, and when neither the original finding nor the replay carries
+it there is nothing to compare, so the shrink says which three it had:
+
+```
+shrink: PARTIAL REPRODUCTION -- the rule, the value and the kind agreed; the
+attribution was NOT compared, neither finding carrying rests_on_planted. "The
+same finding" is four parts and this one is established on three
+```
+
+**The operator is told, not refused**, and the trace is printed either way:
+"all four agreed" and "three were available" are different facts, and which one
+a reduction rests on is the reader's to weigh. `examples/toy` declares
+`rests_on_planted`, so nothing shipped here prints this line; a project of your
+own that does not declare it will.
+
 **Nothing is promoted by a run.** A shrink here is for a report; writing a seed
 into the project's `seeds.lock` is a decision for whoever is adding to the
 regression suite, not a side effect of whatever ran last.

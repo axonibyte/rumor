@@ -426,8 +426,13 @@ func TestAFoundBugIsReportedAndTheStatusSaysSo(t *testing.T) {
 			}
 
 			// THE LINE NAMES THE VALUE, THE STEP, THE RULE AND THE
-			// ATTRIBUTION -- the three parts of a finding's identity plus where
-			// it happened, all read off the record rather than recomposed.
+			// ATTRIBUTION -- three of the four parts of a finding's identity
+			// plus where it happened, all read off the record rather than
+			// recomposed. THE FOURTH IS ABSENT BY THE FIXTURE'S CHOICE and the
+			// fields below depend on that: this statute's appended clause names
+			// no eventual kind, so `Says` prints the value alone and the five
+			// %s tokens line up. A kind would make it "<value> of kind <kind>"
+			// and `of` would be read as the rule.
 			var value, rule, attrName, attr string
 			var at int
 			for _, line := range strings.Split(out, "\n") {

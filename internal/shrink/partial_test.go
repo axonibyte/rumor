@@ -9,7 +9,7 @@ import (
 )
 
 // THE PRECONDITION FOR FABLE'S PLACEMENT AT coop r5/206 (5), handed over rather
-// than described: a reproduction is reachable having compared TWO parts of three.
+// than described: a reproduction is reachable having compared THREE parts of four.
 //
 // WHAT THIS ARM IS FOR. `Verdict.AttributionCompared` is written at replay.go:127
 // and read nowhere in production -- rook enumerated the sites at coop r5/204: one
@@ -53,7 +53,7 @@ func TestAPartialReproductionIsReachable(t *testing.T) {
 		t.Fatalf("Once: %v", err)
 	}
 	if !full.Reproduced || !full.AttributionCompared {
-		t.Fatalf("the full comparison must reproduce with all three parts: reproduced=%v compared=%v %s",
+		t.Fatalf("the full comparison must reproduce with all four parts: reproduced=%v compared=%v %s",
 			full.Reproduced, full.AttributionCompared, full.Why)
 	}
 }
@@ -125,11 +125,31 @@ func TestShrinkSaysWhenTheReproductionWasPartial(t *testing.T) {
 			said := strings.Contains(out, "PARTIAL REPRODUCTION")
 			if said != tc.partial {
 				t.Errorf("Render says partial = %v, want %v -- the operator is told exactly "+
-					"when the comparison ran on two parts of three\n%s", said, tc.partial, out)
+					"when the comparison ran on three parts of four\n%s", said, tc.partial, out)
 			}
 			if tc.partial && !strings.Contains(out, engine.AttributionRule) {
 				t.Errorf("the line does not name %s, so it says the reproduction was partial "+
 					"without saying on what\n%s", engine.AttributionRule, out)
+			}
+			// AND THE ARITHMETIC IS ASSERTED, NOT ONLY THE HEADING. ratchet
+			// swept the tree at coop r6/185 and found this line's sentence
+			// stale -- it said "three parts ... established on two" after the
+			// kind became the fourth part at R6.1 -- and nothing failed,
+			// because the only assertion here was on "PARTIAL REPRODUCTION".
+			// A heading an operator cannot act on is not what the line is for:
+			// the figures and the three that DID agree are the content, so
+			// both are pinned.
+			if tc.partial {
+				for _, want := range []string{
+					"the rule, the value and the kind agreed",
+					`"The same finding" is four parts and this one is established on three`,
+				} {
+					if !strings.Contains(out, want) {
+						t.Errorf("the partial line does not say %q, so it heads a fact it "+
+							"never states and a sentence left at the old count would "+
+							"pass\n%s", want, out)
+					}
+				}
 			}
 			// AND THE TRACE IS STILL THERE EITHER WAY: the operator is told, not
 			// refused, so nothing is withheld because the comparison was partial.

@@ -71,9 +71,9 @@ type Result struct {
 
 	// AttributionCompared is the gate Verdict's own field, carried out so a
 	// reader of the RESULT can see it. False with Stable true means "the same
-	// finding" was established on two of its three parts: the rule and the
-	// value agreed and the attribution was never compared, because neither
-	// finding carries the rule.
+	// finding" was established on three of its four parts: the rule, the value
+	// and the kind agreed and the attribution was never compared, because
+	// neither finding carries the rule.
 	//
 	// IT IS HERE BECAUSE THE VERDICT'S COPY HAD NO READER. ratchet measured it
 	// at coop r5/203 -- written at the gate and read by nothing in production,
@@ -146,9 +146,10 @@ func (r Result) Render() string {
 		fmt.Fprintf(&b, "shrink: without %s\n", strings.Join(r.Kinds.Removed, ", "))
 	}
 	if !r.AttributionCompared {
-		fmt.Fprintf(&b, "shrink: PARTIAL REPRODUCTION -- the rule and the value agreed; the "+
-			"attribution was NOT compared, neither finding carrying %s. \"The same finding\" "+
-			"is three parts and this one is established on two\n", engine.AttributionRule)
+		fmt.Fprintf(&b, "shrink: PARTIAL REPRODUCTION -- the rule, the value and the kind "+
+			"agreed; the attribution was NOT compared, neither finding carrying %s. "+
+			"\"The same finding\" is four parts and this one is established on three\n",
+			engine.AttributionRule)
 	}
 	b.WriteString(r.Trace.Render())
 	return b.String()
@@ -277,7 +278,7 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 		From:      len(req.Steps),
 		Probes:    probes,
 		// THE GATE'S, carried so Render can say whether "the same finding"
-		// was established on three parts or two.
+		// was established on four parts or three.
 		AttributionCompared: v.AttributionCompared,
 	}
 
