@@ -99,6 +99,23 @@ func open(o rollback.Options) (rollback.Provider, error) {
 	return p, nil
 }
 
+// AddrEnv names the environment variable through which an adapter learns the
+// address of the world this provider owns.
+//
+// IT EXISTS BECAUSE THE PRODUCT CANNOT GUESS IT. R6.4 wires the shrinker into
+// `rumor run`, which must point the adapter at the provider's toy rather than
+// let it start one of its own -- and `TOY_ADDR` is a fact about THIS provider
+// and the toy adapter it was built against, documented in docs/rollback.md and
+// in this file's own header, nowhere the engine can read. A caller that
+// hardcoded the name would be a generic path carrying one project's
+// convention; a caller that picked a variable out of the adapter's `env` list
+// would be guessing which of several carries an address.
+//
+// NOT PART OF THE TRAIT, for Addr's own reason: the five verbs are about
+// putting a world back. A provider that does not own an address implements
+// neither method and the caller refuses by name rather than proceeding.
+func (p *provider) AddrEnv() string { return "TOY_ADDR" }
+
 // Addr is the address the toy is listening on, for a caller that must tell an
 // adapter where to find it (TOY_ADDR).
 //

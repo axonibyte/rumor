@@ -343,6 +343,29 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		if hm, ok := p.Prober.(interface{ HangMeasured() string }); ok && hm.HangMeasured() != "" {
 			_, _ = fmt.Fprintf(stderr, "run: quiesce probes %s\n", hm.HangMeasured())
 		}
+
+		// AND THE FAILURE IS SHRUNK, which is the line internal/shrink was
+		// built for and never had. R6.4's first commit (fable, coop r6/146):
+		// the shrinker was in no binary's dependency closure, so the whole
+		// package, the replay written to feed it and the rollback trait were
+		// built and unreached. A reader of a found bug wants the smallest trace
+		// that still finds it, and a gate cannot drive a reduction the product
+		// cannot perform.
+		//
+		// THE SESSION IS CLOSED FIRST, by the defer above this function's walk,
+		// and the shrink opens its own against the PROVIDER's world -- which is
+		// why this sits after the walk's output rather than beside it.
+		//
+		// A SHRINK REFUSAL DOES NOT OVERTURN THE FINDING, and that is a
+		// decision with a reason: the run exits with the finding's status
+		// either way, because a project's rollback declarations being wrong
+		// does not make a found bug unfound, and a gate reading the refusal's 1
+		// would lose a finding it exists to catch. The refusal prints, so the
+		// reader is told why there is no minimal trace.
+		if st, serr := shrinkFound(ctx, dir, prep, p, brep.Bindings.Probes, seed, rec, stdout); serr != nil {
+			_, _ = fmt.Fprintf(stderr, "run: could not shrink: %v\n", serr)
+			_ = st
+		}
 	}
 	// THE SESSION COUNT IS IN THE VERDICT for the provider count's reason: a
 	// token is acquired at first use and reused after, so a holder that
