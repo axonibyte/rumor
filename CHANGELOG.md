@@ -3,6 +3,54 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.37 — 2026-10-27
+
+**The shrinker gets a path the product takes, and every candidate quiesces
+before it is judged** — issue 92, R6.4, the last of R6's four children.
+
+- **`internal/shrink` was in no binary's dependency closure.** Six reduction
+  steps, the replay written to feed them and the whole rollback trait were
+  built and unreached; the product's only use of that package was counting how
+  many providers had registered. `rumor run` now opens the project's declared
+  provider, checkpoints it, replays each candidate against the world that
+  provider owns, and hands the result to the shrinker — so a claim about
+  candidates is a claim about something the product does.
+- **A candidate that did not settle is refused rather than judged.** The replay
+  signature carried a finding and the steps and nothing else, so a candidate
+  whose walk ended holding a disagreement open as `pending` was compared as
+  though it had finished. It now carries the walk's own `PendingOpen`, and the
+  gate refuses a non-zero one: "did not reproduce" and "nobody waited to find
+  out" are different facts a reader acts on differently.
+- **The result says what it did.** One line names what it reduced from and to,
+  how many candidates ran, and that each ran on a verified clean world with
+  nothing left open — a report of the two refusals above it rather than a
+  claim, and what makes the done-when's "every candidate quiesced" readable
+  from a run at all.
+- **Four refusals ship with fixtures that trip them**, and the one a project
+  can reach is driven through the binary with its verdict read off stdout: two
+  declared providers, a provider that owns no address, one that names no
+  variable for the address, and an `[adapter] env` that does not pass that
+  variable through. A shrink refusal does not take the finding's status away.
+- **A declared provider this build does not register is a carried name, not a
+  failure.** `examples/twin` names a provider the contract permits it to carry
+  until the interface is defined; the run says so in one line instead of
+  reporting a failure to shrink.
+- **Nothing is promoted by a run.** A shrink here is for a report; writing a
+  seed into a project's `seeds.lock` is a decision, not a side effect.
+- **`engine.Reconcile` and `engine.Actors` are removed.** Reconcile had no
+  production caller through three phases and the walk's reconciliation goes
+  through `Judge`; `Pass`, `Report`, `Key` and `PlantedBy` existed only to
+  serve it, and `Actors` was left as dead production named only by its own arm.
+  `schedule.Actors` is the live one.
+- **The quiesce hang report names the probes that did not read quiet**, by
+  intersecting the expired set with the not-quiet one, so a probe that answered
+  quiet every round is no longer named by a report about a hang.
+- **The bound a project declares reaches the `Eventual` that carries it**, so a
+  refusal names `30s` rather than `a bound of 0`.
+- **The warrant-header arm asserts file order instead of assuming a direction.**
+  Each header's `from` equals the previous `to`, the last `to` equals the
+  constant, and a gap or a repeated start refuses by name.
+
 ## 0.1.36 — 2026-10-26
 
 **R6.3: the toy's worker owns its own count off the clock, `stale` is decided
