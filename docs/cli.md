@@ -375,6 +375,41 @@ that printed number is exactly what `--seed` takes.
 | 2 | could-not-run: an adapter that will not start, a weight the project never declared, or a usage error |
 | 3 | **a bug was found**, and the line above the verdict names it |
 
+**A found bug is shrunk, and the result says what it did.** When the walk finds
+something and the project declares a `[[rollback]]` provider this build
+registers, `rumor run` reduces the trace and prints one report line before the
+trace itself:
+
+```
+shrink: REDUCED 14 step(s) to 12 -- 12 candidate(s), each replayed on a verified
+clean world and each settled with no pending left open
+```
+
+The figures are the trace's own: `to` is the length of the trace printed below
+it, not the bisection's shortest probed prefix, because the trace is what a
+reader replays. "Each settled" is a report of a refusal rather than a claim --
+every candidate goes through the replay gate, which restores, VERIFIES, and
+refuses both a world it cannot prove is the checkpoint and a candidate whose run
+ended holding anything open as `pending`. A trace that did not shorten says
+`shrink: NOT REDUCED` with the same clause.
+
+**Nothing is promoted by a run.** A shrink here is for a report; writing a seed
+into the project's `seeds.lock` is a decision for whoever is adding to the
+regression suite, not a side effect of whatever ran last.
+
+**A project with no provider, or one this build does not register, is not a
+failure.** `shrink: NOT SHRUNK` says which: no `[[rollback]]` declared at all,
+or a declared name the build carries without registering — `examples/twin`'s
+`doc-store-truncate` is carried as declared until the provider interface is
+defined, so naming it is the contract working rather than breaking.
+
+**A shrink refusal does not change the status.** Two declared providers, a
+provider that owns no address, one that names no variable for it, or an
+`[adapter] env` that does not pass that variable through are all `shrink:
+REFUSED` on stdout — and the run still exits `3`, because a project's rollback
+declarations being wrong does not make a found bug unfound, and a pipeline
+reading `1` there would lose the finding this verb exists to report.
+
 **A bound nothing can judge is a refusal.** A project whose claim types carry
 a `quiesce` bound is refused by name when no quiesce prober is wired — `run:
 REFUSED no quiesce prober is wired; the bounds on <types> cannot be judged` —

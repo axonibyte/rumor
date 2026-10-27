@@ -32,6 +32,19 @@ nothing else -- but a caller that opened a provider needs them, and
 |---|---|
 | `Close` | stop the process the provider started. It leaves the provider's files alone, which is what lets a caller ask `Verify` about a world whose server is gone |
 | `RemoveWorld` | stop the process **and** remove the working directory `open` made. The world outlives the process on purpose, so this is the separate act of being finished with the world itself |
+| `Addr` | the address the provider's system is listening on, for a caller that must point an adapter at it |
+| `AddrEnv` | the **name of the environment variable** that adapter reads the address from |
+
+**`AddrEnv` exists because the engine cannot guess it.** `TOY_ADDR` is a fact
+about `toy-process-restart` and the adapter it was built against, not about
+providers in general: a generic caller that hardcoded the name would carry one
+project's convention, and one that picked a variable out of the adapter's `env`
+list would be guessing which of several holds an address. So the provider names
+it and `rumor run` refuses by name when a provider owns an address and names no
+variable for it, or when the project's `[adapter] env` does not pass that
+variable through — the second being the defect where an adapter starts a system
+of its own and every candidate replays against a world the provider does not
+control.
 
 `Discard` releases what one checkpoint held; `RemoveWorld` releases what the
 provider held. Neither implies the other, and a caller that opens a world is
