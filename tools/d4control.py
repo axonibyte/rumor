@@ -303,6 +303,36 @@ def fields_of(out):
             "rule": m.group(3), "planted": m.group(4)}
 
 
+def _seam_took(a, seed, pre16, post16):
+    """The append moved the witness seed's bytes, or it did not measure anything.
+
+    Split out of the seam itself when the seam gained a second branch (fable
+    coop rumor/1345): a toy that already DECLARES `[clock]` is not appended to,
+    so only the appending branch reaches this comparison.
+
+    `seed` is a PARAMETER because WITNESS_SEED is a local of the caller, not a
+    module global -- the first version of this helper read it as one and the
+    drive answered "NameError: name 'WITNESS_SEED' is not defined" at the only
+    moment that mattered.
+    """
+    if pre16 == post16:
+        refuse(f"--clock-the-live-toy DID NOT TAKE on {a.tag}: seed "
+               f"{seed}'s live bytes are {pre16} both with `[clock]` "
+               f"appended and without it. `[clock]` parses on this ref and "
+               f"nothing in it writes a clock fact, so the two halves' "
+               f"independence is UNMEASURED here rather than demonstrated "
+               f"-- which is the whole claim this seam exists to make. "
+               f"Point it at a ref whose tree writes clock facts; the "
+               f"known mover is 93084b0, where seed {seed} reads "
+               f"8d76ddcf7670f2b6 clocked (ibis rumor/1301) -- that figure "
+               f"is a fact about THAT tree and is not asserted here.")
+    print(f"  SELF-TEST: `[clock]` appended to the CLONE's examples/toy and "
+          f"it TOOK -- seed {seed}'s live bytes moved {pre16} -> "
+          f"{post16} in this run, which is what makes the live half a "
+          f"measurement rather than an announcement. The frozen subject is "
+          f"untouched: that is the property under test.")
+
+
 def judge(seed, out, rc, expect):
     """One seed's verdict, from TEXT ALONE -- so the fixture path and the
     real path are judged by the same code and cannot drift apart."""
@@ -691,27 +721,49 @@ def main():
         # from here with `PoolKinds` at 6 in pool.go on both as the control. A
         # constant from another tree would make this reachable only in its
         # refuse branch. A digest, like a line number, is a fact about a TREE.
+        # AND THE APPEND IS FOR A TOY THAT DECLARES NONE, ONLY (fable coop
+        # rumor/1345, on ibis rumor/1344). TOML refuses a second table of the
+        # same name -- measured: a toy carrying `[clock]` plus this append reads
+        # "cannot be read as a declaration: not TOML: toml: line 352: Key
+        # 'clock' has already been defined", so the run refuses at the PARSE and
+        # its one-line stdout DIFFERS from the record `_pre` holds. The old
+        # comparison tested only for difference, so it would have announced "it
+        # TOOK" on a file it had just made invalid: a false PASS, and one that
+        # fires exactly when 101's done-when lands `[clock]` in the live toy.
+        #
+        # AFTER 101 THE INDEPENDENCE CHECK IS THE TOY AS IT IS: bytes differ
+        # against the frozen subject, fields equal. That comparison is the loop
+        # below and it needs no append at all, which is why this half goes
+        # quiet rather than inventing a second mechanism.
+        _toy_bindings = os.path.join(tree, "examples", "toy", "bindings.toml")
+        with open(_toy_bindings) as fh:
+            _declared = any(line.strip() == "[clock]" for line in fh)
+        _want_rc = CONTROL[WITNESS_SEED]["rc"]
         _pre = run(_seed_cmd(WITNESS_SEED, "examples/toy"), cwd=tree, env=env)
-        with open(os.path.join(tree, "examples", "toy", "bindings.toml"), "a") as fh:
-            fh.write("\n[clock]\n")
-        _post = run(_seed_cmd(WITNESS_SEED, "examples/toy"), cwd=tree, env=env)
-        _a, _b = _sha16(_pre.stdout), _sha16(_post.stdout)
-        if _a == _b:
-            refuse(f"--clock-the-live-toy DID NOT TAKE on {a.tag}: seed "
-                   f"{WITNESS_SEED}'s live bytes are {_a} both with `[clock]` "
-                   f"appended and without it. `[clock]` parses on this ref and "
-                   f"nothing in it writes a clock fact, so the two halves' "
-                   f"independence is UNMEASURED here rather than demonstrated "
-                   f"-- which is the whole claim this seam exists to make. "
-                   f"Point it at a ref whose tree writes clock facts; the "
-                   f"known mover is 93084b0, where seed {WITNESS_SEED} reads "
-                   f"8d76ddcf7670f2b6 clocked (ibis rumor/1301) -- that figure "
-                   f"is a fact about THAT tree and is not asserted here.")
-        print(f"  SELF-TEST: `[clock]` appended to the CLONE's examples/toy and "
-              f"it TOOK -- seed {WITNESS_SEED}'s live bytes moved {_a} -> {_b} "
-              f"in this run, which is what makes the live half a measurement "
-              f"rather than an announcement. The frozen subject is untouched: "
-              f"that is the property under test.")
+        if _declared:
+            print(f"  SELF-TEST: the live toy ALREADY DECLARES `[clock]` on "
+                  f"{a.tag}, so nothing is appended -- a second table of that "
+                  f"name is not TOML and the run would refuse at the parse. The "
+                  f"independence of the two halves is the comparison below: the "
+                  f"BYTES against the frozen subject and the FIELDS against this "
+                  f"toy, which is what 101's done-when leaves behind.")
+        else:
+            with open(_toy_bindings, "a") as fh:
+                fh.write("\n[clock]\n")
+            _post = run(_seed_cmd(WITNESS_SEED, "examples/toy"), cwd=tree, env=env)
+            # BOTH HALVES MUST HAVE RUN BEFORE "it TOOK" MAY PRINT -- the rc the
+            # control records for this seed, never a parse refusal. A difference
+            # between a record and a could-not-run is not a clock being written.
+            for _which, _r in (("before the append", _pre), ("after it", _post)):
+                if _r.returncode != _want_rc:
+                    refuse(f"--clock-the-live-toy cannot judge {a.tag}: the "
+                           f"witness run {_which} exited {_r.returncode} where "
+                           f"the control records {_want_rc} for seed "
+                           f"{WITNESS_SEED}, so one of the two halves did not "
+                           f"RUN and a difference between them would say nothing "
+                           f"about a clock", _r.stderr)
+            _a, _b = _sha16(_pre.stdout), _sha16(_post.stdout)
+            _seam_took(a, WITNESS_SEED, _a, _b)
 
     bad = []
     for seed in ORDER:
