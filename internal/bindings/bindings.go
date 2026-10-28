@@ -379,11 +379,46 @@ func Parse(doc map[string]any) Report {
 				// refused it would make that arm unreachable.
 				if claim.Bound != "" && claim.Bound != Quiesce {
 					d, err := time.ParseDuration(claim.Bound)
-					if err != nil {
+					switch {
+					case err != nil:
 						c.Refuse("bound", fmt.Sprintf(
 							"%q: wanted a duration such as 30s, or %q", claim.Bound, Quiesce))
+					case d <= 0:
+						// A NON-POSITIVE BOUND IS REFUSED AT THE PARSE, and the
+						// sentence is internal/decl's own: `Reader.Duration`
+						// already refuses `d <= 0` with these exact words
+						// (decl.go:280-281), so until now TWO duration readers in
+						// one tree disagreed -- decl refused a zero and this
+						// accepted it.
+						//
+						// WHY THE PARSE AND NOT A VALIDATE ARM: the engine reads
+						// `Bound` as nanoseconds and compares `now-claimTime >
+						// Bound` (engine/pending.go), so a declared `0s` makes
+						// every disagreement instantly past its bound and a
+						// negative one makes the comparison meaningless. Measured
+						// before this refusal existed: `0s` made the toy's stale
+						// bug VANISH at rc 0 and `-5s` found a DIFFERENT bug at a
+						// different step, with `rumor validate` accepting both at
+						// 22 of 22 arms. A value that changes which defect a run
+						// reports must not reach the engine at all.
+						//
+						// AND IT GIVES schedule/walk.go's `!e.Quiesce &&
+						// e.Bound > 0` ITS MEANING BACK: that test now reads
+						// "a duration bound was DECLARED", because a declared
+						// `0s` can no longer arrive as the same zero an absent
+						// bound leaves behind.
+						//
+						// ratchet coop r7/29, quill r7/30, ibis r7/31, placed by
+						// fable r7/32 as issue 101's added bullet.
+						c.Refuse("bound", fmt.Sprintf(
+							"%q: a duration of zero or less covers nothing", claim.Bound))
+					default:
+						// ASSIGNED ONLY WHERE IT IS USABLE. The old line sat
+						// OUTSIDE the error check, so a refused parse and a
+						// declared `0s` both left BoundFor at zero -- the same
+						// conflation this bullet is about, one level down.
+						claim.BoundFor = d
 					}
-					claim.BoundFor = d
 				}
 			case "":
 				// already refused as a missing key

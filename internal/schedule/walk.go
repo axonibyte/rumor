@@ -778,6 +778,12 @@ func unmeasuredAtTheEnd(open map[string][]string, held map[string]ask,
 	}
 	bound := map[string]int64{}
 	for _, e := range eventual {
+		// `Bound > 0` READS AS "A DURATION BOUND WAS DECLARED" and no longer as
+		// "declared and happens to be positive": bindings refuses a
+		// non-positive bound at the parse (bindings.go, the Eventual case), so
+		// a declared `0s` cannot arrive here as the same zero an ABSENT bound
+		// leaves behind. Issue 101's added bullet; before it, those two states
+		// were one number.
 		if !e.Quiesce && e.Bound > 0 {
 			bound[e.Of] = e.Bound
 		}

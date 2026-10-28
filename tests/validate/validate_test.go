@@ -711,6 +711,65 @@ func TestBindingsStillRefusesAZeroActionFile(t *testing.T) {
 	t.Logf("PROOF the coupling holds: %s", strings.TrimSpace(joined))
 }
 
+// TestBindingsRefusesANonPositiveBound is issue 101's added bullet, and it is
+// here beside the zero-action arm above because both are PARSE refusals that
+// validate surfaces rather than arms of its own.
+//
+// WHY THE SIGN IS REFUSED AT THE PARSE. internal/decl's `Reader.Duration`
+// already refuses `d <= 0` with this exact sentence, so until this landed TWO
+// duration readers in one tree disagreed: decl refused a zero and the claim
+// parser accepted it. The engine then compares `now-claimTime > Bound` in
+// nanoseconds, so a declared `0s` makes every disagreement instantly past its
+// bound and a negative one makes the comparison meaningless -- measured on the
+// toy before the refusal existed, `0s` made its stale bug VANISH at rc 0 and
+// `-5s` found a DIFFERENT bug at a different step, with `rumor validate`
+// accepting both. A value that changes which defect a run reports must not
+// reach the engine.
+//
+// THE THIRD CELL IS THE ONE THAT MAKES THE OTHER TWO MEAN ANYTHING: a positive
+// bound must NOT produce this sentence, or the cells would pass against a
+// parser that refused every bound. Each cell also asserts the parser RAN -- one
+// refusal, exit 1 -- so a crash cannot satisfy the absence.
+func TestBindingsRefusesANonPositiveBound(t *testing.T) {
+	const sentence = "a duration of zero or less covers nothing"
+	for _, c := range []struct {
+		bound  string
+		refuse bool
+	}{
+		{"0s", true},
+		{"-5s", true},
+		{"30s", false},
+	} {
+		dir := t.TempDir()
+		body := "[claim.\"doc.published\"]\ntiming = \"eventual\"\nbound = \"" + c.bound + "\"\n"
+		if err := os.WriteFile(filepath.Join(dir, "bindings.toml"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		rep := validate.Run(dir)
+		// THE SUBJECT RAN: a bindings file with no actions is refused whatever
+		// the bound is, so this holds in all three cells and a cell cannot pass
+		// by the parser having died.
+		if rep.Exit() != 1 || len(rep.Refusals) == 0 {
+			t.Fatalf("bound %q: exit %d with %d refusal(s); the parser did not run, so neither "+
+				"the presence nor the absence below proves anything",
+				c.bound, rep.Exit(), len(rep.Refusals))
+		}
+		var joined string
+		for _, r := range rep.Refusals {
+			joined += r.Detail + " "
+		}
+		got := strings.Contains(joined, sentence)
+		if got != c.refuse {
+			t.Fatalf("bound %q: refused-for-its-sign is %v, want %v; the refusal reads %q",
+				c.bound, got, c.refuse, strings.TrimSpace(joined))
+		}
+		if c.refuse && !strings.Contains(joined, strconv.Quote(c.bound)) {
+			t.Errorf("bound %q: the refusal does not quote the value it refused: %q",
+				c.bound, strings.TrimSpace(joined))
+		}
+	}
+}
+
 // changedBy declares, per fixture, the ONLY paths that may differ from the
 // permitted twin. Everything else the fixture shares with the twin must be
 // byte-identical.
