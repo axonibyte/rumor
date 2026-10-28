@@ -321,9 +321,17 @@ func pendingOverlay(l *ledger.Ledger, c Check, b Bindings, statuteValue any) (*O
 	return &Overlay{
 		Rule:  "engine.pending",
 		Value: "pending",
-		Reason: fmt.Sprintf("%q is eventual with a bound of %s; the last claim of it was made at %d "+
-			"and the run's time at the seal is %d, so the disagreement is inside the bound",
-			c.Of, time.Duration(e.Bound), claimTime, now),
+		// EVERY FIGURE HERE IS A DURATION, which is R7.1's last clause and the
+		// door R6 named at coop rumor/1202. `clock.t` is nanoseconds from the
+		// run's own epoch -- the contract declares the unit -- so a bare
+		// integer in a sentence beside `30s` asks a reader to convert, and a
+		// reader converting is a reader who can be out by a thousand without
+		// the sentence looking wrong. "into the run" says what the figure is
+		// measured from, since the epoch is the run's and not the clock's.
+		Reason: fmt.Sprintf("%q is eventual with a bound of %s; the last claim of it was made at "+
+			"%s into the run and the run's time at the seal is %s, so the disagreement is inside "+
+			"the bound",
+			c.Of, time.Duration(e.Bound), time.Duration(claimTime), time.Duration(now)),
 		Until: claimTime + e.Bound,
 	}, nil, nil
 }
@@ -366,11 +374,18 @@ func stale(p pastBound, prev Pending) *Overlay {
 		Rule:  "engine.stale",
 		Value: "bug",
 		Kind:  "stale",
+		// THE OVERAGE IS A DURATION AND SO IS EVERYTHING IT IS COMPUTED FROM.
+		// This sentence is the one R6 left for R7 (coop rumor/1202): it had
+		// the bound as `30s` beside three bare nanosecond counts, so the one
+		// figure a reader acts on -- how far past the bound this is -- was
+		// the only one they had to convert themselves. The positions stay
+		// integers, because a position is not a time.
 		Reason: fmt.Sprintf("%q is eventual with a bound of %s; the disagreement on the claim at "+
-			"position %d was held open as `pending` at seal %d, the claim was made at %d and the "+
-			"run's time at the seal is %d, so it is %d past the bound",
-			p.of, time.Duration(p.bound), p.claimPos, prev.At, p.claimTime, p.now,
-			(p.now-p.claimTime)-p.bound),
+			"position %d was held open as `pending` at seal %d, the claim was made at %s into the "+
+			"run and the run's time at the seal is %s, so it is %s past the bound",
+			p.of, time.Duration(p.bound), p.claimPos, prev.At,
+			time.Duration(p.claimTime), time.Duration(p.now),
+			time.Duration((p.now-p.claimTime)-p.bound)),
 		Until: p.claimTime + p.bound,
 	}
 }
