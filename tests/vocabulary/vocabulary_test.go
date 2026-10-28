@@ -199,7 +199,15 @@ const root = "../.."
 // comment claiming the vocabulary enforces something is worth no more than
 // the arm underneath it, which is why the quotation and that append are in
 // the same test.
-const declaredQuotes = 48
+// 48 -> 49 AT R7.1's REPLAY ARM: tests/clock quotes the Time section's last
+// sentence -- "Replays restore the clock with everything else" -- beside the
+// arm that drives a replay of a clocked run. The quotation is the whole
+// warrant for the arm existing: clock control travels through
+// schedule.Replay because it is a FIELD of the project handed over, so there
+// is no code to read and nothing to notice if a later phase assembles that
+// project out of parts instead. A sentence in the vocabulary and no arm under
+// it is what this count exists to make visible.
+const declaredQuotes = 49
 
 // knownChainGaps are the places where this file's warrant chain does NOT join,
 // each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which

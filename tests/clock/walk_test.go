@@ -24,6 +24,7 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
+	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
@@ -167,6 +168,53 @@ func tryWalkProfile(t *testing.T, dir string, seed uint64, steps int, profile st
 		ClockControl: brep.Bindings.Clock != nil,
 		Profile:      profile,
 	}, sess, seed, steps, 1)
+}
+
+// replayed drives schedule.Replay over a fresh world, the way internal/shrink
+// drives a candidate: the same project, the same seed, the same attempt
+// number. The attempt matters -- a second attempt is a second world with its
+// own handle ids -- so a replay compared against a walk has to claim the same
+// one or the comparison is between two different worlds.
+func replayed(t *testing.T, dir string, seed uint64, steps int, profile string) (*engine.Finding, []schedule.Step, int, error) {
+	t.Helper()
+	ctx := context.Background()
+
+	prep, err := platform.Load(filepath.Join(dir, "platform.toml"), decl.TOML)
+	if err != nil || !prep.OK() {
+		t.Fatalf("platform.toml: %v %v", err, prep.Refusals)
+	}
+	brep, err := bindings.Load(filepath.Join(dir, "bindings.toml"), decl.TOML)
+	if err != nil || !brep.OK() {
+		t.Fatalf("bindings.toml: %v %v", err, brep.Refusals)
+	}
+	statute, err := os.ReadFile(filepath.Join(dir, "statute.rego"))
+	if err != nil {
+		t.Fatalf("statute.rego: %v", err)
+	}
+	if err := os.Unsetenv("TOY_ADDR"); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := wire.Open(ctx, wire.Spawn{
+		Command: prep.Platform.Adapter.Command,
+		Cwd:     dir,
+		Env:     prep.Platform.Adapter.Env,
+	}, 0)
+	if err != nil {
+		t.Fatalf("opening the adapter: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	return schedule.Replay(ctx, schedule.Project{
+		Statute:      string(statute),
+		Actions:      brep.Bindings.Actions,
+		Weights:      prep.Platform.Weights,
+		Venire:       prep.Platform.Venire,
+		Roles:        brep.Bindings.Roles,
+		Observations: brep.Bindings.Observations,
+		Eventual:     schedule.EventualOf(brep.Bindings),
+		ClockControl: brep.Bindings.Clock != nil,
+		Profile:      profile,
+	}, sess, seed, 1, steps, nil)
 }
 
 func clockFacts(facts []ledger.Fact) []ledger.Fact {
