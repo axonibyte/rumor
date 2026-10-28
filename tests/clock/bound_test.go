@@ -1,7 +1,6 @@
 package clock_test
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,11 +52,14 @@ func durationBounded(t *testing.T, withClock bool) string {
 					"would drive the form R6 already judged and say nothing about a duration",
 					filepath.Join(project, e.Name()))
 			}
+			// THE LIVE TOY IS CLOCKED AS OF R7.2, so this is a rewrite in one
+			// direction and a removal in the other -- it was an append or
+			// nothing. `faked` for clocked(t)'s reason one file over: these
+			// arms were written against a run whose own `t` is the world's.
 			if withClock {
-				// `faked`, for clocked(t)'s reason one file over: these arms
-				// were written against a run whose own `t` is the world's,
-				// and R7.2 refuses a `[clock]` that names no form at all.
-				after += fmt.Sprintf("\n[clock]\nform = %q\n", bindings.ClockFaked)
+				after = reform(t, after, bindings.ClockFaked)
+			} else {
+				after = unclock(t, after)
 			}
 			raw = []byte(after)
 		}

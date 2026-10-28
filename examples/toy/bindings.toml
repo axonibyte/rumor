@@ -304,8 +304,11 @@ timing = "immediate"
 # rather than a defect, and it is the whole reason 90's probes came first.
 #
 # THE BOUND IS `quiesce` AND NOT A DURATION: the question is whether the system
-# has settled, not how long ago the claim was made, and a duration bound in a
-# project with no clock control is refused by name (R2.3, R7's door still shut).
+# has settled, not how long ago the claim was made. It was ALSO true until R7.2
+# that a duration bound here would have been refused for want of clock control;
+# this project declares `[clock]` at the end of this file now, so that is no
+# longer the reason. The reason that remains is the one above and fable's at
+# coop r6/82, and it does not depend on the clock.
 #
 # AND IT IS THIS TYPE AND NOT `event.joined`, which fable ruled at coop r6/82:
 # a bound over the number R5 planted its rows in turns seed 40's R5 finding into
@@ -346,3 +349,27 @@ contexts = ["api"]
 [[role]]
 name = "guest"
 contexts = ["api"]
+
+# THE RUN CONTROLS THIS PROJECT'S CLOCK, and the table being here is what says
+# so: `rumor` may hold a clock only where the project declares one, and
+# internal/ledger refuses a clock fact outright without it ("wall-clock time
+# never enters the ledger").
+#
+# `adapter` AND NOT `faked`, because it is the truth about this project rather
+# than the quieter option. cmd/toy-adapter implements the `clock` request: the
+# engine SETS the toy's own clock at every seal and writes the ledger's fact
+# from what the toy answered. `faked` would claim the toy is already running
+# under faked time, which it is not, and would send no request -- so the one
+# project in this repository that can drive the request end to end would stop
+# driving it.
+#
+# WHAT THIS MOVES, which fable ruled on at coop rumor/1315 before I wrote it:
+# a clocked run writes a clock fact at every seal, so every position after the
+# first shifts and this project's PRINTED output moves for any seed that prints
+# one. The byte control that protects is `tools/d4control.py`'s, and its
+# subject is examples/toy FROZEN AT 93084b0 -- the digests keep their values
+# for the rest of R7 because the subject does not move, not because the live
+# toy stayed unclocked. What must still hold at every head is the five fields
+# of rumor/1039 against the live toy: what HAPPENED does not move.
+[clock]
+form = "adapter"

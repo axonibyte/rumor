@@ -76,19 +76,31 @@ func TestMain(m *testing.M) {
 // thing that declares clock control, and a fixture carrying keys would be
 // asserting a shape this phase does not define.
 //
-// THE PREMISE IS ASSERTED, NOT ASSUMED: the committed toy must NOT already
-// declare a clock, or the control arm below is comparing a project with itself.
+// THE PREMISE IS ASSERTED, NOT ASSUMED, AND IT INVERTED AT R7.2: the committed
+// toy now DECLARES `[clock]` (issue 101's first bullet, on fable's ruling at
+// coop rumor/1315), so what these helpers assert is that the declaration is
+// there to be rewritten or taken out. Before, they asserted its absence. An
+// unasserted premise would have left this package comparing a project with
+// itself the moment the toy changed, which is the failure the original
+// assertion was put in for.
+//
+// `toyClock` IS THE LIVE DECLARATION, by its exact bytes. Matching the whole
+// two-line table rather than the word `[clock]` is what makes the removal
+// below removal and not a truncation: the file's comments stay, and a comment
+// declares nothing.
+const toyClock = "[clock]\nform = \"adapter\"\n"
+
 func clocked(t *testing.T) string {
 	t.Helper()
 	// `faked` IS THE FORM EVERY ARM HERE DECLARED BEFORE R7.2 NAMED IT. The
 	// engine's own `t` was the world's and no request was sent, so this
 	// spelling leaves every assertion in this package about exactly the run
-	// it was written against. The OTHER form has its own arm below, which
-	// drives the toy's clock over the wire.
+	// it was written against. The LIVE toy declares `adapter`, which the arm
+	// below drives over the wire.
 	return clockedAs(t, bindings.ClockFaked)
 }
 
-// clockedAs is the same copy with the form spelled out.
+// clockedAs is the toy with its clock form rewritten.
 func clockedAs(t *testing.T, form bindings.ClockForm) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -105,11 +117,64 @@ func clockedAs(t *testing.T, form bindings.ClockForm) string {
 			t.Fatalf("reading %s: %v", e.Name(), rerr)
 		}
 		if e.Name() == "bindings.toml" {
-			if strings.Contains(string(raw), "[clock]") {
-				t.Fatalf("%s already declares `[clock]`, so the unclocked control arm would be "+
-					"driving a clocked project", filepath.Join(project, e.Name()))
-			}
-			raw = append(raw, fmt.Appendf(nil, "\n[clock]\nform = %q\n", form)...)
+			raw = []byte(reform(t, string(raw), form))
+		}
+		if werr := os.WriteFile(filepath.Join(dir, e.Name()), raw, 0o644); werr != nil {
+			t.Fatalf("writing %s: %v", e.Name(), werr)
+		}
+	}
+	return dir
+}
+
+// reform rewrites the live toy's clock form, and unclock takes the table out.
+//
+// BOTH ASSERT THEY CHANGED SOMETHING. A copy helper whose edit silently missed
+// would hand every arm in this package the live toy under another name, and
+// the arms would pass against it -- which is how a control becomes a second
+// copy of the thing it contrasts with.
+func reform(t *testing.T, raw string, form bindings.ClockForm) string {
+	t.Helper()
+	out := strings.Replace(raw, toyClock, fmt.Sprintf("[clock]\nform = %q\n", form), 1)
+	if out == raw && form != bindings.ClockAdapter {
+		t.Fatalf("the committed toy's bindings do not hold %q, so this copy's form was not "+
+			"rewritten and the arm would be driving the live project", toyClock)
+	}
+	return out
+}
+
+func unclock(t *testing.T, raw string) string {
+	t.Helper()
+	out := strings.Replace(raw, toyClock, "", 1)
+	if out == raw {
+		t.Fatalf("the committed toy's bindings do not hold %q, so nothing was removed and the "+
+			"unclocked control would be a clocked run", toyClock)
+	}
+	if strings.Contains(out, "\n[clock]") {
+		t.Fatal("a `[clock]` table survives in the unclocked copy")
+	}
+	return out
+}
+
+// unclocked is the toy with no clock at all: the control for "declaring a
+// clock adds facts and changes nothing else", which was the COMMITTED toy
+// until R7.2 declared one in it.
+func unclocked(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	entries, err := os.ReadDir(project)
+	if err != nil {
+		t.Fatalf("reading %s: %v", project, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		raw, rerr := os.ReadFile(filepath.Join(project, e.Name()))
+		if rerr != nil {
+			t.Fatalf("reading %s: %v", e.Name(), rerr)
+		}
+		if e.Name() == "bindings.toml" {
+			raw = []byte(unclock(t, string(raw)))
 		}
 		if werr := os.WriteFile(filepath.Join(dir, e.Name()), raw, 0o644); werr != nil {
 			t.Fatalf("writing %s: %v", e.Name(), werr)
@@ -371,7 +436,7 @@ func TestTheAdapterFormSetsTheToysClockAndTheLedgerAgrees(t *testing.T) {
 func TestDeclaringAClockAddsFactsAndChangesNothingElse(t *testing.T) {
 	const steps = 4
 	withClock := walk(t, clocked(t), 1, steps)
-	without := walk(t, project, 1, steps)
+	without := walk(t, unclocked(t), 1, steps)
 
 	if n := len(clockFacts(without.Facts)); n != 0 {
 		t.Fatalf("%d clock fact(s) in a project declaring no `[clock]`, want 0: without the "+

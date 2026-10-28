@@ -931,6 +931,23 @@ func TestADurationBoundIsRefusedNamingTheDuration(t *testing.T) {
 			}
 			b = []byte(strings.Replace(string(b), was,
 				"[claim.\"event.tallied\"]\ntiming = \"eventual\"\nbound = \"30s\"", 1))
+			// AND THE CLOCK COMES BACK OUT. THE PREMISE OF THIS ARM IS THE
+			// ABSENCE OF A CLOCK FACT, and examples/toy DECLARES `[clock]` as
+			// of R7.2 (issue 101's first bullet), so the copy that was the
+			// live toy's bindings until then has to take the table out again.
+			// Left in, this arm drives the OTHER refusal -- the run ending
+			// with a pending under a bound the clock never approached, which
+			// names the same duration in different words -- and the figure
+			// rook found wrong at coop rumor/1191 would stop being checked
+			// anywhere. It is asserted rather than assumed for the reason the
+			// premise above is: an edit that silently missed would leave this
+			// arm passing against a project it is not about.
+			const clocked = "[clock]\nform = \"adapter\"\n"
+			if !strings.Contains(string(b), clocked) {
+				t.Fatalf("examples/toy's bindings do not hold %q, so the copy below is not the "+
+					"unclocked project this arm's refusal needs", clocked)
+			}
+			b = []byte(strings.Replace(string(b), clocked, "", 1))
 		}
 		if err := os.WriteFile(filepath.Join(dir, f), b, 0o600); err != nil {
 			t.Fatalf("writing %s: %v", f, err)
