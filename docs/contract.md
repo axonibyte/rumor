@@ -447,8 +447,12 @@ stated here rather than written as one sentence in the present tense:
 **The third row is a declaration and not a description**, and this document
 has paid for that distinction once already: 7e, two tables above, is a sibling
 sentence that asserted a refusal before anything refused it. `deadline`
-appears in no file under `internal/validate`, against eleven hits for
-`quiesce`, and a `[deadline]` table added to a project with no `[clock]`
+appears in no file under `internal/validate` -- zero under every spelling,
+against `git grep -c 'quiesce' -- internal/validate/arms_platform.go` at
+eleven and the same grep with `-i` at fourteen, which is the figure's
+invocation written beside it because the figure alone has three right answers
+(ibis, coop r7/7) -- and a `[deadline]` table added to a project with no
+`[clock]`
 passes `rumor validate` at rc 0 with its stdout byte-identical to the run
 without it -- driven by ibis (coop r7/3) and reproduced by ratchet (r7/4) on
 the commit that first carried this paragraph as a flat present-tense claim.

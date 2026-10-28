@@ -108,6 +108,23 @@ func clocked(t *testing.T) string {
 // walk runs one attempt of a seed the way cmd/rumor does: the project's own
 // declarations, its eventual types, and clock control read off the bindings.
 func walk(t *testing.T, dir string, seed uint64, steps int) schedule.Record {
+	return walkProfile(t, dir, seed, steps, "")
+}
+
+func walkProfile(t *testing.T, dir string, seed uint64, steps int, profile string) schedule.Record {
+	t.Helper()
+	rec, err := tryWalkProfile(t, dir, seed, steps, profile)
+	if err != nil {
+		t.Fatalf("the walk could not run: %v", err)
+	}
+	return rec
+}
+
+// tryWalkProfile hands the walk's own error back instead of ending the arm,
+// because one arm here HAS a refusal as its subject: a duration bound with no
+// clock must still be refused by name, and an arm that could only read a
+// successful walk could not see it.
+func tryWalkProfile(t *testing.T, dir string, seed uint64, steps int, profile string) (schedule.Record, error) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -139,7 +156,7 @@ func walk(t *testing.T, dir string, seed uint64, steps int) schedule.Record {
 	}
 	defer func() { _ = sess.Close() }()
 
-	rec, werr := schedule.Walk(ctx, schedule.Project{
+	return schedule.Walk(ctx, schedule.Project{
 		Statute:      string(statute),
 		Actions:      brep.Bindings.Actions,
 		Weights:      prep.Platform.Weights,
@@ -148,11 +165,8 @@ func walk(t *testing.T, dir string, seed uint64, steps int) schedule.Record {
 		Observations: brep.Bindings.Observations,
 		Eventual:     schedule.EventualOf(brep.Bindings),
 		ClockControl: brep.Bindings.Clock != nil,
+		Profile:      profile,
 	}, sess, seed, steps, 1)
-	if werr != nil {
-		t.Fatalf("the walk could not run: %v", werr)
-	}
-	return rec
 }
 
 func clockFacts(facts []ledger.Fact) []ledger.Fact {
