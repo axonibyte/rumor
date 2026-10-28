@@ -3,6 +3,84 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.39 — 2026-10-28
+
+**The run owns a clock, and a bound measured in time becomes judgeable** —
+issue 100, R7.1, the first of R7's four children.
+
+- **The unit was declared before anything could write a clock fact.**
+  `clock.t` is nanoseconds from the run's own epoch, zero at the first seal.
+  It was already implied by two sides of a subtraction nobody had performed:
+  `Bound` has carried nanoseconds since R6 because that is what
+  `time.ParseDuration` yields, `Now` has read the newest clock fact at or
+  before the seal since R2.3, and the comparison between them was unreachable
+  for want of a writer. Settling the unit afterwards would have meant reading
+  it off whichever code happened to produce the first fact. The contract moves
+  `decl only`: the wire is unchanged and `[clock]` stays reserved for R7.2 to
+  type.
+- **The walk built every ledger with clock control OFF.** One line —
+  `ledger.New(false)` — and it is the whole reason `hasNow` was false for
+  every real project. The walk now takes clock control from the project's own
+  `[clock]` table, present or absent and nothing about its contents, and
+  writes the run's time at each seal: two per step, the first before any actor
+  is drawn. A project declaring none is walked exactly as before, no fact
+  appended and no position shifted, and the ledger still refuses a clock fact
+  without the declaration whether or not the writer checks.
+- **The comparison R2.3 declared has now run, and no engine code moved to do
+  it.** With a clock the duration bound is measured — a pending is held,
+  re-checked at the actor's next observation or at the reconciliation, and
+  closed on agreement, which needs no clock at all. Without one the refusal is
+  untouched, by name, naming which half is missing.
+- **A run no longer ends holding a pending it could not measure.** A pending
+  still unresolved at the end, under a duration bound, with the clock where it
+  started is not inside its bound — it is unmeasured, and nothing is read as
+  "time did not pass". `rumor run` exits 2, naming each pending, where it was
+  held, its type and bound, and that the clock is still at its epoch because
+  no `advance` was drawn. It is keyed on the bound's FORM and the clock rather
+  than on a pending being open, so R6's quiesce state is untouched; a pending
+  the walk could not place has no claim type and is named in the report
+  instead. Where the run also found a bug the refusal NAMES it and does not
+  report it as a finding: a finding with a pending still unmeasured beside it
+  is where the walk stopped asking rather than what the run causes.
+- **The overage, and the times it is computed from, are durations.** The bound
+  printed as `30s` beside three bare nanosecond counts — the claim's time, the
+  seal's time, and the one figure a reader acts on.
+- **A pending the reconciliation re-asked is not `stillOpen`'s to word.** One
+  register read twice gave a single pending two contradictory sentences: "never
+  re-checked" from the still-open enumerator and "re-checked after the last
+  step: pending" from the reconciliation. `stillOpen` takes the re-asked keys
+  now and words nothing for a pending that was asked and held.
+- **Two sentences that had expired are corrected where they stand.** The
+  contract said three refusals exist where two are mechanisms and the third is
+  a declaration — `deadline` appears in no file under `internal/validate`, and
+  101 owns the arm. And the unsettled-candidate arm's reason had two clauses:
+  one expired exactly as it predicted, and the other was never true, because a
+  re-ask does not resolve a pending — it re-judges it.
+
+**Replays carry the clock**, which the vocabulary has required since v1 and
+`schedule.Replay` satisfied structurally, having nothing to read: it drives the
+same walk with the same project. With a duration bound the loss would be loud
+rather than quiet — a replay with no clock refuses by name instead of returning
+a finding that disagrees for an unstated reason — and that is the arm.
+
+The control does not move, and the invocation is beside the figures because a
+digest without one has more than one right answer. From the repository root,
+stdout redirected to a file so the exit status and the bytes come from one
+run, sha256 truncated to 16:
+
+```
+rumor run examples/toy --seed 1  --steps 10                      exit 0  920b2640c91631bb
+rumor run examples/toy --seed 2  --steps 10                      exit 3  8e9a4a54397cecc0
+rumor run examples/toy --seed 40 --steps 10                      exit 3  43e07f5627d0f4b2
+rumor run examples/toy --seed 12 --steps 24 --profile settling    exit 3  60705760d6ef48dd
+rumor run examples/toy --seed 66 --steps 24 --profile settling    exit 0  8344458094e50a37
+```
+
+All five are identical at v0.1.38 and here, and structurally so rather than
+luckily: nothing shipped declares `[clock]`, so no run in the committed corpus
+holds a clock fact at all. `toy` and `toy-adapter` must be on PATH beside
+`rumor`; a missing adapter reads as could-not-run and not as a moved control.
+
 ## 0.1.38 — 2026-10-27
 
 **The R6 gate's four verdicts, answered where they were unreadable** — the
