@@ -1497,3 +1497,40 @@ ledger and stdout prints none, so an arm asserting a clock token's absence on
 stdout passed on every build ever made — and the reason is left in place where
 the cell was, because an arm that cannot fail is worth less than a note saying
 why it was removed.
+
+### A refusal that pins two values together hides which of them the code read
+
+R7.2's clock request carries two rulings that interact (fable, coop r7/51). The
+ledger's clock fact **is written from the RESPONSE's `t`** -- an adapter that
+rounds forward has answered for the world, and the ledger records the world.
+And a `set` whose answer **is not the time that was asked for** is refused, "by
+more than the adapter's declared granularity if it declares one, else at all"
+-- and nothing in the protocol lets an adapter declare a granularity today, so
+"at all" is the whole of it.
+
+**TOGETHER THEY MAKE THE FIRST RULING UNOBSERVABLE.** In every run that is not
+a refusal, the answer equals the ask, so an arm over the fact's time cannot
+tell which of the two the producer read. I measured it rather than reasoned
+about it: with `t = got` changed to `_ = got` in the seal -- the fact written
+from the ask instead of the answer -- `internal/schedule` stays GREEN, while
+three other mutants in the same sitting each killed an arm.
+
+**THE TEMPTATION IS THE CELL THAT PASSES EITHER WAY.** An arm asserting the
+fact equals the response reads like coverage of the ruling and is satisfied by
+the ask, because the two are equal wherever it runs. Written, it would be a
+check that cannot fail, in a file whose other cells can -- and the next reader
+has no way to tell the difference from the outside.
+
+**SO THE ARM SAYS WHAT IT DOES NOT PROVE, IN ITS OWN BODY.** Not in the commit
+message, which the reader of a failing test is not holding, and not in a
+sibling document: in the test that a reader would otherwise credit with the
+coverage, naming the condition under which the arm becomes possible -- the day
+an adapter can declare a granularity and the equality refusal relaxes to it.
+A gap recorded where the credit would be claimed is the only place it stays
+visible.
+
+**THE GENERAL SHAPE, which is worth more than the instance:** when a guard
+makes two expressions equal on every path that survives it, a test over either
+one measures both, and a change of SOURCE between them is invisible to the
+whole suite. Finding that out costs one mutant. Not looking costs a believed
+arm, and a believed arm is worse than a missing one.
