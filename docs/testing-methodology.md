@@ -1352,3 +1352,77 @@ the carrier preserves the properties the callee refuses on. When an arm's rule
 is chosen to remove one assumption, name the assumption it adds: a maximum
 assumes monotonicity, a last-in-file assumes order, and a chain assumes only
 what it asserts.
+
+
+## R7
+
+The lessons from R7's children, one `###` per child in landing order.
+
+### A harness that builds the project differently reads a world the product does not have
+
+R7.1 added an end-of-run refusal and `tests/clock`'s arms disagreed with the
+CLI about the same seed: `rumor run` exited 0 where the suite saw a refusal.
+Two instruments, one subject, and the one that was wrong was the instrument.
+
+**The harness was missing one line the product has.** `cmd/rumor` builds a
+quiesce prober from the project's own probes; this suite's helper assembled a
+`schedule.Project` by hand and left `Prober` nil. The walk gates its
+end-of-run reconciliation on `p.Prober != nil`, so with no prober NO pending a
+run holds is ever re-asked, and every one of them survives to the end. The
+suite was not testing a stricter world; it was testing a different one.
+
+**What makes it worse than a wrong answer is which arm it flattered.** Three
+seeds were in the suite as the CONTROL for the new refusal — they hold a
+pending and CLOSE it, so they must not refuse. Without the prober they could
+not close anything, so they refused too, and the control became a second copy
+of the arm it existed to contrast with. A control that agrees with its arm for
+the arm's own reason is worse than no control: it reports a contrast that was
+never drawn.
+
+**It is the fake-wider-than-the-real-thing lesson with the sign flipped.** That
+entry is about a stub that accepts more than the real collaborator and so
+passes forever. This is a harness that provides LESS than the real caller, and
+it fails loudly — but only once something in the product can tell the
+difference. Here that was a refusal keyed on a state only the reconciliation
+can clear; before it existed, the suite had been green for a world the product
+never runs.
+
+**How to apply.** When a suite assembles the product's own request object by
+hand, list the fields the product's caller sets and say, field by field, why
+each omission is safe — a nil slot is a DECISION about the world under test,
+not a default. Where two instruments answer differently about one subject, the
+first hypothesis is neither "the code" nor "the other instrument" but that the
+two are driving different worlds. And where an arm has a control, the control's
+own premise needs an assertion: here, that the control's pendings are held at
+all and reach zero open, so a run that cannot hold one fails as a control
+rather than passing as a contrast.
+
+### An arm belongs at the clause, when the wiring can only fail by not happening
+
+The same commit armed a decision rather than its call site, which is the shape
+`internal/shrink`'s R6 finding warns about — a tested decision beside an
+untripped wiring. ratchet gave the test for telling the two apart (coop r7/21),
+and it is about what the SITE can get wrong.
+
+That R6 site contributed three observables of its own — the words it printed,
+the stream it printed them on, and the status it returned — and nothing read
+any of them, so it could be wrong three ways while the function it called
+stayed green. This one contributes nothing but the call: one unbranched
+`if err != nil { return rec, err }`. **A site that can only fail by NOT
+HAPPENING is armed when its happening is asserted**, and two end-to-end arms
+die when the error is made never to propagate.
+
+**Why the clauses needed it.** Two mutants survived the suite arms — keying
+the refusal on "a pending is open" instead of on the bound's FORM, and dropping
+the guard that reads whether the clock moved. Neither state is reachable from a
+fixture: a quiesce-form pending open at the end needs a re-ask that cannot be
+made, which no committed run produces, and nothing moves the clock until a
+later child draws `advance`. The decision takes exactly the facts it judges, so
+the cells a fixture cannot build are built against the function, and the
+narrowing stops being a sentence in a comment.
+
+**How to apply.** Count what the call site itself can get wrong. If the answer
+is "nothing but its own absence", assert the absence end to end and put the
+cells where the clauses are. If the answer is "the words, the stream, the
+status", the site has observables and they need arms of their own wherever the
+function's own tests cannot see them.

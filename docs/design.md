@@ -930,9 +930,27 @@ v2 defines it, so past the bound the overlay now returns `bug` of kind `stale`,
 naming the claim type, the position of the claim it was late about, and the
 bound it passed. The word arriving is what changed; the shape did not.
 
-**And the bound has two forms, of which R6 judges one** — fable's ruling at
-breakout-r6/0. A duration bound needs the run to control the clock, and until
-that arrives it keeps the refusal above. The QUIESCE form needs no clock at all:
+**And the bound has two forms, both judged as of R7.1** — fable's ruling at
+breakout-r6/0 gave R6 one of them. A duration bound needs the run to control
+the clock, and R7.1 is that arrival: the walk writes `clock(position, t)` at
+every seal where the project's `[clock]` table declares control, `t` in
+nanoseconds from the run's own epoch, which is zero at the first seal and
+moves only when the walk draws `advance` (R7.3). So the comparison this
+paragraph described as waiting now runs, and the refusal above fires only
+where a project declares no clock.
+
+**A SECOND REFUSAL ARRIVED WITH IT, and it is the run's rather than the
+project's** (fable, coop r7/15). A pending still unresolved at the END of a
+run, under a duration bound, with the clock where it started, is not inside
+its bound: it is UNMEASURED, and R7's third ruling is that nothing is read as
+"time did not pass". The run exits could-not-run, naming each pending, its
+bound, and that no `advance` was drawn — because R2.3's invariant is that no
+run ends with a pending open and exits 0, and a stuck clock does not bend it.
+It is keyed on the bound's FORM and the clock, not on a pending being open, so
+the quiesce state below is untouched. Where the run also found a bug the
+refusal NAMES it without reporting it: a finding with a pending still
+unmeasured beside it is where the walk stopped asking rather than what the run
+causes. The QUIESCE form needs no clock at all:
 it asks whether the system has settled, so a disagreement is `pending` until the
 declared probes read quiet and `stale` if the reconciliation that follows still
 disagrees. The engine takes the prober's answer as an INPUT on the check and never
@@ -957,7 +975,19 @@ structural rather than a sentence about this build: it is the prober slot being
 nil, which R6.2 falsifies by construction when it wires one in, so the shutter
 removes itself instead of waiting to be remembered. `StillOpen`'s proxy — "was
 the query re-asked" standing in for "was the pending resolved" — is sound only
-while every bound expires on its own, and R6.2 owns closing it.
+while every bound expires on its own.
+
+**THAT PROXY EXPIRED AT R7.1, FOR THE REASON THIS PARAGRAPH GAVE AND NOT IN
+THE PHASE IT NAMED.** R6.2 was expected to close it; what closed it was the
+duration bound becoming judgeable. A re-ask does not RESOLVE a pending, it
+re-judges it, and a duration bound whose run has not moved its clock re-judges
+to `pending` — so the reconciliation ran, the prober was present, the query
+WAS re-asked, and the pending was still held. One register read twice then
+gave a single pending two contradictory sentences, "never re-checked" from the
+still-open enumerator and "re-checked after the last step: pending" from the
+reconciliation (rook, coop rumor/1264). `stillOpen` takes the re-asked keys
+now and words nothing for a pending that was asked and held, so the proxy is
+replaced by the fact it stood in for.
 
 **MEASURED, NOT ASSUMED, which is what this section is amended with.** Past a
 quiesce bound the engine judges with a ledger carrying NO clock fact at all —
