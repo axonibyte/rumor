@@ -241,13 +241,15 @@ func arm8(rep *Report, dir string, b bindings.Bindings) {
 	if !strings.Contains(string(src), "input.clock") {
 		return
 	}
-	// DECLARED, NOT KEYED. `b.Clock` is nil when the table is ABSENT and an
-	// empty non-nil map when it is present and bare, because internal/bindings
-	// assigns the carried map only inside `if t, ok := r.Table(...); ok`. A
-	// length test reads a bare `[clock]` as no clock at all and refuses a
-	// project that declares control -- see arm20 below, where rook measured the
-	// same expression failing the other way.
-	if b.Clock == nil {
+	// CONTENTS AND NOT PRESENCE, which is fable's ruling at coop rumor/1359 and
+	// the convention the tree already keeps: A BARE RESERVED TABLE DECLARES
+	// NOTHING. `b.Clock` is nil when the table is absent and an empty non-nil
+	// map when it is present and bare, so this expression reads both as "no
+	// clock" -- deliberately. A bare `[clock]` names no form, no endpoint and
+	// nothing else a later phase reserves; a rule reading `input.clock` beside
+	// it would still read whatever the host clock said, which is the whole
+	// subject of this arm.
+	if len(b.Clock) == 0 {
 		rep.refuse("8", "the statute reads input.clock and bindings.toml declares no [clock] table: "+
 			"the rule would read whatever the host clock said, which no seed can reproduce")
 	}
@@ -269,23 +271,30 @@ func arm8(rep *Report, dir string, b bindings.Bindings) {
 // clocked project from an unclocked one, because the two tables are read in the
 // same pass; the pairing is what is wrong, and a pairing is what an arm is for.
 //
-// BOTH SIDES ARE PRESENCE AND THE CODE SAID LENGTH UNTIL ROOK DROVE IT
-// (coop rumor/1354, measured at 9ab53f2 on one toy with only the table
-// differing): `[deadline]` WITH A KEY and no `[clock]` refused at rc 1, and
-// `[deadline]` BARE and no `[clock]` passed at rc 0, 23 of 23 evaluated. A bare
-// table is presence without content -- the exact pairing this arm exists to
-// refuse -- and `len(b.Deadline) == 0` could not see it while two comments here
-// said presence. The distinction the fix rests on is real and now pinned in
-// internal/bindings: an ABSENT reserved table leaves its field NIL, a bare one
-// assigns an empty non-nil map.
+// BOTH SIDES ARE CONTENTS, AND THIS COMMENT SAID PRESENCE FOR A DAY. rook drove
+// the disagreement at coop rumor/1354 -- at 9ab53f2, on one toy with only the
+// table differing, `[deadline]` WITH A KEY and no `[clock]` refused at rc 1
+// while `[deadline]` BARE and no `[clock]` passed at rc 0 with 23 of 23
+// evaluated -- and the code, this comment and the contract's paragraph under
+// the arm-20 table turned out to say THREE things (rook's own correction at
+// /1357, which withdrew the word "defect": whether a bare table declares
+// anything is a ruling and not a measurement).
 //
-// AND THE SAME EXPRESSION FAILED THE OTHER WAY ON THE CLOCK SIDE, which rook's
-// drive did not reach: a keyed `[deadline]` beside a BARE `[clock]` would have
-// been refused for declaring no clock, a false refusal of a project that
-// declares control. One wrong idiom, two directions, and only the first had a
-// witness. cmd/rumor/run.go had it right all along -- `brep.Bindings.Clock !=
-// nil` is what gives the run its clock -- so the arms now ask the question the
-// run answers.
+// FABLE RULED IT AT rumor/1359: CONTENTS, NOT PRESENCE. A bare reserved table
+// declares nothing, so the code was right and this comment was the outlier.
+// The convention was already the tree's, measured by ratchet at /1358: a BARE
+// `[quiesce]` appended to examples/twin is rc 0 at 23 of 23 arms, and what
+// refuses in that family is the PAIRING -- 7b's fixture declares
+// `bound = "quiesce"` with no probe, and `quiesce.New` refuses at run time
+// with "no probes declared, so there is nothing to ask". `b.Deadline` has
+// exactly two consumers at that head, the reserved-table read and this arm,
+// so nothing else bore on the question.
+//
+// I MOVED THE CODE THE OTHER WAY FIRST, at 19b5421, before the ruling landed:
+// both arms read `b.X == nil` for one commit, which refused a keyed
+// `[deadline]` beside a bare `[clock]` and accepted a bare `[deadline]`. The
+// cells below drive the ruled direction in both arms so the convention is
+// ARMED rather than stated, which is what the ruling asked for.
 //
 // THIS ARM READS THE BINDINGS ALONE and evaluates
 // wherever they can be read -- no statute, no adapter, no platform file. That is
@@ -302,10 +311,10 @@ func arm20(rep *Report, b bindings.Bindings) {
 	// wrong with. There is nothing here that can fail to be read, so this arm
 	// never skips.
 	rep.ran("20")
-	if b.Deadline == nil {
+	if len(b.Deadline) == 0 {
 		return
 	}
-	if b.Clock == nil {
+	if len(b.Clock) == 0 {
 		rep.refuse("20", "bindings.toml declares a [deadline] table and no [clock] table: "+
 			"a deadline is an instant the run has to be able to reach, and a project with no "+
 			"clock control cannot move its own time, so every such field would be judged "+

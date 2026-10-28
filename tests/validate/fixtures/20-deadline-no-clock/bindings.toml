@@ -87,14 +87,14 @@ touches = ["doc_store"]
   until = "doc-published"
 
 [deadline]
-# BARE, AND THAT IS THE POINT. The table's PRESENCE is the condition -- not
-# its contents -- and this fixture carried a key until rook measured what the
-# key was hiding (coop rumor/1354): arm 20 asked `len(b.Deadline) == 0`, so a
-# bare table read as no table and the pairing this arm exists to refuse passed
-# at rc 0. The keyed case is driven in internal/validate's own arm beside the
-# two directions a fixture cannot hold; the fixture carries the case the defect
-# hid, because that is the one a regression would bring back.
+# A FIELD, AND THE FIELD IS WHAT MAKES THIS A DECLARATION. The table's
+# CONTENTS are the condition, not its presence -- fable ruled it at coop
+# rumor/1359 after rook drove the disagreement at /1354 and withdrew the word
+# "defect" at /1357 -- so a BARE `[deadline]` declares nothing and this
+# fixture would not trip its arm without the field below. The bare case is a
+# cell in internal/validate's own arm, at rc 0, which is where the ruling
+# asked for the convention to be armed rather than stated.
 #
-# 103 is what types the fields (fable, coop rumor/1345), and a typed field
-# arriving here later must not quietly become the thing that makes this
-# fixture refuse.
+# The VALUE is read by nothing yet: 103 is what types the fields (fable, coop
+# rumor/1345).
+invitation_expires_at = "invitation.expires_at"

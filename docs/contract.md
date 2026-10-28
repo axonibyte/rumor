@@ -480,29 +480,43 @@ a consequence of it:
   absolute epoch would make every run's facts differ by when it ran.
 
 **A project with no `[clock]` has no clock**, and that is R7's third ruling
-rather than a silence: nothing is read as "time did not pass". Two of the
-three refusals that ruling names exist today and the third does not, which is
-stated here rather than written as one sentence in the present tense:
+rather than a silence: nothing is read as "time did not pass". ALL THREE
+refusals that ruling names exist as of R7.2; the third arrived with issue 101
+and this paragraph said otherwise until it did:
 
 | in a project with no `[clock]` | refused by | as of |
 |---|---|---|
 | a rule reading `clock` | `rumor validate`'s arm 8 | R4, kept |
 | an eventual type bounded by a duration | the engine, at run time, naming the bound it cannot measure | R2.3, kept |
-| a `[deadline]` table, **declared and not necessarily keyed** -- a table with no fields in it is still a declaration, and arm 20 refuses it (rook, coop rumor/1354, measuring a bare one passing while the arm's own comments said presence) | `rumor validate`'s arm 20 | R7.2 |
+| a `[deadline]` table **with a field in it** -- its CONTENTS are the condition, so a bare `[deadline]` declares nothing and is not refused (fable's ruling, coop rumor/1359) | `rumor validate`'s arm 20 | R7.2 |
 
-**The third row is a declaration and not a description**, and this document
-has paid for that distinction once already: 7e, two tables above, is a sibling
-sentence that asserted a refusal before anything refused it. `deadline`
-appears in no file under `internal/validate` -- zero under every spelling,
-against `git grep -c 'quiesce' -- internal/validate/arms_platform.go` at
-eleven and the same grep with `-i` at fourteen, which is the figure's
-invocation written beside it because the figure alone has three right answers
-(ibis, coop r7/7) -- and a `[deadline]` table added to a project with no
-`[clock]`
-passes `rumor validate` at rc 0 with its stdout byte-identical to the run
-without it -- driven by ibis (coop r7/3) and reproduced by ratchet (r7/4) on
-the commit that first carried this paragraph as a flat present-tense claim.
-The arm is issue 101's third bullet.
+**The third row was a declaration before it was a description, and this is
+what it reads like afterwards.** It was written here with "nothing yet" in the
+refused-by column, and the paragraph that stood beside it measured the
+absence: `deadline` appeared in no file under `internal/validate`, zero under
+every spelling, against `git grep -c 'quiesce' --
+internal/validate/arms_platform.go` at eleven and the same grep with `-i` at
+fourteen; and a `[deadline]` table added to a project with no `[clock]` passed
+`rumor validate` at rc 0 with its stdout byte-identical to the run without it
+-- driven by ibis (coop r7/3), reproduced by ratchet (r7/4). Both figures were
+true of the commit that carried them and NEITHER IS TRUE HERE, which is what a
+declaration turning into a description costs a document: on this tree the same
+greps read `deadline` at **eight** and `-i` at ten, against `quiesce` at
+thirteen and `-i` at sixteen -- the invocation is written beside each number
+because the figure alone has several right answers, and these are about THIS
+tree rather than about the arm.
+
+**What survives of the old measurement is the BARE case, and it survives
+because it is now the rule.** A `[deadline]` with no fields in it still passes
+at rc 0, byte-identical -- ratchet reproduced that on `examples/twin` at
+rumor/1358, where one key in the same table makes it rc 1 -- and that is
+fable's ruling at rumor/1359 rather than a gap: a bare reserved table declares
+nothing, which is the convention `[quiesce]` already keeps, and what refuses
+in that family is the PAIRING (7b: `bound = "quiesce"` with no probe). So the
+paragraph and the arm now agree about the bare table, and a cell in
+`internal/validate` drives it at rc 0 so the agreement is armed rather than
+asserted. 7e, two tables above, is this document's other sibling sentence that
+asserted a refusal before anything refused it.
 
 **`clock.form` says HOW the run's clock is controlled, and there are two
 ways** (fable, coop r7/51). The field is typed by R7.2 and read by the engine

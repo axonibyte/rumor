@@ -353,21 +353,23 @@ func TestTheReservedTablesAreCarriedAndNotInvented(t *testing.T) {
 	}
 }
 
-// TestABareReservedTableIsPRESENTAndAnAbsentOneIsNIL pins the distinction two
-// validate arms rest on, and it had no arm until one of them got it wrong.
+// TestABareReservedTableIsPRESENTAndAnAbsentOneIsNIL pins a distinction the
+// parse makes and the tree reads two ways on purpose.
 //
-// WHAT RESTS ON IT: arm 8 refuses a statute reading `input.clock` in a project
-// declaring no `[clock]`, and arm 20 refuses a `[deadline]` in a project
-// declaring no `[clock]`. Both mean DECLARED, and both asked `len(...) == 0`
-// until rook measured a bare `[deadline]` passing arm 20 at coop rumor/1354.
-// `len` cannot express the question: a table that is present and empty has no
-// keys and is still a declaration.
+// THE FACT: the parse assigns the carried map only inside
+// `if t, ok := r.Table(key, false); ok`, so an ABSENT reserved table leaves
+// its field nil and a BARE one assigns an empty non-nil map. A later pass
+// initializing these fields up front, or assigning unconditionally, would
+// erase the difference everywhere at once with nothing else failing.
 //
-// SO THE NIL IS LOAD-BEARING. The parse assigns the carried map only inside
-// `if t, ok := r.Table(key, false); ok`, so an absent table leaves the field
-// nil -- and a later pass that initialized these fields up front, or assigned
-// unconditionally, would make every "declared?" test in the tree answer true
-// forever with nothing failing. This arm is what would fail.
+// WHO READS WHICH, AND WHY THAT IS NOT A CONTRADICTION: `rumor validate`'s
+// arms 8 and 20 read CONTENTS -- a bare table declares nothing, which fable
+// ruled at coop rumor/1359 -- while cmd/rumor/run.go reads PRESENCE for clock
+// control (`brep.Bindings.Clock != nil`, R7.1). So a bare `[clock]` is "no
+// clock" to the arms and "clock control" to the run. That asymmetry is
+// REPORTED and not silently harmonized here: the ruling was about arm 20's
+// comments, and changing what gives a run its clock is not a comment fix.
+// This arm is what makes either reading observable at all.
 func TestABareReservedTableIsPRESENTAndAnAbsentOneIsNIL(t *testing.T) {
 	rep := Parse(wellFormed())
 	if !rep.OK() {

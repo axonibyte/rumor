@@ -42,27 +42,27 @@ func TestAllArmIDsIsTotalArms(t *testing.T) {
 	}
 }
 
-// TestArms8And20KeyOnTheTableBeingDeclaredAndNotOnItsKeys drives the finding
-// rook took at coop rumor/1354 and the direction their drive did not reach.
+// TestArms8And20ReadTheTablesCONTENTSAndABareOneDeclaresNothing arms fable's
+// ruling at coop rumor/1359, which settled a three-way disagreement rook
+// opened at /1354 and corrected at /1357: a BARE RESERVED TABLE DECLARES
+// NOTHING, so the arms' `len(b.X) == 0` was right and the comments beside them
+// were the outliers.
 //
-// WHAT IT CAUGHT: both arms asked `len(b.X) == 0` where they meant "the
-// project declares no such table". A reserved table that is PRESENT AND BARE
-// parses to an empty non-nil map, so a bare `[deadline]` with no `[clock]`
-// passed -- presence without content, which is the pairing arm 20 exists to
-// refuse -- and a keyed `[deadline]` beside a BARE `[clock]` would have been
-// refused for declaring no clock, which is a project that does declare
-// control being told it does not.
+// THE RULING ASKED FOR A CELL, NOT A SENTENCE -- "a cell driving the bare
+// table to rc 0 so the convention is armed rather than stated" -- because the
+// tree had held the convention in three places and only the code obeyed it.
+// Both arms are driven here, in both directions, since the same expression
+// reads the same way in each.
 //
-// WHY A UNIT ARM FOR MOST OF IT. tests/validate keeps one committed fixture
-// per arm, and these are the same two sentences from the same two clauses: a
-// second fixture would let either stand in for the arm, and widening the
-// one-per-arm rule is not mine. The fixture ITSELF now carries the bare table
-// -- the case the defect hid, and so the one a regression would resurrect --
-// and the keyed case lives here beside the three the fixture cannot hold.
+// WHY IT IS A UNIT ARM. tests/validate keeps one committed fixture per arm and
+// arm 20's trips it with a KEYED `[deadline]`, which is the refusal. The
+// ACCEPTANCES cannot live there -- a fixture that does not trip its arm is not
+// that suite's shape -- so the bare table, the bare clock and the empty case
+// are cells.
 //
-// THE BARE-CLOCK CELLS ARE THE CONTROL THAT MAKES THE REST MEAN SOMETHING: an
-// arm that refused everything would satisfy the refusal cells alone.
-func TestArms8And20KeyOnTheTableBeingDeclaredAndNotOnItsKeys(t *testing.T) {
+// AND THE ACCEPTANCE CELLS ARE WHAT MAKE THE REFUSALS MEAN SOMETHING: an arm
+// that refused every input would satisfy the refusal cells alone.
+func TestArms8And20ReadTheTablesCONTENTSAndABareOneDeclaresNothing(t *testing.T) {
 	var (
 		absent = map[string]any(nil)
 		bare   = map[string]any{}
@@ -75,8 +75,13 @@ func TestArms8And20KeyOnTheTableBeingDeclaredAndNotOnItsKeys(t *testing.T) {
 		want            int
 	}{
 		{"a keyed deadline and no clock", absent, keyed, 1},
-		{"a BARE deadline and no clock", absent, bare, 1},
-		{"a keyed deadline and a BARE clock", bare, keyed, 0},
+		// THE RULED CELL: a bare table declares nothing, so there is no
+		// deadline here to pair with a missing clock and nothing to refuse.
+		{"a BARE deadline and no clock", absent, bare, 0},
+		// AND THE SAME READING ON THE OTHER SIDE: a bare `[clock]` names no
+		// form and no endpoint, so a keyed deadline beside it is the pairing
+		// this arm refuses.
+		{"a keyed deadline and a BARE clock", bare, keyed, 1},
 		{"a keyed deadline and a keyed clock", clockd, keyed, 0},
 		{"no deadline at all", absent, absent, 0},
 		{"a clock and no deadline", clockd, absent, 0},
@@ -102,7 +107,7 @@ func TestArms8And20KeyOnTheTableBeingDeclaredAndNotOnItsKeys(t *testing.T) {
 		want  int
 	}{
 		{"a rule reading the clock and no table", reads, absent, 1},
-		{"a rule reading the clock and a BARE table", reads, bare, 0},
+		{"a rule reading the clock and a BARE table", reads, bare, 1},
 		{"a rule reading the clock and a keyed table", reads, clockd, 0},
 		{"no rule reading the clock and no table", silent, absent, 0},
 	} {
