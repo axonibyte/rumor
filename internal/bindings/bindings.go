@@ -332,6 +332,19 @@ func Load(path string, dec decl.Decoder) (Report, error) {
 }
 
 // Parse reads a decoded document.
+// durationText reads an optional duration key and answers its RAW spelling.
+//
+// The value is validated by `decl.Duration` -- malformed, and zero or less,
+// each refused in decl's own words at the key's own path -- and the string the
+// declaration actually carries is what comes back, because that is what a
+// refusal at a later tier quotes and `30s` and `30000ms` are not the same
+// sentence to a reader even where they are the same number.
+func durationText(r *decl.Reader, key string) string {
+	r.Duration(key, false)
+	s, _ := r.Any(key).(string)
+	return s
+}
+
 func Parse(doc map[string]any) Report {
 	r := decl.New(doc)
 	var b Bindings
@@ -517,8 +530,23 @@ func Parse(doc map[string]any) Report {
 						// refuses first and validate's refusal is unreachable
 						// -- measured: the fixture tripped bindings-refused
 						// and not 7c.
-						Timeout: pr.Str("timeout", false),
-						Every:   pr.Str("every", false),
+						// THROUGH decl.Duration, SO THE REFUSAL IS decl's OWN
+						// WORDS AND THE KEY'S OWN PATH (fable's ruling, coop
+						// rumor/1359 item 2, on ratchet's /1356 measurement:
+						// `every = "0s"` and `timeout = "-5s"` each passed
+						// `rumor validate` at 23 of 23 arms with 0 refusals,
+						// and `internal/quiesce` re-parsed both with the error
+						// DROPPED -- two readers disagreeing about one
+						// declaration, which is what 101 closed for a claim's
+						// bound).
+						//
+						// READ ONCE EACH. `Duration` is `Str` plus the parse,
+						// so calling both would refuse a non-string TWICE for
+						// one fault; the raw spelling comes from `Any`, which
+						// refuses nothing and is what the run quotes back
+						// ("its declared timeout of -5s").
+						Timeout: durationText(pr, "timeout"),
+						Every:   durationText(pr, "every"),
 						Query:   pr.Str("query", false),
 						Quiet:   pr.Any("quiet"),
 					})

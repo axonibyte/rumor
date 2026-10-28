@@ -129,6 +129,54 @@ func TestWhatValidateMustRefuseStillParses(t *testing.T) {
 
 // TestWhatCannotBeREADAsBindingsIsRefused is the other side: the parse refusals
 // are only about a file that cannot be read as bindings at all.
+// probes wraps one probe table as a `[quiesce]` carrying it, which is the
+// shape the cells below mutate.
+func probes(p map[string]any) map[string]any {
+	return map[string]any{"probe": []any{p}}
+}
+
+// TestAProbesDurationsAreReadAtTheParseAndTheirTextIsKept is the CONTROL for
+// the four refusal cells above, and the half that would otherwise be silent:
+// a declaration that is fine must still PARSE, and the raw spelling must
+// survive, because `internal/quiesce` quotes it back ("its declared timeout of
+// -5s") and `30s` and `30000ms` are not one sentence to a reader.
+func TestAProbesDurationsAreReadAtTheParseAndTheirTextIsKept(t *testing.T) {
+	doc := wellFormed()
+	// THE SPELLINGS ARE CHOSEN SO A NORMALIZATION WOULD SHOW. `2000ms` and
+	// `0.25s` are what the declaration says; `time.Duration.String()` renders
+	// the same two values as `2s` and `250ms`, so a producer that handed back
+	// the PARSED duration instead of the text fails here. Written with `2s`
+	// and `250ms` first, this cell passed against exactly that mutant --
+	// String() returns those two unchanged, so the arm could not tell the text
+	// from the number it was guarding against.
+	doc["quiesce"] = probes(map[string]any{
+		"kind": "queue_depth", "timeout": "2000ms", "every": "0.25s", "quiet": int64(0)})
+	rep := Parse(doc)
+	if !rep.OK() {
+		t.Fatalf("a probe declaring 2000ms and 0.25s is refused: %v", rep.Refusals)
+	}
+	if len(rep.Bindings.Probes) != 1 {
+		t.Fatalf("%d probe(s) parsed, want 1", len(rep.Bindings.Probes))
+	}
+	if got := rep.Bindings.Probes[0]; got.Timeout != "2000ms" || got.Every != "0.25s" {
+		t.Errorf("timeout %q every %q, want \"2000ms\" and \"0.25s\": the TEXT is what a later "+
+			"tier quotes, so a validated duration handed back as a number would change "+
+			"every message that names it", got.Timeout, got.Every)
+	}
+	// AND AN ABSENT `every` IS STILL ABSENT: `Duration` returns zero for a
+	// missing key and refuses nothing, so the optional half must not acquire
+	// a value here -- internal/quiesce reads "" as "use the default".
+	doc = wellFormed()
+	doc["quiesce"] = probes(map[string]any{"kind": "queue_depth", "timeout": "30s"})
+	rep = Parse(doc)
+	if !rep.OK() {
+		t.Fatalf("a probe with no `every` is refused: %v", rep.Refusals)
+	}
+	if got := rep.Bindings.Probes[0].Every; got != "" {
+		t.Errorf("an absent `every` parsed to %q, want empty", got)
+	}
+}
+
 func TestWhatCannotBeReadAsBindingsIsRefused(t *testing.T) {
 	for _, tc := range []struct {
 		name, path, want string
@@ -188,6 +236,24 @@ func TestWhatCannotBeReadAsBindingsIsRefused(t *testing.T) {
 		}},
 		{"a clock form that is neither", "clock.form", "wanted", func(doc map[string]any) {
 			doc["clock"] = map[string]any{"form": "wristwatch"}
+		}},
+		// THE PROBE DURATIONS, fable's ruling at coop rumor/1359 item 2 on
+		// ratchet's /1356: each of these passed `rumor validate` at 23 of 23
+		// arms with 0 refusals, and internal/quiesce then re-parsed the value
+		// with the error dropped. The refusal is decl's own sentence at the
+		// key's own path.
+		{"a probe timeout of zero", "quiesce.probe[0].timeout", "covers nothing", func(doc map[string]any) {
+			doc["quiesce"] = probes(map[string]any{"kind": "queue_depth", "timeout": "0s"})
+		}},
+		{"a negative probe timeout", "quiesce.probe[0].timeout", "covers nothing", func(doc map[string]any) {
+			doc["quiesce"] = probes(map[string]any{"kind": "queue_depth", "timeout": "-5s"})
+		}},
+		{"a probe `every` of zero", "quiesce.probe[0].every", "covers nothing", func(doc map[string]any) {
+			doc["quiesce"] = probes(map[string]any{
+				"kind": "queue_depth", "timeout": "30s", "every": "0s"})
+		}},
+		{"a probe timeout that is not a duration", "quiesce.probe[0].timeout", "wanted a duration", func(doc map[string]any) {
+			doc["quiesce"] = probes(map[string]any{"kind": "queue_depth", "timeout": "soonish"})
 		}},
 		{"an unknown top-level key", "nonesuch", "unknown key", func(doc map[string]any) {
 			doc["nonesuch"] = true

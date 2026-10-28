@@ -68,6 +68,21 @@ type Prober struct {
 	now    func() time.Time
 	sleep  func(context.Context, time.Duration) error
 
+	// timeout and every are the probes' durations, PARSED ONCE IN New and
+	// positional with `probes`.
+	//
+	// THEY EXIST SO NO ERROR IS DROPPED WHERE IT CANNOT BE REPORTED. Quiesce's
+	// round loop read `d, _ := time.ParseDuration(pr.Timeout)` per round, in a
+	// function whose answer is a state and not an error -- so a value New had
+	// already approved was re-derived in the one place that could not complain
+	// about it, and a non-positive one silently produced a deadline in the past
+	// or a poll interval of zero (ratchet, coop rumor/1356: `every = "0s"` ran
+	// 3000 asks and was still going, against 6001 asks and 30s slept for the
+	// declared control). Parsed here, the loop reads numbers that are known
+	// positive and nothing is discarded.
+	timeout []time.Duration
+	every   []time.Duration
+
 	// hang is the report for the probe that gave up, written when Quiesce
 	// answers QuiesceTimedOut and empty otherwise.
 	//
@@ -114,16 +129,31 @@ func New(probes []bindings.Probe, obs Observer, opts ...Option) (*Prober, error)
 			return nil, fmt.Errorf("quiesce: probe %d (kind %q) declares no timeout, and a "+
 				"probe without one is a wait with no end", i+1, pr.Kind)
 		}
-		if _, err := time.ParseDuration(pr.Timeout); err != nil {
+		to, err := time.ParseDuration(pr.Timeout)
+		if err != nil {
 			return nil, fmt.Errorf("quiesce: probe %d (kind %q) timeout %q is not a duration: %w",
 				i+1, pr.Kind, pr.Timeout, err)
 		}
+		// AND NON-POSITIVE IS NOT REFUSED HERE, WHICH I TRIED AND AN ARM
+		// STOPPED. "A timeout of 0 must still put the question" is this
+		// package's own rule, armed by TestEveryProbeIsAskedAtLeastOnce with
+		// its reason beside it -- checking a deadline before the round would
+		// report a hang having asked nothing. fable put the non-positive
+		// refusal at the PARSE (coop rumor/1359 item 2) and internal/bindings
+		// now reads both durations through `decl.Duration`, so no PROJECT can
+		// declare one; a hand-built Probe still can, and a zero `every` still
+		// spins for one. That is said here rather than fixed by a refusal this
+		// tier's own arm contradicts.
+		ev := DefaultEvery
 		if pr.Every != "" {
-			if _, err := time.ParseDuration(pr.Every); err != nil {
+			ev, err = time.ParseDuration(pr.Every)
+			if err != nil {
 				return nil, fmt.Errorf("quiesce: probe %d (kind %q) every %q is not a duration: %w",
 					i+1, pr.Kind, pr.Every, err)
 			}
 		}
+		p.timeout = append(p.timeout, to)
+		p.every = append(p.every, ev)
 	}
 	return p, nil
 }
@@ -229,14 +259,11 @@ func (p *Prober) Quiesce(ctx context.Context) (engine.QuiesceState, error) {
 	// extend a budget.
 	deadline := make([]time.Time, len(p.probes))
 	every := make([]time.Duration, len(p.probes))
-	for i, pr := range p.probes {
-		d, _ := time.ParseDuration(pr.Timeout)
-		deadline[i] = start.Add(d)
-		every[i] = DefaultEvery
-		if pr.Every != "" {
-			e, _ := time.ParseDuration(pr.Every)
-			every[i] = e
-		}
+	for i := range p.probes {
+		// FROM WHAT New PARSED. Nothing is re-derived and no error is dropped
+		// here: see the fields' own note.
+		deadline[i] = start.Add(p.timeout[i])
+		every[i] = p.every[i]
 	}
 
 	rounds := 0
