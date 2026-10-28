@@ -68,6 +68,21 @@ type Project struct {
 	// moment it wires one in, so the shutter removes itself and nothing has to
 	// remember to take it out.
 	Prober Prober
+
+	// ClockControl says the project declares clock control, which is what
+	// lets the run hold a clock at all. It is the bindings' `[clock]` table
+	// being PRESENT and nothing about its contents: R7.2 types that table,
+	// and a phase that keyed on a field inside it would have to be changed
+	// again the moment the shape moved.
+	//
+	// WITHOUT IT THERE IS NO CLOCK AND NOT A CLOCK OF ZERO. internal/ledger
+	// refuses a clock fact outright when control is not declared -- "wall-clock
+	// time never enters the ledger" -- so this field decides whether the run
+	// may write one, and the vocabulary's refusal stays the thing that enforces
+	// it. A project declaring nothing is walked exactly as before: no fact is
+	// appended, so no position shifts and every pre-R7 fixture's ledger is
+	// byte-identical.
+	ClockControl bool
 }
 
 // Prober answers whether the system under test has gone quiet.
@@ -328,6 +343,47 @@ func (r Record) KindSequence() []string {
 // THE LEDGER GROWS AND IS RESEALED EACH STEP, because applicability is
 // evaluated against a sealed prefix: step n+1 must see what step n emitted, or
 // a precondition about what an actor knows could never become true.
+// runClock is the run's own time, and whether the project lets the run hold it.
+//
+// THE UNIT IS NANOSECONDS FROM THE RUN'S OWN EPOCH, which is zero at the first
+// seal -- declared in docs/contract.md at R7.1 before this writer existed, on
+// fable's ruling 1 at coop breakout-r7/0. `engine.Eventual.Bound` has carried
+// nanoseconds since R6 because that is what time.ParseDuration yields, so the
+// comparison R2.3 declared is one subtraction in one unit.
+//
+// IT MOVES ONLY WHEN THE WALK DRAWS `advance` (R7.3), and nothing here reads
+// the host's clock: that is what makes a clocked run exactly as repeatable as
+// an unclocked one. Until R7.3 lands the mover, every clock fact a run writes
+// carries zero, which is the honest state of a run whose time has not moved
+// rather than a placeholder.
+type runClock struct {
+	control bool
+	t       int64
+}
+
+// seal writes the run's time at this position and then moves the seal.
+//
+// THE FACT GOES IN BEFORE THE SEAL MOVES, which is not an ordering detail:
+// engine.Now reads the newest clock fact at or BEFORE the seal, so a fact
+// appended after sealing is invisible to the very check the seal was moved
+// for, and a duration bound would read as unmeasurable at the one position it
+// is asked about.
+//
+// THE TIME IS COPIED, NOT POINTED AT. ledger.Fact carries `T *int64`, so
+// handing it the address of this struct's field would give every clock fact in
+// the run one shared pointer: the moment R7.3 moves the clock, every fact
+// already written would read the new time, and a ledger whose past changes is
+// the one thing the vocabulary forbids outright.
+func (c *runClock) seal(l *ledger.Ledger) error {
+	if c.control {
+		t := c.t
+		if _, err := l.Append(ledger.Fact{Kind: ledger.KindClock, Actor: "run", T: &t}); err != nil {
+			return fmt.Errorf("writing the run's clock at position %d: %w", l.Len()+1, err)
+		}
+	}
+	return l.SealAt(l.Len())
+}
+
 func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps, attempt int) (Record, error) {
 	rec := Record{Seed: seed, Attempt: attempt}
 	if steps <= 0 {
@@ -342,7 +398,8 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		return rec, err
 	}
 	src := New(seed)
-	l := ledger.New(false)
+	l := ledger.New(p.ClockControl)
+	clk := &runClock{control: p.ClockControl}
 	table, err := handle.New(attempt)
 	if err != nil {
 		return rec, fmt.Errorf("schedule: the attempt's handle table: %w", err)
@@ -370,7 +427,14 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		// SEAL EVERYTHING SO FAR. The seal is the prefix a precondition is
 		// evaluated against, so it moves to the end of what has happened
 		// before the next step is chosen.
-		if err := l.SealAt(l.Len()); err != nil {
+		//
+		// AND THE RUN'S CLOCK IS WRITTEN AT IT when the project declares clock
+		// control, which is why this is clk.seal and not l.SealAt. The first
+		// pass through here happens before any action, so a clocked run holds
+		// a clock fact from before its first step -- fable's D1 asks for it at
+		// step 0, and a bound asked about at step 1 needs a time at or before
+		// its claim.
+		if err := clk.seal(l); err != nil {
 			return rec, fmt.Errorf("schedule: step %d: sealing the prefix at %d: %w", n, l.Len(), err)
 		}
 
@@ -432,7 +496,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 			}
 			qs = st
 		}
-		seen, oerr := observe(ctx, p.Statute, sess, sessions, table, p.Observations, l, &step,
+		seen, oerr := observe(ctx, p.Statute, sess, sessions, table, p.Observations, l, clk, &step,
 			engine.Bindings{Eventual: p.Eventual}, reg, qs, held, &rec.Pendings)
 		if oerr != nil {
 			return rec, fmt.Errorf("schedule: step %d: %w", n, oerr)
@@ -688,7 +752,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 // the "never ask the wire for a thing that does not exist" rule broken by a new
 // door.
 func observe(ctx context.Context, statute string, sess *wire.Session, sessions *Sessions,
-	table *handle.Table, obs []bindings.Observation, l *ledger.Ledger,
+	table *handle.Table, obs []bindings.Observation, l *ledger.Ledger, clk *runClock,
 	step *Step, eb engine.Bindings, reg *engine.Register,
 	qs engine.QuiesceState, held map[string]ask, lives *[]string) ([]engine.Finding, error) {
 
@@ -713,7 +777,7 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 	// exactly "everything that has happened, including this step", which is the
 	// only position at which "did what just happened leave the system
 	// consistent" is a question.
-	if err := l.SealAt(l.Len()); err != nil {
+	if err := clk.seal(l); err != nil {
 		return nil, fmt.Errorf("sealing the prefix before observing after step %d: %w", step.N, err)
 	}
 

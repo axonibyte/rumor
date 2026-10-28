@@ -130,12 +130,20 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		// meaning.
 		Observations: brep.Bindings.Observations,
 		// THE EVENTUAL TYPES, so the walk can judge a lagging observation as
-		// `pending` instead of `bug` (R6.3). Only the quiesce form is passed
-		// through with a zero bound: a DURATION bound needs the run to control
-		// the clock, which R7 brings, and engine.Judge refuses one rather than
-		// reading it as past -- so handing it through here would move that
-		// refusal from the engine to a silent truncation.
+		// `pending` instead of `bug` (R6.3). BOTH FORMS TRAVEL, the duration
+		// one with its parsed nanoseconds: this comment said "only the quiesce
+		// form is passed through with a zero bound" until R7.1 read it against
+		// the code, and that stopped being true when rook fixed EventualOf to
+		// carry the bound (coop rumor/1191, ratchet /1192). What keeps a
+		// duration bound from being read as expired is engine.Judge's refusal,
+		// not a truncation here -- which is the arrangement the old sentence
+		// said it was avoiding.
 		Eventual: schedule.EventualOf(brep.Bindings),
+		// CLOCK CONTROL IS THE `[clock]` TABLE BEING THERE (R7.1). The run may
+		// hold a clock only where the project declares one, and internal/ledger
+		// refuses a clock fact without it; the table's SHAPE is R7.2's, so this
+		// reads its presence and nothing inside it.
+		ClockControl: brep.Bindings.Clock != nil,
 		// THE PROFILE THE READER ASKED FOR, which selects the weights table the
 		// pool draws from. Empty is the default table, which is every run that
 		// does not pass the flag -- so the control seeds are unaffected by the

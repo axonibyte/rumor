@@ -190,7 +190,16 @@ const root = "../.."
 // says whose sentence it is. The chain goes up again after R6.4's one
 // decrease, which is why this row reads 46 -> 47 a second time: the figure is
 // the count at each landing and not a high-water mark.
-const declaredQuotes = 47
+// 47 -> 48 AT R7.1's CLOCK WRITER: internal/schedule's clock arms quote the
+// Time section's own sentence -- "wall-clock time never enters the ledger" --
+// beside the arm that drives the LEDGER's refusal rather than the writer's
+// `if`. The quote is there because the guard it names is not this type's: a
+// writer that forgot to check clock control is still refused, and the arm
+// proves it by appending a clock fact to an uncontrolled ledger directly. A
+// comment claiming the vocabulary enforces something is worth no more than
+// the arm underneath it, which is why the quotation and that append are in
+// the same test.
+const declaredQuotes = 48
 
 // knownChainGaps are the places where this file's warrant chain does NOT join,
 // each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which

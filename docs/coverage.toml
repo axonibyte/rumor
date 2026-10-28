@@ -170,6 +170,19 @@ path = "tests/quiesce/**"
 docs = ["docs/vocabulary.md", "docs/design.md"]
 
 [[entry]]
+# R7.1's walk-level clock arms: a project declaring `[clock]` has the run's own
+# time in its ledger at every seal, and one declaring none is walked exactly as
+# it was. Mapped to the vocabulary because "Time is a ledger fact" and "wall-
+# clock time never enters the ledger" are its sentences, and to the contract
+# because the UNIT those facts carry is declared there.
+#
+# A SUITE OF ITS OWN FOR tests/quiesce's REASON, which is the one this phase
+# inherited: clock facts had arms at the ledger tier from R2.3 and nothing in
+# production wrote one, so what was armed was a type's behavior and not a run's.
+path = "tests/clock/**"
+docs = ["docs/vocabulary.md", "docs/contract.md"]
+
+[[entry]]
 # The tree-wide hygiene arms: checks no single package can make about itself.
 # Mapped to the testing methodology because the transferable part is the
 # method -- find a defect class by its SHAPE across the whole tree, and make
