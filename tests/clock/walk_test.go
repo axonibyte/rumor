@@ -80,6 +80,17 @@ func TestMain(m *testing.M) {
 // declare a clock, or the control arm below is comparing a project with itself.
 func clocked(t *testing.T) string {
 	t.Helper()
+	// `faked` IS THE FORM EVERY ARM HERE DECLARED BEFORE R7.2 NAMED IT. The
+	// engine's own `t` was the world's and no request was sent, so this
+	// spelling leaves every assertion in this package about exactly the run
+	// it was written against. The OTHER form has its own arm below, which
+	// drives the toy's clock over the wire.
+	return clockedAs(t, bindings.ClockFaked)
+}
+
+// clockedAs is the same copy with the form spelled out.
+func clockedAs(t *testing.T, form bindings.ClockForm) string {
+	t.Helper()
 	dir := t.TempDir()
 	entries, err := os.ReadDir(project)
 	if err != nil {
@@ -98,7 +109,7 @@ func clocked(t *testing.T) string {
 				t.Fatalf("%s already declares `[clock]`, so the unclocked control arm would be "+
 					"driving a clocked project", filepath.Join(project, e.Name()))
 			}
-			raw = append(raw, []byte("\n[clock]\n")...)
+			raw = append(raw, fmt.Appendf(nil, "\n[clock]\nform = %q\n", form)...)
 		}
 		if werr := os.WriteFile(filepath.Join(dir, e.Name()), raw, 0o644); werr != nil {
 			t.Fatalf("writing %s: %v", e.Name(), werr)
@@ -167,7 +178,11 @@ func tryWalkProfile(t *testing.T, dir string, seed uint64, steps int, profile st
 		Observations: brep.Bindings.Observations,
 		Eventual:     schedule.EventualOf(brep.Bindings),
 		ClockControl: brep.Bindings.Clock != nil,
-		Profile:      profile,
+		// AND HOW, which `rumor run` reads the same way (cmd/rumor/run.go).
+		// R7.2 refuses a clocked project that names no form, so a harness
+		// that dropped this would refuse every fixture in this package.
+		ClockForm: brep.Bindings.ClockForm,
+		Profile:   profile,
 	}), sess, seed, steps, 1)
 }
 
@@ -238,7 +253,11 @@ func replayed(t *testing.T, dir string, seed uint64, steps int, profile string) 
 		Observations: brep.Bindings.Observations,
 		Eventual:     schedule.EventualOf(brep.Bindings),
 		ClockControl: brep.Bindings.Clock != nil,
-		Profile:      profile,
+		// AND HOW, which `rumor run` reads the same way (cmd/rumor/run.go).
+		// R7.2 refuses a clocked project that names no form, so a harness
+		// that dropped this would refuse every fixture in this package.
+		ClockForm: brep.Bindings.ClockForm,
+		Profile:   profile,
 	}), sess, seed, 1, steps, nil)
 }
 
@@ -298,6 +317,47 @@ func TestAClockedRunHoldsTheRunsTimeAtEverySeal(t *testing.T) {
 				"and nothing moves it until R7.3 draws `advance`, so a non-zero time here is a "+
 				"clock reading something the run does not own", i+1, *f.T)
 		}
+	}
+}
+
+// THE `adapter` FORM, DRIVEN AGAINST THE TOY'S OWN CLOCK. The unit arms in
+// internal/schedule drive the engine's checks against answers a real adapter
+// does not give; this one drives the honest path all the way through the
+// wire: `rumor` sets the toy's clock at every seal and writes the ledger fact
+// from what the toy answered.
+//
+// THE COMPARISON IS THE POINT. The same seed under `faked` sends no request
+// at all, so two runs agreeing fact for fact says the request neither moved
+// the world nor disturbed the walk -- and the toy really did echo the ask,
+// because a toy answering anything else is a refusal and this run is not one.
+func TestTheAdapterFormSetsTheToysClockAndTheLedgerAgrees(t *testing.T) {
+	const steps = 4
+	viaAdapter := walk(t, clockedAs(t, bindings.ClockAdapter), 1, steps)
+	faked := walk(t, clocked(t), 1, steps)
+
+	ca, cf := clockFacts(viaAdapter.Facts), clockFacts(faked.Facts)
+	if len(ca) == 0 {
+		t.Fatal("no clock fact in a run whose project declares `form = \"adapter\"`")
+	}
+	if len(ca) != len(cf) {
+		t.Fatalf("%d clock fact(s) through the adapter and %d under faked time: the form changed "+
+			"how many times the run holds its time", len(ca), len(cf))
+	}
+	for i := range ca {
+		if ca[i].T == nil || cf[i].T == nil {
+			t.Fatalf("clock fact %d carries no time", i+1)
+		}
+		if *ca[i].T != *cf[i].T {
+			t.Errorf("clock fact %d reads %d through the adapter and %d under faked time",
+				i+1, *ca[i].T, *cf[i].T)
+		}
+		if *ca[i].T != 0 {
+			t.Errorf("clock fact %d reads %d, want 0: the toy's clock is set to the run's, and "+
+				"nothing moves the run's until R7.3 draws `advance`", i+1, *ca[i].T)
+		}
+	}
+	if len(viaAdapter.Steps) != len(faked.Steps) {
+		t.Errorf("%d step(s) through the adapter and %d under faked time", len(viaAdapter.Steps), len(faked.Steps))
 	}
 }
 

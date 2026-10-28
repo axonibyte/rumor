@@ -239,6 +239,22 @@ the by-name refusal R7.2 requires could not fire at all (rook, coop
 rumor/1348). An adapter that does not implement `clock` answers the error
 envelope and is refused by name for that.
 
+**WHEN THE ENGINE SENDS IT, AND WHAT IT WILL NOT ACCEPT.** A project declaring
+`form = "adapter"` has its clock set at EVERY seal -- twice a step, at the top
+and again before the step's observations -- so the system under test's clock
+and the ledger's fact agree about the time at the position the fact is written
+for. Three answers are refused by name, in this order:
+
+| the adapter | the engine | why the name matters |
+|---|---|---|
+| answers a fault, not knowing the kind | names the missing request | this is the refusal the unmoved version makes reachable; behind a bump the handshake would have refused the same adapter one phase earlier and for the wrong reason |
+| answers a `t` LESS than the clock the run holds | names time running backward | replay and the overage a duration bound is judged by both rest on a ledger whose times never decrease, and that reason is the refusal's whole value -- so this is checked BEFORE the one below, which a backward `t` also trips |
+| answers a `set` with a `t` that is not the one asked for | names the disagreement about the time | a `set` leaves the clock reading what was asked for. An adapter with a coarser clock would be rounding, and **nothing in this protocol lets an adapter declare a granularity** -- `describe`'s `capabilities` carries faults, volume targets and upgrades and no such field -- so the difference cannot be accounted for and is refused at all rather than within a tolerance nobody declared. WHEN a declaring mechanism exists, this is the row that relaxes to it |
+
+**A refused answer writes no clock fact**: the seal fails and the run stops,
+rather than recording the engine's ask under the name of a time the run
+refused to accept.
+
 ### The error envelope
 
 Any response may be replaced by `kind: "error"`.

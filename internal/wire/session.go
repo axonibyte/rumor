@@ -186,6 +186,33 @@ func (s *Session) Observe(req ObserveRequest) (ObserveResponse, error) {
 	return resp, nil
 }
 
+// Clock sets or advances the system under test's own test clock.
+//
+// THE ANSWER IS THE WORLD'S TIME AND NOT AN ACKNOWLEDGEMENT (fable, coop
+// r7/51): the engine writes the ledger's clock fact from what comes back, so
+// an adapter that rounds forward has answered for the world and the ledger
+// records the world. What the engine does with a `t` it did not ask for --
+// refuse it, and by which name -- belongs to the caller in internal/schedule,
+// because this package carries the protocol and not the run's policy.
+//
+// AN ADAPTER THAT DOES NOT KNOW THE KIND ANSWERS A FAULT, which `exchange`
+// returns as an ordinary error with the session left usable. That is the
+// refusal D10 asks for, and it is reachable only because the contract version
+// did not move: a bump would have refused this adapter at the handshake, one
+// phase earlier and by the wrong name.
+func (s *Session) Clock(req ClockRequest) (ClockResponse, error) {
+	var zero ClockResponse
+	msg, err := s.exchange(req, KindClock)
+	if err != nil {
+		return zero, err
+	}
+	resp, ok := msg.(ClockResponse)
+	if !ok {
+		return zero, s.poison(fmt.Errorf("the adapter answered %q where a clock was asked", msg.Env().Kind))
+	}
+	return resp, nil
+}
+
 // StartSession asks the adapter for an actor's session in some context.
 //
 // NAMED StartSession AND NOT Session because the type is already called that;
@@ -237,6 +264,10 @@ func (s *Session) exchange(req Message, kind Kind) (Message, error) {
 		body = r
 	case KindSession:
 		r, _ := req.(SessionRequest)
+		r.Envelope = env
+		body = r
+	case KindClock:
+		r, _ := req.(ClockRequest)
 		r.Envelope = env
 		body = r
 	default:

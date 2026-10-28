@@ -1,10 +1,13 @@
 package clock_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 )
 
 // THE DURATION BOUND IS JUDGED WHERE THE RUN HOLDS A CLOCK, AND REFUSED WHERE
@@ -51,7 +54,10 @@ func durationBounded(t *testing.T, withClock bool) string {
 					filepath.Join(project, e.Name()))
 			}
 			if withClock {
-				after += "\n[clock]\n"
+				// `faked`, for clocked(t)'s reason one file over: these arms
+				// were written against a run whose own `t` is the world's,
+				// and R7.2 refuses a `[clock]` that names no form at all.
+				after += fmt.Sprintf("\n[clock]\nform = %q\n", bindings.ClockFaked)
 			}
 			raw = []byte(after)
 		}

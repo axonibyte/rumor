@@ -84,6 +84,20 @@ type Project struct {
 	// appended, so no position shifts and every pre-R7 fixture's ledger is
 	// byte-identical.
 	ClockControl bool
+
+	// ClockForm is HOW the run controls that clock, and it is read only when
+	// ClockControl is set. `adapter` means the engine sets the system under
+	// test's own test clock through the wire's `clock` request and writes the
+	// ledger fact from what comes BACK; `faked` means the stack is already
+	// running under faked time, so no request is sent and the engine's own
+	// `t` is the world's (fable, coop r7/51).
+	//
+	// EMPTY IS REFUSED HERE AND NOT AT THE PARSE. internal/bindings carries
+	// `[clock]` with no `form` without complaint, because a parser that
+	// refused it would make this refusal unreachable and R6.2 measured what
+	// that costs. This is the reader that knows which request it was about to
+	// send, so this is where a clocked project with no form is named.
+	ClockForm bindings.ClockForm
 }
 
 // Prober answers whether the system under test has gone quiet.
@@ -359,7 +373,19 @@ func (r Record) KindSequence() []string {
 // rather than a placeholder.
 type runClock struct {
 	control bool
+	form    bindings.ClockForm
 	t       int64
+}
+
+// clockAsker is the half of the adapter session a clocked seal uses.
+//
+// IT IS AN INTERFACE SO THE SEAL CAN BE DRIVEN WITHOUT A PROCESS. The refusals
+// below are about what an adapter ANSWERS -- a fault, a time that runs
+// backward, a `set` that comes back changed -- and an arm that had to spawn a
+// real adapter to produce each of those answers would be driving the toy's
+// honesty rather than the engine's check. *wire.Session satisfies it.
+type clockAsker interface {
+	Clock(wire.ClockRequest) (wire.ClockResponse, error)
 }
 
 // seal writes the run's time at this position and then moves the seal.
@@ -375,14 +401,68 @@ type runClock struct {
 // the run one shared pointer: the moment R7.3 moves the clock, every fact
 // already written would read the new time, and a ledger whose past changes is
 // the one thing the vocabulary forbids outright.
-func (c *runClock) seal(l *ledger.Ledger) error {
+func (c *runClock) seal(l *ledger.Ledger, a clockAsker) error {
 	if c.control {
 		t := c.t
+		if c.form == bindings.ClockAdapter {
+			got, err := c.ask(a)
+			if err != nil {
+				return err
+			}
+			t = got
+		}
 		if _, err := l.Append(ledger.Fact{Kind: ledger.KindClock, Actor: "run", T: &t}); err != nil {
 			return fmt.Errorf("writing the run's clock at position %d: %w", l.Len()+1, err)
 		}
 	}
 	return l.SealAt(l.Len())
+}
+
+// ask sets the system under test's clock to the run's time and answers what
+// came back, which is what the ledger then records.
+//
+// THE LEDGER WRITES THE WORLD, NOT THE ASK (fable, coop r7/51). An adapter
+// that answered for the world is the authority on what time it is there, and
+// a ledger holding the engine's intention instead would be a record of what
+// was requested rather than of what happened.
+//
+// THE THREE REFUSALS ARE BY NAME, and the order matters for the second:
+//
+//   - NO SUCH REQUEST. An adapter that does not know the kind answers a fault,
+//     which wire returns as an error with the session still usable. This is
+//     reachable only because the contract version did not move for the new
+//     request: behind a bump the handshake would refuse this adapter first,
+//     one phase earlier and under the wrong name.
+//   - TIME RAN BACKWARD. A `t` less than the clock the run holds is refused
+//     before the equality below, so an adapter that answers a smaller number
+//     is told THAT rather than "it differs from the ask": replay and the D5
+//     drill rest on a ledger whose times never decrease, and the reason is the
+//     refusal's whole value.
+//   - A `set` CAME BACK CHANGED. `set` means the clock now reads what was
+//     asked for; an adapter that rounds has a granularity, and nothing in the
+//     protocol lets one DECLARE a granularity today -- `describe`'s
+//     capabilities carries faults, volume and upgrade and no such field. So
+//     the ruling's "by more than its declared granularity, else at all" is
+//     "at all" here, and the conditional half is documented in
+//     docs/contract.md rather than coded as a branch no input can reach.
+func (c *runClock) ask(a clockAsker) (int64, error) {
+	resp, err := a.Clock(wire.ClockRequest{Op: wire.ClockSet, T: c.t})
+	if err != nil {
+		return 0, fmt.Errorf("the project declares a clock the engine drives through the adapter, "+
+			"and setting it to %dns did not answer: %w", c.t, err)
+	}
+	if resp.T < c.t {
+		return 0, fmt.Errorf("the adapter answered %dns where the run's clock holds %dns: time "+
+			"never runs backward in a ledger, and both replay and the overage a duration bound is "+
+			"judged by rest on that", resp.T, c.t)
+	}
+	if resp.T != c.t {
+		return 0, fmt.Errorf("the adapter answered %dns to a `set` of %dns: a `set` leaves the "+
+			"clock reading what was asked for, and an adapter with a coarser clock has no way to "+
+			"declare one, so a difference is a disagreement about the time and not a rounding "+
+			"this run can account for", resp.T, c.t)
+	}
+	return resp.T, nil
 }
 
 func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps, attempt int) (Record, error) {
@@ -394,13 +474,22 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		return rec, fmt.Errorf("schedule: no adapter session: a walk executes actions against the " +
 			"system under test and cannot be taken against nothing")
 	}
+	// THE CLOCKED PROJECT THAT DOES NOT SAY HOW is refused before a step is
+	// taken, rather than at the first seal: every walk writes a clock fact at
+	// every seal, so this would refuse on the first one anyway, and a project
+	// that cannot be clocked should not execute an action first.
+	if p.ClockControl && p.ClockForm == "" {
+		return rec, fmt.Errorf("schedule: the project declares a `[clock]` table and no `form`: "+
+			"the run cannot hold a clock without knowing whether to set the adapter's own "+
+			"(%q) or to read its time as the world's (%q)", bindings.ClockAdapter, bindings.ClockFaked)
+	}
 	actors, err := Actors(p.Venire)
 	if err != nil {
 		return rec, err
 	}
 	src := New(seed)
 	l := ledger.New(p.ClockControl)
-	clk := &runClock{control: p.ClockControl}
+	clk := &runClock{control: p.ClockControl, form: p.ClockForm}
 	table, err := handle.New(attempt)
 	if err != nil {
 		return rec, fmt.Errorf("schedule: the attempt's handle table: %w", err)
@@ -435,7 +524,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		// a clock fact from before its first step -- fable's D1 asks for it at
 		// step 0, and a bound asked about at step 1 needs a time at or before
 		// its claim.
-		if err := clk.seal(l); err != nil {
+		if err := clk.seal(l, sess); err != nil {
 			return rec, fmt.Errorf("schedule: step %d: sealing the prefix at %d: %w", n, l.Len(), err)
 		}
 
@@ -913,7 +1002,7 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 	// exactly "everything that has happened, including this step", which is the
 	// only position at which "did what just happened leave the system
 	// consistent" is a question.
-	if err := clk.seal(l); err != nil {
+	if err := clk.seal(l, sess); err != nil {
 		return nil, fmt.Errorf("sealing the prefix before observing after step %d: %w", step.N, err)
 	}
 
