@@ -106,6 +106,17 @@ type adapter struct {
 	// slowestWhat is the route that cost `slowest`, because a headroom figure
 	// with no route attached cannot be acted on.
 	slowestWhat string
+
+	// clock is the test clock this adapter exposes, in NANOSECONDS from the
+	// run's own epoch -- docs/contract.md's unit, zero at the first seal. It
+	// lives on the adapter and not in the toy because the toy has no notion of
+	// time yet: 103 is what gives it one (expiring invitations), and until then
+	// this answers honestly about a clock nothing downstream reads.
+	//
+	// HELD ACROSS REQUESTS because `advance` is RELATIVE. An adapter that
+	// forgot the last value would answer the same instant every time and the
+	// engine could not tell a moving clock from a stuck one.
+	clock int64
 }
 
 func main() {
@@ -324,8 +335,36 @@ func (a *adapter) answer(line []byte) any {
 		return a.execute(env.ID, m)
 	case wire.ObserveRequest:
 		return a.observe(env.ID, m)
+	case wire.ClockRequest:
+		return a.clockOp(env.ID, m)
 	}
 	return fault(env.ID, wire.FaultInternal, "kind", fmt.Sprintf("%q is a kind this adapter does not serve", env.Kind))
+}
+
+// clockOp moves the test clock and answers WHAT IT NOW HOLDS, which is the
+// field fable ruled the ledger writes from (coop r7/51): "an adapter that
+// rounds forward answered for the world and the ledger records the world". This
+// adapter neither rounds nor clamps, so its answer equals the ask -- and the
+// engine refuses a `set` that comes back changed, so an adapter that started
+// rounding without declaring a granularity would be caught rather than
+// believed.
+func (a *adapter) clockOp(id string, m wire.ClockRequest) any {
+	switch m.Op {
+	case wire.ClockSet:
+		a.clock = m.T
+	case wire.ClockAdvance:
+		a.clock += m.T
+	default:
+		// THE DECODER CHECKS FIELD PRESENCE, NOT A VARIANT'S VALUE, so an
+		// unknown op arrives intact and is named rather than guessed at.
+		return fault(id, wire.FaultField, "op",
+			fmt.Sprintf("%q is not a clock op; this protocol has %q and %q",
+				m.Op, wire.ClockSet, wire.ClockAdvance))
+	}
+	return wire.ClockResponse{
+		Envelope: wire.Envelope{Kind: wire.KindClock, Contract: wire.ContractVersion, ID: id},
+		T:        a.clock,
+	}
 }
 
 // idOf recovers the id from a line the decoder refused, so a fault can be

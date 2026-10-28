@@ -533,6 +533,8 @@ func deref(msg Message) Message {
 		return *m
 	case *ObserveRequest:
 		return *m
+	case *ClockRequest:
+		return *m
 	case *SessionRequest:
 		return *m
 	case *DescribeResponse:
@@ -540,6 +542,8 @@ func deref(msg Message) Message {
 	case *ExecuteResponse:
 		return *m
 	case *ObserveResponse:
+		return *m
+	case *ClockResponse:
 		return *m
 	case *SessionResponse:
 		return *m

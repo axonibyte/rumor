@@ -338,6 +338,26 @@ func TestTheSchemaAndTheStructsAgree(t *testing.T) {
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: struct tags %v, schema %v", name, got, want)
 		}
+
+		// AND THE DECODER HANDS BACK THIS CONCRETE TYPE, not a pointer to it.
+		//
+		// `deref` is a per-type switch and a kind added without a case there
+		// comes back as *XRequest while every other kind comes back as a
+		// value, so a caller's `switch msg.(type)` over value types silently
+		// misses it and falls through to "a kind this adapter does not serve".
+		// THAT SHIPPED ONCE: the clock request was added, every suite in this
+		// package passed, and the fake's own "every answer satisfies the real
+		// decoder" passed too -- because a FAULT satisfies the decoder as
+		// happily as an answer does. The arm that was missing is this one: not
+		// "did it decode" but "is it the type the table says".
+		decoded, err := decodeBy(direction, line(t, wellFormed(direction, Kind(kindText))))
+		if err != nil {
+			t.Fatalf("%s: the well-formed fixture does not decode: %v", name, err)
+		}
+		if reflect.TypeOf(decoded) != reflect.TypeOf(msg) {
+			t.Errorf("%s: the decoder returns %T, want %T -- a missing `deref` case",
+				name, decoded, msg)
+		}
 	}
 }
 

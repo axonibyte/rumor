@@ -263,6 +263,64 @@ func TestAnUnknownActionIsAFaultThatNamesWhatIsServed(t *testing.T) {
 	}
 }
 
+// TestTheClockSetsAdvancesAndAnswersWhatItHolds drives 101's clock request.
+//
+// THE THIRD CELL IS THE ONE THAT MAKES THE FIRST TWO MEAN ANYTHING: `advance`
+// is RELATIVE, so an adapter that answered the ask instead of its own state
+// would pass a `set` and a single `advance` and fail only on the second. The
+// cells run in one order against one adapter for that reason.
+//
+// AND THE CLOCK NEVER REACHES THE TOY: 103 is what gives the toy a notion of
+// time. An assertion on the toy's log is what says so rather than a comment.
+func TestTheClockSetsAdvancesAndAnswersWhatItHolds(t *testing.T) {
+	a, log := stub(t, nil)
+	for _, c := range []struct {
+		op   string
+		t    int64
+		want int64
+	}{
+		{"set", 5000000000, 5000000000},
+		{"advance", 30000000000, 35000000000},
+		{"advance", 30000000000, 65000000000},
+		{"set", 1000000000, 1000000000},
+	} {
+		out := ask(t, a, map[string]any{"kind": "clock", "op": c.op, "t": c.t})
+		got, ok := out["t"]
+		if !ok {
+			t.Fatalf("%s %d: the answer carries no `t`: %v", c.op, c.t, out)
+		}
+		// JSON numbers decode as float64; the comparison is on the int64 the
+		// protocol declares, not on whatever the round trip produced.
+		if int64(got.(float64)) != c.want {
+			t.Errorf("%s %d: the clock answers %v, want %d", c.op, c.t, got, c.want)
+		}
+	}
+	if len(*log) != 0 {
+		t.Errorf("a clock request reached the toy %d time(s), and the toy has no clock until 103", len(*log))
+	}
+}
+
+// TestAnUnknownClockOpIsAFaultNamingTheTwo is the refusal beside it: the
+// decoder checks field PRESENCE and not a variant's value, so an unknown op
+// arrives at the adapter intact.
+func TestAnUnknownClockOpIsAFaultNamingTheTwo(t *testing.T) {
+	a, log := stub(t, nil)
+	kind, detail := faultOf(t, ask(t, a, map[string]any{
+		"kind": "clock", "op": "rewind", "t": 1,
+	}))
+	if kind != string(wire.FaultField) {
+		t.Errorf("an unknown clock op is fault %q, want %q", kind, wire.FaultField)
+	}
+	for _, want := range []string{"rewind", "set", "advance"} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("the fault does not name %q: %q", want, detail)
+		}
+	}
+	if len(*log) != 0 {
+		t.Errorf("a refused clock op reached the toy %d time(s)", len(*log))
+	}
+}
+
 func TestAnActionNeedingAnEventWithoutOneIsRefusedBeforeTheToy(t *testing.T) {
 	a, log := stub(t, nil)
 	kind, _ := faultOf(t, ask(t, a, map[string]any{
