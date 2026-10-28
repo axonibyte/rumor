@@ -401,11 +401,42 @@ which is issue 63's own rule:
 
 | table | phase | why it is named now |
 |---|---|---|
-| `[clock]` | R7 | the vocabulary's Time section puts the test clock's declaration in the bindings, and the arm on a rule reading `clock` with no clock control refuses on this table's absence -- so it has to live here to be absent from here |
+| `[clock]` | R7 | the vocabulary's Time section puts the test clock's declaration in the bindings, and the arm on a rule reading `clock` with no clock control refuses on this table's absence -- so it has to live here to be absent from here. **The unit of the fact this table enables is declared below**, by R7.1, before anything writes one |
 | `[quiesce]` | R6 | the second half of the eventual arm: eventual claims with no quiesce probe declared (7b), plus the three probe-integrity arms R6.2 typed the probes for -- a probe with no `timeout` (7c), a probe of a kind no adapter reports (7d), and `query` declared on a kind that does not read an observation (7e, which this file's own sibling sentence asserted was refused for a phase before anything refused it). All four refuse before any actor moves, and 7b counts the TYPED probes rather than the table's keys, so a `[quiesce]` carrying only sibling keys is still a project declaring no probe |
 | `[deadline]` | R7 | deadline fields arrive with controlled time |
 | `[seeding]` | R20 | a declared seeding path, which R20 may also reach through an action |
 | `[uses]` (`faults`, `volume`, `upgrade`) | R19, R20, R21 | the arm on a declared fault, volume target or upgrade with no capability behind it. This table is the project's ASK; `describe`'s `capabilities` is what the adapter can actually do, and the arm pairs them -- live against static, which is why neither side is in the other's file |
+
+### The run's clock, and its unit
+
+**`clock.t` is nanoseconds from the run's own epoch, and that epoch is zero at
+the first seal.** The unit is declared here before anything writes a clock
+fact, which is fable's ruling at coop breakout-r7/0: a unit settled after the
+writer exists is a unit that two readers have already had to guess at, and the
+engine and the adapter are the two readers.
+
+Three things follow, and each of them is the reason for the choice rather than
+a consequence of it:
+
+- **`[claim.<type>].bound`'s duration form needs no conversion.** `30s` is
+  parsed by `time.ParseDuration`, which yields nanoseconds, so the comparison
+  R2.3 declared and R6 left refused is one subtraction in one unit. A second
+  unit anywhere on that path would put a conversion inside every `pending`,
+  and a conversion is where an off-by-a-thousand lives.
+- **An overage is reported in one denomination.** Both operands being
+  nanoseconds, the bound, the claim's time and the overage are the same kind
+  of number, and a reader comparing two of them is not also converting.
+- **Wall-clock time never enters, and the unit is what keeps that true.** The
+  run's clock starts at zero and moves only when the walk draws `advance`
+  (R7.3), so a clocked run is exactly as repeatable as an unclocked one. The
+  vocabulary's "wall-clock time never enters the ledger" is a property this
+  unit has to hold up, not a caution beside it: a clock measured from an
+  absolute epoch would make every run's facts differ by when it ran.
+
+**A project with no `[clock]` has no clock**, and that is R7's third ruling
+rather than a silence: a rule reading `clock`, a duration bound, or a
+`[deadline]` table in such a project each refuses by name. Nothing is read as
+"time did not pass".
 
 
 ## `platform.toml` schema
@@ -573,6 +604,7 @@ refused even now, which is R4.2's rule for the same situation in the bindings:
 
 | version | date | run | change |
 |---|---|---|---|
+| v2 (decl only) | 2026-10-28 | R7.1 | THE CLOCK FACT'S UNIT IS DECLARED: `clock.t` is nanoseconds from the run's own epoch, zero at the first seal. THE WIRE DOES NOT MOVE and no table changes shape, which is why this is `decl only`: `[clock]` stays reserved for R7.2 to type, and an adapter built against v2 is unaffected -- the unit is an agreement about a LEDGER fact that the engine writes and a later clock request will answer in. DECLARED BEFORE THE WRITER EXISTS, on fable's ruling 1 at coop breakout-r7/0, which is the whole of why this row is its own commit: `Bound` has carried nanoseconds since R6 because that is what `time.ParseDuration` yields (ratchet, coop r6/157), `Now` has read the newest clock fact at or before the seal since R2.3, and the comparison between them has been unreachable for want of a writer (ratchet r6/155, rook rumor/1196) -- so the unit was already implied by two sides of a subtraction that nothing had performed. Settling it after the writer landed would have meant writing the unit down from the code that happened to produce it. NOTHING IS TESTED BY THIS ROW and it ships with no arm, which is the honest statement rather than a gap: the row declares, and the arms arrive with the ledger's control, the writer at every seal, the bound's judging and the replay, each in its own commit of R7.1. WHAT WOULD FALSIFY IT: a clock fact whose `t` is not nanoseconds, or an epoch that is not zero at the first seal, in which case `now - claimTime > bound` is comparing two units and every duration bound is wrong by whatever the ratio is |
 | v2 (decl only) | 2026-10-27 | R6.4 | THE SEEDS FILE's line gains `witness=WORD`, one word known: `cleared`. A bare row still promotes a DEFECT, so every committed line keeps its meaning and no reader of the old grammar is wrong about a line it has seen -- the same extension clause `profile=` took, and the same "R5 may EXTEND it and may not contradict it". WHY IT WAS NEEDED: this file is defined as lines ending in a comment naming the defect they found, and the arm that replays every row requires exit 3 of each. R6's gate asked for a committed run proving a pending HELD AND THEN CLEARED -- D1's case, and docs/vocabulary.md's "`pending` until the declared probes read quiet", which rook found had no run to read it from (coop rumor/1230). Such a run exits 0 and finds nothing, so adding seed 66 broke the replay arm on the arm's own correct terms rather than being carried by the format (ibis, coop rumor/1238); fable ruled the token at rumor/1241 over loosening the arm, which would have stopped exit 3 being required of the rows that ARE defects. THE WORD IS CHECKED IN THE PARSER and not by each caller, so every reader of the grammar refuses the same set and the refusal prints the set from the same list it checks -- a message naming words the parser no longer accepts is worse than no message, because a reader edits their line to match it. NO WIRE CHANGE AND NO VERSION MOVE, the `profile=` precedent and fable's ruling at coop r6/1: `ContractVersion` is the wire's, this message is no message, and arm 13 has nothing to read |
 | v2 (decl only) | 2026-10-26 | R6.3 | THE SEEDS FILE's line gains `name=value` TOKENS: `profile=NAME` and `steps=N`. R5 fixed the minimal format and said "R5 may EXTEND it and may not contradict it", which this is: a bare seed still means a seed under the default weights, so every committed line keeps its meaning and no reader of the old grammar is wrong about a line it has already seen. WHY A TOKEN AT ALL: R6's bug ledger says each row is caught by the stage or feature listed for it and one row says `settling`, so the seed that catches it must be replayed under THAT profile -- and a promoted seed whose line cannot say so is a seed that quietly replays under the wrong mix (fable, coop r6/92). AN UNDECLARED PROFILE AND AN UNKNOWN TOKEN ARE BOTH REFUSED by arm 10b, which is the arm that already exists for "a promoted seed that cannot be read": the loss is the same, a seed that no longer measures what it was promoted for. NO WIRE CHANGE AND NO VERSION MOVE, which is the `[quiesce]` precedent in the row below and fable's ruling at coop r6/1: `ContractVersion` is the wire's, this message is no message, and arm 13 has nothing to read. AND `steps=N` IS THERE BECAUSE A LENGTH IS A FACT ABOUT A ROW: R6's row is a sequence that does not fit in the ten steps the other promotions replay at, and holding that 24 in the arm that replays every seed made it the next profiled promotion's silent inheritance (ratchet, coop r6/106). THE GRAMMAR IS PARSED IN ONE PLACE NOW -- `platform.ParseSeedLine` -- because three readers each had their own copy and a token would have made two disagree quietly: internal/shrink compared the whole non-comment text to the seed's digits, so `12 profile=settling` read as "that seed is not here" and would have been promoted a SECOND time |
 | v2 (decl only) | 2026-10-26 | R6.2 | `[quiesce]`'s probes are TYPED and the wire does not move. The table was reserved and read whole into a map, so every key passed and nothing was required -- `quiesce = {probe = "/test/quiet"}` was a valid declaration no code read. It now carries `[[quiesce.probe]]` entries of `kind` (queue_depth, worker_idle or direct), `timeout`, optional `every`, `query` for the `direct` kind reusing R5's observation shape, and `quiet`; sibling keys stay carried, so a key a later phase reserves here is not refused by this one. NO WIRE CHANGE AND NO VERSION MOVE, which is fable's ruling at coop r6/1 and the reason this row says so rather than bumping the number: `ContractVersion` is the wire's, R6.2 changes no message, and arm 13 has nothing to read. Narrowing a reserved table is a VALIDATE matter -- the untyped shape was never read at run time, so no shipped project can break at run time, and one carrying it is refused BY NAME before any run, which is the R4 way to break. Measured: `bindings_test.go`'s own well-formed fixture was refused the moment the probes were typed ("wanted an array of tables"), and it moved to the typed form in the same commit |
