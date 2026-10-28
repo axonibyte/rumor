@@ -1,0 +1,9 @@
+REAL CAPTURED OUTPUT, byte for byte, from d7ce321 (v0.1.38) on 2026-10-28,
+from a fresh clone with HEAD asserted and the tree clean:
+
+    rumor run examples/toy --seed 12 --steps 24 --profile settling   -> rc 3
+    rumor run examples/toy --seed 66 --steps 24 --profile settling   -> rc 0
+
+Each was run twice and was byte-identical both times. These are R7's two added
+control seeds (fable rumor/1258). A fixture of INVENTED shape tests the
+fixture, not the subject -- ratchet r6/145 -- so nothing here is hand-written.

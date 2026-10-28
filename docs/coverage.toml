@@ -446,6 +446,40 @@ path = "tools/release-gate.py"
 docs = ["docs/release.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# The D4 control. Mapped to the testing methodology because what it carries is
+# a METHOD -- a release control whose figures are a property of its inputs
+# rather than of the tree it is run from -- and to release.md because what it
+# decides is whether a tag's behaviour matches the one the phase froze.
+#
+# IT READS TWO HALVES AGAINST TWO DIFFERENT SUBJECTS, which is the whole reason
+# it is one file: the five sha16s are taken against `examples/toy` FROZEN at a
+# commit named in the tool, and the five FIELDS are taken against the LIVE
+# `examples/toy` at whatever head is being judged. A control re-derived from
+# the live tree agrees with whatever that tree became.
+path = "tools/d4control.py"
+docs = ["docs/testing-methodology.md", "docs/release.md"]
+
+[[entry]]
+# The control's own arms. Mapped to the testing methodology because a control
+# is an oracle, and an oracle never observed failing is indistinguishable from
+# a passing suite: each cell drives the control against captured output with
+# exactly one line changed and asserts it REFUSES. One cell was deleted rather
+# than kept when its subject turned out unable to fail, and the reason is left
+# in place where the cell was.
+path = "tools/test_d4control.sh"
+docs = ["docs/testing-methodology.md"]
+
+[[entry]]
+# The control's fixtures: real captured output, byte for byte, from v0.1.31,
+# v0.1.36 and d7ce321, with one line changed per arm cell. Mapped to the
+# methodology for the method -- a fixture of INVENTED shape tests the fixture,
+# which is why these are captures and not stubs -- and kept out of examples/ so
+# `check` and `attaint` never walk them, the same placement rule the validate
+# arm fixtures follow.
+path = "tools/fixtures/**"
+docs = ["docs/testing-methodology.md"]
+
+[[entry]]
 # The drill driver. Mapped to the testing methodology because the METHOD is the
 # transferable part -- fable designs the drills, the author drives them ONCE
 # before the gate does, and driving them found two defects reading them had not

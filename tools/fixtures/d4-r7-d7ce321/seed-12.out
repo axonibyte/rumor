@@ -1,0 +1,55 @@
+run: seed 12
+run:   1 guest_1 create_user [guest_1.user#1]
+run:   2 member_1 suborn PLANTED [member_1.user#1]
+run:   3 member_1 create_user [member_1.user#2]
+run:   4 member_2 create_user [member_2.user#1]
+run:   5 guest_1 tell -> admin_1 <- guest_1.user#1
+run:   6 guest_1 create_event [guest_1.event#1]
+run:   7 member_1 create_event [member_1.event#1]
+run:   8 guest_1 recount_event [guest_1.recount#1] <- [guest_1.event#1]
+run:   9 member_2 create_event [member_2.event#1]
+run:  10 member_2 recount_event [member_2.recount#1] <- [member_2.event#1]
+run:  11 admin_1 create_user [admin_1.user#1]
+run:  12 admin_1 tell -> guest_1 <- admin_1.user#1
+run:  13 guest_1 recount_event [guest_1.recount#2] <- [guest_1.event#1]
+run:  14 member_1 recount_event [member_1.recount#1] <- [member_1.event#1]
+run:  15 member_2 recount_event [member_2.recount#2] <- [member_2.event#1]
+run:  16 admin_1 tell -> member_1 <- admin_1.user#1
+run:  17 member_2 join_event [member_2.join_event#1] <- [member_2.event#1]
+run:  18 admin_1 create_event [admin_1.event#1]
+run:  19 member_2 recount_event [member_2.recount#3] <- [member_2.event#1]
+run:  20 member_1 recount_event [member_1.recount#2] <- [member_1.event#1]
+run:  21 guest_1 join_event [guest_1.join_event#1] <- [guest_1.event#1]
+run:  22 guest_1 recount_event [guest_1.recount#3] <- [guest_1.event#1]
+run:  23 member_2 leave_event [member_2.leave_event#1] <- [member_2.event#1]
+run:  24 member_2 recount_event [member_2.recount#4] <- [member_2.event#1]
+run: FOUND bug of kind stale after step 24 -- engine.stale, rests_on_planted false
+run:   "event.tallied" is eventual bounded "quiesce"; the disagreement on the claim at position 24 was held open as `pending` at seal 22, the system has since read quiet, and it still disagrees: the bound is past
+shrink: REDUCED 24 step(s) to 19 -- 15 candidate(s), each replayed on a verified clean world and each settled with no pending left open
+shrink: without leave_event
+trace: seed 12, 19 step(s)
+trace:   1 guest_1 create_user [guest_1.user#1]
+trace:   2 member_1 suborn PLANTED [member_1.user#1]
+trace:   3 member_1 create_user [member_1.user#2]
+trace:   4 member_2 create_user [member_2.user#1]
+trace:   5 guest_1 tell []
+trace:   6 guest_1 create_event [guest_1.event#1]
+trace:   7 member_1 create_event [member_1.event#1]
+trace:   8 guest_1 recount_event [guest_1.recount#1]
+trace:   9 member_2 create_event [member_2.event#1]
+trace:  10 member_2 recount_event [member_2.recount#1]
+trace:  11 admin_1 create_user [admin_1.user#1]
+trace:  12 admin_1 tell []
+trace:  13 guest_1 recount_event [guest_1.recount#2]
+trace:  14 member_1 recount_event [member_1.recount#1]
+trace:  15 member_2 recount_event [member_2.recount#2]
+trace:  16 admin_1 tell []
+trace:  17 member_2 join_event [member_2.join_event#1]
+trace:  18 admin_1 create_event [admin_1.event#1]
+trace:  19 member_2 recount_event [member_2.recount#3]
+trace: finding bug of kind stale by engine.stale
+trace: fired statute.rego:265 (default)
+run: toy -- seed 12, 24 step(s), 21 handle(s), 4 session(s), 41 observation(s); 1 rollback provider(s) registered
+run:   quiesce -- 0 pending(s) open at the end; reconciliation: bug of kind stale
+run:   pending -- guest_1/event_tally held at step 22, re-checked after the last step: bug of kind stale
+run:   pending -- member_2/event_tally held at step 19, re-checked at step 24: consistent

@@ -1438,3 +1438,59 @@ is "nothing but its own absence", assert the absence end to end and put the
 cells where the clauses are. If the answer is "the words, the stream, the
 status", the site has observables and they need arms of their own wherever the
 function's own tests cannot see them.
+
+### A control re-derived from its subject agrees with whatever the subject became
+
+`tools/d4control.py` is the D4 release control: five seeds, each with its base,
+its invocation and its expected reading, driven against a tag to answer whether
+the behaviour the phase froze is the behaviour the tag has. The method it
+carries is the separation of its two halves, and that separation exists because
+the first version did not have it.
+
+**THE FIRST VERSION READ ITS EXPECTATIONS OFF THE TREE IT WAS JUDGING.** A
+control whose figures come from the live `examples/toy` is a control that moves
+when the toy moves, so a change to the project under test changes both the
+measurement and the thing it is measured against, and the two agree for exactly
+the wrong reason. The control now has one subject per half:
+
+* **The BYTES half** runs against `examples/toy` **frozen at a commit named in
+  the tool** — materialised per run with `git archive <SUBJECT> examples/toy`
+  into a temporary directory, so the clone's own working copy cannot perturb it.
+  Five 16-hex digests, and they are not allowed to move for the rest of the
+  phase. The frozen subject is a COMMIT, which is why a later change to the live
+  toy — a weight added for a new engine kind, say — leaves this half untouched
+  by construction rather than by anybody remembering to check.
+* **The FIELDS half** runs against the **live** `examples/toy` at whatever head
+  is being judged, and compares four named fields off the finding line — kind,
+  step, rule, planted — rather than the whole of stdout. What it answers is
+  "what happened did not move", which survives a renderer change that the bytes
+  half is entitled to catch.
+
+**THE ARCHIVE INTO A TEMPORARY DIRECTORY CARRIES A PRECONDITION THE PROSE KEPT
+LOSING: the project directory's BASENAME must still be `toy`,** because the run
+echoes the project directory's name into its summary line, so a frozen subject
+unpacked as `subject/` or `t/` changes the output it was frozen to reproduce.
+`git archive <commit> examples/toy` preserves the path, so the basename is
+right by construction — and that is the point worth taking: a precondition an
+instrument satisfies structurally is one its documentation can forget, which is
+the second-best place for it and the only place it rots.
+
+**A FIGURE WITHOUT ITS BASE AND ITS INVOCATION IS NOT A CONTROL.** Two of the
+five seeds are driven at a different base and a different step count from the
+other three, and an earlier table held the digests alone. A reader reproducing
+one of those rows with the wrong `--steps` gets a different digest and no way to
+tell a regression from a mis-drive, so each row now carries `base`, `steps`,
+`profile`, the digest, the exit code, the line count and the fields — a row is
+the whole invocation or it is an anecdote.
+
+**AND THE CONTROL'S OWN ARMS READ CAPTURED OUTPUT, NOT STUBS.**
+`tools/test_d4control.sh` drives the control against real output from v0.1.31,
+v0.1.36 and d7ce321 with exactly one line changed per cell, and asserts it
+REFUSES. A fixture of invented shape tests the fixture: a stub emitting a shape
+the real run never had will satisfy every arm written against it while the arms
+stay blind to the place a defect actually lives. One cell was **deleted** rather
+than kept when its subject turned out unable to fail — clock facts go to the
+ledger and stdout prints none, so an arm asserting a clock token's absence on
+stdout passed on every build ever made — and the reason is left in place where
+the cell was, because an arm that cannot fail is worth less than a note saying
+why it was removed.

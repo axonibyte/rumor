@@ -1,0 +1,29 @@
+run: seed 66
+run:   1 member_1 create_user [member_1.user#1]
+run:   2 guest_1 create_user [guest_1.user#1]
+run:   3 member_1 create_event [member_1.event#1]
+run:   4 member_2 create_user [member_2.user#1]
+run:   5 guest_1 create_event [guest_1.event#1]
+run:   6 admin_1 create_user [admin_1.user#1]
+run:   7 member_1 recount_event [member_1.recount#1] <- [member_1.event#1]
+run:   8 member_1 join_event [member_1.join_event#1] <- [member_1.event#1]
+run:   9 member_1 tell -> admin_1 <- member_1.event#1
+run:  10 member_2 create_event [member_2.event#1]
+run:  11 member_1 recount_event [member_1.recount#2] <- [member_1.event#1]
+run:  12 admin_1 join_event [admin_1.join_event#1] <- [member_1.event#1]
+run:  13 admin_1 leave_event [admin_1.leave_event#1] <- [member_1.event#1]
+run:  14 guest_1 recount_event [guest_1.recount#1] <- [guest_1.event#1]
+run:  15 member_2 recount_event [member_2.recount#1] <- [member_2.event#1]
+run:  16 member_1 leave_event [member_1.leave_event#1] <- [member_1.event#1]
+run:  17 member_2 join_event [member_2.join_event#1] <- [member_2.event#1]
+run:  18 guest_1 recount_event [guest_1.recount#2] <- [guest_1.event#1]
+run:  19 admin_1 recount_event [admin_1.recount#1] <- [member_1.event#1]
+run:  20 member_2 recount_event [member_2.recount#2] <- [member_2.event#1]
+run:  21 admin_1 recount_event [admin_1.recount#2] <- [member_1.event#1]
+run:  22 member_2 leave_event [member_2.leave_event#1] <- [member_2.event#1]
+run:  23 admin_1 tell -> guest_1 <- admin_1.recount#2
+run:  24 admin_1 recount_event [admin_1.recount#3] <- [member_1.event#1]
+run: toy -- seed 66, 24 step(s), 22 handle(s), 4 session(s), 45 observation(s); 1 rollback provider(s) registered
+run:   quiesce -- 0 pending(s) open at the end; reconciliation: consistent, consistent
+run:   pending -- member_1/event_tally held at step 11, re-checked after the last step: consistent
+run:   pending -- member_2/event_tally held at step 20, re-checked after the last step: consistent

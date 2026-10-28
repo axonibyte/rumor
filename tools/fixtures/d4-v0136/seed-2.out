@@ -1,0 +1,8 @@
+run: seed 2
+run:   1 member_2 create_user [member_2.user#1]
+run:   2 member_2 create_event [member_2.event#1]
+run:   3 admin_1 create_user [admin_1.user#1]
+run:   4 member_2 delete_event [member_2.delete_event#1] <- [member_2.event#1]
+run: FOUND bug after step 4 -- data.rumor.statute.finding, rests_on_planted false
+run: toy -- seed 2, 4 step(s), 4 handle(s), 1 session(s), 4 observation(s); 1 rollback provider(s) registered
+run:   quiesce -- 0 pending(s) open at the end; reconciliation: nothing to reconcile
