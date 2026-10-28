@@ -247,6 +247,48 @@ func arm8(rep *Report, dir string, b bindings.Bindings) {
 	}
 }
 
+// arm20: A `[deadline]` TABLE WITH NO CLOCK CONTROL.
+//
+// R7's THIRD RULING, and docs/contract.md carried the row for it with
+// "nothing yet" in the refused-by column from R7.1 until this arm: "a project
+// with no `[clock]` has no clock, and that is R7's third ruling rather than a
+// silence: nothing is read as `time did not pass`". Two of the three refusals
+// that ruling names already existed -- a rule reading `clock` (arm 8, above)
+// and an eventual type bounded by a duration (the engine, at run time) -- and
+// this is the third.
+//
+// WHY IT IS AN ARM AND NOT A PARSE REFUSAL, which is the line arm 8 sits on
+// too: `[deadline]` is well-formed on its own and means nothing wrong until you
+// know what else the project declares. A parser refusing it could not tell a
+// clocked project from an unclocked one, because the two tables are read in the
+// same pass; the pairing is what is wrong, and a pairing is what an arm is for.
+//
+// BOTH SIDES ARE PRESENCE, so this arm READS THE BINDINGS ALONE and evaluates
+// wherever they can be read -- no statute, no adapter, no platform file. That is
+// why it moves all three of the documented figures by one rather than only the
+// first (docs/testing-methodology.md's twenty-three / twenty-one / nineteen),
+// the way R6.2's three arms did and arm 19 did not.
+//
+// fable ruled the id at coop r7/48: a fresh number, because a cited identifier
+// does not move for a sibling and the lettered families are the ones born
+// together, which 8 and 20 are not.
+func arm20(rep *Report, b bindings.Bindings) {
+	// READ AND PASSED IS NOT SKIPPED, as arm 8 says of itself: a project
+	// declaring no `[deadline]` is one this arm evaluated and found nothing
+	// wrong with. There is nothing here that can fail to be read, so this arm
+	// never skips.
+	rep.ran("20")
+	if len(b.Deadline) == 0 {
+		return
+	}
+	if len(b.Clock) == 0 {
+		rep.refuse("20", "bindings.toml declares a [deadline] table and no [clock] table: "+
+			"a deadline is an instant the run has to be able to reach, and a project with no "+
+			"clock control cannot move its own time, so every such field would be judged "+
+			"against whatever the host clock said -- which no seed can reproduce")
+	}
+}
+
 // arm10a: A SEEDS FILE THAT IS NOT THERE.
 //
 // IT FIRES ON THE DEFAULT TOO, and that decision is the interesting one.

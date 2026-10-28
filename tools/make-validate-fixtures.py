@@ -81,6 +81,21 @@ def build():
     open(p, "w").write(s.replace("may_publish if not actor_has_published",
                                  "may_publish if {\n\tnot actor_has_published\n\tinput.clock.now > 0\n}", 1))
 
+    # ARM 20's FIXTURE: the twin with one change -- a `[deadline]` table and no
+    # `[clock]` one. The twin declares neither, so the ONE edit is the deadline
+    # table; the absence that pairs with it is the twin's own and needs no edit,
+    # which is what makes this one change rather than two (fable's rule, coop
+    # r4/74).
+    d = fresh("20-deadline-no-clock")
+    head(os.path.join(d, "bindings.toml"),
+         "# FIXTURE for arm 20: the twin with one change -- a [deadline] table,\n"
+         "# against the twin's own absence of a [clock] one.\n")
+    with open(os.path.join(d, "bindings.toml"), "a") as fh:
+        fh.write('\n[deadline]\n# A field that holds an instant. The VALUE is not read by this arm and\n'
+                 '# not by anything else yet: the table\'s presence is the condition, and\n'
+                 '# 103 is what types the fields (fable, coop rumor/1345).\n'
+                 'invitation_expires_at = "invitation.expires_at"\n')
+
     d = fresh("10a-no-seeds-file")
     os.remove(os.path.join(d, "seeds.lock"))
     open(os.path.join(d, "WHY-no-seeds-file.md"), "w").write(

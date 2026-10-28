@@ -27,7 +27,7 @@ import (
 // fixture, so `19/kind-without-a-weight` is the thirty-first. A fixture
 // directory that vanished would otherwise leave every remaining arm passing and
 // the suite quiet about it.
-const wantFixtures = 31
+const wantFixtures = 32
 
 // ARM 19 IS ONE ARM WITH SEVERAL CELLS, so it is the one arm with more than one
 // fixture -- and the count is declared here for the same reason every count in
@@ -347,7 +347,8 @@ const wantArmCountClaims = 2
 // of it in the alternation this oracle reads a correct document as saying
 // "twenty" and errors against it. Measured at the 19 -> 21 bump (R6.2).
 var armCountClaim = regexp.MustCompile(`(?i)(validate's|validate has|R4\.3's)\s+(?:own\s+)?` +
-	`(twenty-one|twenty-two|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|` +
+	`(twenty-one|twenty-two|twenty-three|one|two|three|four|five|six|seven|eight|nine|ten|` +
+	`eleven|twelve|` +
 	`thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b`)
 
 // spelled is how this project writes a count in prose. An arm count past twenty
@@ -355,7 +356,7 @@ var armCountClaim = regexp.MustCompile(`(?i)(validate's|validate has|R4\.3's)\s+
 var spelled = map[int]string{
 	13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen",
 	17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
-	21: "twenty-one", 22: "twenty-two",
+	21: "twenty-one", 22: "twenty-two", 23: "twenty-three",
 }
 
 // TestTheArmCountOracleReadsAHyphenatedNumberWhole is the control over the
@@ -833,6 +834,7 @@ var changedBy = map[string][]string{
 	"9b-volume-unavailable":  {"bindings.toml"},
 	"9c-upgrade-unavailable": {"bindings.toml"},
 	"13-contract-mismatch":   {"platform.toml"},
+	"20-deadline-no-clock":   {"bindings.toml"},
 }
 
 // TestEveryFixtureIsTheTwinPlusItsOwnChange is the drift oracle. Without it a
@@ -897,7 +899,7 @@ func TestEveryFixtureIsTheTwinPlusItsOwnChange(t *testing.T) {
 // and it moves only with a count posted in r4 first.
 var allArms = []string{
 	"1", "2", "3", "4", "5", "6", "7a", "7b", "7c", "7d", "7e", "8",
-	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13", "19",
+	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13", "19", "20",
 }
 
 // TestEveryArmAccountsForItself is the "18 of 18" invariant, and it is an

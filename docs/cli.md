@@ -81,17 +81,21 @@ said about them is not known -- and a decode refusal is 2 and never 1, because
 "the project is not wrong; its adapter is". fable's D7 drill asserts that
 boundary for the adapter and this command keeps the same one.
 
-**It reports what it EVALUATED, not only what it refused.** Nineteen arms are
-declared, and an arm whose precondition is absent -- the browser stage off, no
+**It reports what it EVALUATED, not only what it refused.** Twenty-three arms
+are declared -- the figure said NINETEEN for three releases, unseen because the
+arm-count oracle matches only `validate's`, `validate has` or `R4.3's` and this
+sentence names none of them; it is corrected here and still outside the oracle,
+because the oracle also pins HOW MANY attributions the documents make and a
+third one fails it -- and an arm whose precondition is absent -- the browser stage off, no
 rule declared, no seeds file -- did not pass, it did not run. Those are named
 with their reason rather than folded into a number:
 
 ```console
 $ rumor validate examples/twin          # with the adapter on PATH
-validate: twin -- 22 of 22 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
+validate: twin -- 23 of 23 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
 ```
 
-Twenty-two of twenty-two is what a complete small project looks like: fable's D9
+Twenty-three of twenty-three is what a complete small project looks like: fable's D9
 drill requires the untouched examples to pass with every arm EVALUATED and none
 skipped, which is why the twin enables the browser stage and declares a browser
 action with its flow. **An adapter it cannot reach costs four arms and one cell**, and that
@@ -108,7 +112,7 @@ validate: arm 13 skipped: the adapter did not answer a describe, so what it can 
 validate: arm 9a skipped: the adapter did not answer a describe, so what it can do is unknown
 validate: arm 9b skipped: the adapter did not answer a describe, so what it can do is unknown
 validate: arm 9c skipped: the adapter did not answer a describe, so what it can do is unknown
-validate: twin -- 18 of 22 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
+validate: twin -- 19 of 23 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
 ```
 
 The run is could-not-run either way -- exit 2, never a refusal, because the

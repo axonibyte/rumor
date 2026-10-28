@@ -1,0 +1,3 @@
+{"kind":"claim","position":1,"actor":"alice","type":"doc.published","ref":"alice.doc#1","handles":["alice.doc#1"]}
+{"kind":"told","position":2,"actor":"alice","to":"dana","claim_ref":"alice.doc#1"}
+{"kind":"claim","position":3,"actor":"alice","type":"doc.published","ref":"alice.doc#2","handles":["alice.doc#2"]}
