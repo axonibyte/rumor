@@ -12,7 +12,8 @@ import (
 // rook's gate verdict at coop rumor/1222, D11 condition 2: mutate
 // `if cand.PendingOpen != 0` to `&& false` at v0.1.37 and the whole suite stays
 // green -- 36 ok, rc 0, clean and mutated alike. The refusal's own words appear
-// at replay.go:183 and in NO test, and `PendingOpen: [1-9]` matched nowhere in
+// in `Once`'s unsettled-candidate refusal and in NO test, and `PendingOpen:
+// [1-9]` matched nowhere in
 // the tree. The guard enforces 92's first done-when and was the one thing in 92
 // with no arm: my four-refusals shape, on the sentence the phase exists for.
 //
@@ -30,19 +31,33 @@ import (
 //   - the probes removed and the eventual type bounded `30s` instead: rc 2,
 //     refused, "its bound cannot be measured" -- no clock fact writer exists
 //
-// THE REASON IS STRUCTURAL: walk.go's end-of-run reconciliation sits inside
-// `if p.Prober != nil`, so a project WITH a prober always resolves what it
-// held, and a project WITHOUT one cannot hold a pending at all -- a quiesce
-// bound with no prober is refused by run.go and a duration bound is refused for
-// want of a clock. BOTH OF THOSE DOORS ARE SHUT BY ARMS AND NOT ONLY BY THE
-// CODE, which ratchet measured at coop r6/188 and this comment understated:
+// THE DOOR OPENED AT R7.1, AND THE REASON THIS COMMENT GAVE WAS WRONG BEFORE
+// IT DID. It read: "walk.go's end-of-run reconciliation sits inside `if
+// p.Prober != nil`, so a project WITH a prober always resolves what it held,
+// and a project WITHOUT one cannot hold a pending at all". The second clause
+// expired as predicted -- R7.1 gives the run a clock, so a duration bound is
+// no longer refused -- but THE FIRST CLAUSE WAS NEVER TRUE, and that is the
+// part worth keeping. A re-ask does not resolve a pending; it re-judges it. A
+// duration bound whose run has not moved its clock re-judges to `pending`, so
+// the reconciliation runs, the prober is present, and the pending is still
+// held at the end (quill, coop r7/8; rook /1264 found the pair of
+// contradictory report lines it produces).
+//
+// MEASURED THROUGH THE PRODUCT, not reasoned: `rumor run` over examples/toy
+// with `event.tallied` bounded `30s` and one `[clock]`, seed 12 at 24 steps
+// under `settling`, prints "1 pending(s) open at the end". fable has ruled
+// that state a refusal (coop r7/9), which is a change to the RUN's status and
+// not to this guard: a candidate that did not settle is still a candidate
+// whose finding is where the walk stopped asking.
+//
+// SO THE ARM IS LIVE AND ITS REASON IS NOW ITS OWN. rook re-drove the mutant
+// at 5e89313 and it still dies here (coop r7 rumor/1263), which is why this is
+// prose corrected in place rather than coverage to restore -- a comment found
+// wrong is how the next reader talks themselves into deleting the arm beside
+// it. The two refusals ratchet named at coop r6/188,
 // `TestAQuiesceBoundWithNoProberIsRefused` and
-// `TestADurationBoundIsRefusedNamingTheDuration`, both in tests/run, assert
-// the two refusals, so "unreachable through the product" is a property the
-// suite holds rather than a reading of the source taken on trust.
-// So `PendingOpen != 0` is a guard against a walk that does
-// not exist yet: R14's repeated check and R7's clock are the doors that make it
-// reachable, and the arm has to stand at this layer until one of them opens.
+// `TestADurationBoundIsRefusedNamingTheDuration` in tests/run, still assert
+// what they assert; what they no longer add up to is "unreachable".
 //
 // THE CONTROL IS THE SETTLED CANDIDATE, because a refusal that fired on every
 // candidate would satisfy the assertion above and break every other arm in a
