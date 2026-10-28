@@ -561,6 +561,13 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	// distinction internal/quiesce draws at its own boundary: the adapter not
 	// answering is could-not-run, where a probe that ran and stopped is a thing
 	// the run FOUND.
+	//
+	// reAsked IS DECLARED OUT HERE because stillOpen below needs it and the
+	// reconciliation that fills it is two blocks in. It holds exactly the keys
+	// that got a "re-checked after the last step" sentence, so the two
+	// producers of a pending's life describe disjoint sets by construction
+	// rather than by a reader trusting that one implies the other.
+	reAsked := map[string]bool{}
 	if p.Prober != nil {
 		state, qerr := p.Prober.Quiesce(ctx)
 		if qerr != nil {
@@ -658,6 +665,12 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 					rec.Pendings = append(rec.Pendings, fmt.Sprintf(
 						"%s/%s held at step %d, re-checked after the last step: %s",
 						actor, query, a.at, f.Says()))
+					// MARKED HERE AND NOT AT THE TOP OF THE LOOP, which is the
+					// whole distinction: a re-ask that could not be MADE
+					// returned above through `if !made { continue }`, and that
+					// pending genuinely was never re-checked. Only a re-ask
+					// that produced a verdict claims the key.
+					reAsked[askKey(actor, query)] = true
 					// A FINDING THE RECONCILIATION PRODUCES ENDS THE RUN LIKE
 					// ANY OTHER, and it does not overwrite one the walk
 					// already has: the earlier finding is what a shrink
@@ -677,17 +690,34 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 
 	// A PENDING THAT WAS NEVER RE-CHECKED STILL GETS A SENTENCE, and this is
 	// the half a reader would otherwise have to infer from a count. The
-	// reconciliation above runs only when a prober is wired AND something was
-	// held AND the register is non-empty; every pending outside that gate --
-	// a run with no probes, or one whose probes never read quiet -- reaches
-	// the end unexamined, and said nothing about itself at all.
+	// reconciliation above runs when a prober is wired AND something was held
+	// AND the register is non-empty; a pending outside that gate -- a run
+	// with no probes at all -- reaches the end unexamined and said nothing
+	// about itself.
+	//
+	// AND THE GATE IS NOT THE QUIESCE ANSWER, which this comment claimed
+	// until it was driven. It read "or one whose probes never read quiet"
+	// among the unexamined, and the state is PASSED to the re-ask rather than
+	// gating it: on a toy copy whose `queue_depth` probe wants 999999, every
+	// held pending is re-checked and answers `quiesce_timeout`, which is
+	// terminal, so the register ends EMPTY and this function words nothing --
+	// "0 pending(s) open at the end" beside "re-checked after the last step:
+	// quiesce_timeout" (seeds 1, 8, 12, 21 at `--steps 24 --profile
+	// settling`).
+	//
+	// AND reAsked IS WHY THIS CANNOT CONTRADICT THE LOOP ABOVE. The register
+	// is not emptied by a re-ask: one that answers `pending` again leaves the
+	// key open, so passing `reg.Open()` alone made the same (actor, query)
+	// take both sentences -- "re-checked after the last step: pending" from
+	// the reconciliation and "never re-checked" from here (rook, coop
+	// rumor/1264). The set names which keys the loop spoke for.
 	//
 	// NAMED AS UNEXAMINED RATHER THAN AS CLEAN. "still open at the end" and
 	// "re-checked and cleared" are the two outcomes R2.3 distinguishes, and a
 	// line that omitted the first would make a run that never asked look
 	// exactly like a run that asked and got agreement -- the same collapse
 	// rook found in the reconciliation string itself.
-	rec.Pendings = append(rec.Pendings, stillOpen(reg.Open(), held)...)
+	rec.Pendings = append(rec.Pendings, stillOpen(reg.Open(), held, reAsked)...)
 	// SORTED FOR THE SAME REASON Reconciled IS: reg.Open() is a map, so
 	// without this the line order differs between two attempts of one seed
 	// and the control's own comparison fails on an artifact of iteration.
@@ -949,23 +979,46 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 // sentence added so that silence would not pass was itself unwitnessed, which
 // is the defect it exists to prevent, one layer out.
 //
-// WHY THE PRODUCT CANNOT DRIVE IT TODAY, and this is a narrower claim than
-// "unreachable". The end-of-run reconciliation re-asks every open pending, so
-// one survives only where the re-ask CANNOT BE MADE -- observeOne returns
-// not-made for a handle that will not resolve and for an actor with no session
-// in the observation's context, and `if !made { continue }` leaves that
-// pending in the register. Both conditions are real and neither has a
-// committed run that reaches them at the reconciliation; a project with no
-// prober cannot hold a pending at all, since a quiesce bound without probes is
-// refused (run_test.go:920) and a duration bound is refused for want of a
-// clock fact no non-test writer makes (run_test.go:864, quill coop r6/186,
-// ratchet r6/188). So this is armed where it CAN be driven, and the drive
-// through the product waits on R7's clock or R14's repeated check.
-func stillOpen(open map[string][]string, held map[string]ask) []string {
+// THREE WAYS A PENDING REACHES THE END, and this comment said ONE until R7.1
+// made the correction legible. It read: "the reconciliation re-asks every open
+// pending, so one survives only where the re-ask CANNOT BE MADE". That `only`
+// was true while every re-ask resolved, and it is the premise rook's
+// rumor/1264 falsified:
+//
+//   - THE RE-ASK CANNOT BE MADE. observeOne returns not-made for a handle that
+//     will not resolve and for an actor with no session in the observation's
+//     context, and `if !made { continue }` leaves the pending in the register
+//     with nothing said about it. This function words it.
+//   - THE RECONCILIATION DID NOT RUN AT ALL -- no prober, nothing held, or an
+//     empty register. Same sentence, same reason.
+//   - THE RE-ASK WAS MADE AND ANSWERED `pending` AGAIN, which R7.1's clock
+//     opened: a duration bound with the run's clock still at zero is INSIDE
+//     its bound, so the re-check neither clears the pending nor makes it
+//     `stale`, and the key stays open having been spoken for. `reAsked`
+//     excludes it here, because the reconciliation already gave it a sentence
+//     naming where it was held AND that it was re-checked.
+//
+// IT IS A DRIVEN PATH NOW, not a reserved one: on a toy copy with
+// `bound = "30s"` and a `[clock]`, seeds 1, 8 and 21 at `--steps 24 --profile
+// settling` hold a pending at the LAST step, which no later seal sees, so the
+// run reaches this reconciliation (ibis, coop rumor/1270; third vantage quill
+// rumor/1271). Seed 8 printed both sentences for one pending before this
+// change.
+func stillOpen(open map[string][]string, held map[string]ask, reAsked map[string]bool) []string {
 	var out []string
 	for actor, queries := range open {
 		for _, query := range queries {
-			a, ok := held[askKey(actor, query)]
+			key := askKey(actor, query)
+			// A PENDING THE RECONCILIATION RE-ASKED IS NOT THIS FUNCTION'S TO
+			// WORD, and the exclusivity is a parameter rather than an
+			// assumption because it is the thing that broke: the caller's
+			// `reg.Open()` still holds a key whose re-ask answered `pending`,
+			// so "left in the register" and "never re-asked" are two sets and
+			// not one.
+			if reAsked[key] {
+				continue
+			}
+			a, ok := held[key]
 			if !ok {
 				// NAMED RATHER THAN OMITTED. A pending the walk cannot place
 				// is still a pending the run ended holding, and dropping it

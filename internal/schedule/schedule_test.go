@@ -370,10 +370,11 @@ func TestOnlyTheFindingsThatStopAWalkStopIt(t *testing.T) {
 // function so that this can drive it at all.
 func TestTheSentenceForAPendingLeftOpen(t *testing.T) {
 	for _, c := range []struct {
-		what string
-		open map[string][]string
-		held map[string]ask
-		want []string
+		what    string
+		open    map[string][]string
+		held    map[string]ask
+		reAsked map[string]bool
+		want    []string
 	}{
 		{
 			what: "the walk recorded where it began",
@@ -401,6 +402,40 @@ func TestTheSentenceForAPendingLeftOpen(t *testing.T) {
 			want: nil,
 		},
 		{
+			// THE CELL THE TABLE COULD NOT EXPRESS BEFORE, and the one this
+			// commit exists for: a key that is BOTH open AND re-checked. The
+			// reconciliation already worded it -- "held at step N, re-checked
+			// after the last step: pending" -- so this function must word
+			// NOTHING, or one pending takes two sentences that contradict
+			// each other (rook, coop rumor/1264; ratchet asked for this cell
+			// at rumor/1269).
+			//
+			// IT IS THE ONLY CELL WHERE `open` AND `held` AGREE AND THE
+			// ANSWER IS STILL SILENCE, which is why the exclusivity had to
+			// become a parameter: from those two maps alone this case is
+			// indistinguishable from the first cell above.
+			what:    "open and re-checked is the reconciliation's to word, not this",
+			open:    map[string][]string{"guest_1": {"event_tally"}},
+			held:    map[string]ask{askKey("guest_1", "event_tally"): {at: 24}},
+			reAsked: map[string]bool{askKey("guest_1", "event_tally"): true},
+			want:    nil,
+		},
+		{
+			// AND THE MIXED CASE, so the guard is a filter and not a switch:
+			// one key re-asked beside one that was not, the second still
+			// worded.
+			what: "one re-asked, one not",
+			open: map[string][]string{"member_1": {"event_tally", "attendance"}},
+			held: map[string]ask{
+				askKey("member_1", "event_tally"): {at: 4},
+				askKey("member_1", "attendance"):  {at: 9},
+			},
+			reAsked: map[string]bool{askKey("member_1", "event_tally"): true},
+			want: []string{
+				"member_1/attendance held at step 9, never re-checked: still open at the end",
+			},
+		},
+		{
 			what: "two queries for one actor are two sentences",
 			open: map[string][]string{"member_1": {"event_tally", "attendance"}},
 			held: map[string]ask{
@@ -414,7 +449,7 @@ func TestTheSentenceForAPendingLeftOpen(t *testing.T) {
 		},
 	} {
 		t.Run(c.what, func(t *testing.T) {
-			got := stillOpen(c.open, c.held)
+			got := stillOpen(c.open, c.held, c.reAsked)
 			sort.Strings(got)
 			if len(got) != len(c.want) {
 				t.Fatalf("got %d sentence(s) %q, want %d %q", len(got), got, len(c.want), c.want)
