@@ -45,6 +45,7 @@ func TestEveryAnswerSatisfiesTheRealDecoder(t *testing.T) {
 		request(wire.KindDescribe, nil),
 		request(wire.KindExecute, map[string]any{"action": "create_event", "args": map[string]any{}, "token": "t"}),
 		request(wire.KindObserve, map[string]any{"query": "event", "source": "api", "token": "t"}),
+		request(wire.KindClock, map[string]any{"op": "advance", "t": 30000000000}),
 		request(wire.KindSession, map[string]any{"actor": "alice", "context": "api"}),
 	}
 	if len(cases) != len(wire.Kinds("request")) {

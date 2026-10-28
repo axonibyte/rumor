@@ -150,12 +150,18 @@ func Run(cfg Config, in io.Reader, out io.Writer) error {
 	// HOW MANY TIMES EACH ACTION HAS BEEN EXECUTED, so a repeat answers a
 	// DIFFERENT id -- see `nthID`.
 	calls := map[string]int{}
+	// THE FAKE'S CLOCK, held per PROCESS like `calls` and for the same reason:
+	// `advance` is relative, so an adapter that forgot the last value would
+	// answer the same instant to every request and the engine could not tell a
+	// moving clock from a stuck one. It starts at ZERO, which is the run's own
+	// epoch -- docs/contract.md's "zero at the first seal".
+	clock := int64(0)
 	for scan.Scan() {
 		line := strings.TrimSpace(scan.Text())
 		if line == "" {
 			continue
 		}
-		answer := cfg.answer(contract, []byte(line), calls)
+		answer := cfg.answer(contract, []byte(line), calls, &clock)
 		if err := write(out, answer); err != nil {
 			return err
 		}
@@ -167,7 +173,7 @@ func Run(cfg Config, in io.Reader, out io.Writer) error {
 }
 
 // answer builds one response as a map, so a required field can be deleted.
-func (cfg Config) answer(contract string, line []byte, calls map[string]int) map[string]any {
+func (cfg Config) answer(contract string, line []byte, calls map[string]int, clock *int64) map[string]any {
 	msg, err := wire.DecodeRequest(line)
 	if err != nil {
 		return envelope(contract, idOf(line), wire.Fault{
@@ -229,6 +235,31 @@ func (cfg Config) answer(contract string, line []byte, calls map[string]int) map
 		typed = wire.ObserveResponse{
 			Envelope: wire.Envelope{Kind: wire.KindObserve, Contract: contract, ID: env.ID},
 			Value:    value,
+		}
+	case wire.ClockRequest:
+		// THE RESPONSE CARRIES WHAT THE CLOCK NOW HOLDS, not what was asked
+		// for. This adapter never clamps, so the two agree here -- but the
+		// field exists because a real one may, and an engine that wrote its
+		// own intention into the ledger would record a time the system under
+		// test never held.
+		switch m.Op {
+		case wire.ClockSet:
+			*clock = m.T
+		case wire.ClockAdvance:
+			*clock += m.T
+		default:
+			// THE DECODER CHECKS FIELD PRESENCE, NOT A VARIANT'S VALUE, so an
+			// unknown op arrives here intact and is named rather than treated
+			// as one of the two.
+			return envelope(contract, env.ID, wire.Fault{
+				Kind:   wire.FaultInternal,
+				Field:  "op",
+				Detail: fmt.Sprintf("%q is not a clock op; this protocol has %q and %q", m.Op, wire.ClockSet, wire.ClockAdvance),
+			})
+		}
+		typed = wire.ClockResponse{
+			Envelope: wire.Envelope{Kind: wire.KindClock, Contract: contract, ID: env.ID},
+			T:        *clock,
 		}
 	case wire.SessionRequest:
 		typed = wire.SessionResponse{

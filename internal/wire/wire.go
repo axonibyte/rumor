@@ -50,6 +50,7 @@ const (
 	KindDescribe Kind = "describe"
 	KindExecute  Kind = "execute"
 	KindObserve  Kind = "observe"
+	KindClock    Kind = "clock"
 	KindSession  Kind = "session"
 	KindError    Kind = "error"
 )
@@ -62,6 +63,22 @@ const (
 	SourceAPI    Source = "api"
 	SourceUI     Source = "ui"
 	SourceDirect Source = "direct"
+)
+
+// ClockOp is what a clock request asks for, and the SHAPE is `observe`'s
+// `source` rather than a field this protocol already has: one kind, one variant
+// field, the variant deciding how the rest of the message reads. `op` itself is
+// NEW -- no message has carried that name before, which ratchet measured at
+// v0.1.39 (coop r7/50) when I had written "observe is the precedent" loosely
+// enough to be read as "op already exists".
+type ClockOp string
+
+const (
+	// ClockSet names an instant; ClockAdvance names an amount. Both carry it in
+	// the request's single `t`, because the op already says which and two
+	// fields would let one message carry both and mean neither.
+	ClockSet     ClockOp = "set"
+	ClockAdvance ClockOp = "advance"
 )
 
 // FaultKind is the error envelope's kind: what separates could-not-run from a
@@ -217,6 +234,32 @@ type ObserveResponse struct {
 	Value any `json:"value"`
 }
 
+// ClockRequest asks the app-exposed test clock to move. It is the envelope plus
+// two fields and nothing else.
+//
+// `T` IS NANOSECONDS, which docs/contract.md declared at R7.1 before any writer
+// existed: "clock.t is nanoseconds from the run's own epoch, zero at the first
+// seal". A second unit on this path is where an off-by-a-thousand lives, and
+// the engine's own `Bound` has carried nanoseconds since R6 for the same
+// reason -- `time.ParseDuration` yields them.
+type ClockRequest struct {
+	Envelope
+	Op ClockOp `json:"op"`
+	T  int64   `json:"t"`
+}
+
+// ClockResponse carries the time the clock ACTUALLY holds after the request,
+// which is not necessarily the time that was asked for: an adapter may clamp,
+// round, or refuse to go backwards. Who writes it to the ledger is open at the
+// time of writing (ibis, coop r7/49) -- today's writer uses the run's own copy
+// (internal/schedule/walk.go's `t := c.t`), and ratchet r7/50's observation is
+// that making the response authoritative moves where that value comes from
+// rather than adding a field.
+type ClockResponse struct {
+	Envelope
+	T int64 `json:"t"`
+}
+
 // SessionResponse carries the token the later messages speak through.
 type SessionResponse struct {
 	Envelope
@@ -287,6 +330,7 @@ var requests = map[Kind]shape{
 		required: []string{"kind", "contract", "id", "query", "source"},
 		optional: []string{"token", "args"},
 	},
+	KindClock:   {required: []string{"kind", "contract", "id", "op", "t"}},
 	KindSession: {required: []string{"kind", "contract", "id", "actor", "context"}},
 }
 
@@ -296,6 +340,7 @@ var responses = map[Kind]shape{
 	},
 	KindExecute: {required: []string{"kind", "contract", "id", "ids", "response"}},
 	KindObserve: {required: []string{"kind", "contract", "id", "value"}},
+	KindClock:   {required: []string{"kind", "contract", "id", "t"}},
 	KindSession: {required: []string{"kind", "contract", "id", "token"}},
 	KindError:   {required: []string{"kind", "contract", "id", "error"}},
 }
@@ -392,6 +437,8 @@ func into(kind Kind, isResponse bool, line []byte, allowed map[string]bool) (Mes
 		msg = &ExecuteResponse{}
 	case isResponse && kind == KindObserve:
 		msg = &ObserveResponse{}
+	case isResponse && kind == KindClock:
+		msg = &ClockResponse{}
 	case isResponse && kind == KindSession:
 		msg = &SessionResponse{}
 	case isResponse && kind == KindError:
@@ -402,6 +449,8 @@ func into(kind Kind, isResponse bool, line []byte, allowed map[string]bool) (Mes
 		msg = &ExecuteRequest{}
 	case kind == KindObserve:
 		msg = &ObserveRequest{}
+	case kind == KindClock:
+		msg = &ClockRequest{}
 	case kind == KindSession:
 		msg = &SessionRequest{}
 	default:

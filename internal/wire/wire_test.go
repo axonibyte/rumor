@@ -38,6 +38,8 @@ func wellFormed(direction string, kind Kind) map[string]any {
 			return add(map[string]any{"action": "create_event", "args": map[string]any{"capacity": 2}, "token": "t"})
 		case KindObserve:
 			return add(map[string]any{"query": "event", "source": "api", "token": "t"})
+		case KindClock:
+			return add(map[string]any{"op": "advance", "t": 30000000000})
 		case KindSession:
 			return add(map[string]any{"actor": "alice", "context": "api"})
 		}
@@ -60,6 +62,8 @@ func wellFormed(direction string, kind Kind) map[string]any {
 		return add(map[string]any{"ids": map[string]any{"event": 4711}, "response": map[string]any{"status": 201}})
 	case KindObserve:
 		return add(map[string]any{"value": 2})
+	case KindClock:
+		return add(map[string]any{"t": 30000000000})
 	case KindSession:
 		return add(map[string]any{"token": "t"})
 	case KindError:
@@ -104,8 +108,8 @@ func TestEveryWellFormedMessageDecodes(t *testing.T) {
 	// 4 request kinds + 5 response kinds. A literal, because the point of the
 	// number is to fail when a kind is ADDED to the protocol and not to this
 	// file -- deriving it from Kinds() would make it agree with itself.
-	if n != 9 {
-		t.Errorf("drove %d message kinds, want 9: a kind was added or removed without this file moving", n)
+	if n != 11 {
+		t.Errorf("drove %d message kinds, want 11: a kind was added or removed without this file moving", n)
 	}
 }
 
@@ -179,8 +183,8 @@ func TestUnknownFieldIsRefusedByName(t *testing.T) {
 			cases++
 		}
 	}
-	if cases != 9 {
-		t.Errorf("drove %d kinds, want 9", cases)
+	if cases != 11 {
+		t.Errorf("drove %d kinds, want 11", cases)
 	}
 }
 
@@ -310,15 +314,17 @@ func TestTheSchemaAndTheStructsAgree(t *testing.T) {
 		"request/describe":  DescribeRequest{},
 		"request/execute":   ExecuteRequest{},
 		"request/observe":   ObserveRequest{},
+		"request/clock":     ClockRequest{},
 		"request/session":   SessionRequest{},
 		"response/describe": DescribeResponse{},
 		"response/execute":  ExecuteResponse{},
 		"response/observe":  ObserveResponse{},
+		"response/clock":    ClockResponse{},
 		"response/session":  SessionResponse{},
 		"response/error":    ErrorResponse{},
 	}
-	if len(cases) != 9 {
-		t.Fatalf("%d message types listed, want 9", len(cases))
+	if len(cases) != 11 {
+		t.Fatalf("%d message types listed, want 11", len(cases))
 	}
 	for name, msg := range cases {
 		direction, kindText, _ := strings.Cut(name, "/")

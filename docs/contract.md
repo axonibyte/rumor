@@ -209,6 +209,36 @@ one taken outside a session. And an action whose context the actor's role may no
 hold -- `[[role]].contexts` -- is INAPPLICABLE rather than attempted, so no
 session is acquired for it at all.
 
+### `clock`
+
+**Request, beyond the envelope:**
+
+| field | type | consumer |
+|---|---|---|
+| `op` | string | `set` or `advance`. The variant decides how `t` reads, which is `observe`'s `source` shape rather than a field this protocol already had |
+| `t` | integer | NANOSECONDS. For `set`, the instant the clock is to hold; for `advance`, the amount to move it by. One field, because the op already says which and two would let a request carry both and mean neither |
+
+**Response, beyond the envelope:**
+
+| field | type | consumer |
+|---|---|---|
+| `t` | integer | the time the clock ACTUALLY holds after the request, in the same unit. Not necessarily the time asked for: an adapter may clamp, round, or refuse to go backwards |
+
+**The unit is the one R7.1 declared before any writer existed** -- `clock.t` is
+nanoseconds from the run's own epoch, zero at the first seal, in "The run's
+clock, and its unit" below. A second unit on this path is where an
+off-by-a-thousand lives, and the engine's own `Bound` has carried nanoseconds
+since R6 because `time.ParseDuration` yields them.
+
+**THE VERSION DOES NOT MOVE FOR THIS REQUEST, and that is load-bearing rather
+than lenient.** The version is one string three places must match by exact
+comparison with no compatibility window ("The version check", below), so an
+adapter built before this request must still PASS the handshake -- otherwise it
+would be refused for its version and never for the thing it actually lacks, and
+the by-name refusal R7.2 requires could not fire at all (rook, coop
+rumor/1348). An adapter that does not implement `clock` answers the error
+envelope and is refused by name for that.
+
 ### The error envelope
 
 Any response may be replaced by `kind: "error"`.
