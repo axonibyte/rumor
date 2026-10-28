@@ -319,6 +319,19 @@ func TestDeclaringAClockAddsFactsAndChangesNothingElse(t *testing.T) {
 			"fixture clocked", n)
 	}
 
+	// AND THE OTHER HALF OF THE NAME, which went unchecked until rook mutated
+	// the product during the D1/D5 drive (coop rumor/1342): with `if false` on
+	// the seal's clock Append, 8 of this package's 10 tests die and THIS ONE
+	// PASSED -- because `shape` below SKIPS clock facts, so a run with none
+	// compares equal to a run with none, and the `without` assertion above is
+	// still true of a build that writes no clock fact at all. "AddsFacts" was
+	// the half nothing asserted.
+	if n := len(clockFacts(withClock.Facts)); n == 0 {
+		t.Fatalf("no clock fact in a project that declares `[clock]`, and the rest of this test " +
+			"cannot see that: it compares only NON-clock shapes and the step counts, both of " +
+			"which a build writing no clock fact satisfies")
+	}
+
 	shape := func(facts []ledger.Fact) []string {
 		var out []string
 		for _, f := range facts {
