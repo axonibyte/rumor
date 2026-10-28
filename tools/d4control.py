@@ -26,17 +26,35 @@ being driven. A re-based control would agree with the toy by construction; this
 one cannot, because its subject does not move.
 
 THE SEAM THAT PROVES THEY ARE INDEPENDENT IS HAND-DRIVEN, NOT ARMED, and saying
-so is the point -- it needs a clonable ref, which a fixture cell cannot assume:
+so is the point -- it needs a clonable ref and a build, which a fixture cell
+cannot assume. **Re-drive it by hand whenever the frozen SUBJECT is advanced**:
+it is the only check that the two halves are not the same measurement twice.
 
-    python3 d4control.py <ref> --expect same-finding --clock-the-live-toy
+BOTH BRANCHES, AND THE REF DECIDES WHICH. Since it asserts that appending
+`[clock]` actually MOVED the witness seed's bytes, a ref whose tree writes no
+clock fact now refuses instead of announcing a pass it did not measure:
 
-Read 2026-10-28 against 93084b0: the frozen bytes unchanged at
-60705760d6ef48dd, and seed 12's live run reporting
-"bytes differ (8d76ddcf7670f2b6), fields equal" -- which is ibis rumor/1301's
-figure to the character, measured here by a different route. The other four
-seeds print no position and so do not move at all. **Re-drive this by hand
-whenever the frozen SUBJECT is advanced**, because it is the only check that the
-two halves are not the same measurement twice.
+    # TAKES -- a tree that writes clock facts
+    python3 d4control.py r7.1-clock-fact-2 --expect same-finding \
+        --clock-the-live-toy --source https://forge.axonibyte.com/axonibyte/rumor.git
+    rc 0: "it TOOK -- seed 12's live bytes moved 60705760d6ef48dd ->
+    8d76ddcf7670f2b6 in this run", frozen bytes unchanged, all five seeds met
+    --expect. That is ibis rumor/1301's figure to the character, reached here by
+    a different route and MEASURED in the run rather than asserted as a constant.
+
+    # REFUSES -- `[clock]` parses, nothing writes a clock fact
+    python3 d4control.py v0.1.38 --expect same-finding --clock-the-live-toy
+    rc 2: "DID NOT TAKE on v0.1.38: seed 12's live bytes are 60705760d6ef48dd
+    both with `[clock]` appended and without it."
+
+THE REF MUST BE ONE THE SOURCE HOLDS REACHABLY, and that is a fact about the
+clone rather than about this tool -- which is why two spellings are above. The
+commit whose tree moves the bytes is 93084b0; `d4control.py 93084b0` drives the
+whole control from a source that holds it on a local ref (ratchet, coop
+rumor/1333), and fails from one where it is only a remote-tracking tip, as mine
+is -- a local clone copies refs/heads and refs/tags, not refs/remotes, and this
+source refuses a bare-sha fetch (rc 128). There the branch name plus the forge
+URL is the route. Both forms reach the same tree.
 
 EXIT CODES, DECLARED so a reader of rc is never guessing:
   0  every seed met --expect, and the pending-absence arm had its presence partner
