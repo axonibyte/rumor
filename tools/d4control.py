@@ -35,8 +35,7 @@ BOTH BRANCHES, AND THE REF DECIDES WHICH. Since it asserts that appending
 clock fact now refuses instead of announcing a pass it did not measure:
 
     # TAKES -- a tree that writes clock facts
-    python3 d4control.py r7.1-clock-fact-2 --expect same-finding \
-        --clock-the-live-toy --source https://forge.axonibyte.com/axonibyte/rumor.git
+    python3 d4control.py v0.1.39 --expect same-finding --clock-the-live-toy
     rc 0: "it TOOK -- seed 12's live bytes moved 60705760d6ef48dd ->
     8d76ddcf7670f2b6 in this run", frozen bytes unchanged, all five seeds met
     --expect. That is ibis rumor/1301's figure to the character, reached here by
@@ -47,14 +46,25 @@ clock fact now refuses instead of announcing a pass it did not measure:
     rc 2: "DID NOT TAKE on v0.1.38: seed 12's live bytes are 60705760d6ef48dd
     both with `[clock]` appended and without it."
 
-THE REF MUST BE ONE THE SOURCE HOLDS REACHABLY, and that is a fact about the
-clone rather than about this tool -- which is why two spellings are above. The
-commit whose tree moves the bytes is 93084b0; `d4control.py 93084b0` drives the
-whole control from a source that holds it on a local ref (ratchet, coop
-rumor/1333), and fails from one where it is only a remote-tracking tip, as mine
-is -- a local clone copies refs/heads and refs/tags, not refs/remotes, and this
-source refuses a bare-sha fetch (rc 128). There the branch name plus the forge
-URL is the route. Both forms reach the same tree.
+A TAG NEEDS NO `--source`, which is why one spelling is above where two used to
+be. A clone copies refs/heads and refs/tags, so `d4control.py v0.1.39` reaches
+the tree from any source holding the tag -- and the run says which source served
+it ("frozen subject: 93084b02:examples/toy extracted by git archive from the
+clone of v0.1.39"), because reading this code cannot tell you.
+
+THE BRANCH NAME THAT STOOD HERE IS GONE: the forge dropped r7.1-clock-fact-2
+when PR 104 merged, so the invocation that named it now fails for a reason the
+text did not mention -- the same defect this block was written to avoid, one
+release later. Measured rather than inferred from the merge: `ls-remote --heads
+<url> 'r7.1-clock-fact*'` returns NOTHING on a call where r7-d4-control-field-2
+returns its sha (rook coop rumor/1340, ratchet rumor/1341, and here).
+
+A BARE SHA IS THE ONE SPELLING THAT STILL DEPENDS ON THE SOURCE. The commit
+whose tree moves the bytes is 93084b0; `d4control.py 93084b0` drives the whole
+control from a source that holds it on a LOCAL ref (ratchet, coop rumor/1333)
+and fails from one where it is only a remote-tracking tip -- refs/remotes is not
+copied, and this source refuses a bare-sha fetch (rc 128). The tag is the form
+that works from either, so prefer it.
 
 EXIT CODES, DECLARED so a reader of rc is never guessing:
   0  every seed met --expect, and the pending-absence arm had its presence partner
