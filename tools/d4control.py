@@ -427,8 +427,10 @@ def main():
     # person's clone; in `tools/` the repo containing the tool IS the source,
     # and `--source` stays for driving a different clone or the forge by URL.
     ap.add_argument("--source", default=str(pathlib.Path(__file__).resolve().parent.parent),
-                    help="clone source (default: the repo holding this tool); "
-                         "the forge by URL also works")
+                    help="clone source (default: the repo holding this tool). "
+                         "A forge URL works too: the ref is cloned from it and "
+                         "the frozen subject is then archived from that clone, "
+                         "since `git archive` cannot read a URL")
     # RESOLVED, NOT HARD-CODED: this jail has go126 and go125 and no bare
     # `go`, another box has only `go`, and tools/release-gate.py:888 already
     # settled the order for this repo. Hard-defaulting to `go126` here would
@@ -518,10 +520,31 @@ def main():
     # these worktrees". A worktree shares an index and a config with whatever
     # else is using the repo; a drill that can be perturbed by another writer
     # is not a control.
+    # A TAG OR A BRANCH CLONES DIRECTLY; A SHA NEEDS THE SECOND PATH, because
+    # `git clone --branch` does not take one. That mattered the moment the clock
+    # seam below grew a real assertion: the ONLY ref whose tree writes a clock
+    # fact is 93084b0, which is untagged, so without this the seam could reach
+    # its refuse branch and nothing else -- a guard whose PASS branch is
+    # undrivable, which is the same defect as an arm that cannot fail, inverted.
+    # ratchet rumor/1328 named it: "the tag where it would take is untagged
+    # while the tool cannot take a sha".
+    #
+    # THE FROZEN SUBJECT IS UNAFFECTED EITHER WAY: it is archived from
+    # --source, never from this clone, so a shallow tree here cannot reach it.
     c = run(["git", "clone", "--quiet", "--no-local", "--branch", a.tag,
              "--depth", "1", a.source, tree])
     if c.returncode != 0:
-        refuse(f"clone of {a.tag} from {a.source} failed", c.stderr)
+        # NOT A FALLBACK THAT HIDES THE FIRST FAILURE: the full clone is tried
+        # and a failure of EITHER is named, with the sha path's own stderr, so
+        # "that ref does not exist" never reads as "shas are unsupported".
+        c2 = run(["git", "clone", "--quiet", "--no-local", a.source, tree])
+        if c2.returncode != 0:
+            refuse(f"clone of {a.tag} from {a.source} failed as a tag or branch "
+                   f"AND a full clone for a sha failed too", c.stderr + c2.stderr)
+        co = run(["git", "checkout", "--quiet", "--detach", a.tag], cwd=tree)
+        if co.returncode != 0:
+            refuse(f"{a.tag} is not a tag, a branch, or a commit in "
+                   f"{a.source} -- nothing was measured", c.stderr + co.stderr)
 
     head = run(["git", "rev-parse", "HEAD"], cwd=tree).stdout.strip()
     dirty = run(["git", "status", "--porcelain"], cwd=tree).stdout.strip()
@@ -562,12 +585,43 @@ def main():
     subjdir = os.path.join(work, "subject")
     os.mkdir(subjdir)
     tarpath = os.path.join(work, "subject.tar")
-    ar = run(["git", "-C", a.source, "archive", "--format=tar", "-o", tarpath,
-              SUBJECT, SUBJECT_PATH])
-    if ar.returncode != 0:
-        refuse(f"could not `git archive` the frozen subject {SUBJECT}:"
-               f"{SUBJECT_PATH} from {a.source} -- the control has no subject, "
-               f"so there is nothing to compare bytes against", ar.stderr)
+    # WHERE THE FROZEN SUBJECT IS ARCHIVED FROM, and why it can be either place:
+    # git objects are content-addressed, so `SUBJECT:SUBJECT_PATH` is the same
+    # bytes out of any repository that holds the commit. The control's integrity
+    # comes from the SHA, not from which clone served it.
+    #
+    # THIS USED TO ARCHIVE FROM --source UNCONDITIONALLY, and `--source` is
+    # documented as accepting "the forge by URL" -- which `git -C <url> archive`
+    # cannot do at all. The promise in the help was false for this half: driven
+    # with a forge URL, every run refused with "could not git archive the frozen
+    # subject", a capability failure wearing a missing-subject message.
+    _src_is_local = os.path.isdir(os.path.join(a.source, ".git")) or os.path.isdir(
+        os.path.join(a.source, "objects"))
+    _from, ar = a.source, None
+    if _src_is_local:
+        ar = run(["git", "-C", a.source, "archive", "--format=tar", "-o", tarpath,
+                  SUBJECT, SUBJECT_PATH])
+    if ar is None or ar.returncode != 0:
+        # THE CLONE AS THE SECOND SOURCE, deepened first if it is shallow: a
+        # `--depth 1` clone of a later tag does not contain this commit, and
+        # unshallowing is the difference between "the subject is not here" and
+        # "the subject is not here YET".
+        if run(["git", "-C", tree, "cat-file", "-e", SUBJECT + "^{commit}"]).returncode != 0:
+            run(["git", "-C", tree, "fetch", "--quiet", "--unshallow"])
+            run(["git", "-C", tree, "fetch", "--quiet", "origin",
+                 "+refs/heads/*:refs/remotes/origin/*"])
+        ar2 = run(["git", "-C", tree, "archive", "--format=tar", "-o", tarpath,
+                   SUBJECT, SUBJECT_PATH])
+        if ar2.returncode != 0:
+            _why = ("local" if _src_is_local else
+                    "NOT a local repository, so `git archive` cannot read it "
+                    "however reachable the URL is")
+            refuse(f"could not `git archive` the frozen subject {SUBJECT}:"
+                   f"{SUBJECT_PATH} -- not from {a.source} ({_why}), and not "
+                   f"from the clone of {a.tag} after unshallowing it. The "
+                   f"control has no subject, so there is nothing to compare "
+                   f"bytes against", (ar.stderr if ar else "") + ar2.stderr)
+        _from = f"the clone of {a.tag}"
     import tarfile
     with tarfile.open(tarpath) as tf:
         tf.extractall(subjdir)
@@ -575,14 +629,61 @@ def main():
     if not os.path.isdir(subj_toy):
         refuse(f"the archive of {SUBJECT} did not yield {SUBJECT_PATH}")
     print(f"  frozen subject: {SUBJECT}:{SUBJECT_PATH} extracted by git archive "
-          f"-- the BYTES below are against it, the FIELDS against the head's own")
+          f"from {_from} -- the BYTES below are against it, the FIELDS against "
+          f"the head's own")
+
+    # THE WITNESS SEED, and why it is this one: ibis rumor/1301 measured that a
+    # clocked toy moves seed 12's bytes because its stale sentence prints two
+    # LEDGER POSITIONS, and clock facts take positions. The other four seeds
+    # need not move, so requiring them to would refuse a correct tree.
+    WITNESS_SEED = 12
+
+    def _seed_cmd(seed, project):
+        spec = CONTROL[seed]
+        c = [os.path.join(bindir, "rumor"), "run", project,
+             "--seed", str(seed), "--steps", str(spec["steps"])]
+        return c + (["--profile", spec["profile"]] if spec["profile"] else [])
 
     if a.clock_the_live_toy:          # self-test seam, opt-in only
+        # THE SEAM NOW PROVES IT TOOK, AND THE PROOF IS RELATIVE (ratchet
+        # rumor/1328 with the cure corrected at /1330, ibis /1329).
+        #
+        # WHAT WAS WRONG: this appended `[clock]`, announced that the live half
+        # "now runs 101's done-when", and asserted nothing. On v0.1.38 -- the
+        # only tag the tool can be pointed at -- `[clock]` PARSES and nothing
+        # writes a clock fact, R7.1's writer not being in that tree, so the
+        # clocked and unclocked live lines are identical and the announcement
+        # was false. A pass could not be told from the seam not taking: an
+        # independence check that cannot fail is not one.
+        #
+        # AND THE ASSERTION IS AGAINST THIS RUN'S OWN UNCLOCKED BYTES, never
+        # against a digest. ratchet's first wording named 8d76ddcf7670f2b6,
+        # which ibis identified as a 93084b0 reading -- `runClock` is in three
+        # files under internal/schedule there and ZERO at v0.1.38, reproduced
+        # from here with `PoolKinds` at 6 in pool.go on both as the control. A
+        # constant from another tree would make this reachable only in its
+        # refuse branch. A digest, like a line number, is a fact about a TREE.
+        _pre = run(_seed_cmd(WITNESS_SEED, "examples/toy"), cwd=tree, env=env)
         with open(os.path.join(tree, "examples", "toy", "bindings.toml"), "a") as fh:
             fh.write("\n[clock]\n")
-        print("  SELF-TEST: `[clock]` appended to the CLONE's examples/toy, so "
-              "the live half now runs 101's done-when. The frozen subject is "
-              "untouched -- that is the property under test.")
+        _post = run(_seed_cmd(WITNESS_SEED, "examples/toy"), cwd=tree, env=env)
+        _a, _b = _sha16(_pre.stdout), _sha16(_post.stdout)
+        if _a == _b:
+            refuse(f"--clock-the-live-toy DID NOT TAKE on {a.tag}: seed "
+                   f"{WITNESS_SEED}'s live bytes are {_a} both with `[clock]` "
+                   f"appended and without it. `[clock]` parses on this ref and "
+                   f"nothing in it writes a clock fact, so the two halves' "
+                   f"independence is UNMEASURED here rather than demonstrated "
+                   f"-- which is the whole claim this seam exists to make. "
+                   f"Point it at a ref whose tree writes clock facts; the "
+                   f"known mover is 93084b0, where seed {WITNESS_SEED} reads "
+                   f"8d76ddcf7670f2b6 clocked (ibis rumor/1301) -- that figure "
+                   f"is a fact about THAT tree and is not asserted here.")
+        print(f"  SELF-TEST: `[clock]` appended to the CLONE's examples/toy and "
+              f"it TOOK -- seed {WITNESS_SEED}'s live bytes moved {_a} -> {_b} "
+              f"in this run, which is what makes the live half a measurement "
+              f"rather than an announcement. The frozen subject is untouched: "
+              f"that is the property under test.")
 
     bad = []
     for seed in ORDER:
