@@ -186,6 +186,9 @@ func TestWhatCannotBeReadAsBindingsIsRefused(t *testing.T) {
 			first := doc["role"].([]any)[0]
 			doc["role"] = []any{first, first}
 		}},
+		{"a clock form that is neither", "clock.form", "wanted", func(doc map[string]any) {
+			doc["clock"] = map[string]any{"form": "wristwatch"}
+		}},
 		{"an unknown top-level key", "nonesuch", "unknown key", func(doc map[string]any) {
 			doc["nonesuch"] = true
 		}},
@@ -347,6 +350,43 @@ func TestTheReservedTablesAreCarriedAndNotInvented(t *testing.T) {
 	doc["uses"] = map[string]any{"nonesuch": []any{}}
 	if rep := Parse(doc); rep.OK() || !names(rep.Refusals, "uses.nonesuch", "unknown key") {
 		t.Errorf("an unknown key in uses: %v", rep.Refusals)
+	}
+}
+
+// TestTheClockFormIsCarriedTypedAndAbsentIsNotAFault, R7.2. The sibling of the
+// arm above: [clock] is still a reserved map, and `form` is the one key in it
+// this phase reads. The three accepted cells are the two forms the epic names
+// and the table that says neither -- ABSENT IS NOT A PARSE FAULT, because the
+// engine is the one that cannot act on a clock it has no form for, and a
+// refusal here would take that reachable refusal away (fable, coop r7/51).
+// The fourth cell, a form that is neither, is in the refusal table above.
+func TestTheClockFormIsCarriedTypedAndAbsentIsNotAFault(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		table map[string]any
+		want  ClockForm
+	}{
+		{"adapter", map[string]any{"form": "adapter"}, ClockAdapter},
+		{"faked", map[string]any{"form": "faked"}, ClockFaked},
+		{"no form at all", map[string]any{"endpoint": "/test/clock"}, ""},
+	} {
+		doc := wellFormed()
+		doc["clock"] = tc.table
+		rep := Parse(doc)
+		if !rep.OK() {
+			t.Errorf("%s: refused: %v", tc.name, rep.Refusals)
+			continue
+		}
+		if got := rep.Bindings.ClockForm; got != tc.want {
+			t.Errorf("%s: form %q, wanted %q", tc.name, got, tc.want)
+		}
+		// THE REST OF THE TABLE IS STILL CARRIED, which is what makes `form`
+		// a typed half rather than a replacement for the reserved map.
+		for k, v := range tc.table {
+			if rep.Bindings.Clock[k] != v {
+				t.Errorf("%s: clock[%q] is %v, wanted %v", tc.name, k, rep.Bindings.Clock[k], v)
+			}
+		}
 	}
 }
 

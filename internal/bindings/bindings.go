@@ -40,6 +40,37 @@ const (
 	Eventual  = "eventual"
 )
 
+// ClockForm is HOW a project controls the run's clock, and the two values are
+// the two the epic names: an app-exposed test clock the engine moves through
+// the adapter's `clock` request, or a stack running under faked time where the
+// engine's own `t` is the world's and no request is sent at all (fable, coop
+// r7/51).
+//
+// THE FIELD IS OPTIONAL AT THE PARSE AND A WRONG VALUE IS NOT, which is the
+// split R6.2 wrote beside the probes and the reserved block's own rule read
+// together. Reserved tables are CARRIED, not policed -- "a key a later phase
+// reserves here is not refused by this one" -- and a parser that required
+// `form` would refuse every `[clock]` written before this phase, which the
+// package's own test guards against by declaring one with an `endpoint` and
+// nothing else. I wrote it required first and that test caught it.
+//
+// A VALUE THAT IS NEITHER FORM IS STILL REFUSED HERE, because "a malformed
+// TABLE is still refused" is issue 63's rule and an unknown form is not a key
+// a later phase might reserve -- it is this phase's own field, spelled wrong.
+// A MISSING form is refused by the CONSUMER instead: the engine cannot ask an
+// adapter for a clock it was not told how to reach, and that refusal has a
+// reachable path, which a parse refusal would have taken away.
+type ClockForm string
+
+const (
+	// ClockAdapter: the engine moves the clock through the adapter and the
+	// LEDGER RECORDS WHAT CAME BACK, not what was asked for (fable r7/51).
+	ClockAdapter ClockForm = "adapter"
+	// ClockFaked: the stack runs under faked time, so there is no request and
+	// the engine's own `t` is the world's.
+	ClockFaked ClockForm = "faked"
+)
+
 // Quiesce is the bound meaning "until the system settles", as opposed to a
 // duration. R6 builds the probe; the word is fixed here because the arm on an
 // eventual type with no bound has to tell a missing bound from this one.
@@ -64,7 +95,11 @@ type Bindings struct {
 	// inside them belong to R6, R7 and R20, and checking them against a key set
 	// this phase would be inventing is how a schema acquires fields nothing
 	// consumes. A malformed TABLE is still refused, which is issue 63's rule.
-	Clock map[string]any
+	// Clock stays the RESERVED MAP for anything the table carries beyond the
+	// form, the way Quiesce does beside Probes. ClockForm is the typed half,
+	// which is what R7.2 adds.
+	Clock     map[string]any
+	ClockForm ClockForm
 	// Quiesce stays the RESERVED MAP for anything the table carries beyond the
 	// probes, so a project is not refused for a key R7 reserves. Probes is the
 	// typed half, which is what R6.2 added.
@@ -453,6 +488,23 @@ func Parse(doc map[string]any) Report {
 			// valid declaration that no code read. R6.2 types the probe array
 			// and leaves the sibling keys carried, so a key a later phase
 			// reserves here is not refused by this one.
+			if reserved.key == "clock" {
+				// OPTIONAL, so `decl` reports nothing for an absent key; the
+				// value check is ours because decl reads a string, not an enum.
+				form := ClockForm(t.Str("form", false))
+				switch form {
+				case "", ClockAdapter, ClockFaked:
+					// EMPTY IS NOT A PARSE FAULT: the engine refuses a clocked
+					// project whose form it cannot read, where the refusal is
+					// reachable and can name what it was about to do.
+					b.ClockForm = form
+				default:
+					t.Refuse("form", fmt.Sprintf("%q: wanted %q or %q -- a clock is "+
+						"either one the engine moves through the adapter's `clock` request "+
+						"or a stack under faked time, and nothing else can be seeded",
+						form, ClockAdapter, ClockFaked))
+				}
+			}
 			if reserved.key == "quiesce" {
 				for _, pr := range t.Tables("probe") {
 					b.Probes = append(b.Probes, Probe{
