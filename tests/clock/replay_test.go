@@ -66,10 +66,14 @@ func TestAClockedRunIsTheSameRunTwice(t *testing.T) {
 }
 
 func TestAReplayOfAClockedRunCarriesTheClock(t *testing.T) {
+	// settledSeed AND NOT heldSeed: a run that ends with an unmeasured pending
+	// now refuses (fable, coop r7/15), and a replay compared against a refused
+	// walk would be comparing two refusals. 66 settles, so both sides have a
+	// verdict to compare.
 	dir := durationBounded(t, true)
-	original := walkProfile(t, dir, heldSeed, heldSteps, heldProfile)
+	original := walkProfile(t, dir, settledSeed, heldSteps, heldProfile)
 
-	finding, steps, open, err := replayed(t, dir, heldSeed, heldSteps, heldProfile)
+	finding, steps, open, err := replayed(t, dir, settledSeed, heldSteps, heldProfile)
 	if err != nil {
 		t.Fatalf("the replay refused where the walk ran: %v\n\nTHAT IS THE SHAPE THIS ARM IS "+
 			"FOR: with a duration bound, a replay that did not carry the clock cannot measure "+

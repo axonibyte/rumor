@@ -27,6 +27,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/quiesce"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
@@ -157,7 +158,7 @@ func tryWalkProfile(t *testing.T, dir string, seed uint64, steps int, profile st
 	}
 	defer func() { _ = sess.Close() }()
 
-	return schedule.Walk(ctx, schedule.Project{
+	return schedule.Walk(ctx, prober(t, brep, sess, schedule.Project{
 		Statute:      string(statute),
 		Actions:      brep.Bindings.Actions,
 		Weights:      prep.Platform.Weights,
@@ -167,7 +168,31 @@ func tryWalkProfile(t *testing.T, dir string, seed uint64, steps int, profile st
 		Eventual:     schedule.EventualOf(brep.Bindings),
 		ClockControl: brep.Bindings.Clock != nil,
 		Profile:      profile,
-	}, sess, seed, steps, 1)
+	}), sess, seed, steps, 1)
+}
+
+// prober wires the project's own quiesce probes, which is what cmd/rumor does
+// and what this harness did NOT until R7.1's end-of-run refusal made the gap
+// visible.
+//
+// WHY IT MATTERS MORE THAN IT LOOKS. Without a prober the end-of-run
+// reconciliation never runs -- walk.go gates it on `p.Prober != nil` -- so
+// EVERY pending a run holds survives to the end. A suite missing it reads a
+// world the product does not have: seeds 66, 75 and 140 close their pendings
+// at that reconciliation through `rumor run` and kept them open here, which
+// turned a control into a second copy of the arm it was supposed to contrast
+// with. Measured both ways at coop r7/16.
+func prober(t *testing.T, brep bindings.Report, sess *wire.Session, p schedule.Project) schedule.Project {
+	t.Helper()
+	if len(brep.Bindings.Probes) == 0 {
+		return p
+	}
+	pr, err := quiesce.New(brep.Bindings.Probes, sess)
+	if err != nil {
+		t.Fatalf("building the prober from the project's own probes: %v", err)
+	}
+	p.Prober = pr
+	return p
 }
 
 // replayed drives schedule.Replay over a fresh world, the way internal/shrink
@@ -204,7 +229,7 @@ func replayed(t *testing.T, dir string, seed uint64, steps int, profile string) 
 	}
 	defer func() { _ = sess.Close() }()
 
-	return schedule.Replay(ctx, schedule.Project{
+	return schedule.Replay(ctx, prober(t, brep, sess, schedule.Project{
 		Statute:      string(statute),
 		Actions:      brep.Bindings.Actions,
 		Weights:      prep.Platform.Weights,
@@ -214,7 +239,7 @@ func replayed(t *testing.T, dir string, seed uint64, steps int, profile string) 
 		Eventual:     schedule.EventualOf(brep.Bindings),
 		ClockControl: brep.Bindings.Clock != nil,
 		Profile:      profile,
-	}, sess, seed, 1, steps, nil)
+	}), sess, seed, 1, steps, nil)
 }
 
 func clockFacts(facts []ledger.Fact) []ledger.Fact {

@@ -437,6 +437,29 @@ and exiting 0, which was driven rather than imagined (ratchet, coop r6/8). It is
 a refusal and not a could-not-run: the project's own declaration is
 unsatisfiable here, which is what 1 means.
 
+**A run that ends holding a pending it could not measure is a could-not-run,
+and the cause is the RUN's.** Where a claim type carries a DURATION bound and
+the run never moved its own clock, a pending still unresolved at the end is not
+inside its bound — it is unmeasured, and R7's third ruling is that nothing is
+read as "time did not pass". So `rumor run` exits `2`, naming each pending,
+where it was held, the type and the bound, and that the clock is still at its
+epoch because no `advance` was drawn. Until R7.3 puts `advance` in the pool, no
+run has moved its clock, so this is reachable by any clocked project with a
+duration bound whose disagreement outlives the walk.
+
+**It is keyed on the bound's form, not on a pending being open.** A pending
+left open under a `quiesce` bound is R6's state and R6 judges it: the probes
+read quiet or they did not, and neither answer needs a clock. A pending the
+walk could not place carries no claim type, so there is no bound form to key
+on, and it is named in the report rather than refused on.
+
+**The record survives the refusal.** The pendings and the finding the run saw
+are reported before the refusal line, because being told a run is unmeasured
+and being told what it saw are not alternatives. Where the run also found a
+bug, the refusal NAMES it and does not report it as a finding: a finding with
+a pending still unmeasured beside it is where the walk stopped asking rather
+than what the run causes, so nothing is lost and nothing is asserted.
+
 **This verb has FOUR statuses, and a finding is 3 and not 1** (fable, coop
 r5/176). The ground is a product choice rather than a claim about whose fault a
 bug is: a nonzero status is what a pipeline acts on, and the only question is

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
@@ -701,7 +702,106 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 			rec.IDs[h] = id
 		}
 	}
+	// A RUN DOES NOT END HOLDING A PENDING IT COULD NOT MEASURE, which is
+	// R2.3's invariant and fable's ruling at coop r7/15. The record is
+	// complete before this fires, so a caller holding the error still has the
+	// pendings and the finding it describes.
+	if err := unmeasuredAtTheEnd(reg.Open(), held, p.Eventual, clk, rec.Finding, rec.FoundAt); err != nil {
+		return rec, err
+	}
 	return rec, nil
+}
+
+// unmeasuredAtTheEnd refuses a run that ends holding a pending under a
+// DURATION bound whose clock never moved.
+//
+// WHY IT IS A REFUSAL AND NOT A VERDICT (fable, coop r7/15). Such a pending is
+// not inside its bound; it is UNMEASURED. R7's third ruling is that nothing is
+// read as "time did not pass", and the engine already refuses a duration bound
+// it cannot measure at the moment of judging -- this is the same refusal moved
+// to the one place the walk can see that the measurement never became
+// possible. The cause is the RUN's rather than the project's, whose
+// declarations are all correct, and the sentence says so.
+//
+// IT IS KEYED ON THE BOUND'S FORM AND THE CLOCK, NOT ON "A PENDING IS OPEN",
+// and that narrowing is the whole of why R6's behavior is untouched. A pending
+// left open under a QUIESCE bound is R6's state and R6 judges it: the probes
+// read quiet or they did not, and neither answer needs a clock. Refusing on an
+// open pending as such would change what rook's D1 and D3 read and move the
+// control seeds, which is a different ruling from the one that was made.
+//
+// A PENDING THE WALK COULD NOT PLACE IS NOT REFUSED ON HERE, deliberately:
+// without its `ask` there is no claim type, so there is no bound form to key
+// on, and guessing would turn an unattributable pending into a refusal about a
+// bound nobody declared. stillOpen names those in the report; this says
+// nothing about them.
+//
+// WHAT FALSIFIES IT IS R7.3. `advance` moves the clock, so `clk.t` stops being
+// zero and these same runs resolve, go `stale`, or end as the quiesce_timeout
+// shape -- a finding, since the run did move time and the system did not
+// settle. The condition removes itself when the mover lands.
+func unmeasuredAtTheEnd(open map[string][]string, held map[string]ask,
+	eventual []engine.Eventual, clk *runClock, found *engine.Finding, foundAt int) error {
+
+	if clk == nil || !clk.control || clk.t != 0 {
+		return nil
+	}
+	bound := map[string]int64{}
+	for _, e := range eventual {
+		if !e.Quiesce && e.Bound > 0 {
+			bound[e.Of] = e.Bound
+		}
+	}
+	if len(bound) == 0 {
+		return nil
+	}
+
+	var unmeasured []string
+	for actor, queries := range open {
+		for _, query := range queries {
+			a, ok := held[askKey(actor, query)]
+			if !ok {
+				continue
+			}
+			b, isDuration := bound[a.decl.Of]
+			if !isDuration {
+				continue
+			}
+			unmeasured = append(unmeasured, fmt.Sprintf("%s/%s held at step %d, %q bounded %s",
+				actor, query, a.at, a.decl.Of, time.Duration(b)))
+		}
+	}
+	if len(unmeasured) == 0 {
+		return nil
+	}
+	// SORTED, because reg.Open() is a map and a refusal whose text differs
+	// between two attempts of one seed is a refusal the control cannot hash.
+	sort.Strings(unmeasured)
+
+	withheld := ""
+	if found != nil {
+		// THE FINDING IS NAMED AND NOT ASSERTED (fable, coop r7/15): a finding
+		// with a trailing unresolved pending is not one the run can stand
+		// behind -- rule 3's silence clause -- so nothing is lost by saying
+		// what it was and nothing is claimed by saying it here.
+		withheld = fmt.Sprintf("; the run also found %s after step %d, which it does not report "+
+			"as a finding: a finding with a pending still unmeasured beside it is where the walk "+
+			"stopped asking rather than what the run causes", found.Says(), foundAt)
+	}
+	return fmt.Errorf("schedule: the run ended holding %d pending(s) under a duration bound and "+
+		"moved no time, so %s cannot be measured: %s. The run's clock is still at its epoch -- "+
+		"no `advance` was drawn -- and a pending inside a bound the run never approached is "+
+		"unmeasured rather than tolerated%s",
+		len(unmeasured), plural(len(unmeasured), "it", "they"), strings.Join(unmeasured, "; "), withheld)
+}
+
+// plural picks between two words by a count, so a refusal reads as a sentence
+// whether it names one pending or six.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // observe makes every declared observation this step can support, EVALUATES
