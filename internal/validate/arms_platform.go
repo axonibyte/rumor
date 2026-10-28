@@ -241,7 +241,13 @@ func arm8(rep *Report, dir string, b bindings.Bindings) {
 	if !strings.Contains(string(src), "input.clock") {
 		return
 	}
-	if len(b.Clock) == 0 {
+	// DECLARED, NOT KEYED. `b.Clock` is nil when the table is ABSENT and an
+	// empty non-nil map when it is present and bare, because internal/bindings
+	// assigns the carried map only inside `if t, ok := r.Table(...); ok`. A
+	// length test reads a bare `[clock]` as no clock at all and refuses a
+	// project that declares control -- see arm20 below, where rook measured the
+	// same expression failing the other way.
+	if b.Clock == nil {
 		rep.refuse("8", "the statute reads input.clock and bindings.toml declares no [clock] table: "+
 			"the rule would read whatever the host clock said, which no seed can reproduce")
 	}
@@ -263,7 +269,25 @@ func arm8(rep *Report, dir string, b bindings.Bindings) {
 // clocked project from an unclocked one, because the two tables are read in the
 // same pass; the pairing is what is wrong, and a pairing is what an arm is for.
 //
-// BOTH SIDES ARE PRESENCE, so this arm READS THE BINDINGS ALONE and evaluates
+// BOTH SIDES ARE PRESENCE AND THE CODE SAID LENGTH UNTIL ROOK DROVE IT
+// (coop rumor/1354, measured at 9ab53f2 on one toy with only the table
+// differing): `[deadline]` WITH A KEY and no `[clock]` refused at rc 1, and
+// `[deadline]` BARE and no `[clock]` passed at rc 0, 23 of 23 evaluated. A bare
+// table is presence without content -- the exact pairing this arm exists to
+// refuse -- and `len(b.Deadline) == 0` could not see it while two comments here
+// said presence. The distinction the fix rests on is real and now pinned in
+// internal/bindings: an ABSENT reserved table leaves its field NIL, a bare one
+// assigns an empty non-nil map.
+//
+// AND THE SAME EXPRESSION FAILED THE OTHER WAY ON THE CLOCK SIDE, which rook's
+// drive did not reach: a keyed `[deadline]` beside a BARE `[clock]` would have
+// been refused for declaring no clock, a false refusal of a project that
+// declares control. One wrong idiom, two directions, and only the first had a
+// witness. cmd/rumor/run.go had it right all along -- `brep.Bindings.Clock !=
+// nil` is what gives the run its clock -- so the arms now ask the question the
+// run answers.
+//
+// THIS ARM READS THE BINDINGS ALONE and evaluates
 // wherever they can be read -- no statute, no adapter, no platform file. That is
 // why it moves all three of the documented figures by one rather than only the
 // first (docs/testing-methodology.md's twenty-three / twenty-one / nineteen),
@@ -278,10 +302,10 @@ func arm20(rep *Report, b bindings.Bindings) {
 	// wrong with. There is nothing here that can fail to be read, so this arm
 	// never skips.
 	rep.ran("20")
-	if len(b.Deadline) == 0 {
+	if b.Deadline == nil {
 		return
 	}
-	if len(b.Clock) == 0 {
+	if b.Clock == nil {
 		rep.refuse("20", "bindings.toml declares a [deadline] table and no [clock] table: "+
 			"a deadline is an instant the run has to be able to reach, and a project with no "+
 			"clock control cannot move its own time, so every such field would be judged "+

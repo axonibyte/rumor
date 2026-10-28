@@ -87,7 +87,14 @@ touches = ["doc_store"]
   until = "doc-published"
 
 [deadline]
-# A field that holds an instant. The VALUE is not read by this arm and
-# not by anything else yet: the table's presence is the condition, and
-# 103 is what types the fields (fable, coop rumor/1345).
-invitation_expires_at = "invitation.expires_at"
+# BARE, AND THAT IS THE POINT. The table's PRESENCE is the condition -- not
+# its contents -- and this fixture carried a key until rook measured what the
+# key was hiding (coop rumor/1354): arm 20 asked `len(b.Deadline) == 0`, so a
+# bare table read as no table and the pairing this arm exists to refuse passed
+# at rc 0. The keyed case is driven in internal/validate's own arm beside the
+# two directions a fixture cannot hold; the fixture carries the case the defect
+# hid, because that is the one a regression would bring back.
+#
+# 103 is what types the fields (fable, coop rumor/1345), and a typed field
+# arriving here later must not quietly become the thing that makes this
+# fixture refuse.

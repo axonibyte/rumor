@@ -488,7 +488,7 @@ stated here rather than written as one sentence in the present tense:
 |---|---|---|
 | a rule reading `clock` | `rumor validate`'s arm 8 | R4, kept |
 | an eventual type bounded by a duration | the engine, at run time, naming the bound it cannot measure | R2.3, kept |
-| a `[deadline]` table | `rumor validate`'s arm 20 | R7.2 |
+| a `[deadline]` table, **declared and not necessarily keyed** -- a table with no fields in it is still a declaration, and arm 20 refuses it (rook, coop rumor/1354, measuring a bare one passing while the arm's own comments said presence) | `rumor validate`'s arm 20 | R7.2 |
 
 **The third row is a declaration and not a description**, and this document
 has paid for that distinction once already: 7e, two tables above, is a sibling

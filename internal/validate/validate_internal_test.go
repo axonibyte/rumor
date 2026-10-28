@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 )
 
@@ -38,6 +39,91 @@ func TestAllArmIDsIsTotalArms(t *testing.T) {
 				"count would still add up", a)
 		}
 		seen[a] = true
+	}
+}
+
+// TestArms8And20KeyOnTheTableBeingDeclaredAndNotOnItsKeys drives the finding
+// rook took at coop rumor/1354 and the direction their drive did not reach.
+//
+// WHAT IT CAUGHT: both arms asked `len(b.X) == 0` where they meant "the
+// project declares no such table". A reserved table that is PRESENT AND BARE
+// parses to an empty non-nil map, so a bare `[deadline]` with no `[clock]`
+// passed -- presence without content, which is the pairing arm 20 exists to
+// refuse -- and a keyed `[deadline]` beside a BARE `[clock]` would have been
+// refused for declaring no clock, which is a project that does declare
+// control being told it does not.
+//
+// WHY A UNIT ARM FOR MOST OF IT. tests/validate keeps one committed fixture
+// per arm, and these are the same two sentences from the same two clauses: a
+// second fixture would let either stand in for the arm, and widening the
+// one-per-arm rule is not mine. The fixture ITSELF now carries the bare table
+// -- the case the defect hid, and so the one a regression would resurrect --
+// and the keyed case lives here beside the three the fixture cannot hold.
+//
+// THE BARE-CLOCK CELLS ARE THE CONTROL THAT MAKES THE REST MEAN SOMETHING: an
+// arm that refused everything would satisfy the refusal cells alone.
+func TestArms8And20KeyOnTheTableBeingDeclaredAndNotOnItsKeys(t *testing.T) {
+	var (
+		absent = map[string]any(nil)
+		bare   = map[string]any{}
+		keyed  = map[string]any{"invitation_expires_at": "invitation.expires_at"}
+		clockd = map[string]any{"form": "adapter"}
+	)
+	for _, tc := range []struct {
+		name            string
+		clock, deadline map[string]any
+		want            int
+	}{
+		{"a keyed deadline and no clock", absent, keyed, 1},
+		{"a BARE deadline and no clock", absent, bare, 1},
+		{"a keyed deadline and a BARE clock", bare, keyed, 0},
+		{"a keyed deadline and a keyed clock", clockd, keyed, 0},
+		{"no deadline at all", absent, absent, 0},
+		{"a clock and no deadline", clockd, absent, 0},
+	} {
+		rep := &Report{}
+		arm20(rep, bindings.Bindings{Clock: tc.clock, Deadline: tc.deadline})
+		if len(rep.Refusals) != tc.want {
+			t.Errorf("arm 20, %s: %d refusal(s), want %d: %v",
+				tc.name, len(rep.Refusals), tc.want, rep.Refusals)
+		}
+	}
+
+	// ARM 8's HALF, same idiom and the same two directions. It reads the rule
+	// side off statute.rego in the project DIRECTORY, so each cell writes one:
+	// a statute that reaches for the clock, and one that does not.
+	const reads = "package rumor\nallow { input.clock > 0 }\n"
+	const silent = "package rumor\nallow { true }\n"
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		name  string
+		src   string
+		clock map[string]any
+		want  int
+	}{
+		{"a rule reading the clock and no table", reads, absent, 1},
+		{"a rule reading the clock and a BARE table", reads, bare, 0},
+		{"a rule reading the clock and a keyed table", reads, clockd, 0},
+		{"no rule reading the clock and no table", silent, absent, 0},
+	} {
+		if err := os.WriteFile(filepath.Join(dir, "statute.rego"), []byte(tc.src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		rep := &Report{}
+		arm8(rep, dir, bindings.Bindings{Clock: tc.clock})
+		if len(rep.Refusals) != tc.want {
+			t.Errorf("arm 8, %s: %d refusal(s), want %d: %v",
+				tc.name, len(rep.Refusals), tc.want, rep.Refusals)
+		}
+	}
+	// AND THE SKIP IS NOT A PASS: with no statute at all the arm reports that
+	// the question was unasked, which must not be confused with "evaluated and
+	// clean" -- a cell above would read the same either way.
+	rep := &Report{}
+	arm8(rep, t.TempDir(), bindings.Bindings{Clock: absent})
+	if len(rep.Refusals) != 0 || len(rep.Skipped) != 1 {
+		t.Errorf("arm 8 with no statute.rego: %d refusal(s) and %d skip(s), want 0 and 1",
+			len(rep.Refusals), len(rep.Skipped))
 	}
 }
 

@@ -353,6 +353,63 @@ func TestTheReservedTablesAreCarriedAndNotInvented(t *testing.T) {
 	}
 }
 
+// TestABareReservedTableIsPRESENTAndAnAbsentOneIsNIL pins the distinction two
+// validate arms rest on, and it had no arm until one of them got it wrong.
+//
+// WHAT RESTS ON IT: arm 8 refuses a statute reading `input.clock` in a project
+// declaring no `[clock]`, and arm 20 refuses a `[deadline]` in a project
+// declaring no `[clock]`. Both mean DECLARED, and both asked `len(...) == 0`
+// until rook measured a bare `[deadline]` passing arm 20 at coop rumor/1354.
+// `len` cannot express the question: a table that is present and empty has no
+// keys and is still a declaration.
+//
+// SO THE NIL IS LOAD-BEARING. The parse assigns the carried map only inside
+// `if t, ok := r.Table(key, false); ok`, so an absent table leaves the field
+// nil -- and a later pass that initialized these fields up front, or assigned
+// unconditionally, would make every "declared?" test in the tree answer true
+// forever with nothing failing. This arm is what would fail.
+func TestABareReservedTableIsPRESENTAndAnAbsentOneIsNIL(t *testing.T) {
+	rep := Parse(wellFormed())
+	if !rep.OK() {
+		t.Fatalf("the well-formed bindings are refused: %v", rep.Refusals)
+	}
+	for name, got := range map[string]map[string]any{
+		"clock":    rep.Bindings.Clock,
+		"quiesce":  rep.Bindings.Quiesce,
+		"deadline": rep.Bindings.Deadline,
+		"seeding":  rep.Bindings.Seeding,
+	} {
+		if got != nil {
+			t.Errorf("[%s] is absent from the document and parsed to %#v, want nil: a "+
+				"consumer asking whether the project DECLARES it would read yes", name, got)
+		}
+	}
+
+	doc := wellFormed()
+	for _, k := range []string{"clock", "quiesce", "deadline", "seeding"} {
+		doc[k] = map[string]any{}
+	}
+	rep = Parse(doc)
+	if !rep.OK() {
+		t.Fatalf("bare reserved tables are refused: %v", rep.Refusals)
+	}
+	for name, got := range map[string]map[string]any{
+		"clock":    rep.Bindings.Clock,
+		"quiesce":  rep.Bindings.Quiesce,
+		"deadline": rep.Bindings.Deadline,
+		"seeding":  rep.Bindings.Seeding,
+	} {
+		if got == nil {
+			t.Errorf("a bare [%s] parsed to nil: a table with no keys is still a "+
+				"declaration, and the arms that refuse on its absence would not see it", name)
+			continue
+		}
+		if len(got) != 0 {
+			t.Errorf("a bare [%s] carries %d key(s): %#v", name, len(got), got)
+		}
+	}
+}
+
 // TestTheClockFormIsCarriedTypedAndAbsentIsNotAFault, R7.2. The sibling of the
 // arm above: [clock] is still a reserved map, and `form` is the one key in it
 // this phase reads. The three accepted cells are the two forms the epic names
