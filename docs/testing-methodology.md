@@ -1387,6 +1387,18 @@ difference. Here that was a refusal keyed on a state only the reconciliation
 can clear; before it existed, the suite had been green for a world the product
 never runs.
 
+**AND THE SAME PHASE PAID FOR IT AGAIN IN A CAPTURE.** Three of five control
+digests in this child's first bump matched two other actors to the character
+and two did not, because the two were captured differently: the pair needed an
+EXIT STATUS as well as the bytes, so they went through `out=$(run)` instead of
+a pipe, and `$(...)` strips the trailing newline that the piped three kept.
+Needing a second fact had silently changed the instrument. **A digest and a
+status come from one run through a FILE** — `run > f; rc=$?; sha256sum < f` —
+or they come from two different measurements wearing one number. The partial
+match is what localized it, which is the same tell vocabulary v3 records from
+a control re-run with a flag missing: a full mismatch would have been better
+evidence and arrived sooner.
+
 **How to apply.** When a suite assembles the product's own request object by
 hand, list the fields the product's caller sets and say, field by field, why
 each omission is safe — a nil slot is a DECISION about the world under test,
