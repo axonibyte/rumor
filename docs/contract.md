@@ -434,9 +434,25 @@ a consequence of it:
   absolute epoch would make every run's facts differ by when it ran.
 
 **A project with no `[clock]` has no clock**, and that is R7's third ruling
-rather than a silence: a rule reading `clock`, a duration bound, or a
-`[deadline]` table in such a project each refuses by name. Nothing is read as
-"time did not pass".
+rather than a silence: nothing is read as "time did not pass". Two of the
+three refusals that ruling names exist today and the third does not, which is
+stated here rather than written as one sentence in the present tense:
+
+| in a project with no `[clock]` | refused by | as of |
+|---|---|---|
+| a rule reading `clock` | `rumor validate`'s arm 8 | R4, kept |
+| an eventual type bounded by a duration | the engine, at run time, naming the bound it cannot measure | R2.3, kept |
+| a `[deadline]` table | **nothing yet** | R7.2 |
+
+**The third row is a declaration and not a description**, and this document
+has paid for that distinction once already: 7e, two tables above, is a sibling
+sentence that asserted a refusal before anything refused it. `deadline`
+appears in no file under `internal/validate`, against eleven hits for
+`quiesce`, and a `[deadline]` table added to a project with no `[clock]`
+passes `rumor validate` at rc 0 with its stdout byte-identical to the run
+without it -- driven by ibis (coop r7/3) and reproduced by ratchet (r7/4) on
+the commit that first carried this paragraph as a flat present-tense claim.
+The arm is issue 101's third bullet.
 
 
 ## `platform.toml` schema
