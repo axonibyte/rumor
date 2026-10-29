@@ -465,6 +465,64 @@ func (c *runClock) ask(a clockAsker) (int64, error) {
 	return resp.T, nil
 }
 
+// advance moves the run's clock FORWARD and answers where it ended up.
+//
+// IT IS R7.3's MOVER and the other half of `ask`. The two exchanges differ in
+// what the engine may conclude from the answer, which is fable's ruling at coop
+// r7/51 read closely:
+//
+//   - A `set` MUST COME BACK EXACTLY. The engine named an instant and the clock
+//     either reads it afterwards or the adapter and the run disagree about what
+//     time it is, so `ask` refuses any difference.
+//   - AN `advance` NEED NOT. The engine names a DELTA, and where that lands is
+//     the world's answer: an adapter whose clock has a coarse tick, or that
+//     clamps, lands somewhere else and has still answered honestly. So this
+//     refuses only a clock that went BACKWARD, and the ledger records what came
+//     back.
+//
+// SO THIS IS THE FIRST PLACE "THE LEDGER WRITES THE WORLD" IS FALSIFIABLE,
+// which is ratchet's finding at coop r7/53: under `set` alone the ask and the
+// answer are one number, so writing either gave the same ledger and the arm
+// could not exist. Here they can differ, and an arm where the adapter rounds
+// forward is what tells the two apart.
+//
+// THE RUN'S OWN CLOCK BECOMES THE ANSWER. Anything else would leave the engine
+// believing a time the system under test does not hold: the next seal would
+// `set` the clock backward to the engine's belief, and `ask` would refuse its
+// own request -- a run poisoned by the one exchange that was supposed to move
+// it. 101 could not write this line and say what it was for, because under
+// `set` the two were always equal.
+func (c *runClock) advance(a clockAsker, delta int64) (int64, error) {
+	if delta <= 0 {
+		return 0, fmt.Errorf("an advance of %dns is not an advance: the run's clock moves "+
+			"forward or not at all, and a step that moved it nowhere would record a time "+
+			"nothing happened at", delta)
+	}
+	if c.form != bindings.ClockAdapter {
+		// FAKED TIME MOVES WITHOUT ASKING, which is that form's whole meaning:
+		// the stack is already under a clock the engine owns, so there is no
+		// second holder to agree with.
+		c.t += delta
+		return c.t, nil
+	}
+	resp, err := a.Clock(wire.ClockRequest{Op: wire.ClockAdvance, T: delta})
+	if err != nil {
+		return 0, fmt.Errorf("the project declares a clock the engine drives through the adapter, "+
+			"and advancing it by %dns did not answer: %w", delta, err)
+	}
+	if resp.T < c.t {
+		return 0, fmt.Errorf("the adapter answered %dns where the run's clock holds %dns: an "+
+			"advance that answers an EARLIER time has moved the world backward, and both replay "+
+			"and the overage a duration bound is judged by rest on a ledger whose times never "+
+			"decrease", resp.T, c.t)
+	}
+	// AND NOT `resp.T != c.t+delta`, DELIBERATELY: see the note above. A
+	// coarser clock answering 1s where 250ms was asked for has answered for the
+	// world, and the world is what the ledger records.
+	c.t = resp.T
+	return c.t, nil
+}
+
 func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps, attempt int) (Record, error) {
 	rec := Record{Seed: seed, Attempt: attempt}
 	if steps <= 0 {

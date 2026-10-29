@@ -280,3 +280,123 @@ func TestAProjectWithoutClockControlWritesNoClockFactAndItsPositionsDoNotShift(t
 			"and a clock")
 	}
 }
+
+// TestAnAdvanceRecordsTHEWORLDANDNotTheAsk is the arm ratchet asked for at coop
+// r7/53, and it is the first one that can exist.
+//
+// WHY IT COULD NOT EXIST IN 101. `ask` sends `set` and refuses any answer that
+// differs from the instant it named, so in every accepted run the ask and the
+// answer are ONE number and `t = got` is observationally equal to `t = c.t`. I
+// drove that and said so in the commit: the mutant survives, and it has to.
+// `advance` names a DELTA instead, and where the clock lands is the world's to
+// say -- a coarse tick, a clamp -- so here the two numbers can differ and the
+// ledger's choice becomes falsifiable.
+//
+// THE ADAPTER HERE ROUNDS UP TO THE NEXT WHOLE SECOND, which is the honest
+// behavior of a clock whose tick is a second: asked for 250ms it answers 1s.
+// Nothing about that is a fault, and an engine that refused it would be
+// refusing the world for not being as fine as the engine's arithmetic.
+func TestAnAdvanceRecordsTHEWORLDANDNotTheAsk(t *testing.T) {
+	const second = int64(1_000_000_000)
+	coarse := &stubClock{answer: func(req wire.ClockRequest) (int64, error) {
+		switch req.Op {
+		case wire.ClockAdvance:
+			// THE WORLD'S OWN ARITHMETIC, and not the engine's: the adapter
+			// holds the clock, so it answers where ITS clock now reads.
+			return second, nil
+		default:
+			return req.T, nil
+		}
+	}}
+
+	l := ledger.New(true)
+	clk := &runClock{control: true, form: bindings.ClockAdapter}
+
+	got, err := clk.advance(coarse, 250_000_000)
+	if err != nil {
+		t.Fatalf("a coarse clock's answer was refused: %v", err)
+	}
+	if got != second {
+		t.Fatalf("advance answers %d, want %d: the adapter said where its clock landed", got, second)
+	}
+	if clk.t != second {
+		t.Errorf("the run's clock holds %d, want %d: anything else leaves the engine believing a "+
+			"time the system under test does not hold, and the next seal would `set` it backward",
+			clk.t, second)
+	}
+
+	// AND THE LEDGER CARRIES THE ANSWER. This is the assertion the whole arm
+	// exists for: 250ms was asked for and the fact reads one second.
+	if err := clk.seal(l, coarse); err != nil {
+		t.Fatalf("sealing after the advance: %v", err)
+	}
+	facts := l.Facts()
+	if len(facts) != 1 {
+		t.Fatalf("%d fact(s) after one seal, want 1", len(facts))
+	}
+	if facts[0].T == nil || *facts[0].T != second {
+		t.Fatalf("the clock fact reads %v, want %d: the ledger records the time the WORLD "+
+			"answered, not the delta the engine asked for", facts[0].T, second)
+	}
+	t.Logf("PROOF asked 250000000ns, world answered %d, ledger reads %d", got, *facts[0].T)
+}
+
+// TestAnAdvanceTheRunCannotAcceptIsRefusedByName: the two answers an advance
+// must not take, and the two it must.
+func TestAnAdvanceTheRunCannotAcceptIsRefusedByName(t *testing.T) {
+	const held = int64(7_000_000_000)
+	for _, tc := range []struct {
+		name   string
+		delta  int64
+		answer func(wire.ClockRequest) (int64, error)
+		want   string
+	}{
+		{"a clock that went backward", 1_000_000_000, func(wire.ClockRequest) (int64, error) {
+			return held - 1, nil
+		}, "moved the world backward"},
+		{"an adapter that does not know the kind", 1_000_000_000, func(wire.ClockRequest) (int64, error) {
+			return 0, fmt.Errorf("the adapter answered a could-not-run fault to the clock " +
+				"request: unknown kind \"clock\"")
+		}, "did not answer"},
+		// AND THE ENGINE'S OWN ARITHMETIC IS CHECKED BEFORE THE WIRE: a
+		// non-positive delta is this side's fault, so it must not reach the
+		// adapter at all.
+		{"an advance of zero", 0, echo, "is not an advance"},
+		{"an advance of a negative", -5, echo, "is not an advance"},
+	} {
+		clk := &runClock{control: true, form: bindings.ClockAdapter, t: held}
+		st := &stubClock{answer: tc.answer}
+		_, err := clk.advance(st, tc.delta)
+		if err == nil {
+			t.Errorf("%s: accepted", tc.name)
+			continue
+		}
+		if !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: refused as %q, which does not name %q", tc.name, err, tc.want)
+		}
+		if clk.t != held {
+			t.Errorf("%s: the run's clock moved to %d on a refused advance", tc.name, clk.t)
+		}
+		if tc.delta <= 0 && len(st.asks) != 0 {
+			t.Errorf("%s: %d request(s) sent for a delta the engine should refuse itself",
+				tc.name, len(st.asks))
+		}
+	}
+}
+
+// TestAFakedAdvanceMovesTheRunsOwnClockAndAsksNothing: the other form.
+func TestAFakedAdvanceMovesTheRunsOwnClockAndAsksNothing(t *testing.T) {
+	clk := &runClock{control: true, form: bindings.ClockFaked, t: 100}
+	st := &stubClock{answer: echo}
+	got, err := clk.advance(st, 400)
+	if err != nil {
+		t.Fatalf("a faked advance: %v", err)
+	}
+	if got != 500 || clk.t != 500 {
+		t.Errorf("advance answers %d with the clock at %d, want 500 and 500", got, clk.t)
+	}
+	if len(st.asks) != 0 {
+		t.Errorf("%d request(s) sent under faked time, want 0: the stack is already under a "+
+			"clock the engine owns, so there is no second holder to agree with", len(st.asks))
+	}
+}
