@@ -250,8 +250,15 @@ func arm8(rep *Report, dir string, b bindings.Bindings) {
 	// it would still read whatever the host clock said, which is the whole
 	// subject of this arm.
 	if len(b.Clock) == 0 {
-		rep.refuse("8", "the statute reads input.clock and bindings.toml declares no [clock] table: "+
-			"the rule would read whatever the host clock said, which no seed can reproduce")
+		// THE REFUSAL NAMES THE RULE AND NOT THE TABLE'S SHAPE, which is rook's
+		// clause at coop rumor/1364 and my sibling finding at /1365: a project
+		// whose `[clock]` is present but BARE declares no clock control, and
+		// the old wording -- "declares no [clock] table" -- sent its reader
+		// looking for a table the file holds. Behaviour is unchanged; what
+		// moved is which fact the sentence states.
+		rep.refuse("8", "the statute reads input.clock and bindings.toml declares no clock "+
+			"control: the rule would read whatever the host clock said, which no seed can "+
+			"reproduce. A `[clock]` table with no fields in it declares nothing")
 	}
 }
 
@@ -315,7 +322,10 @@ func arm20(rep *Report, b bindings.Bindings) {
 		return
 	}
 	if len(b.Clock) == 0 {
-		rep.refuse("20", "bindings.toml declares a [deadline] table and no [clock] table: "+
+		// THE SAME CLAUSE, AND THE SIBLING I FOUND IN MY OWN CELL (/1365): this
+		// text named the shape too, so a keyed `[deadline]` beside a BARE
+		// `[clock]` refused with "no [clock] table" while one was declared.
+		rep.refuse("20", "bindings.toml declares a [deadline] table and no clock control: "+
 			"a deadline is an instant the run has to be able to reach, and a project with no "+
 			"clock control cannot move its own time, so every such field would be judged "+
 			"against whatever the host clock said -- which no seed can reproduce")

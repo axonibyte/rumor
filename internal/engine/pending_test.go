@@ -148,6 +148,48 @@ func TestADisagreementInsideTheBoundIsPendingAndPastItIsStale(t *testing.T) {
 		t.Errorf("the statute's own definition was not kept: %v", inside.Fired)
 	}
 
+	// EXACTLY AT THE BOUND IS STILL INSIDE IT, which is the cell this arm did
+	// not have and the one the comparison lives or dies by. ratchet drove the
+	// gap at coop r7/56: `now-claimTime > e.Bound` loosened to `>=` SURVIVED
+	// the whole tree at 102's first head -- 37 packages, rc 0 -- because INSIDE
+	// (105) and PAST (120) both read the same under either operator and no cell
+	// stood at 110.
+	//
+	// AND R7.3 IS WHY IT MATTERS NOW. The walk's middle landing puts the clock
+	// exactly on a pending's bound by construction, so this state stopped being
+	// a boundary nobody reaches and became one a drawn `advance` reaches on
+	// purpose. The behaviour asserted is the one the overlay documents: `>`,
+	// held open at exactly the bound. Nothing here argues for it -- it records
+	// which reading the product has, so a change of mind has to be a change of
+	// this cell.
+	at, err := Judge(ctx, countStatute, countRules, timedLedger(t, 100, 110), chk, b, NewRegister())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if at.Value != "pending" {
+		t.Fatalf("at exactly the bound (now-claim == 10) the finding is %v kind %q, wanted "+
+			"pending: the comparison is STRICT, so the bound's own instant is inside it",
+			at.Value, at.Kind)
+	}
+	// AND THE SAME INSTANT AFTER A PENDING WAS HELD IS STILL NOT `stale`, which
+	// is the half a loose comparison would turn into the word: held, re-checked
+	// at the bound, and held again.
+	atReg := NewRegister()
+	if _, err := Judge(ctx, countStatute, countRules, timedLedger(t, 100, 105), chk, b, atReg); err != nil {
+		t.Fatal(err)
+	}
+	if atReg.Len() != 1 {
+		t.Fatalf("no pending was held before the at-the-bound re-check: %d open", atReg.Len())
+	}
+	again, err := Judge(ctx, countStatute, countRules, timedLedger(t, 100, 110), chk, b, atReg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Value != "pending" || again.Kind != "" {
+		t.Fatalf("a pending re-checked AT its bound is %v kind %q, wanted pending with no kind: "+
+			"a loose comparison would compose `stale` here", again.Value, again.Kind)
+	}
+
 	// PAST THE BOUND IS `stale` ONLY AFTER A PENDING WAS HELD, and this arm has
 	// changed twice -- the reason each time being that the charter moved under
 	// it, never that it was inconvenient.

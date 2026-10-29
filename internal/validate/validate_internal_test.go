@@ -94,6 +94,33 @@ func TestArms8And20ReadTheTablesCONTENTSAndABareOneDeclaresNothing(t *testing.T)
 		}
 	}
 
+	// AND THE REFUSAL NAMES THE RULE, NOT THE TABLE'S SHAPE (rook, coop
+	// rumor/1364; my sibling at /1365). The bare-clock cells above are exactly
+	// where the old wording lied: it said "no [clock] table" while the file
+	// held one. A cell over the TEXT is what keeps the clause from drifting
+	// back, since behaviour alone cannot tell the two sentences apart.
+	for _, tc := range []struct {
+		name            string
+		clock, deadline map[string]any
+		arm             string
+	}{
+		{"arm 20, a bare clock", bare, keyed, "20"},
+		{"arm 20, no clock at all", absent, keyed, "20"},
+	} {
+		rep := &Report{}
+		arm20(rep, bindings.Bindings{Clock: tc.clock, Deadline: tc.deadline})
+		if len(rep.Refusals) != 1 {
+			t.Fatalf("%s: %d refusal(s)", tc.name, len(rep.Refusals))
+		}
+		got := rep.Refusals[0].Detail
+		if !strings.Contains(got, "no clock control") {
+			t.Errorf("%s: %q does not name the rule", tc.name, got)
+		}
+		if strings.Contains(got, "no [clock] table") {
+			t.Errorf("%s: %q names the table's SHAPE, which is false of a bare table", tc.name, got)
+		}
+	}
+
 	// ARM 8's HALF, same idiom and the same two directions. It reads the rule
 	// side off statute.rego in the project DIRECTORY, so each cell writes one:
 	// a statute that reaches for the clock, and one that does not.
@@ -119,6 +146,15 @@ func TestArms8And20ReadTheTablesCONTENTSAndABareOneDeclaresNothing(t *testing.T)
 		if len(rep.Refusals) != tc.want {
 			t.Errorf("arm 8, %s: %d refusal(s), want %d: %v",
 				tc.name, len(rep.Refusals), tc.want, rep.Refusals)
+			continue
+		}
+		// AND ITS TEXT NAMES THE RULE TOO: the bare-table cell is the one the
+		// old wording was false of.
+		if tc.want == 1 {
+			got := rep.Refusals[0].Detail
+			if !strings.Contains(got, "no clock control") || strings.Contains(got, "no [clock] table") {
+				t.Errorf("arm 8, %s: %q does not name the rule", tc.name, got)
+			}
 		}
 	}
 	// AND THE SKIP IS NOT A PASS: with no statute at all the arm reports that
