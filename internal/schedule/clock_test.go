@@ -538,3 +538,60 @@ func TestAnAdvanceStepDrawsItsLandingAndRecordsIt(t *testing.T) {
 	}
 	t.Logf("PROOF forty seeds over %v drew %d distinct landings", landings, len(seen))
 }
+
+// TestAnInstantIsANUMBERAndNothingElse is what survives of a cell I wrote
+// against a reader that could not work.
+//
+// THE READER WAS WRONG AND THE ARM FOUND IT: `declaredInstants` scanned the
+// sealed prefix for `observed` facts, and ledger.KindObserved has never had a
+// producer -- an observation is the check's INPUT and not a ledger fact
+// (fable, coop breakout-r2/13, ratified). The end-to-end arm in tests/wire
+// failed with "no step advanced where the deadline is declared" and that is
+// how it was found. The run now remembers what it READ, in Walk, and this is
+// the half of the old cell that still has a subject: what counts as an
+// instant.
+func TestAnInstantIsANUMBERAndNothingElse(t *testing.T) {
+	for _, c := range []struct {
+		what string
+		in   any
+		want int64
+		ok   bool
+	}{
+		{"a JSON number, which is how an adapter's answer arrives", float64(30000000000), 30000000000, true},
+		{"an int, which is how a hand-written one does", 45000000000, 45000000000, true},
+		{"an int64", int64(1), 1, true},
+		{"a string", "soonish", 0, false},
+		{"nothing at all", nil, 0, false},
+		// A FRACTIONAL NANOSECOND IS NOT AN INSTANT: truncating would make a
+		// landing miss a deadline by less than a tick, which is exactly the
+		// distance the three landings exist to measure.
+		{"a fractional nanosecond", float64(30000000000.5), 0, false},
+	} {
+		got, ok := asInstant(c.in)
+		if ok != c.ok {
+			t.Errorf("%s: ok=%v, want %v", c.what, ok, c.ok)
+			continue
+		}
+		if ok && got != c.want {
+			t.Errorf("%s: read %d, want %d", c.what, got, c.want)
+		}
+	}
+}
+
+// TestLandingsCoverThePendingsAndTheDeclaredDeadlines is the half above it
+// feeds: both sources reach the same landing set, and `Landings` offers the
+// three ticks around each.
+func TestLandingsCoverThePendingsAndTheDeclaredDeadlines(t *testing.T) {
+	// ONE PENDING BOUND AND ONE DECLARED DEADLINE, far apart, so a reader that
+	// dropped either leaves a gap this cell can see.
+	got := Landings([]int64{100, 30000000000}, 0)
+	want := []int64{99, 100, 101, 29999999999, 30000000000, 30000000001}
+	if len(got) != len(want) {
+		t.Fatalf("landings %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("landings %v, want %v", got, want)
+		}
+	}
+}

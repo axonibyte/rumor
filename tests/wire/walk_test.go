@@ -1638,3 +1638,117 @@ func TestAReplayReproducesARefusalFromTheRecord(t *testing.T) {
 		}
 	}
 }
+
+// TestAdvanceLandsOnADeclaredDeadlineAndNotOnlyOnAPendingBound is the WIRING
+// of R7.4's targets (fable r7/42 ruling 2: "in 102 the live bounds, in 103 the
+// declared fields as well"), and it exists because the harvest's own cells
+// could not see it: with `instants` dropped from the landings, every suite in
+// the tree stayed green.
+//
+// THE DISCRIMINATOR IS THE DECLARATION AND NOTHING ELSE. One project, walked
+// twice: with `[deadline].instants` naming the observation whose value is an
+// instant, and without it. The clock has no pending bound to land on in either
+// -- the statute is permissive and no claim type is eventual -- so every
+// landing in the first walk comes from the declared deadline, and the second
+// walk has none and draws no advance at all.
+//
+// `faked` AND NOT `adapter`, so the clock needs no request: the engine's own
+// `t` is the world's (docs/contract.md's two forms), which keeps this arm
+// about the TARGETS rather than about the wire's clock exchange -- that is
+// tests/clock's.
+func TestAdvanceLandsOnADeclaredDeadlineAndNotOnlyOnAPendingBound(t *testing.T) {
+	ctx := context.Background()
+	const seed = 7
+	const steps = 12
+	const expiry = int64(30000000000)
+
+	dir := t.TempDir()
+	surfacePath := filepath.Join(dir, "surface.json")
+	sf := fake.Default()
+	// THE OBSERVATION WHOSE VALUE IS AN INSTANT, answered as a JSON number --
+	// which is how a real adapter's would arrive.
+	sf.Observations = append(sf.Observations, wire.Observation{Name: "expiry", Source: wire.SourceAPI})
+	sf.Observe["expiry"] = expiry
+	raw, err := json.MarshalIndent(sf, "", " ")
+	if err != nil {
+		t.Fatalf("encoding the surface: %v", err)
+	}
+	if err := os.WriteFile(surfacePath, raw, 0o600); err != nil {
+		t.Fatalf("writing the surface: %v", err)
+	}
+
+	project := func(declare bool) schedule.Project {
+		p := walkProject(t)
+		p.Statute = `package rumor.statute
+
+default finding := "consistent"
+
+default may_create_event := true
+
+default may_join := true
+`
+		p.Observations = []bindings.Observation{
+			{Name: "expiry", Source: wire.SourceAPI, Of: "event.created"},
+		}
+		p.ClockControl = true
+		p.ClockForm = bindings.ClockFaked
+		w := map[string]int{}
+		for k, v := range p.Weights.Default {
+			w[k] = v
+		}
+		w[schedule.Advance] = 8
+		p.Weights = platform.Weights{Default: w}
+		if declare {
+			p.DeadlineInstants = []string{"expiry"}
+		}
+		return p
+	}
+
+	walk := func(declare bool, salt string) []schedule.Step {
+		t.Helper()
+		sess, oerr := wire.Open(ctx, fakeSpawn("--surface", surfacePath, "--id-salt", salt),
+			20*time.Second)
+		if oerr != nil {
+			t.Fatalf("Open: %v", oerr)
+		}
+		defer func() { _ = sess.Close() }()
+		rec, werr := schedule.Walk(ctx, project(declare), sess, seed, steps, 1)
+		if werr != nil {
+			t.Fatalf("Walk (declare=%v): %v", declare, werr)
+		}
+		return rec.Steps
+	}
+
+	landed := map[int64]bool{}
+	for _, s := range walk(true, "declared") {
+		if s.AdvancedTo != 0 {
+			landed[s.AdvancedTo] = true
+		}
+	}
+	if len(landed) == 0 {
+		t.Fatalf("no step advanced where the deadline is declared, so this arm asserts nothing")
+	}
+	// THE THREE TICKS AROUND THE DECLARED INSTANT AND NOTHING ELSE: the only
+	// target in this project is the observed expiry, so any other landing
+	// would mean the set came from somewhere this arm does not know about.
+	for got := range landed {
+		if got != expiry-schedule.Tick && got != expiry && got != expiry+schedule.Tick {
+			t.Errorf("a step advanced to %d, which is not one of the three ticks around the "+
+				"declared deadline %d", got, expiry)
+		}
+	}
+
+	// AND WITHOUT THE DECLARATION THERE IS NOTHING TO LAND ON. `advance` is
+	// live only where a target exists, so it is never drawn -- which is what
+	// makes the walk above a measurement of the declaration and not of the
+	// weight.
+	for _, s := range walk(false, "undeclared") {
+		if s.AdvancedTo != 0 {
+			t.Errorf("a step advanced to %d with no deadline declared and no pending bound: "+
+				"the target came from somewhere other than `[deadline].instants`", s.AdvancedTo)
+		}
+		if s.Kind == schedule.Advance {
+			t.Errorf("advance was DRAWN with no target: the pool's gate and the step disagree")
+		}
+	}
+}

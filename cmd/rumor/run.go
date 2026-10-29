@@ -139,6 +139,10 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		// not a truncation here -- which is the arrangement the old sentence
 		// said it was avoiding.
 		Eventual: schedule.EventualOf(brep.Bindings),
+		// AND WHERE THIS PROJECT'S DEADLINES ARE READ (R7.4). `advance` lands
+		// on these beside the live pending bounds; a project declaring none is
+		// walked exactly as R7.3 left it.
+		DeadlineInstants: brep.Bindings.DeadlineInstants,
 		// CLOCK CONTROL IS THE `[clock]` TABLE BEING THERE (R7.1). The run may
 		// hold a clock only where the project declares one, and internal/ledger
 		// refuses a clock fact without it; the table's presence is the control.

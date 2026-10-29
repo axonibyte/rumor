@@ -39,6 +39,15 @@ type Project struct {
 	// written against R5.1-R5.4 keeps its meaning.
 	Observations []bindings.Observation
 
+	// DeadlineInstants is `[deadline].instants`: the observations whose value
+	// IS an instant, which `advance` lands on BESIDE the live pending bounds
+	// (R7.4; fable r7/42 ruling 2, "in 102 the live bounds, in 103 the
+	// declared fields as well").
+	//
+	// A PROJECT DECLARING NONE IS WALKED AS BEFORE, which is what keeps every
+	// R7.3 measurement's meaning: the landings are then exactly the pendings'.
+	DeadlineInstants []string
+
 	// Eventual is the claim types the project declares eventual, with their
 	// bounds, and it is what makes a lagging observation a `pending`.
 	//
@@ -548,6 +557,37 @@ func Landings(untils []int64, now int64) []int64 {
 	return out
 }
 
+// asInstant reads an observed value as nanoseconds (R7.4). A JSON number
+// arrives as a float64 and a hand-written one as an int, so both are accepted
+// and nothing else is -- an observation's value is `any` and this is the one
+// place that decides what an instant looks like.
+//
+// WHY THERE IS NO LEDGER READER BESIDE IT: my first cut of this harvested the
+// SEALED PREFIX for `observed` facts whose query a project declares, and it
+// could never have found one. ledger.KindObserved has validation and has never
+// had a producer -- "the observation is the check's INPUT while the sealed
+// prefix is the DATA" (fable, coop breakout-r2/13, ratified; design.md) -- so
+// the reader was a reader of a fact kind nothing writes. The end-to-end arm
+// failed with "no step advanced" and that is how it was found, not by reading
+// the file it was written in, whose own comment says "NOTHING IS APPENDED".
+func asInstant(v any) (int64, bool) {
+	switch n := v.(type) {
+	case int:
+		return int64(n), true
+	case int64:
+		return n, true
+	case float64:
+		// A FRACTIONAL NANOSECOND IS NOT AN INSTANT. Truncating would make a
+		// landing silently miss the deadline by less than a tick, which is
+		// precisely the distance the three landings exist to measure.
+		if n != float64(int64(n)) {
+			return 0, false
+		}
+		return int64(n), true
+	}
+	return 0, false
+}
+
 // advanceStep is the `advance` kind's effect: draw one of the landings this
 // step was offered and move the clock to it.
 //
@@ -685,6 +725,17 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	// WHAT EACH PENDING CAME FROM, so the end-of-run reconciliation can re-ask
 	// it. See ask.
 	held := map[string]ask{}
+	// THE DECLARED DEADLINES THIS RUN HAS OBSERVED, and the set of names to
+	// watch for (R7.4). `advance` lands on these beside the live pending
+	// bounds, and they live here rather than in the ledger because an
+	// observation is never a ledger fact -- so the RUN is what remembers what
+	// it read. A project declaring none leaves both empty and the landings are
+	// exactly R7.3's.
+	wantInstants := map[string]bool{}
+	for _, n := range p.DeadlineInstants {
+		wantInstants[n] = true
+	}
+	var deadlines []int64
 	// stopped says a finding ended the walk, so the loop breaks instead of
 	// returning and the end-of-run work below still runs.
 	stopped := false
@@ -736,7 +787,14 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		// clock is REFUSED by engine.Judge rather than held, so no pending
 		// with an instant can reach the register, and a quiesce-bounded one
 		// carries no instant at all.
-		landings := Landings(reg.Untils(), clk.t)
+		//
+		// AND THE DECLARED DEADLINES BESIDE THEM (R7.4). fable's ruling at
+		// coop r7/42 reads "in 102 the live bounds, in 103 the declared fields
+		// as well": a project's `[deadline].instants` names observations whose
+		// value is an instant, and the ones the run has already OBSERVED are
+		// targets too. A project declaring none is walked exactly as R7.3
+		// left it.
+		landings := Landings(append(reg.Untils(), deadlines...), clk.t)
 
 		pool, err := Pool(ctx, p.Statute, p.Actions, l, actor, p.Weights, p.Stage, p.Profile, table,
 			p.Roles, known, actors, landings)
@@ -781,7 +839,8 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 			qs = st
 		}
 		seen, oerr := observe(ctx, p.Statute, sess, sessions, table, p.Observations, l, clk, &step,
-			engine.Bindings{Eventual: p.Eventual}, reg, qs, held, &rec.Pendings)
+			engine.Bindings{Eventual: p.Eventual}, reg, qs, held, &rec.Pendings,
+			wantInstants, &deadlines)
 		if oerr != nil {
 			return rec, fmt.Errorf("schedule: step %d: %w", n, oerr)
 		}
@@ -931,7 +990,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 							"walk did not record what produced it, so it cannot be re-checked",
 							query, actor)
 					}
-					f, made, oerr := observeOne(ctx, p.Statute, sess, sessions, table, a.decl,
+					f, _, made, oerr := observeOne(ctx, p.Statute, sess, sessions, table, a.decl,
 						a.chosen, a.actor, l, engine.Bindings{Eventual: p.Eventual}, reg, state,
 						"reconciling after the last step")
 					if oerr != nil {
@@ -1173,7 +1232,8 @@ func plural(n int, one, many string) string {
 func observe(ctx context.Context, statute string, sess *wire.Session, sessions *Sessions,
 	table *handle.Table, obs []bindings.Observation, l *ledger.Ledger, clk *runClock,
 	step *Step, eb engine.Bindings, reg *engine.Register,
-	qs engine.QuiesceState, held map[string]ask, lives *[]string) ([]engine.Finding, error) {
+	qs engine.QuiesceState, held map[string]ask, lives *[]string,
+	instants map[string]bool, seen *[]int64) ([]engine.Finding, error) {
 
 	if len(obs) == 0 {
 		return nil, nil
@@ -1227,7 +1287,7 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 		if !ok {
 			continue
 		}
-		found, made1, oerr := observeOne(ctx, statute, sess, sessions, table, decl, chosen,
+		found, value, made1, oerr := observeOne(ctx, statute, sess, sessions, table, decl, chosen,
 			step.Actor, l, eb, reg, qs, fmt.Sprintf("after step %d", step.N))
 		if oerr != nil {
 			return nil, oerr
@@ -1262,6 +1322,27 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 			*lives = append(*lives, fmt.Sprintf(
 				"%s/%s held at %s, re-checked at step %d: %s",
 				step.Actor, decl.Name, where, step.N, found.Says()))
+		}
+		// AND WHERE THIS OBSERVATION IS A DECLARED DEADLINE, REMEMBER THE
+		// INSTANT (R7.4). `advance` lands on these beside the live pending
+		// bounds, and the run has to remember them because an observation is
+		// NEVER a ledger fact: ledger.KindObserved has validation and has
+		// never had a producer, by fable's ratified rule that the observation
+		// is the check's INPUT and the sealed prefix is the DATA. My first cut
+		// of this harvested the ledger for `observed` facts and could not have
+		// worked -- a reader of a fact kind nothing writes, which is the
+		// defect class this same child spent two commits closing. The arm
+		// found it, not the reasoning.
+		if instants[decl.Name] && seen != nil {
+			t, ok := asInstant(value)
+			if !ok {
+				return nil, fmt.Errorf("the project declares %q answers an instant and "+
+					"%s it answered %v (%T), which is not one: `[deadline].instants` names "+
+					"where a deadline is READ, so a value that is not a time leaves "+
+					"`advance` with a target it cannot use",
+					decl.Name, fmt.Sprintf("after step %d", step.N), value, value)
+			}
+			*seen = append(*seen, t)
 		}
 		if found.Value == "pending" && held != nil {
 			// WHAT PRODUCED THIS PENDING, REMEMBERED SO IT CAN BE RE-ASKED.
@@ -1372,14 +1453,14 @@ func askKey(actor, query string) string { return actor + "\x00" + query }
 func observeOne(ctx context.Context, statute string, sess *wire.Session, sessions *Sessions,
 	table *handle.Table, decl bindings.Observation, chosen map[string]string, actor string,
 	l *ledger.Ledger, eb engine.Bindings, reg *engine.Register, qs engine.QuiesceState,
-	when string) (engine.Finding, bool, error) {
+	when string) (engine.Finding, any, bool, error) {
 
 	args, err := ObserveArgs(decl, chosen, table)
 	if err != nil {
 		// A HANDLE THAT WILL NOT RESOLVE IS A SKIP AND NOT A REFUSAL, for
 		// the suborn reason above: the step named something unbound, so
 		// this observation has no subject at this position.
-		return engine.Finding{}, false, nil
+		return engine.Finding{}, nil, false, nil
 	}
 
 	// THE TOKEN IS THE SOURCE'S, which is the ruling's second clause: an
@@ -1394,7 +1475,7 @@ func observeOne(ctx context.Context, statute string, sess *wire.Session, session
 			// session in that context observes nothing through it, and
 			// that is the project's role model answering rather than a
 			// fault.
-			return engine.Finding{}, false, nil
+			return engine.Finding{}, nil, false, nil
 		}
 		token = t
 	}
@@ -1403,7 +1484,7 @@ func observeOne(ctx context.Context, statute string, sess *wire.Session, session
 		Query: decl.Name, Source: decl.Source, Token: token, Args: args,
 	})
 	if err != nil {
-		return engine.Finding{}, false, fmt.Errorf("observing %s (%s) %s: %w",
+		return engine.Finding{}, nil, false, fmt.Errorf("observing %s (%s) %s: %w",
 			decl.Name, decl.Source, when, err)
 	}
 
@@ -1411,11 +1492,18 @@ func observeOne(ctx context.Context, statute string, sess *wire.Session, session
 	// which is what `role` then reads off: a direct observation bears no
 	// role, because it is nobody's view (engine.Input's own rule) and a
 	// statute's role_sees_subject reads its ABSENCE rather than a blank.
+	// THE VALUE IS NAMED HERE AND RETURNED, because nothing else keeps it:
+	// an observation is the check's INPUT and never a ledger fact (fable,
+	// coop breakout-r2/13, ratified; design.md), so after this function
+	// returns the only record of what was read is the finding's input. R7.4's
+	// `[deadline].instants` needs the NUMBER, so it is handed back rather
+	// than dug back out of a map.
+	value := resp.Value
 	check := engine.Check{
 		Query:  decl.Name,
 		Of:     decl.Of,
 		Source: ledger.Source(decl.Source),
-		Value:  resp.Value,
+		Value:  value,
 	}
 	if decl.Source != wire.SourceDirect {
 		check.Actor = actor
@@ -1454,10 +1542,10 @@ func observeOne(ctx context.Context, statute string, sess *wire.Session, session
 	found, err := engine.Judge(ctx, statute,
 		[]string{engine.FindingRule, engine.AttributionRule}, l, check, eb, reg)
 	if err != nil {
-		return engine.Finding{}, false, fmt.Errorf("judging %s (%s) %s: %w",
+		return engine.Finding{}, nil, false, fmt.Errorf("judging %s (%s) %s: %w",
 			decl.Name, decl.Source, when, err)
 	}
-	return found, true, nil
+	return found, value, true, nil
 }
 
 // observeHandles resolves an observation's declared argument names against THE
