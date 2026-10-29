@@ -1738,6 +1738,53 @@ default may_join := true
 		}
 	}
 
+	// AND A VALUE THAT IS NOT AN INSTANT REFUSES THE RUN, which is ratchet's
+	// finding at coop r7/77 and a cell I owed: their mutant -- `if ok { *seen
+	// = append(seen, t) }`, the error dropped -- compiles and SURVIVED the
+	// whole tree, 37 packages at rc 0. Nothing anywhere distinguished a
+	// refusal at the harvest from skipping the value in silence.
+	//
+	// IT IS REACHABLE BY A PROJECT AUTHOR'S MISTAKE AND NOT BY A SYSTEM'S:
+	// `instants` names an observation whose value must BE a time, and the
+	// toy's answers an int, so no shipped project trips it. That is exactly
+	// the case a cell has to carry, because no run will -- the same shape as
+	// the hinge at r7/56 and the same cure, one cell where the decision lives.
+	//
+	// THE SENTENCE IS ASSERTED AND NOT ONLY THE FAILURE: a refusal that named
+	// neither the observation nor the value would send a project author to the
+	// wrong file.
+	{
+		sf := fake.Default()
+		sf.Observations = append(sf.Observations,
+			wire.Observation{Name: "expiry", Source: wire.SourceAPI})
+		sf.Observe["expiry"] = "soonish"
+		raw, merr := json.MarshalIndent(sf, "", " ")
+		if merr != nil {
+			t.Fatalf("encoding the surface: %v", merr)
+		}
+		bad := filepath.Join(dir, "surface-bad.json")
+		if werr := os.WriteFile(bad, raw, 0o600); werr != nil {
+			t.Fatalf("writing the surface: %v", werr)
+		}
+		sess, oerr := wire.Open(ctx, fakeSpawn("--surface", bad, "--id-salt", "notatime"),
+			20*time.Second)
+		if oerr != nil {
+			t.Fatalf("Open: %v", oerr)
+		}
+		defer func() { _ = sess.Close() }()
+		_, werr := schedule.Walk(ctx, project(true), sess, seed, steps, 1)
+		if werr == nil {
+			t.Fatal("a declared instant answered \"soonish\" and the walk did not refuse: " +
+				"`[deadline].instants` names where a deadline is READ, so a value that is not a " +
+				"time leaves `advance` with a target it cannot use")
+		}
+		for _, want := range []string{"expiry", "soonish", "string", "instant"} {
+			if !strings.Contains(werr.Error(), want) {
+				t.Errorf("the refusal does not name %q: %v", want, werr)
+			}
+		}
+	}
+
 	// AND WITHOUT THE DECLARATION THERE IS NOTHING TO LAND ON. `advance` is
 	// live only where a target exists, so it is never drawn -- which is what
 	// makes the walk above a measurement of the declaration and not of the
