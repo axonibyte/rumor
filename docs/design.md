@@ -557,8 +557,8 @@ Every candidate trace is run against a verified clean rollback, through the
 rollback trait (`describe`, `checkpoint`, `restore`, `verify`, `discard`; a
 process-restart provider for the toy system under test, the small deliberately
 buggy application in `examples/toy/` -- a JSON API AND a server-rendered UI
-over users, events, roles and capacity, which the pointer dropped and both the
-epic's item 9 and issue 73 carry -- whose design is R5's own work in the
+over users, events, roles, capacity and -- as of R7.4 -- expiring invitations,
+which the pointer dropped and both the epic's item 9 and issue 73 carry -- whose design is R5's own work in the
 `r5.toy` thread and whose bug ledger is in the epic). The verify step is not
 optional: a shrink step run on a world the previous step dirtied would
 attribute to the trace what the leftover state did, and the "minimal" trace

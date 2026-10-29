@@ -1,6 +1,7 @@
 // Command toy is the small application the engine is proven against: a JSON
-// API and a server-rendered UI over users, events, roles and capacity (R5.2,
-// issue 73). Its bugs arrive one commit at a time, each with the epic's ledger
+// API and a server-rendered UI over users, events, roles, capacity and -- as of
+// R7.4 -- EXPIRING INVITATIONS, which are the first thing in this domain that
+// carries an instant (R5.2, issue 73). Its bugs arrive one commit at a time, each with the epic's ledger
 // row it answers; this file is the honest version they are introduced into.
 //
 // WHY IT IS A PROCESS AND NOT A LIBRARY. The rollback provider R5.3 consumes is
@@ -92,6 +93,45 @@ type event struct {
 	Deleted   bool `json:"deleted"`
 }
 
+// invitation is a standing offer to join one event, and it EXPIRES.
+//
+// IT IS R7's SUBJECT AND THE FIRST THING IN THIS DOMAIN THAT CARRIES AN
+// INSTANT. `ExpiresAt` is in nanoseconds from the run's epoch, the same unit
+// and the same clock as `state.Now`, and the engine reads it through an
+// observation rather than computing it from a lifetime declared somewhere else
+// -- which is the whole of `[deadline].instants` in docs/contract.md: one
+// number, held by the system that enforces it.
+//
+// WHY AN ENTITY AND NOT A FLAG ON THE EVENT, which is the recount's argument
+// run again: the engine resolves an observation's arguments from the handles a
+// STEP minted, so the expiry is only a question once an invitation exists. An
+// expiry hung off the event would be observable on every step that touched one
+// and would have no instant to report.
+type invitation struct {
+	ID      string `json:"id"`
+	EventID string `json:"event_id"`
+	// UserID is WHO WAS INVITED, and only they may accept: an invitation that
+	// anyone could redeem would make the deadline the only thing it enforced.
+	UserID string `json:"user_id"`
+	// ExpiresAt is the instant after which this invitation is no longer
+	// honored. The comparison is in acceptInvitation and it is STRICT -- at
+	// this instant the invitation still works -- which mirrors the engine's
+	// own `now - claimTime > bound` and makes the landing exactly ON the
+	// deadline the case that separates the two readings.
+	ExpiresAt int64 `json:"expires_at"`
+	Accepted  bool  `json:"accepted"`
+}
+
+// invitationLifetime is how long an invitation stands, from the instant the
+// world held when it was created.
+//
+// IT LIVES HERE AND IN NO DECLARATION. A lifetime in `bindings.toml` would be
+// a second copy of this number, and the engine would then target an instant
+// computed from its copy rather than the one this server enforces -- so a walk
+// could miss the deadline while both files looked right. The project declares
+// where the instant can be READ; this is the only place it is decided.
+const invitationLifetime = int64(30 * time.Second)
+
 type session struct {
 	Token   string `json:"token"`
 	UserID  string `json:"user_id"`
@@ -105,6 +145,9 @@ type state struct {
 	Users    map[string]*user    `json:"users"`
 	Events   map[string]*event   `json:"events"`
 	Sessions map[string]*session `json:"sessions"`
+
+	// Invitations is invitation id -> the invitation.
+	Invitations map[string]*invitation `json:"invitations"`
 
 	// Recounts is recount id -> event id, and it exists so a RECOUNT has an
 	// identity of its own.
@@ -174,10 +217,11 @@ type job struct {
 
 func newState() *state {
 	return &state{
-		Users:    map[string]*user{},
-		Events:   map[string]*event{},
-		Sessions: map[string]*session{},
-		Recounts: map[string]string{},
+		Users:       map[string]*user{},
+		Events:      map[string]*event{},
+		Sessions:    map[string]*session{},
+		Recounts:    map[string]string{},
+		Invitations: map[string]*invitation{},
 	}
 }
 
@@ -272,6 +316,19 @@ func (s *server) load() error {
 	}
 	if st.Sessions == nil {
 		st.Sessions = map[string]*session{}
+	}
+	// AND THE OTHER TWO, WHICH WERE MISSING. These guards exist because a
+	// state file may carry an explicit `null` for a map -- `DisallowUnknownFields`
+	// stops an unknown key and says nothing about a known one being null -- and
+	// a write into a nil map panics. `recounts` had no guard before R7.4 and
+	// `invitations` would have shipped without one by copying its neighbors; the
+	// hazard is the same for all four, so the list is now complete rather than
+	// historical. Armed by TestAStateFileWhoseMapsAreNullReloadsAndStillWrites.
+	if st.Recounts == nil {
+		st.Recounts = map[string]string{}
+	}
+	if st.Invitations == nil {
+		st.Invitations = map[string]*invitation{}
 	}
 	s.st = st
 	return nil
@@ -421,6 +478,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/events/", s.handleEventPath)
 	mux.HandleFunc("/store/events/", s.handleStore)
 	mux.HandleFunc("/store/queue", s.handleQueue)
+	mux.HandleFunc("/invitations/", s.handleInvitationPath)
 	mux.HandleFunc("/recounts/", s.handleRecountPath)
 	mux.HandleFunc("/ui/events/", s.handleUI)
 	return s.advancing(mux)
@@ -749,9 +807,175 @@ func (s *server) handleEventPath(w http.ResponseWriter, r *http.Request) {
 		s.eventTally(w, r, id)
 	case len(parts) == 2 && parts[1] == "recount" && r.Method == http.MethodPost:
 		s.recountEvent(w, r, id)
+	case len(parts) == 2 && parts[1] == "invitations" && r.Method == http.MethodPost:
+		s.inviteToEvent(w, r, id)
 	default:
 		fail(w, http.StatusNotFound, fmt.Sprintf("no route for %s %s", r.Method, r.URL.Path))
 	}
+}
+
+// handleInvitationPath routes the two things an invitation answers for: being
+// accepted, and saying when it expires.
+//
+// THE EXPIRY IS A GET AND A ROUTE OF ITS OWN, because it is what the engine
+// READS. `[deadline].instants` names an observation, the adapter turns that
+// name into a path, and the value it hands back is the instant itself -- so
+// there has to be somewhere to ask. It answers the instant and nothing else
+// derived from it: no "expired" boolean, because that would be a SECOND source
+// for a decision acceptInvitation already makes, which is the mistake the
+// count routes' own comment records one entity over.
+func (s *server) handleInvitationPath(w http.ResponseWriter, r *http.Request) {
+	rest := strings.TrimPrefix(r.URL.Path, "/invitations/")
+	parts := strings.Split(strings.Trim(rest, "/"), "/")
+	id := parts[0]
+	if id == "" {
+		fail(w, http.StatusNotFound, "no invitation id in the path")
+		return
+	}
+	switch {
+	case len(parts) == 2 && parts[1] == "accept" && r.Method == http.MethodPost:
+		s.acceptInvitation(w, r, id)
+	case len(parts) == 2 && parts[1] == "expiry" && r.Method == http.MethodGet:
+		s.invitationExpiry(w, r, id)
+	default:
+		fail(w, http.StatusNotFound, fmt.Sprintf("no route for %s %s", r.Method, r.URL.Path))
+	}
+}
+
+// inviteToEvent creates a standing offer for one user to join one event.
+//
+// THE EVENT'S ADMIN AND NOBODY ELSE. A member who could invite would make the
+// role irrelevant to the only thing this entity controls, and the statute's
+// `role` is held relative to an event precisely so this kind of rule can be
+// written.
+func (s *server) inviteToEvent(w http.ResponseWriter, r *http.Request, id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := s.session(r)
+	if sess == nil {
+		fail(w, http.StatusUnauthorized, "inviting needs a session")
+		return
+	}
+	ev, ok := s.st.Events[id]
+	if !ok || ev.Deleted {
+		fail(w, http.StatusNotFound, "no such event")
+		return
+	}
+	if roleOf(ev, sess.UserID) != roleAdmin {
+		fail(w, http.StatusForbidden, "only the event's admin invites")
+		return
+	}
+	var body struct {
+		User string `json:"user"`
+	}
+	if err := decodeBody(r, &body); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if _, ok := s.st.Users[body.User]; !ok {
+		fail(w, http.StatusNotFound, "no such user")
+		return
+	}
+	if roleOf(ev, body.User) == roleMember {
+		fail(w, http.StatusConflict, "that user is already a member")
+		return
+	}
+	inv := &invitation{
+		ID:      s.nextID("i"),
+		EventID: ev.ID,
+		UserID:  body.User,
+		// THE DEADLINE IS COMPUTED FROM THE WORLD'S OWN CLOCK, so an
+		// invitation created at `now` expires at a known instant and nothing
+		// about it depends on when the process happens to be running.
+		ExpiresAt: s.st.Now + invitationLifetime,
+	}
+	s.st.Invitations[inv.ID] = inv
+	if err := s.save(); err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, inv)
+}
+
+// acceptInvitation redeems one, and THIS IS WHERE THE DEADLINE IS ENFORCED.
+//
+// THE COMPARISON IS STRICT AND THAT IS THE HINGE: `now > ExpiresAt` refuses,
+// so AT the expiry the invitation still works. It mirrors the engine's own
+// `now - claimTime > bound` deliberately -- one reading of "past a deadline"
+// in this repository, not two -- and it is what makes the walk's landing
+// exactly ON the instant the case that tells a strict comparison from a loose
+// one. A `>=` here and a `>` there would make the two tiers disagree about the
+// same nanosecond.
+//
+// NO VISIBILITY CHECK, AND THAT IS WHAT AN INVITATION IS. joinEvent refuses an
+// event the actor cannot see; this route is the other door, and the invitation
+// is the key. Its own comment carries the pair.
+//
+// AND NO CAPACITY RACE. joinEvent drops the lock between the check and the
+// insert because the epic's ledger carries that row; this route holds it, and
+// the absence is deliberate rather than an oversight -- one defect per row,
+// and nobody asked for a second way to overfill an event.
+func (s *server) acceptInvitation(w http.ResponseWriter, r *http.Request, id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := s.session(r)
+	if sess == nil {
+		fail(w, http.StatusUnauthorized, "accepting needs a session")
+		return
+	}
+	inv, ok := s.st.Invitations[id]
+	if !ok {
+		fail(w, http.StatusNotFound, "no such invitation")
+		return
+	}
+	if inv.UserID != sess.UserID {
+		fail(w, http.StatusForbidden, "that invitation is not yours")
+		return
+	}
+	if inv.Accepted {
+		fail(w, http.StatusConflict, "that invitation has been accepted already")
+		return
+	}
+	if s.st.Now > inv.ExpiresAt {
+		fail(w, http.StatusGone, fmt.Sprintf(
+			"invitation %s expired at %dns and it is now %dns", inv.ID, inv.ExpiresAt, s.st.Now))
+		return
+	}
+	ev, ok := s.st.Events[inv.EventID]
+	if !ok || ev.Deleted {
+		fail(w, http.StatusNotFound, "no such event")
+		return
+	}
+	if len(ev.Attendees) >= ev.Capacity {
+		fail(w, http.StatusConflict, fmt.Sprintf("event %s is at capacity %d", ev.ID, ev.Capacity))
+		return
+	}
+	ev.Attendees = append(ev.Attendees, sess.UserID)
+	// THE API'S COUNT MOVES WITH THE WRITE, exactly as joinEvent does: this is
+	// the number R5's rows are about, and a second way in that left it alone
+	// would be a count defect nobody planted.
+	ev.Count = len(ev.Attendees)
+	inv.Accepted = true
+	if err := s.save(); err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, ev)
+}
+
+// invitationExpiry answers WHEN, and nothing about whether.
+func (s *server) invitationExpiry(w http.ResponseWriter, r *http.Request, id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	inv, ok := s.st.Invitations[id]
+	if !ok {
+		fail(w, http.StatusNotFound, "no such invitation")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"invitation": inv.ID,
+		"expires_at": inv.ExpiresAt,
+	})
 }
 
 // raceWindow is the gap between the capacity check and the insert. It is the
@@ -799,9 +1023,14 @@ func (s *server) joinEvent(w http.ResponseWriter, r *http.Request, id string) {
 	// YOU CAN ONLY JOIN WHAT YOU CAN SEE, and the two endpoints must agree: a
 	// list that hides an event while join accepts it is two answers to one
 	// question about visibility, and a statute reading both would be right to
-	// call the pair a defect. An invite-only event (visible to admin and member
-	// alone) therefore takes no new members, which is what invite-only means
-	// here -- there is no invitation in this domain.
+	// call the pair a defect.
+	//
+	// AND AS OF R7.4 THERE IS AN INVITATION IN THIS DOMAIN, which is what this
+	// comment said there was not. An invite-only event -- visible to admin and
+	// member alone -- still takes no new members THROUGH THIS ROUTE; the way
+	// in is `POST /invitations/<id>/accept`, where the invitation is the
+	// authorization and the visibility check is deliberately absent. Two doors
+	// with two keys, rather than one door that sometimes ignores its lock.
 	if !visibleTo(ev, role) {
 		fail(w, http.StatusNotFound, "no such event")
 		return

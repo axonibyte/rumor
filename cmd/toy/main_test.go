@@ -1080,3 +1080,229 @@ func TestAClockMoveIsRefusedOrInertWhereItShouldBe(t *testing.T) {
 			"move the worker, or R6's lag and R7's deadline cannot be exercised apart", before, after)
 	}
 }
+
+// actorWithID is `actor` plus the id the system gave, which an invitation
+// needs: `POST /events/<id>/invitations` names the invitee by ID and not by
+// name, so a test that only held the token could not write one.
+func (h *harness) actorWithID(name string) (token, userID string) {
+	h.t.Helper()
+	code, body := h.do(http.MethodPost, "/users", "", map[string]any{"name": name})
+	if code != http.StatusCreated {
+		h.t.Fatalf("creating the user %s: status %d", name, code)
+	}
+	userID, _ = body["id"].(string)
+	if userID == "" {
+		h.t.Fatalf("the created user %s carried no id: %v", name, body)
+	}
+	code, body = h.do(http.MethodPost, "/sessions", "", map[string]any{"actor": name, "context": "api"})
+	if code != http.StatusCreated {
+		h.t.Fatalf("session for %s: status %d", name, code)
+	}
+	token, _ = body["token"].(string)
+	if token == "" {
+		h.t.Fatalf("session for %s carried no token: %v", name, body)
+	}
+	return token, userID
+}
+
+// invite creates an invitation and returns its id and its expiry instant.
+func (h *harness) invite(adminToken, eventID, userID string) (string, int64) {
+	h.t.Helper()
+	code, body := h.do(http.MethodPost, "/events/"+eventID+"/invitations", adminToken,
+		map[string]any{"user": userID})
+	if code != http.StatusCreated {
+		h.t.Fatalf("inviting %s to %s: status %d (%v)", userID, eventID, code, body)
+	}
+	id, _ := body["id"].(string)
+	if id == "" {
+		h.t.Fatalf("the invitation carried no id: %v", body)
+	}
+	exp, ok := body["expires_at"].(float64)
+	if !ok {
+		h.t.Fatalf("the invitation carried no expires_at: %v", body)
+	}
+	return id, int64(exp)
+}
+
+// TestAnInvitationIsHonoredATItsExpiryAndRefusedPastIt is R7.4's hinge, driven
+// at the application tier.
+//
+// THREE LANDINGS, ONE PER WORLD. They are the same three the walk's `advance`
+// draws -- one tick before the deadline, exactly ON it, one tick past -- and
+// the middle one is the cell that tells `now > expires` from `now >= expires`.
+// INSIDE and PAST read identically under either operator, which is R7's own
+// fifth method entry: a suite assembled from "a case that works and a case
+// that fails" has both and lacks the only cell that separates them.
+//
+// A FRESH WORLD PER LANDING, because an accepted invitation cannot be accepted
+// again and a refused one leaves state behind; three invitations in one world
+// would also share a capacity and an attendee list.
+func TestAnInvitationIsHonoredATItsExpiryAndRefusedPastIt(t *testing.T) {
+	for _, c := range []struct {
+		what   string
+		offset int64
+		want   int
+	}{
+		{"one tick before the expiry", -1, http.StatusOK},
+		{"exactly AT the expiry", 0, http.StatusOK},
+		{"one tick past the expiry", 1, http.StatusGone},
+	} {
+		h := start(t)
+		admin, _ := h.actorWithID("alice")
+		guest, guestID := h.actorWithID("dana")
+		ev := h.createEvent(admin, "launch", 10, []string{"admin", "member", "guest"})
+		inv, expires := h.invite(admin, ev, guestID)
+
+		if code, body := h.do(http.MethodPost, "/clock", "",
+			map[string]any{"op": "set", "t": expires + c.offset}); code != http.StatusOK {
+			t.Fatalf("%s: setting the clock: status %d (%v)", c.what, code, body)
+		}
+		code, body := h.do(http.MethodPost, "/invitations/"+inv+"/accept", guest, nil)
+		if code != c.want {
+			t.Errorf("%s: accept is status %d, want %d (%v)", c.what, code, c.want, body)
+		}
+		// THE STATUS IS NOT THE WHOLE CLAIM: a route that answered 410 and
+		// joined the user anyway would pass on the line above. The attendee
+		// list is what the deadline is FOR.
+		joined := h.count(ev, admin)
+		wantJoined := 0
+		if c.want == http.StatusOK {
+			wantJoined = 1
+		}
+		if joined != wantJoined {
+			t.Errorf("%s: the event has %d attendee(s), want %d", c.what, joined, wantJoined)
+		}
+	}
+}
+
+// TestOnlyTheAdminInvitesAndOnlyTheInviteeAccepts holds the two roles the
+// entity exists to distinguish. An invitation anyone could issue or redeem
+// would leave the deadline as the only thing it enforced.
+func TestOnlyTheAdminInvitesAndOnlyTheInviteeAccepts(t *testing.T) {
+	h := start(t)
+	admin, _ := h.actorWithID("alice")
+	member, memberID := h.actorWithID("dana")
+	other, otherID := h.actorWithID("erin")
+	ev := h.createEvent(admin, "launch", 10, []string{"admin", "member", "guest"})
+
+	if code, _ := h.do(http.MethodPost, "/events/"+ev+"/invitations", member,
+		map[string]any{"user": otherID}); code != http.StatusForbidden {
+		t.Errorf("a non-admin invited at status %d, want 403", code)
+	}
+	if code, _ := h.do(http.MethodPost, "/events/"+ev+"/invitations", admin,
+		map[string]any{"user": "u404"}); code != http.StatusNotFound {
+		t.Errorf("inviting a user who does not exist is status %d, want 404", code)
+	}
+
+	inv, _ := h.invite(admin, ev, memberID)
+	if code, _ := h.do(http.MethodPost, "/invitations/"+inv+"/accept", other, nil); code != http.StatusForbidden {
+		t.Errorf("someone else's invitation was accepted at status %d, want 403", code)
+	}
+	if code, _ := h.do(http.MethodPost, "/invitations/"+inv+"/accept", "", nil); code != http.StatusUnauthorized {
+		t.Errorf("accepting with no session is status %d, want 401", code)
+	}
+	if code, _ := h.do(http.MethodPost, "/invitations/"+inv+"/accept", member, nil); code != http.StatusOK {
+		t.Errorf("the invitee could not accept: status %d", code)
+	}
+	if code, _ := h.do(http.MethodPost, "/invitations/"+inv+"/accept", member, nil); code != http.StatusConflict {
+		t.Errorf("a second accept is status %d, want 409", code)
+	}
+	if got := h.count(ev, admin); got != 1 {
+		t.Errorf("the event has %d attendee(s) after one accept and one re-accept, want 1", got)
+	}
+}
+
+// TestAnInvitationBypassesVisibilityWhereJoinDoesNot is the pair joinEvent's
+// comment now claims, and it is an ARM because that comment used to say there
+// was no invitation in this domain: two doors with two keys is only true if
+// each door actually refuses the other's.
+func TestAnInvitationBypassesVisibilityWhereJoinDoesNot(t *testing.T) {
+	h := start(t)
+	admin, _ := h.actorWithID("alice")
+	guest, guestID := h.actorWithID("dana")
+	// INVITE-ONLY: visible to the admin and to members, so a guest cannot see
+	// it and `join` is the route that says so.
+	ev := h.createEvent(admin, "private launch", 10, []string{"admin", "member"})
+
+	if code, _ := h.do(http.MethodPost, "/events/"+ev+"/join", guest, nil); code != http.StatusNotFound {
+		t.Errorf("a guest joined an invite-only event at status %d, want 404", code)
+	}
+	inv, _ := h.invite(admin, ev, guestID)
+	if code, body := h.do(http.MethodPost, "/invitations/"+inv+"/accept", guest, nil); code != http.StatusOK {
+		t.Fatalf("an invited guest could not accept: status %d (%v)", code, body)
+	}
+	if got := h.count(ev, admin); got != 1 {
+		t.Errorf("the event has %d attendee(s) after an accepted invitation, want 1", got)
+	}
+}
+
+// TestTheExpiryRouteAnswersTheInstantAndNothingElse pins what the engine READS.
+// The body is checked key by key: a route that also reported `expired` would
+// be a second source for a decision acceptInvitation makes, and an observation
+// handed the whole body would carry it.
+func TestTheExpiryRouteAnswersTheInstantAndNothingElse(t *testing.T) {
+	h := start(t)
+	admin, _ := h.actorWithID("alice")
+	_, guestID := h.actorWithID("dana")
+	ev := h.createEvent(admin, "launch", 10, nil)
+
+	// THE DEADLINE IS COMPUTED FROM THE WORLD'S CLOCK, so it is measured from
+	// a clock that is NOT zero -- at zero, `now + lifetime` and `lifetime`
+	// agree and the cell could not tell them apart.
+	if code, _ := h.do(http.MethodPost, "/clock", "",
+		map[string]any{"op": "set", "t": 7000000000}); code != http.StatusOK {
+		t.Fatalf("setting the clock: status %d", code)
+	}
+	inv, expires := h.invite(admin, ev, guestID)
+	if want := int64(7000000000) + invitationLifetime; expires != want {
+		t.Errorf("the invitation expires at %d, want %d (the clock when it was made plus the lifetime)",
+			expires, want)
+	}
+
+	code, body := h.do(http.MethodGet, "/invitations/"+inv+"/expiry", "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("reading the expiry: status %d (%v)", code, body)
+	}
+	if got, ok := body["expires_at"].(float64); !ok || int64(got) != expires {
+		t.Errorf("the expiry route answers %v, want %d", body["expires_at"], expires)
+	}
+	if got, _ := body["invitation"].(string); got != inv {
+		t.Errorf("the expiry route names invitation %q, want %q", got, inv)
+	}
+	if len(body) != 2 {
+		t.Errorf("the expiry body carries %d key(s): %v -- it answers WHEN and nothing derived from it",
+			len(body), body)
+	}
+}
+
+// TestAStateFileWhoseMapsAreNullReloadsAndStillWrites arms the nil-map guards
+// in `load`. `DisallowUnknownFields` stops an unknown key and says nothing
+// about a known one being null, and a write into a nil map panics -- so a
+// world handed back with `"recounts": null` would have killed the process on
+// the next recount. `recounts` had no guard before R7.4 and `invitations`
+// would have shipped without one by copying its neighbors.
+func TestAStateFileWhoseMapsAreNullReloadsAndStillWrites(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	if err := os.WriteFile(path, []byte(`{"users":null,"events":null,"sessions":null,`+
+		`"invitations":null,"recounts":null,"seq":0,"now":0,"jobs":null}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv, err := newServer(path)
+	if err != nil {
+		t.Fatalf("a state file of nulls: %v", err)
+	}
+	ts := httptest.NewServer(srv.routes())
+	t.Cleanup(ts.Close)
+	h := &harness{t: t, ts: ts, dir: dir, srv: srv}
+
+	admin, _ := h.actorWithID("alice")
+	_, guestID := h.actorWithID("dana")
+	ev := h.createEvent(admin, "launch", 10, nil)
+	if _, _ = h.invite(admin, ev, guestID); h.srv.st.Invitations == nil {
+		t.Error("the invitations map is still nil after a write")
+	}
+	if rid := h.recount(ev, admin); rid == "" {
+		t.Error("a recount against a world loaded from nulls produced no id")
+	}
+}
