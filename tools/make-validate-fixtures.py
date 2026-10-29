@@ -91,10 +91,17 @@ def build():
          "# FIXTURE for arm 20: the twin with one change -- a [deadline] table,\n"
          "# against the twin's own absence of a [clock] one.\n")
     with open(os.path.join(d, "bindings.toml"), "a") as fh:
-        fh.write('\n[deadline]\n# A field that holds an instant. The VALUE is not read by this arm and\n'
-                 '# not by anything else yet: the table\'s presence is the condition, and\n'
-                 '# 103 is what types the fields (fable, coop rumor/1345).\n'
-                 'invitation_expires_at = "invitation.expires_at"\n')
+        fh.write('\n[deadline]\n# TYPED as of R7.4: each name is an OBSERVATION whose value is an instant.\n'
+                 '# `doc.count` is the twin\'s own and only observation, and naming it is\n'
+                 '# what keeps this fixture ONE change -- a declared deadline against the\n'
+                 '# twin\'s absence of a [clock] table. The PAIRING of these names\n'
+                 '# against the declared observations is validate\'s to refuse and is\n'
+                 '# NOT armed yet, which is said rather than implied: naming a real\n'
+                 '# observation is what keeps this fixture from tripping that arm when\n'
+                 '# it lands, and a fixture tripping two arms shows neither. The\n'
+                 '# table\'s CONTENTS are arm 20\'s condition, so what this key MEANS\n'
+                 '# is not read here (fable, coop rumor/1359).\n'
+                 'instants = ["doc.count"]\n')
 
     d = fresh("10a-no-seeds-file")
     os.remove(os.path.join(d, "seeds.lock"))

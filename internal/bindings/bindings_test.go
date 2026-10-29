@@ -373,7 +373,13 @@ func TestTheReservedTablesAreCarriedAndNotInvented(t *testing.T) {
 			map[string]any{"kind": "queue_depth", "timeout": "30s", "quiet": int64(0)},
 		},
 	}
-	doc["deadline"] = map[string]any{"grace": "2s"}
+	// THE TYPED FORM, R7.4, BESIDE A SIBLING KEY THAT IS STILL CARRIED --
+	// which is the half of the [quiesce] split worth repeating here: typing
+	// `instants` must not turn a key a later phase reserves into a refusal.
+	doc["deadline"] = map[string]any{
+		"instants": []any{"invitation_expiry"},
+		"grace":    "2s",
+	}
 	doc["seeding"] = map[string]any{"path": "./seed.sh"}
 	doc["uses"] = map[string]any{"faults": []any{"restart"}, "volume": []any{"users"}}
 	rep := Parse(doc)
@@ -396,6 +402,19 @@ func TestTheReservedTablesAreCarriedAndNotInvented(t *testing.T) {
 	if b.Deadline["grace"] != "2s" || b.Seeding["path"] != "./seed.sh" {
 		t.Errorf("deadline %v seeding %v", b.Deadline, b.Seeding)
 	}
+	// READ INDIVIDUALLY, like the probe above and for its reason: a later
+	// field on the typed half must not make this arm vacuous.
+	if len(b.DeadlineInstants) != 1 || b.DeadlineInstants[0] != "invitation_expiry" {
+		t.Errorf("deadline instants %#v", b.DeadlineInstants)
+	}
+	// AND THE TYPED KEY IS CARRIED TOO, which is what `Any` over `Keys` does
+	// for every reserved table: a consumer reading the map sees `instants`
+	// beside `grace`. Asserted so that moving the typed read OUT of the
+	// carried loop would fail here rather than silently narrow what a later
+	// phase can find in the map.
+	if _, ok := b.Deadline["instants"]; !ok {
+		t.Errorf("the typed key is not carried: %#v", b.Deadline)
+	}
 	if len(b.Uses.Faults) != 1 || b.Uses.Faults[0] != "restart" || len(b.Uses.Upgrade) != 0 {
 		t.Errorf("uses %+v", b.Uses)
 	}
@@ -406,6 +425,16 @@ func TestTheReservedTablesAreCarriedAndNotInvented(t *testing.T) {
 	doc["clock"] = "on"
 	if rep := Parse(doc); rep.OK() || !names(rep.Refusals, "clock", "wanted a table") {
 		t.Errorf("a scalar clock: %v", rep.Refusals)
+	}
+	doc = wellFormed()
+	doc["deadline"] = map[string]any{"instants": "invitation_expiry"}
+	if rep := Parse(doc); rep.OK() || !names(rep.Refusals, "deadline.instants", "wanted an array of strings") {
+		t.Errorf("a scalar instant list: %v", rep.Refusals)
+	}
+	doc = wellFormed()
+	doc["deadline"] = map[string]any{"instants": []any{"invitation_expiry", int64(3)}}
+	if rep := Parse(doc); rep.OK() || !names(rep.Refusals, "deadline.instants[1]", "wanted a string") {
+		t.Errorf("a non-string instant: %v", rep.Refusals)
 	}
 	doc = wellFormed()
 	doc["uses"] = map[string]any{"faults": "disk_full"}
@@ -475,6 +504,16 @@ func TestABareReservedTableIsPRESENTAndAnAbsentOneIsNIL(t *testing.T) {
 		if len(got) != 0 {
 			t.Errorf("a bare [%s] carries %d key(s): %#v", name, len(got), got)
 		}
+	}
+	// AND THE TYPED HALVES ARE EMPTY FOR A BARE TABLE, which is the same
+	// distinction one level in: a bare [deadline] is PRESENT and declares no
+	// instant, so a consumer asking for targets gets none while arm 20 still
+	// sees a table. The probes carry the same property and have since R6.2.
+	if rep.Bindings.DeadlineInstants != nil {
+		t.Errorf("a bare [deadline] declares instants %#v", rep.Bindings.DeadlineInstants)
+	}
+	if rep.Bindings.Probes != nil {
+		t.Errorf("a bare [quiesce] declares probes %#v", rep.Bindings.Probes)
 	}
 }
 

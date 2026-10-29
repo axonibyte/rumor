@@ -103,10 +103,34 @@ type Bindings struct {
 	// Quiesce stays the RESERVED MAP for anything the table carries beyond the
 	// probes, so a project is not refused for a key R7 reserves. Probes is the
 	// typed half, which is what R6.2 added.
-	Quiesce  map[string]any
-	Probes   []Probe
+	Quiesce map[string]any
+	Probes  []Probe
+	// Deadline stays the RESERVED MAP for anything the table carries beyond
+	// the instants, the third table to take this split after [quiesce] and
+	// [clock]. DeadlineInstants is the typed half, which is what R7.4 adds.
 	Deadline map[string]any
-	Seeding  map[string]any
+	// DeadlineInstants names the OBSERVATIONS whose value IS an instant, in
+	// nanoseconds from the run's epoch -- the fields of the system's own data
+	// that hold a deadline (fable r7/42 ruling 2). The walk extends `advance`'s
+	// targets to them beside the live pending bounds, which is what makes a
+	// deadline something a seeded walk can cross on purpose.
+	//
+	// AN OBSERVATION AND NOT A DURATION, AND THE SYSTEM OWNS THE NUMBER. A
+	// declared lifetime (`invitation = "30s"`) would put the same fact in two
+	// files -- this one and the application's -- and the engine would then
+	// target an instant computed from its own copy. Two sources for one number
+	// is where R5's stale-count row lives, one level up; here it would be
+	// WORSE than a wrong report, because the target would miss the real
+	// deadline and the walk would find nothing while both files looked right.
+	// So the project says where its deadline can be READ and the run asks.
+	//
+	// A NAME DECLARED TWICE IS NOT REFUSED, which is said rather than left to
+	// look like an oversight: the consumer uses these as a SET of instants and
+	// `Landings` dedupes, so a repeat changes no draw. The names that ARE how
+	// something is asked for -- an action's, an observation's, a role's -- are
+	// the ones this parse refuses a duplicate of, below.
+	DeadlineInstants []string
+	Seeding          map[string]any
 
 	// Uses is the project's ASK: the faults, volume targets and upgrades it
 	// wants. `describe`'s capabilities is what the adapter can actually do, and
@@ -517,6 +541,23 @@ func Parse(doc map[string]any) Report {
 						"or a stack under faked time, and nothing else can be seeded",
 						form, ClockAdapter, ClockFaked))
 				}
+			}
+			if reserved.key == "deadline" {
+				// OPTIONAL AT THE PARSE, AND THE CONSUMERS ARE REAL. A name
+				// here is an observation this file also declares, which is
+				// `rumor validate`'s pairing to refuse -- it is the reader
+				// that has both halves. A table with no `instants` in it
+				// declares no deadline and is not a fault, the same way a
+				// [quiesce] carrying only sibling keys declares no probe;
+				// arm 20 still reads the table's CONTENTS, so a [deadline]
+				// in a project with no clock control is refused whichever
+				// of its keys is there (fable, coop rumor/1359).
+				//
+				// THE SHAPE IS REFUSED HERE AND NOWHERE ELSE: `decl.Strings`
+				// names a scalar where an array was wanted and a non-string
+				// element at its own index, so `instants = "x"` and
+				// `instants = ["x", 3]` each refuse at the key's own path.
+				b.DeadlineInstants = t.Strings("instants", false)
 			}
 			if reserved.key == "quiesce" {
 				for _, pr := range t.Tables("probe") {

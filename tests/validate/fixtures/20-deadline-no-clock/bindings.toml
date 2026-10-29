@@ -87,7 +87,14 @@ touches = ["doc_store"]
   until = "doc-published"
 
 [deadline]
-# A field that holds an instant. The VALUE is not read by this arm and
-# not by anything else yet: the table's presence is the condition, and
-# 103 is what types the fields (fable, coop rumor/1345).
-invitation_expires_at = "invitation.expires_at"
+# TYPED as of R7.4: each name is an OBSERVATION whose value is an instant.
+# `doc.count` is the twin's own and only observation, and naming it is
+# what keeps this fixture ONE change -- a declared deadline against the
+# twin's absence of a [clock] table. The PAIRING of these names
+# against the declared observations is validate's to refuse and is
+# NOT armed yet, which is said rather than implied: naming a real
+# observation is what keeps this fixture from tripping that arm when
+# it lands, and a fixture tripping two arms shows neither. The
+# table's CONTENTS are arm 20's condition, so what this key MEANS
+# is not read here (fable, coop rumor/1359).
+instants = ["doc.count"]
