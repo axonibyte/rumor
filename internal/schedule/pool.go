@@ -35,6 +35,18 @@ const (
 	// r5/114 as canard's mirror, weighted in the honest band because it is
 	// honest. It is listed in PoolKinds and deliberately NOT in NemesisKinds.
 	Tell = "tell"
+
+	// Advance moves the RUN'S OWN CLOCK, and it is R7.3's kind. It is not a
+	// lie and not an action of the project's: nobody in the system under test
+	// does it, which is why it is drawn from the pool like `tell` and listed
+	// outside NemesisKinds.
+	//
+	// IT IS WEIGHTED LIKE EVERY OTHER KIND because the walk's composition is a
+	// function of platform.toml and nothing else. A project that never wants
+	// its clock moved declares zero, exactly as examples/toy does for
+	// `essoin` -- and absent stays a refusal, since absent means nobody
+	// decided.
+	Advance = "advance"
 )
 
 // NemesisKinds in a fixed order. The order does not reach the draw -- Pick
@@ -43,7 +55,7 @@ const (
 var NemesisKinds = []string{Suborn, Canard, Palter, Essoin}
 
 // PoolKinds is every kind the ENGINE puts in the pool beside a project's own
-// actions: the four nemesis kinds and the honest tell.
+// actions: the four nemesis kinds, the honest tell and R7.3's `advance`.
 //
 // IT EXISTS BECAUSE "NEMESIS KIND" STOPPED BEING THE SAME SET AS "ENGINE KIND"
 // when R5.4 added the honest tell. Every reader asking "does this name belong
@@ -51,7 +63,7 @@ var NemesisKinds = []string{Suborn, Canard, Palter, Essoin}
 // exist for each, and `rumor validate` pairs them -- while readers asking "is
 // this a lie" still want NemesisKinds, which stays the four docs/design.md
 // names in one breath and which tests/validate pins to that sentence.
-var PoolKinds = append(append([]string{}, NemesisKinds...), Tell)
+var PoolKinds = append(append([]string{}, NemesisKinds...), Tell, Advance)
 
 // Pool is the candidate set for one step of the walk: every applicable action
 // and every applicable nemesis kind, each carrying the weight platform.toml
@@ -76,7 +88,7 @@ var PoolKinds = append(append([]string{}, NemesisKinds...), Tell)
 // count is fable's -- but a silent double-weight is worse than an early error.
 func Pool(ctx context.Context, statute string, actions []bindings.Action, l *ledger.Ledger,
 	actor string, w platform.Weights, stage, profile string, t *handle.Table,
-	roles []bindings.Role, known, actors []string) ([]Candidate, error) {
+	roles []bindings.Role, known, actors []string, targets []int64) ([]Candidate, error) {
 
 	reserved := map[string]bool{}
 	for _, k := range PoolKinds {
@@ -178,7 +190,7 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 		}
 	}
 	for _, k := range PoolKinds {
-		live, err := engineKindApplicable(k, app, l, actor, actors)
+		live, err := engineKindApplicable(k, app, l, actor, actors, targets)
 		if err != nil {
 			return nil, err
 		}
@@ -216,7 +228,7 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 // the toy -- so the weight table stays complete and arm 19's new cell can pair
 // it, and it is simply never drawn until R9 gives it something to abandon.
 func engineKindApplicable(kind string, app []bindings.Action, l *ledger.Ledger, actor string,
-	actors []string) (bool, error) {
+	actors []string, targets []int64) (bool, error) {
 
 	// BOTH TELLING KINDS CARRY THE RECEIVER HALF, which neither did at first.
 	// A subject nobody still needs is not a tell anybody can make, and leaving
@@ -280,6 +292,21 @@ func engineKindApplicable(kind string, app []bindings.Action, l *ledger.Ledger, 
 
 	case Essoin:
 		return false, nil
+
+	case Advance:
+		// LIVE IFF THERE IS SOMETHING TO LAND ON, which is fable's ruling 3 at
+		// coop r7/42: "no live target means INAPPLICABLE, not a no-op --
+		// advance is live iff the project declares `[clock]` AND a target
+		// exists, so it is never drawn into nothing and D1 holds without a
+		// wasted step".
+		//
+		// BOTH HALVES ARE IN `targets` AND NEITHER IS READ HERE, which is the
+		// Tellable rule one function up: the pool's gate and the step's draw
+		// must quantify over ONE set, or the pool offers what the walk cannot
+		// do. The caller builds the list from the register -- an unclocked run
+		// holds no pending whose bound is an instant, so its list is empty by
+		// construction rather than by a second check of the `[clock]` table.
+		return len(targets) > 0, nil
 	}
 	return false, fmt.Errorf("schedule: %q is not a nemesis kind, and this function is the only "+
 		"place that decides applicability for one", kind)

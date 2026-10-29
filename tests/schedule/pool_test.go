@@ -216,7 +216,7 @@ func TestPoolCarriesActionsAndApplicableNemesisKinds(t *testing.T) {
 	l, _, observer := sealedToy(t, "honest-count")
 	w := withNemesis(toyWeights(t), 2)
 
-	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t))
+	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t), nil)
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestPoolCarriesActionsAndApplicableNemesisKinds(t *testing.T) {
 	if err := withEvent.Bind("alice.event#1", "e-99"); err != nil {
 		t.Fatalf("binding an event handle: %v", err)
 	}
-	back, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", withEvent, nil, knownFor(t, l, observer), toyActors(t))
+	back, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", withEvent, nil, knownFor(t, l, observer), toyActors(t), nil)
 	if err != nil {
 		t.Fatalf("Pool with a bound event handle: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestCanardEntersThePoolWhereItsPreconditionHolds(t *testing.T) {
 	}
 	w := withNemesis(toyWeights(t), 3)
 
-	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t))
+	got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t), nil)
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestAnUndeclaredWeightIsRefusedRatherThanAssumedZero(t *testing.T) {
 			"evidence about suborn in particular")
 	}
 
-	_, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t))
+	_, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t), nil)
 	if err == nil {
 		t.Fatal("a kind the walk will draw with no declared weight must be refused, not invented")
 	}
@@ -372,7 +372,7 @@ func TestAnActionNamedLikeANemesisKindIsRefused(t *testing.T) {
 	l, _, observer := sealedToy(t, "honest-count")
 	acts := append(toyActions(t), bindings.Action{Name: schedule.Suborn, Requires: []string{"may_leave"}})
 
-	_, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 1), "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t))
+	_, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 1), "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t), nil)
 	if err == nil {
 		t.Fatal("an action named `suborn` must be refused: the pool is keyed by kind")
 	}
@@ -407,7 +407,7 @@ func TestSubornAndPalterNeedAnApplicableEmittingAction(t *testing.T) {
 			"cannot reach the precondition it is about")
 	}
 
-	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 2), "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t))
+	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, withNemesis(toyWeights(t), 2), "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t), nil)
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -429,7 +429,7 @@ func TestEssoinIsNeverOfferedBeforeR9(t *testing.T) {
 	for _, name := range []string{"honest-count", "planted-join"} {
 		l, _, observer := sealedToy(t, name)
 		got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer,
-			withNemesis(toyWeights(t), 7), "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t))
+			withNemesis(toyWeights(t), 7), "", "", tbl(t), nil, knownFor(t, l, observer), toyActors(t), nil)
 		if err != nil {
 			t.Fatalf("%s: Pool: %v", name, err)
 		}
@@ -473,7 +473,7 @@ func TestAnActionWhoseFlowHandleCannotResolveIsInapplicable(t *testing.T) {
 
 	// NOTHING BOUND: the flow's {event} resolves to no id, so the action is out.
 	empty := tbl(t)
-	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", empty, nil, knownFor(t, l, observer), toyActors(t))
+	got, err := schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", empty, nil, knownFor(t, l, observer), toyActors(t), nil)
 	if err != nil {
 		t.Fatalf("Pool: %v", err)
 	}
@@ -500,7 +500,7 @@ func TestAnActionWhoseFlowHandleCannotResolveIsInapplicable(t *testing.T) {
 	if err := bound.Bind("alice.event#1", "e-99"); err != nil {
 		t.Fatalf("binding an event handle: %v", err)
 	}
-	got, err = schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", bound, nil, knownFor(t, l, observer), toyActors(t))
+	got, err = schedule.Pool(ctx, statute(t), acts, l, observer, w, "", "", bound, nil, knownFor(t, l, observer), toyActors(t), nil)
 	if err != nil {
 		t.Fatalf("Pool with a bound handle: %v", err)
 	}
@@ -556,7 +556,7 @@ func TestAnActionInAnUnheldContextIsInapplicable(t *testing.T) {
 
 	// BASELINE: the role holds BOTH contexts, so nothing is gated out.
 	both := []bindings.Role{{Name: "member", Contexts: []string{"api", "ui"}}}
-	before, err := schedule.Pool(ctx, statute(t), acts, l, actor, w, "", "", tbl(t), both, knownFor(t, l, actor), toyActors(t))
+	before, err := schedule.Pool(ctx, statute(t), acts, l, actor, w, "", "", tbl(t), both, knownFor(t, l, actor), toyActors(t), nil)
 	if err != nil {
 		t.Fatalf("Pool with both contexts held: %v", err)
 	}
@@ -568,7 +568,7 @@ func TestAnActionInAnUnheldContextIsInapplicable(t *testing.T) {
 	// AND THE SAME CALL WITH ui NOT HELD: the moved action is gone and the
 	// others are untouched.
 	apiOnly := []bindings.Role{{Name: "member", Contexts: []string{"api"}}}
-	after, err := schedule.Pool(ctx, statute(t), acts, l, actor, w, "", "", tbl(t), apiOnly, knownFor(t, l, actor), toyActors(t))
+	after, err := schedule.Pool(ctx, statute(t), acts, l, actor, w, "", "", tbl(t), apiOnly, knownFor(t, l, actor), toyActors(t), nil)
 	if err != nil {
 		t.Fatalf("Pool with ui unheld: %v", err)
 	}
@@ -625,7 +625,7 @@ func TestAnUndeclaredRoleRefusesRatherThanEmptyingThePool(t *testing.T) {
 
 	// CELL 1: the actor holds a user, so `api` actions are applicable.
 	withUser := sealedToyWithUserFor(t, "member_1")
-	_, err := schedule.Pool(ctx, statute(t), toyActions(t), withUser, "member_1", w, "", "", tbl(t), other, knownFor(t, withUser, "member_1"), toyActors(t))
+	_, err := schedule.Pool(ctx, statute(t), toyActions(t), withUser, "member_1", w, "", "", tbl(t), other, knownFor(t, withUser, "member_1"), toyActors(t), nil)
 	if err == nil {
 		t.Fatal("a declaration naming only `admin` was read as `member` holding no context")
 	}
@@ -641,7 +641,7 @@ func TestAnUndeclaredRoleRefusesRatherThanEmptyingThePool(t *testing.T) {
 	// -- otherwise an applicable `api` action is present and cell 2 would reach
 	// the gate the old way, proving nothing about the ordering.
 	member := []bindings.Role{{Name: "member", Contexts: []string{"api"}}}
-	ok, err := schedule.Pool(ctx, statute(t), toyActions(t), noUser, "member_1", w, "", "", tbl(t), member, knownFor(t, noUser, "member_1"), toyActors(t))
+	ok, err := schedule.Pool(ctx, statute(t), toyActions(t), noUser, "member_1", w, "", "", tbl(t), member, knownFor(t, noUser, "member_1"), toyActors(t), nil)
 	if err != nil {
 		t.Fatalf("Pool for an actor with no user and a declared role: %v", err)
 	}
@@ -662,7 +662,7 @@ func TestAnUndeclaredRoleRefusesRatherThanEmptyingThePool(t *testing.T) {
 		}
 	}
 
-	_, err = schedule.Pool(ctx, statute(t), toyActions(t), noUser, "member_1", w, "", "", tbl(t), other, knownFor(t, noUser, "member_1"), toyActors(t))
+	_, err = schedule.Pool(ctx, statute(t), toyActions(t), noUser, "member_1", w, "", "", tbl(t), other, knownFor(t, noUser, "member_1"), toyActors(t), nil)
 	if err == nil {
 		t.Fatal("an actor nothing `api` is applicable to got a pool and no refusal, so a missing " +
 			"[[role]] and a world permitting nothing are still the same answer")
@@ -716,7 +716,7 @@ func TestAHandleTheActorDoesNotKnowDoesNotResolve(t *testing.T) {
 			t.Fatalf("binding %s: %v", bind, err)
 		}
 		got, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", table,
-			nil, known, toyActors(t))
+			nil, known, toyActors(t), nil)
 		if err != nil {
 			t.Fatalf("Pool with %s bound: %v", bind, err)
 		}
@@ -881,4 +881,62 @@ func TestTheHonestTellAndCanardSeparateOnPlantedness(t *testing.T) {
 
 	t.Logf("PROOF alice tells %v canards %v; bob tells %v canards %v; carol tells %v canards %v",
 		aliceTells, aliceCanards, tells("bob"), canards("bob"), tells("carol"), canards("carol"))
+}
+
+// TestAdvanceIsInThePoolIFFAnInstantExistsToLandOn drives R7.3's kind and
+// fable's ruling 3 at coop r7/42: "no live target means INAPPLICABLE, not a
+// no-op -- advance is live iff the project declares `[clock]` AND a target
+// exists, so it is never drawn into nothing and D1 holds without a wasted
+// step".
+//
+// BOTH HALVES OF THE RULING ARRIVE AS ONE ARGUMENT, which is this package's
+// own rule stated at Tellable: the pool's gate and the step's draw must
+// quantify over ONE set, so the walk reads the register once and hands the
+// instants in. An unclocked run's list is empty by construction -- engine.Judge
+// refuses a duration bound it cannot measure rather than holding it, and a
+// quiesce bound carries no instant -- so there is no second check of `[clock]`
+// here to disagree with the first.
+//
+// THE PAIR IS THE ARM. A cell that only showed advance present would pass over
+// a pool that offered it always, which is exactly the "drawn and then refused"
+// shape this file's older comments were written against.
+func TestAdvanceIsInThePoolIFFAnInstantExistsToLandOn(t *testing.T) {
+	ctx := context.Background()
+	l, _, observer := sealedToy(t, "honest-count")
+	w := withNemesis(toyWeights(t), 2)
+
+	none, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t),
+		nil, knownFor(t, l, observer), toyActors(t), nil)
+	if err != nil {
+		t.Fatalf("Pool with no targets: %v", err)
+	}
+	if slices.Contains(kinds(none), "advance") {
+		t.Errorf("the pool offers advance with nothing to land on: %v", kinds(none))
+	}
+
+	// ONE INSTANT IS ENOUGH, and it is an instant and not a count: the walk
+	// lands relative to a pending's `Until`, so a single live bound makes the
+	// kind drawable.
+	some, err := schedule.Pool(ctx, statute(t), toyActions(t), l, observer, w, "", "", tbl(t),
+		nil, knownFor(t, l, observer), toyActors(t), []int64{30_000_000_000})
+	if err != nil {
+		t.Fatalf("Pool with one target: %v", err)
+	}
+	if !slices.Contains(kinds(some), "advance") {
+		t.Fatalf("the pool does not offer advance with an instant to land on: %v", kinds(some))
+	}
+
+	// AND NOTHING ELSE MOVED. The two pools differ by exactly this kind, or
+	// the cell above is reading a pool that changed for another reason.
+	a, b := kinds(none), kinds(some)
+	var less []string
+	for _, k := range b {
+		if k != "advance" {
+			less = append(less, k)
+		}
+	}
+	if strings.Join(a, ",") != strings.Join(less, ",") {
+		t.Errorf("the two pools differ by more than advance: %v against %v", a, b)
+	}
+	t.Logf("PROOF %v without a target, %v with one", a, b)
 }

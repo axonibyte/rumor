@@ -544,8 +544,22 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 			return rec, fmt.Errorf("schedule: step %d: the handles %s knows: %w", n, actor, err)
 		}
 
+		// THE TARGETS ARE READ ONCE, HERE, AND HANDED TO THE POOL. `advance`
+		// is live iff there is an instant to land on (fable, coop r7/42), and
+		// the pool's gate and the step's draw have to quantify over one set --
+		// the Tellable rule. Reading the register twice would be two answers
+		// to one question, which is the shape the pool's own comment calls the
+		// defect being closed.
+		//
+		// AN UNCLOCKED RUN'S LIST IS EMPTY BY CONSTRUCTION, not by a second
+		// check of `[clock]`: a duration-bounded disagreement in a run with no
+		// clock is REFUSED by engine.Judge rather than held, so no pending
+		// with an instant can reach the register, and a quiesce-bounded one
+		// carries no instant at all.
+		targets := reg.Untils()
+
 		pool, err := Pool(ctx, p.Statute, p.Actions, l, actor, p.Weights, p.Stage, p.Profile, table,
-			p.Roles, known, actors)
+			p.Roles, known, actors, targets)
 		if err != nil {
 			return rec, fmt.Errorf("schedule: step %d: the pool for %s: %w", n, actor, err)
 		}

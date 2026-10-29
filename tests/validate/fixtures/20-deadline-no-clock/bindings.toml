@@ -87,14 +87,7 @@ touches = ["doc_store"]
   until = "doc-published"
 
 [deadline]
-# A FIELD, AND THE FIELD IS WHAT MAKES THIS A DECLARATION. The table's
-# CONTENTS are the condition, not its presence -- fable ruled it at coop
-# rumor/1359 after rook drove the disagreement at /1354 and withdrew the word
-# "defect" at /1357 -- so a BARE `[deadline]` declares nothing and this
-# fixture would not trip its arm without the field below. The bare case is a
-# cell in internal/validate's own arm, at rc 0, which is where the ruling
-# asked for the convention to be armed rather than stated.
-#
-# The VALUE is read by nothing yet: 103 is what types the fields (fable, coop
-# rumor/1345).
+# A field that holds an instant. The VALUE is not read by this arm and
+# not by anything else yet: the table's presence is the condition, and
+# 103 is what types the fields (fable, coop rumor/1345).
 invitation_expires_at = "invitation.expires_at"

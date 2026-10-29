@@ -48,6 +48,12 @@ palter = 1
 suborn = 1
 essoin = 0
 
+# AND R7.3's `advance`, THE ENGINE KIND THAT MOVES THE RUN'S OWN CLOCK.
+# A weight must EXIST for every pool kind -- absent is not zero -- and this
+# project declares no `[clock]`, so the kind is never live here and the
+# zero says which of the two it is.
+advance = 0
+
 # AND THE HONEST TELL, which is an ENGINE kind rather than a nemesis one: it
 # passes on a claim the run did NOT plant (fable, coop r5/114). Arm 19 requires
 # a weight for it on the same grounds as the four above -- the walk can draw it,

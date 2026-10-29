@@ -292,7 +292,7 @@ func arm19Observations(rep *Report, b bindings.Bindings, d wire.DescribeResponse
 var NemesisKinds = []string{"canard", "essoin", "palter", "suborn"}
 
 // PoolKinds is every kind the ENGINE draws beside a project's own actions: the
-// four above and the honest `tell`.
+// four above, the honest `tell`, and R7.3's `advance`.
 //
 // WHY A SECOND LIST RATHER THAN A FIFTH ENTRY ABOVE. R5.4 added the honest tell
 // (fable, coop r5/114) -- it passes on a claim the run did NOT plant, so it is
@@ -305,7 +305,14 @@ var NemesisKinds = []string{"canard", "essoin", "palter", "suborn"}
 // THE SCHEDULER OWNS THE REAL LIST, as the note above says of the other one:
 // internal/schedule.PoolKinds is the set the pool actually draws, and this copy
 // exists because arm 19 cannot otherwise tell an engine kind from a typo.
-var PoolKinds = []string{"canard", "essoin", "palter", "suborn", "tell"}
+//
+// `advance` JOINED AT R7.3 AND IS NOT A NEMESIS KIND: it moves the run's own
+// clock and tells no lie, so it belongs in this list and not in the four
+// above, which tests/validate pins to docs/design.md's own sentence. Its
+// weight is required like every other kind's -- cell 2 below asks only that
+// one EXIST, and `essoin`'s zero in the toy is the precedent for a kind the
+// table declares and the walk may never draw.
+var PoolKinds = []string{"canard", "essoin", "palter", "suborn", "tell", "advance"}
 
 // placeholder is `{name}`: the brace form a flow step uses for a handle.
 var placeholder = regexp.MustCompile(`\{([^{}]+)\}`)

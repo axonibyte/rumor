@@ -99,6 +99,15 @@ palter = 1
 suborn = 1
 essoin = 0
 
+# AND R7.3's `advance`, AT ZERO IN THE DEFAULT TABLE, which is `essoin`'s shape
+# again and fable's own placement (coop r7/42 ruling 3): "`advance` = 0 goes in
+# examples/toy's weights beside `essoin` = 0". It moves the run's OWN clock --
+# no actor in the system under test does it -- and it is live only where a
+# pending's bound gives it an instant to land on, so a default of zero keeps the
+# default walk's composition byte-identical to v0.1.40's while the kind exists,
+# is weighted, and is drawn where a profile asks for it.
+advance = 0
+
 # AND THE WORKER'S OWN ACTION AT ZERO, which is `essoin`'s shape used for a
 # different reason: in the pool, never drawn, named rather than missing. R6's
 # bug ledger says each row is caught by the stage or feature listed for it and

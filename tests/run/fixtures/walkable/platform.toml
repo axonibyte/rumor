@@ -35,6 +35,8 @@ suborn = 0
 canard = 0
 palter = 0
 essoin = 0
+# R7.3's engine kind: arm 19 requires a weight for every pool kind.
+advance = 0
 
 # THE HONEST TELL IS WEIGHTED AND THE FOUR ABOVE ARE NOT, which is not an
 # inconsistency: the reason they are zero is that an unimplemented effect would
