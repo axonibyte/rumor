@@ -1534,3 +1534,43 @@ makes two expressions equal on every path that survives it, a test over either
 one measures both, and a change of SOURCE between them is invisible to the
 whole suite. Finding that out costs one mutant. Not looking costs a believed
 arm, and a believed arm is worse than a missing one.
+
+### A walk shows the product can REACH a state; a cell says what the state MEANS
+
+R7.3 gave the walk an `advance` that lands exactly on a pending's bound, which
+is the one input separating `now-claimTime > bound` from `>=`. I built the
+end-to-end drill for it first -- two seeds of one project, one landing on the
+bound and finding nothing, one landing a tick past and composing `stale` -- and
+wrote in the landings arm that the middle landing "is the one input that
+separates a strict comparison from a loose one".
+
+**IT WAS NOT, YET.** ratchet drove the mutant at that head (coop r7/56):
+`> e.Bound` to `>=` SURVIVED the whole tree -- 37 packages, rc 0 -- because the
+cell where the comparison lives had INSIDE and PAST and nothing at the bound's
+own instant. The landings arm asserted the landing SET, not the verdict at it.
+A comment claiming a hinge is not a hinge.
+
+**THE TWO TIERS ANSWER DIFFERENT QUESTIONS AND BOTH ARE NEEDED:**
+
+* The WALK answers *can the product reach this state at all*. Before R7.3 no
+  walk could put the clock on a bound, so a duration-bounded pending had one
+  possible end — the run's unmeasured refusal — and the comparison was
+  unreachable from any drill. That is worth a drill precisely because it is a
+  claim about reachability, which a unit test cannot make.
+* The CELL answers *what the state means*. It runs in 0.01s against the
+  comparison itself, in every suite, on every change — where the walk costs
+  3.3s, a real adapter, a profile and a pinned seed.
+
+**SO THE ORDER IS THE CELL FIRST.** The expensive drill is what you add once
+the cheap one exists, and I had it backwards: I reached for the impressive
+measurement and let a comment stand in for the arm. The rule that falls out is
+narrow enough to apply: **when a drill's value rests on one comparison, that
+comparison gets a cell at its own tier, and the drill proves reachability
+rather than meaning.**
+
+**AND THE BOUNDARY CELL IS THE ONE A SUITE IS MOST LIKELY TO LACK.** INSIDE and
+PAST read identically under either operator; only the boundary tells them
+apart, and a suite assembled from "a case that works and a case that fails"
+will have both and not it. Where a comparison has a boundary, the boundary is
+the cell — and after R7.3 it is also a state a drawn step reaches by
+construction rather than a value only a test could invent.

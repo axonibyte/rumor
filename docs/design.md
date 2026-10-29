@@ -342,6 +342,40 @@ description with no action under it.
 > NOT as a check sees them**" below. The measurement stands; the remedy was
 > mine and wrong.
 
+**`advance` is a pool kind too, and it moves the RUN rather than the system.**
+R7.3 added it. Every other kind in the pool is something an actor does to the
+system under test; this one moves the run's own clock, so no actor in the
+system does it and nothing in the ledger reads as an action. It is listed in
+`PoolKinds` and not in `NemesisKinds` for `tell`'s reason -- it tells no lie --
+and it is weighted like everything else, because the walk's composition is a
+function of `platform.toml` and nothing else.
+
+**It is live IFF there is an instant to land on** (fable, coop r7/42): the
+project declares `[clock]` AND some live pending's bound gives the clock
+somewhere to go. With no target it is INAPPLICABLE rather than a no-op, so it
+is never drawn into nothing and a run that cannot move time spends no step
+pretending to. Both halves reach the pool as ONE argument, the landings
+themselves, because the gate and the draw must quantify over one set -- a gate
+over BOUNDS would say live where the draw picked an instant the mover refuses.
+
+**The three landings, and the middle one is why there are three.** A drawn
+advance lands one tick before a bound, exactly ON it, or one tick past; a tick
+is one nanosecond, the contract's unit. The overlay holds a disagreement open
+while `now-claimTime > bound` is FALSE, so the bound's own instant is the one
+input that separates a strict comparison from a loose one -- at a tick before,
+both readings hold it open, and at a tick past, both let it go. That is the
+hinge, and a walk reaches it on purpose rather than by luck.
+
+**What a drawn advance DOES.** It asks the adapter to move the clock by a
+delta and writes the ledger's fact from the ANSWER, not the ask: an adapter
+whose clock has a coarse tick answers for the world, and the world is what the
+ledger records. A `set` must come back exactly, since the engine named an
+instant; an `advance` need not, since the engine named only a distance. What is
+refused is a clock that went BACKWARD -- replay and every duration bound rest
+on a ledger whose times never decrease -- and the step records the instant it
+drew, so two attempts of one seed can be compared on where the clock was SENT
+as well as where it arrived.
+
 **The honest `tell` is a pool kind too, and it is not a nemesis kind.** R5.4
 added it (fable, coop r5/114) as `canard`'s mirror: the drawn actor passes a
 claim it HOLDS — one the run did not plant — to an actor who does not yet know
