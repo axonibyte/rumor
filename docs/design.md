@@ -988,6 +988,19 @@ sets to something other than the ask, is refused by name rather than recorded
 declares the table and no form is refused before a step is taken, because the
 engine cannot ask for a clock it was not told how to reach.
 
+**AND THE WORLD'S CLOCK LIVES WHERE THE WORLD DOES, as of R7.4.**
+`form = "adapter"` says the system under test holds the time; it does not say
+where in it. In the shipped example it is a field of `cmd/toy`'s STATE FILE,
+and that is the rollback design rather than a placement: a checkpoint is a copy
+of that file and a restore is a copy back, so a clock held anywhere else --
+in the adapter process, which is where this one was until R7.4 -- would survive
+a restore, and the world after one would be the checkpoint plus however far
+time had been moved since. The adapter forwards `set` and `advance` and answers
+what came back, so the relativity of an `advance` is a property of the world
+and not of the process relaying the request. Moving the clock is a WRITE and
+drains no queued work: R6's lag advances on the request SEQUENCE, so the two
+phases' mechanisms stay separable and a run can exercise either alone.
+
 **A SECOND REFUSAL ARRIVED WITH IT, and it is the run's rather than the
 project's** (fable, coop r7/15). A pending still unresolved at the END of a
 run, under a duration bound, with the clock where it started, is not inside

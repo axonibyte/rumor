@@ -107,16 +107,14 @@ type adapter struct {
 	// with no route attached cannot be acted on.
 	slowestWhat string
 
-	// clock is the test clock this adapter exposes, in NANOSECONDS from the
-	// run's own epoch -- docs/contract.md's unit, zero at the first seal. It
-	// lives on the adapter and not in the toy because the toy has no notion of
-	// time yet: 103 is what gives it one (expiring invitations), and until then
-	// this answers honestly about a clock nothing downstream reads.
-	//
-	// HELD ACROSS REQUESTS because `advance` is RELATIVE. An adapter that
-	// forgot the last value would answer the same instant every time and the
-	// engine could not tell a moving clock from a stuck one.
-	clock int64
+	// THE CLOCK IS NOT A FIELD HERE ANY MORE, and the absence is the R7.4
+	// change worth reading: this adapter held an `int64` of its own until
+	// 103, which was honest while nothing downstream read it -- its comment
+	// said exactly that -- and would have been a lie the moment the toy
+	// started expiring invitations by a time the adapter was keeping. The
+	// world's clock is the WORLD's: `POST /clock` on the toy, whose state
+	// file carries it, so a rollback restores the time with everything else.
+	// This adapter forwards and answers what came back.
 }
 
 func main() {
@@ -341,19 +339,25 @@ func (a *adapter) answer(line []byte) any {
 	return fault(env.ID, wire.FaultInternal, "kind", fmt.Sprintf("%q is a kind this adapter does not serve", env.Kind))
 }
 
-// clockOp moves the test clock and answers WHAT IT NOW HOLDS, which is the
+// clockOp moves the WORLD's clock and answers WHAT IT NOW HOLDS, which is the
 // field fable ruled the ledger writes from (coop r7/51): "an adapter that
-// rounds forward answered for the world and the ledger records the world". This
-// adapter neither rounds nor clamps, so its answer equals the ask -- and the
-// engine refuses a `set` that comes back changed, so an adapter that started
-// rounding without declaring a granularity would be caught rather than
-// believed.
+// rounds forward answered for the world and the ledger records the world".
+//
+// IT FORWARDS AND DOES NOT COMPUTE, which is the R7.4 change. The op and the
+// delta go to the toy exactly as they arrived and the toy's own number comes
+// back, so `advance`'s relativity is the WORLD's property and not this
+// process's: an adapter holding its own copy would answer correctly for a run
+// and wrongly for anything that read the toy, and the thing about to read it
+// is an invitation's expiry. This adapter neither rounds nor clamps -- and the
+// engine refuses a `set` that comes back changed, so one that started to
+// would be caught rather than believed.
+//
+// THE OP IS CHECKED BEFORE THE CALL, so an unknown one never reaches the toy.
+// The toy refuses it too (it is an application and anything may call it); this
+// refusal is the one the contract owes, by name and naming both words.
 func (a *adapter) clockOp(id string, m wire.ClockRequest) any {
 	switch m.Op {
-	case wire.ClockSet:
-		a.clock = m.T
-	case wire.ClockAdvance:
-		a.clock += m.T
+	case wire.ClockSet, wire.ClockAdvance:
 	default:
 		// THE DECODER CHECKS FIELD PRESENCE, NOT A VARIANT'S VALUE, so an
 		// unknown op arrives intact and is named rather than guessed at.
@@ -361,9 +365,25 @@ func (a *adapter) clockOp(id string, m wire.ClockRequest) any {
 			fmt.Sprintf("%q is not a clock op; this protocol has %q and %q",
 				m.Op, wire.ClockSet, wire.ClockAdvance))
 	}
+	var out struct {
+		T int64 `json:"t"`
+	}
+	// `t` IS SENT EVEN WHEN IT IS ZERO: `prune` drops nil values and not zero
+	// ones, so `set 0` -- the run's own epoch, which is a legal instant --
+	// reaches the toy as a number rather than as an absent key its strict
+	// decoder would read as zero by accident.
+	code, err := a.call(http.MethodPost, "/clock", "",
+		map[string]any{"op": string(m.Op), "t": m.T}, &out)
+	if err != nil {
+		return fault(id, wire.FaultInternal, "", err.Error())
+	}
+	if code != http.StatusOK {
+		return fault(id, wire.FaultInternal, "op",
+			fmt.Sprintf("the toy answered %d to a %q of %dns", code, m.Op, m.T))
+	}
 	return wire.ClockResponse{
 		Envelope: wire.Envelope{Kind: wire.KindClock, Contract: wire.ContractVersion, ID: id},
-		T:        a.clock,
+		T:        out.T,
 	}
 }
 

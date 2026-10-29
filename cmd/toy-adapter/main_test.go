@@ -263,27 +263,33 @@ func TestAnUnknownActionIsAFaultThatNamesWhatIsServed(t *testing.T) {
 	}
 }
 
-// TestTheClockSetsAdvancesAndAnswersWhatItHolds drives 101's clock request.
+// TestTheClockIsTheTOYsNumberAndThisAdapterOnlyForwardsIt replaces 101's
+// ladder, which lived here while the clock did.
 //
-// THE THIRD CELL IS THE ONE THAT MAKES THE FIRST TWO MEAN ANYTHING: `advance`
-// is RELATIVE, so an adapter that answered the ask instead of its own state
-// would pass a `set` and a single `advance` and fail only on the second. The
-// cells run in one order against one adapter for that reason.
+// THE CELL IS THE DIVERGENCE AND NOT THE AGREEMENT: the stub answers an
+// instant that is NOT the ask and not the sum of the asks, so an adapter
+// keeping its own copy -- which is what this one did until R7.4 -- fails here
+// whichever arithmetic it chose. An answer equal to the ask would have passed
+// against a correct adapter and against two wrong ones.
 //
-// AND THE CLOCK NEVER REACHES THE TOY: 103 is what gives the toy a notion of
-// time. An assertion on the toy's log is what says so rather than a comment.
-func TestTheClockSetsAdvancesAndAnswersWhatItHolds(t *testing.T) {
-	a, log := stub(t, nil)
+// AND THE REQUEST IS ASSERTED, NOT ONLY THE ANSWER: op and `t` reach the toy
+// as sent, because an adapter that forwarded a `set` as an `advance` would
+// agree with this stub about every number it returned.
+func TestTheClockIsTheTOYsNumberAndThisAdapterOnlyForwardsIt(t *testing.T) {
+	const theToysOwnNumber = 777000000000
 	for _, c := range []struct {
-		op   string
-		t    int64
-		want int64
+		op string
+		t  int64
 	}{
-		{"set", 5000000000, 5000000000},
-		{"advance", 30000000000, 35000000000},
-		{"advance", 30000000000, 65000000000},
-		{"set", 1000000000, 1000000000},
+		{"set", 5000000000},
+		{"advance", 30000000000},
+		// ZERO IS A LEGAL INSTANT and `prune` drops nil and not zero, so this
+		// cell says the key arrives rather than being read as absent.
+		{"set", 0},
 	} {
+		a, log := stub(t, map[string]answer{
+			"POST /clock": {code: 200, body: map[string]any{"t": theToysOwnNumber}},
+		})
 		out := ask(t, a, map[string]any{"kind": "clock", "op": c.op, "t": c.t})
 		got, ok := out["t"]
 		if !ok {
@@ -291,12 +297,46 @@ func TestTheClockSetsAdvancesAndAnswersWhatItHolds(t *testing.T) {
 		}
 		// JSON numbers decode as float64; the comparison is on the int64 the
 		// protocol declares, not on whatever the round trip produced.
-		if int64(got.(float64)) != c.want {
-			t.Errorf("%s %d: the clock answers %v, want %d", c.op, c.t, got, c.want)
+		if int64(got.(float64)) != theToysOwnNumber {
+			t.Errorf("%s %d: the adapter answers %v, want the toy's %d", c.op, c.t, got, theToysOwnNumber)
+		}
+		if len(*log) != 1 {
+			t.Fatalf("%s %d: the toy saw %d request(s), want 1: %v", c.op, c.t, len(*log), *log)
+		}
+		sent := (*log)[0]
+		if sent.method != "POST" || sent.path != "/clock" {
+			t.Errorf("%s %d: the toy saw %s %s", c.op, c.t, sent.method, sent.path)
+		}
+		if op, _ := sent.body["op"].(string); op != c.op {
+			t.Errorf("%s %d: the toy was told op %q", c.op, c.t, op)
+		}
+		sentT, ok := sent.body["t"].(float64)
+		if !ok {
+			t.Errorf("%s %d: the toy was sent no `t`: %v", c.op, c.t, sent.body)
+		} else if int64(sentT) != c.t {
+			t.Errorf("%s %d: the toy was sent t=%d", c.op, c.t, int64(sentT))
 		}
 	}
-	if len(*log) != 0 {
-		t.Errorf("a clock request reached the toy %d time(s), and the toy has no clock until 103", len(*log))
+}
+
+// TestAToyThatRefusesAClockMoveIsAFaultAndNotAnInstant is the other half of
+// forwarding: the adapter must not invent a time when the world would not give
+// one. The stub answers 400, which is what cmd/toy does for an op it does not
+// know -- reachable here because anything may call the toy.
+func TestAToyThatRefusesAClockMoveIsAFaultAndNotAnInstant(t *testing.T) {
+	a, _ := stub(t, map[string]answer{
+		"POST /clock": {code: 400, body: map[string]any{"error": "no"}},
+	})
+	kind, detail := faultOf(t, ask(t, a, map[string]any{
+		"kind": "clock", "op": "advance", "t": 30000000000,
+	}))
+	if kind != string(wire.FaultInternal) {
+		t.Errorf("a refused clock move is fault %q, want %q", kind, wire.FaultInternal)
+	}
+	for _, want := range []string{"400", "advance", "30000000000"} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("the fault does not name %q: %q", want, detail)
+		}
 	}
 }
 

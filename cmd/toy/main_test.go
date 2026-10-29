@@ -943,3 +943,140 @@ func TestASecondRecountIsDroppedAndTheTallyNeverSettles(t *testing.T) {
 		t.Errorf("a third recount moved the tally to %d: the row is that it never settles", got)
 	}
 }
+
+// TestTheWorldsClockMovesONLYWhenToldAndAnswersWhatItHolds is R7.4's first toy
+// arm: the application gets a notion of time, and it is the world's.
+//
+// THE LADDER IS WHAT MAKES `advance` MEAN ANYTHING, and it ran against the
+// ADAPTER until this commit: a server that echoed the request would pass a
+// `set` and the FIRST `advance` and be wrong from the second on, so the cells
+// run in one order against one world. They moved here because the number
+// moved here.
+func TestTheWorldsClockMovesONLYWhenToldAndAnswersWhatItHolds(t *testing.T) {
+	h := start(t)
+	if h.srv.st.Now != 0 {
+		t.Errorf("a fresh world reads %d, want 0: the epoch is zero at the first seal", h.srv.st.Now)
+	}
+	for _, c := range []struct {
+		op   string
+		t    int64
+		want int64
+	}{
+		{"set", 5000000000, 5000000000},
+		{"advance", 30000000000, 35000000000},
+		{"advance", 30000000000, 65000000000},
+		{"set", 1000000000, 1000000000},
+	} {
+		code, body := h.do(http.MethodPost, "/clock", "", map[string]any{"op": c.op, "t": c.t})
+		if code != http.StatusOK {
+			t.Fatalf("%s %d: status %d (%v)", c.op, c.t, code, body)
+		}
+		// JSON numbers decode as float64; the comparison is on the int64 the
+		// protocol declares, not on whatever the round trip produced.
+		got, ok := body["t"].(float64)
+		if !ok {
+			t.Fatalf("%s %d: the answer carries no `t`: %v", c.op, c.t, body)
+		}
+		if int64(got) != c.want {
+			t.Errorf("%s %d: answered %d, want %d", c.op, c.t, int64(got), c.want)
+		}
+		if h.srv.st.Now != c.want {
+			t.Errorf("%s %d: the world holds %d, want %d", c.op, c.t, h.srv.st.Now, c.want)
+		}
+	}
+}
+
+// TestTheClockIsInTheStateFileAndSurvivesAReload is the rollback property, and
+// it is an ARM rather than a comment because the provider copies the file and
+// reads nothing: a clock held outside it would survive a restore, so the world
+// after one would be the checkpoint PLUS however far time had been moved.
+//
+// RELOADED THROUGH newServer AND NOT BY UNMARSHALLING HERE: a test that
+// decoded the bytes itself would assert the field is written and say nothing
+// about whether the server reads it back.
+func TestTheClockIsInTheStateFileAndSurvivesAReload(t *testing.T) {
+	h := start(t)
+	if code, body := h.do(http.MethodPost, "/clock", "",
+		map[string]any{"op": "set", "t": 42000000000}); code != http.StatusOK {
+		t.Fatalf("setting the clock: status %d (%v)", code, body)
+	}
+	path := filepath.Join(h.dir, "state.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the state file: %v", err)
+	}
+	var onDisk struct {
+		Now int64 `json:"now"`
+	}
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatalf("decoding the state file: %v", err)
+	}
+	if onDisk.Now != 42000000000 {
+		t.Errorf("the state file holds now=%d, want 42000000000: a checkpoint is a copy of "+
+			"this file, so a clock it does not carry is a clock a restore cannot put back", onDisk.Now)
+	}
+	again, err := newServer(path)
+	if err != nil {
+		t.Fatalf("reloading the world: %v", err)
+	}
+	if again.st.Now != 42000000000 {
+		t.Errorf("a reloaded world reads %d, want 42000000000", again.st.Now)
+	}
+}
+
+// TestAClockMoveIsRefusedOrInertWhereItShouldBe holds the three things around
+// the move: a word that is not an op, a method that is not POST, and the
+// queue, which a clock move must NOT advance.
+//
+// THE QUEUE CELL IS THE ONE WORTH THE LINES. `advancing` steps the recount
+// worker after a GET, so if a clock MOVE drained one, moving time would also
+// move the worker and R6's lag and R7's deadline could not be exercised
+// independently. The depth is read either side of the move, so the cell fails
+// whichever way such a coupling arrived.
+//
+// AND THE 405 PROBE BELOW DOES DRAIN ONE, WHICH THIS CELL MEASURED THE HARD
+// WAY: `advancing` reads the METHOD and not the outcome, so a GET to a
+// POST-only route steps the worker after being refused. That is true of every
+// route in this file and not of this one -- `GET /users` is a 405 that drains
+// too -- and it costs the design nothing, because the queue advances on the
+// REQUEST SEQUENCE and a refused request is one. It is written down because
+// my first draft of this cell read the depth before the probe and blamed the
+// move for the probe's drain. The depth is therefore taken AFTER the probe.
+func TestAClockMoveIsRefusedOrInertWhereItShouldBe(t *testing.T) {
+	h := start(t)
+	tok := h.actor("alice")
+	id := h.createEvent(tok, "launch", 10, nil)
+	h.recount(id, tok)
+
+	code, body := h.do(http.MethodPost, "/clock", "", map[string]any{"op": "rewind", "t": 1})
+	if code != http.StatusBadRequest {
+		t.Errorf("an unknown op is status %d, want 400 (%v)", code, body)
+	}
+	msg, _ := body["error"].(string)
+	for _, want := range []string{"rewind", "set", "advance"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the refusal does not name %q: %q", want, msg)
+		}
+	}
+	if h.srv.st.Now != 0 {
+		t.Errorf("a refused op moved the world to %d", h.srv.st.Now)
+	}
+
+	if code, _ := h.do(http.MethodGet, "/clock", "", nil); code != http.StatusMethodNotAllowed {
+		t.Errorf("GET /clock is status %d, want 405", code)
+	}
+
+	h.recount(id, tok)
+	before := h.srv.queueDepth()
+	if before == 0 {
+		t.Fatalf("the queue is empty before the clock move, so this cell cannot see a drain")
+	}
+	if code, body := h.do(http.MethodPost, "/clock", "",
+		map[string]any{"op": "advance", "t": 60000000000}); code != http.StatusOK {
+		t.Fatalf("advancing: status %d (%v)", code, body)
+	}
+	if after := h.srv.queueDepth(); after != before {
+		t.Errorf("the queue was %d before the clock moved and %d after: moving time must not "+
+			"move the worker, or R6's lag and R7's deadline cannot be exercised apart", before, after)
+	}
+}

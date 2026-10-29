@@ -1574,3 +1574,38 @@ apart, and a suite assembled from "a case that works and a case that fails"
 will have both and not it. Where a comparison has a boundary, the boundary is
 the cell — and after R7.3 it is also a state a drawn step reaches by
 construction rather than a value only a test could invent.
+
+### A pass-through's fixture must answer what neither input could produce
+
+R7.4 moved the toy's clock out of the adapter and into the application: the
+adapter now forwards `set` and `advance` to `POST /clock` and answers what came
+back, so `advance`'s relativity belongs to the world rather than to the process
+relaying the request.
+
+**THE ARM THAT WOULD HAVE PASSED ANYWAY.** The obvious cell hands the stub the
+value it expects -- ask for `set 5e9`, have the stub answer `5e9`, assert the
+adapter returns `5e9`. That cell is green against the forwarding adapter, and
+also against the one that keeps its own number and never calls the toy at all,
+and also against one that echoes the request without calling anything: all
+three produce the ask. A fixture whose answer equals its input cannot see which
+of its inputs an implementation read.
+
+**SO THE STUB ANSWERS A THIRD NUMBER.** It returns `777000000000` -- not the
+ask, not the sum of the asks, not anything either arithmetic could reach -- and
+the cell asserts the adapter returns THAT. Driven at the head: answering `m.T`
+instead of the toy's `out.T` fails all three cells; forwarding every op as
+`advance` fails the two `set` cells; sending `m.T + 1` fails the request
+assertion in all three.
+
+**AND THE REQUEST IS ASSERTED, NOT ONLY THE ANSWER.** A relay has two halves
+and only one of them is observable in the return value: an adapter that
+forwarded a `set` as an `advance` would agree with the stub about every number
+it got back. So the cell reads what the stub SAW -- method, path, op and `t` --
+which is the same argument as the general one above, run on the other
+direction.
+
+**THE TRANSFERABLE RULE:** where the subject's job is to pass a value through,
+the fixture's answer must be a value the subject could not have computed, and
+both directions get an assertion. It is `A control can be the case it controls
+for` applied to a relay: here the control's value and the subject's own
+arithmetic coincide unless the fixture deliberately makes them differ.

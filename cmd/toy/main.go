@@ -120,6 +120,28 @@ type state struct {
 
 	Seq int `json:"seq"`
 
+	// Now is the world's own time, in NANOSECONDS from the run's epoch and
+	// zero in a fresh world. The unit is docs/contract.md's for `clock.t` and
+	// this server is HELD to it rather than choosing it: the engine's clock
+	// and this one are compared by a run, and a second unit on that path is
+	// where an off-by-a-thousand lives.
+	//
+	// IT IS IN THE STATE FILE, AND THAT IS THE ROLLBACK DESIGN RATHER THAN A
+	// PLACEMENT. This struct's own comment says nothing about the application
+	// lives outside the file or the provider's verify would be lying; a clock
+	// held anywhere else would survive a restore, so the world after one would
+	// be the checkpoint PLUS however far time had been moved since. The
+	// adapter held exactly such a number until R7.4 and said so in its own
+	// comment -- honest while nothing downstream read it, and wrong the moment
+	// an invitation expires by it.
+	//
+	// NOTHING HERE READS `time.Now` FOR IT. The world moves only when it is
+	// TOLD to, through `POST /clock`, which is what makes a clocked run
+	// exactly as repeatable as an unclocked one -- the same reason the recount
+	// queue advances on the request sequence and not on a timer (fable's
+	// ruling 1, coop r6/78).
+	Now int64 `json:"now"`
+
 	// Jobs is the recount queue, and it is IN THE STATE FILE for the reason
 	// this struct's own comment gives: nothing about the application lives
 	// outside the file, or the rollback provider's verify would be lying. A
@@ -392,6 +414,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/clock", s.handleClock)
 	mux.HandleFunc("/users", s.handleUsers)
 	mux.HandleFunc("/sessions", s.handleSessions)
 	mux.HandleFunc("/events", s.handleEvents)
@@ -478,6 +501,62 @@ func (s *server) session(r *http.Request) *session {
 		return nil
 	}
 	return s.st.Sessions[tok]
+}
+
+// handleClock moves the world's time and answers what it now holds.
+//
+// IT ANSWERS THE STATE AND NOT THE ASK, which is the only thing that makes the
+// `advance` op meaningful: a server that echoed the request would pass a `set`
+// and a single `advance` and be wrong from the second one on. The adapter
+// forwards this answer unchanged, and the engine writes the ledger from what
+// came back (fable, coop r7/51).
+//
+// A WRITE, SO IT DRAINS NOTHING. `advancing` steps the recount queue after a
+// GET, and a clock move is a POST -- so moving time does not also move the
+// worker, and the two phases' mechanisms stay separable. A reader who wants
+// both does both.
+//
+// WHAT IS NOT REFUSED HERE, said rather than left to look like an oversight: a
+// `set` to an earlier instant, and an `advance` of zero or less. The engine
+// refuses a non-positive delta before it reaches any adapter and refuses an
+// answer that moved the world BACKWARD, so a guard here would be a second
+// reading of a rule that already has one -- and this is an APPLICATION's test
+// clock, which a test is entitled to wind back.
+func (s *server) handleClock(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		fail(w, http.StatusMethodNotAllowed, "only POST moves the clock")
+		return
+	}
+	var body struct {
+		Op string `json:"op"`
+		T  int64  `json:"t"`
+	}
+	if err := decodeBody(r, &body); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch body.Op {
+	case "set":
+		s.st.Now = body.T
+	case "advance":
+		s.st.Now += body.T
+	default:
+		// NAMED, NOT GUESSED AT: the strict decoder checks that `op` is
+		// present and a string, which is not the same as it being one of two
+		// words. The adapter refuses an unknown op before this route is
+		// reached; this is the second reader, and it exists because the toy is
+		// an application that anything may call.
+		fail(w, http.StatusBadRequest,
+			fmt.Sprintf("%q is not a clock op; this one has \"set\" and \"advance\"", body.Op))
+		return
+	}
+	if err := s.save(); err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"t": s.st.Now})
 }
 
 func (s *server) handleUsers(w http.ResponseWriter, r *http.Request) {
