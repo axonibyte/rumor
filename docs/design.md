@@ -939,6 +939,21 @@ moves only when the walk draws `advance` (R7.3). So the comparison this
 paragraph described as waiting now runs, and the refusal above fires only
 where a project declares no clock.
 
+**WHOSE CLOCK IT IS, AS OF R7.2.** The `[clock]` table now says HOW the run
+controls time, and the two forms put `t` in different hands. Under
+`form = "faked"` the stack is already running under faked time, so the engine
+sends nothing and its own `t` is the world's -- which is what R7.1 did
+everywhere. Under `form = "adapter"` the engine SETS the system under test's
+own test clock through the wire's `clock` request at every seal, and the fact
+it writes carries the time that came BACK: an adapter that answered for the
+world is the authority on what time it is there, and a ledger holding the
+engine's intention instead would record what was asked rather than what
+happened. A run whose clock the adapter cannot move, or moves backward, or
+sets to something other than the ask, is refused by name rather than recorded
+-- the engine never writes a fact it did not get an answer for. A project that
+declares the table and no form is refused before a step is taken, because the
+engine cannot ask for a clock it was not told how to reach.
+
 **A SECOND REFUSAL ARRIVED WITH IT, and it is the run's rather than the
 project's** (fable, coop r7/15). A pending still unresolved at the END of a
 run, under a duration bound, with the clock where it started, is not inside

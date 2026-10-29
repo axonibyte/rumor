@@ -3,6 +3,81 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.40 — 2026-10-29
+
+**The run can move the system under test's own clock, and a `[clock]` table
+says how** — issue 101, R7.2, the second of R7's four children. It also carries
+the D4 release control, whose two halves were built in this range.
+
+- **The wire gains a `clock` request and the contract version does not move.**
+  One kind `clock` with an `op` (`set` or `advance`) and one `t` in
+  nanoseconds, answered with the time the clock ACTUALLY holds. THE UNMOVED
+  VERSION IS THE DECISION: the version is one string three places compare
+  exactly with no compatibility window, so a bump would refuse every
+  pre-`clock` adapter at the handshake — and an adapter that lacks the request
+  would then be refused for its version rather than for the thing it actually
+  lacks. The extension is additive: an adapter that never receives a `clock`
+  request cannot tell this version from the one before it, and one that does
+  and cannot answer sends the error envelope, which is the path the by-name
+  refusal runs down. The `decoder returns %T` arm came with it: the fake's
+  `deref` had no clock case, so the fake never answered a clock request at all
+  while its own oracle agreed, because a fault decodes as happily as an answer.
+- **`[clock]`'s `form` is typed, `adapter` or `faked`, and a missing one is the
+  engine's refusal.** The table was reserved and read whole, so
+  `clock = {form = "wristwatch"}` was a valid declaration nothing read. The
+  field is OPTIONAL at the parse and a wrong value is not: reserved tables are
+  carried rather than policed, and a parser that required `form` would both
+  refuse every `[clock]` written before this phase and make the engine's own
+  refusal unreachable. The engine is the reader that knows which request it was
+  about to send, so it refuses a clocked project whose form it cannot read,
+  before a step is taken.
+- **A clocked seal sets the adapter's clock and the ledger records what came
+  back.** `form = "adapter"` sends a `set` of the run's own time at every seal
+  — twice a step — and writes the fact from the RESPONSE: an adapter that
+  rounds forward has answered for the world, and the ledger records the world.
+  `form = "faked"` sends nothing, because the stack is already under faked time
+  and the engine's `t` is the world's. Four refusals by name: a clocked project
+  with no form, an adapter that does not know the kind, a `t` LESS than the
+  clock the run holds (checked first, so a backward answer is told it ran
+  backward — replay and the overage a duration bound is judged by both rest on
+  a ledger whose times never decrease), and a `set` whose answer is not the ask
+  at all, since nothing in the protocol lets an adapter declare a granularity.
+  A refused answer writes no fact.
+- **`examples/toy` declares the clock it has.** `form = "adapter"` and not
+  `faked`, because `cmd/toy-adapter` implements the request and the quieter
+  spelling would stop the one project here that can drive it end to end. A
+  clocked run writes a fact at every seal, so this project's printed positions
+  move: the D4 control's BYTES half is measured against `examples/toy` frozen
+  at a commit, so its digests are unaffected by construction, and what must
+  hold at every head is the five fields of the finding line — what HAPPENED
+  does not move.
+- **`rumor validate` gains arm 20: a `[deadline]` table in a project with no
+  `[clock]`.** R7's third ruling had three refusals, two of which already
+  existed; this is the third, and the contract carried the row with "nothing
+  yet" in its refused-by column until it arrived. ITS CONDITION IS THE TABLE'S
+  CONTENTS AND NOT ITS PRESENCE: a bare reserved table declares nothing, which
+  is the convention `[quiesce]` already keeps — what refuses in that family is
+  the pairing of a quiesce bound with no probe. The arm's own comments said
+  presence, and the code, those comments and the contract's paragraph each said
+  something different until the convention was ruled and armed with a cell.
+- **Two declarations that two readers disagreed about are now settled at the
+  parse.** A claim's duration `bound` of zero or less covers nothing and is
+  refused there; so are a quiesce probe's `timeout` and `every`, which
+  `internal/quiesce` re-parsed with the error dropped — making `every = "0s"` a
+  wait that never advanced toward its own timeout. The durations are parsed
+  ONCE now, where a failure can be reported, instead of in the round loop whose
+  answer is a state. A timeout of zero reaching the prober from somewhere other
+  than a project is still asked once, which is that package's own rule.
+- **The D4 release control lands with one subject per half.** Five seeds, each
+  with its base, invocation and expected reading, driven against a tag from a
+  fresh clone: the BYTES against `examples/toy` frozen at a commit named in the
+  tool, the FIVE FIELDS against the live toy at whatever head is being judged.
+  A control whose figures come from the tree it judges agrees with whatever
+  that tree became. Its seam — the proof that the two halves are independent —
+  is hand-driven, names the TAG rather than a branch that can be deleted under
+  it, and goes quiet once the live toy declares a clock, which is this
+  release's own change.
+
 ## 0.1.39 — 2026-10-28
 
 **The run owns a clock, and a bound measured in time becomes judgeable** —
