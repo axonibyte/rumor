@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -465,6 +466,56 @@ func (c *runClock) ask(a clockAsker) (int64, error) {
 	return resp.T, nil
 }
 
+// Tick is the unit a landing is offset by, and it is the contract's own: one
+// nanosecond, which fable fixed at coop r7/42 -- "a tick is 1ns, the contract's
+// unit, and nothing else".
+const Tick = int64(1)
+
+// Landings is where an `advance` may put the run's clock: one tick before each
+// live bound, AT it, and one tick past it, keeping only what is ahead of the
+// clock now.
+//
+// THE THREE ARE FABLE's AND THE MIDDLE ONE IS THE HINGE (coop r7/42): "the
+// three landings are bound-1ns, at it, +1ns, the middle one the hinge that
+// makes :316's strictness falsifiable". `pendingOverlay` holds a disagreement
+// open while `now-claimTime > bound` is FALSE, so landing exactly ON the bound
+// is the one input that tells a strict comparison from a loose one -- at
+// bound-1ns both readings hold it open and at bound+1ns both let it past.
+//
+// IT RETURNS LANDINGS AND NOT BOUNDS, WHICH IS THE WHOLE POINT OF THE
+// FUNCTION. The pool's gate and the step's draw must quantify over ONE set,
+// and the set the step draws from is the set of places the clock may go: a
+// bound one tick ahead offers two usable landings and one -- bound-1ns -- that
+// would be an advance of zero, which `advance` refuses as this side's own
+// arithmetic error. Handing the pool BOUNDS would make the gate say "live"
+// while the draw picked a landing the mover rejects, which is the
+// drawn-and-then-refused shape `Resolvable` exists to prevent, arriving by a
+// third door.
+//
+// SORTED AND DEDUPLICATED for `Register.Untils`'s reasons: adjacent bounds
+// share landings, and a map's order is not a run's.
+func Landings(untils []int64, now int64) []int64 {
+	seen := map[int64]struct{}{}
+	out := make([]int64, 0, 3*len(untils))
+	for _, u := range untils {
+		for _, l := range [3]int64{u - Tick, u, u + Tick} {
+			if l <= now {
+				// NOT AHEAD IS NOT A LANDING: the clock moves forward or not
+				// at all, and a step that moved it nowhere would record a time
+				// nothing happened at.
+				continue
+			}
+			if _, dup := seen[l]; dup {
+				continue
+			}
+			seen[l] = struct{}{}
+			out = append(out, l)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 // advance moves the run's clock FORWARD and answers where it ended up.
 //
 // IT IS R7.3's MOVER and the other half of `ask`. The two exchanges differ in
@@ -614,10 +665,12 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		// clock is REFUSED by engine.Judge rather than held, so no pending
 		// with an instant can reach the register, and a quiesce-bounded one
 		// carries no instant at all.
-		targets := reg.Untils()
+		// THE LANDINGS, NOT THE BOUNDS: see Landings' own note. Read once per
+		// step, from the clock as it stands at this step's top.
+		landings := Landings(reg.Untils(), clk.t)
 
 		pool, err := Pool(ctx, p.Statute, p.Actions, l, actor, p.Weights, p.Stage, p.Profile, table,
-			p.Roles, known, actors, targets)
+			p.Roles, known, actors, landings)
 		if err != nil {
 			return rec, fmt.Errorf("schedule: step %d: the pool for %s: %w", n, actor, err)
 		}

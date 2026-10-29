@@ -88,7 +88,7 @@ var PoolKinds = append(append([]string{}, NemesisKinds...), Tell, Advance)
 // count is fable's -- but a silent double-weight is worse than an early error.
 func Pool(ctx context.Context, statute string, actions []bindings.Action, l *ledger.Ledger,
 	actor string, w platform.Weights, stage, profile string, t *handle.Table,
-	roles []bindings.Role, known, actors []string, targets []int64) ([]Candidate, error) {
+	roles []bindings.Role, known, actors []string, landings []int64) ([]Candidate, error) {
 
 	reserved := map[string]bool{}
 	for _, k := range PoolKinds {
@@ -190,7 +190,7 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 		}
 	}
 	for _, k := range PoolKinds {
-		live, err := engineKindApplicable(k, app, l, actor, actors, targets)
+		live, err := engineKindApplicable(k, app, l, actor, actors, landings)
 		if err != nil {
 			return nil, err
 		}
@@ -228,7 +228,7 @@ func Pool(ctx context.Context, statute string, actions []bindings.Action, l *led
 // the toy -- so the weight table stays complete and arm 19's new cell can pair
 // it, and it is simply never drawn until R9 gives it something to abandon.
 func engineKindApplicable(kind string, app []bindings.Action, l *ledger.Ledger, actor string,
-	actors []string, targets []int64) (bool, error) {
+	actors []string, landings []int64) (bool, error) {
 
 	// BOTH TELLING KINDS CARRY THE RECEIVER HALF, which neither did at first.
 	// A subject nobody still needs is not a tell anybody can make, and leaving
@@ -300,13 +300,18 @@ func engineKindApplicable(kind string, app []bindings.Action, l *ledger.Ledger, 
 		// exists, so it is never drawn into nothing and D1 holds without a
 		// wasted step".
 		//
-		// BOTH HALVES ARE IN `targets` AND NEITHER IS READ HERE, which is the
+		// BOTH HALVES ARE IN `landings` AND NEITHER IS READ HERE, which is the
 		// Tellable rule one function up: the pool's gate and the step's draw
 		// must quantify over ONE set, or the pool offers what the walk cannot
 		// do. The caller builds the list from the register -- an unclocked run
 		// holds no pending whose bound is an instant, so its list is empty by
 		// construction rather than by a second check of the `[clock]` table.
-		return len(targets) > 0, nil
+		//
+		// AND IT IS LANDINGS RATHER THAN BOUNDS for the reason `Landings`
+		// states: a bound one tick ahead offers landings the mover accepts and
+		// one it refuses, so a gate over bounds would say live where the draw
+		// cannot act.
+		return len(landings) > 0, nil
 	}
 	return false, fmt.Errorf("schedule: %q is not a nemesis kind, and this function is the only "+
 		"place that decides applicability for one", kind)

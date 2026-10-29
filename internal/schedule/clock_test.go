@@ -400,3 +400,69 @@ func TestAFakedAdvanceMovesTheRunsOwnClockAndAsksNothing(t *testing.T) {
 			"clock the engine owns, so there is no second holder to agree with", len(st.asks))
 	}
 }
+
+// TestLandingsAreTheThreeAndOnlyWhatIsAHEAD drives fable's three landings at
+// coop r7/42 and the filter that makes a drawn advance executable.
+//
+// THE MIDDLE LANDING IS THE HINGE and the reason the set is three: the overlay
+// holds a disagreement open while `now-claimTime > bound` is FALSE, so landing
+// exactly ON the bound is the one input that separates a strict comparison
+// from a loose one. At bound-1ns both readings hold it open; at bound+1ns both
+// let it past.
+//
+// AND THE FILTER IS NOT TIDINESS. `advance` refuses a non-positive delta as
+// this side's own arithmetic error, so a landing at or behind the clock is one
+// the mover would reject -- and the pool's gate reads this same list, so an
+// unfiltered landing would make the gate say "live" where the draw cannot act.
+func TestLandingsAreTheThreeAndOnlyWhatIsAHEAD(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		untils []int64
+		now    int64
+		want   []int64
+	}{
+		{"one bound, well ahead", []int64{100}, 0, []int64{99, 100, 101}},
+		{"nothing to land on", nil, 0, nil},
+		// THE EDGE THE FILTER EXISTS FOR: a bound ONE TICK ahead offers two
+		// usable landings and one -- bound-1ns, which is the clock itself --
+		// that would be an advance of zero.
+		{"a bound one tick ahead", []int64{1}, 0, []int64{1, 2}},
+		// AND A BOUND ALREADY BEHIND THE CLOCK offers nothing: a pending sits
+		// in the register until its re-check, so this is reachable rather than
+		// hypothetical.
+		{"a bound behind the clock", []int64{50}, 100, nil},
+		// ONE TICK PAST A BEHIND-BOUND IS STILL BEHIND; only its +1ns can be
+		// ahead, and here it is not.
+		{"a bound at the clock", []int64{100}, 100, []int64{101}},
+		// ADJACENT BOUNDS SHARE LANDINGS: 100+1 and 101 and 102-1 are one
+		// instant, and a shared landing is one landing.
+		{"adjacent bounds", []int64{100, 101}, 0, []int64{99, 100, 101, 102}},
+		{"two bounds apart", []int64{100, 500}, 0, []int64{99, 100, 101, 499, 500, 501}},
+	} {
+		got := Landings(tc.untils, tc.now)
+		if len(got) != len(tc.want) {
+			t.Errorf("%s: Landings(%v, %d) is %v, want %v", tc.name, tc.untils, tc.now, got, tc.want)
+			continue
+		}
+		for i := range tc.want {
+			if got[i] != tc.want[i] {
+				t.Errorf("%s: Landings(%v, %d) is %v, want %v", tc.name, tc.untils, tc.now, got, tc.want)
+				break
+			}
+		}
+	}
+
+	// AND EVERY LANDING IS ONE THE MOVER ACCEPTS, which is the property the
+	// filter exists for, asserted by DRIVING the mover rather than by reading
+	// the numbers: for each landing, an advance of `landing - now` must not be
+	// refused for its own arithmetic.
+	const now = int64(1_000)
+	for _, l := range Landings([]int64{1_001, 1_500}, now) {
+		clk := &runClock{control: true, form: bindings.ClockFaked, t: now}
+		if _, err := clk.advance(&stubClock{answer: echo}, l-now); err != nil {
+			t.Errorf("the mover refuses a landing this function offered (%d from %d): %v", l, now, err)
+		}
+	}
+	t.Logf("PROOF %v from bounds 1001 and 1500 at a clock of 1000, every one drivable",
+		Landings([]int64{1_001, 1_500}, now))
+}
