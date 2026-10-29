@@ -1,0 +1,94 @@
+{
+  "why": "THE BOUNDARY, and the cell ratchet asked for at coop r7/79: this is invitation-honored-late with ONE number changed -- the clock moves to 30000000000, EXACTLY the expiry the observation reports, instead of one tick past it. The join is made there and it is HONEST: `honored_past_expiry` is `c.t > value` and AT the instant an invitation still works, which is cmd/toy's own `Now > ExpiresAt` and the engine's `now - claimTime > bound` -- one reading of \"past a deadline\" at all three tiers. WITHOUT THIS CASE THAT AGREEMENT WAS ASSERTED BY NOTHING: ratchet drove `>` to `>=` in the rule and it survived FIVE tiers -- tests/statute, tests/engine, tests/run, tests/attaint and tests/clock -- because INSIDE and PAST read identically under either operator and only the boundary tells them apart. It is the third of one family: the engine's bound at r7/56, the toy's expiry at 23cac39, and this.",
+  "expect": {
+    "honored_past_expiry": false,
+    "expiry_sound": true,
+    "finding": "consistent",
+    "rests_on_planted": false,
+    "believed": 1,
+    "role_sees_subject": true,
+    "may_accept": false,
+    "may_invite": false,
+    "may_join": false,
+    "may_leave": true,
+    "has_user": true,
+    "may_create_user": false,
+    "may_create_event": true,
+    "may_delete": false
+  },
+  "input": {
+    "observation": {
+      "actor": "bob",
+      "of": "invitation.sent",
+      "query": "invitation_expiry",
+      "source": "api",
+      "value": 30000000000,
+      "role": "guest",
+      "position": 8
+    },
+    "known": [
+      "bob.user#1",
+      "alice.invitation#1",
+      "bob.accept#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 2,
+        "handles": [
+          "alice.user#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 3,
+        "handles": [
+          "bob.user#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 4,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "alice.invitation#1",
+        "actor": "alice",
+        "type": "invitation.sent",
+        "position": 5,
+        "handles": [
+          "alice.invitation#1",
+          "alice.event#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "bob.accept#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 8,
+        "handles": [
+          "bob.accept#1",
+          "alice.invitation#1"
+        ],
+        "t": 30000000000
+      }
+    ]
+  }
+}

@@ -215,8 +215,8 @@ func TestTheSuiteExaminesSomething(t *testing.T) {
 		totalCases += len(p.cases)
 		totalMutants += len(p.mutants)
 	}
-	if totalCases != 32 {
-		t.Errorf("expected 32 cases across the five packages, counted %d", totalCases)
+	if totalCases != 33 {
+		t.Errorf("expected 33 cases across the five packages, counted %d", totalCases)
 	}
 	// 19, NOT 20, and the shortfall is documented rather than accidental: I
 	// declared 20 from a guess and this assertion caught it. planted-lie has
@@ -517,8 +517,8 @@ func TestNoStatuteCallsPrint(t *testing.T) {
 	if modulesScanned != 42 {
 		t.Errorf("scanned %d modules, expected 42 (5 statutes + 37 mutants); a count that drifts means a file stopped being examined", modulesScanned)
 	}
-	if evaluations != 32 {
-		t.Errorf("evaluated %d cases under the print hook, expected 32", evaluations)
+	if evaluations != 33 {
+		t.Errorf("evaluated %d cases under the print hook, expected 33", evaluations)
 	}
 	// The proof line states the count it MEASURED. Printing "0 prints"
 	// unconditionally put a contradiction one line under the finding when this

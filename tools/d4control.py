@@ -210,9 +210,10 @@ CASES_31 = pathlib.Path(__file__).parent / "fixtures" / "check-cases-v0.1.31.txt
 # is the state rook's D7 refused at coop rumor/1411.
 ADDED_BY = {
     "91": ["toy/dropped-recount"],      # R6.3: a retry dropped, the eventual row
-    "103": [                            # R7.4: the expiry, and the row it judges
+    "103": [                            # R7.4: the expiry, the row, its boundary
         "toy/invitation-expiry",
         "toy/invitation-honored-late",
+        "toy/invitation-honored-at-the-expiry",
     ],
 }
 
