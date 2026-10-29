@@ -108,6 +108,24 @@ essoin = 0
 # is weighted, and is drawn where a profile asks for it.
 advance = 0
 
+# AND R7.4's TWO INVITATION ACTIONS, AT ZERO FOR recount_event's REASON AND ONE
+# OF ITS OWN.
+#
+# recount_event's reason, measured for this child before either action existed
+# (ibis, coop r7/58): a declared action at weight zero leaves all five control
+# seeds byte-identical, so the R5 and R6 rows are untouched by these existing
+# and the epic's "the R5 and R6 rows unchanged" is achievable as written.
+#
+# THE REASON OF ITS OWN, AND IT IS WHY NO PROFILE RAISES THEM HERE: the walk
+# records a claim for an action the SYSTEM REFUSED -- measured two-sided (ibis,
+# coop r7/64), a join wedged at 409 produced a bug whose shrunk trace ends at
+# the refused step. An invitation is refusable three ways cmd/toy owns and the
+# ledger cannot see: not yours, already accepted, and EXPIRED. So a profile
+# that raised these today would manufacture findings rather than find the row,
+# and the profile arrives with the row once that is placed.
+invite_user = 0
+accept_invitation = 0
+
 # AND THE WORKER'S OWN ACTION AT ZERO, which is `essoin`'s shape used for a
 # different reason: in the pool, never drawn, named rather than missing. R6's
 # bug ledger says each row is caught by the stage or feature listed for it and

@@ -78,7 +78,13 @@ func TestTheShapeAcceptsEveryHandleTheExamplesUse(t *testing.T) {
 	// transitive-count having carried alice, bob, charlie and dana but never
 	// carol. All three are accepted by the shape below, which is the half this
 	// oracle exists to assert.
-	const wantHandles = 17
+	// 18 SINCE examples/toy/cases/invitation-expiry (R7.4, 2026-10-29), RE-READ
+	// AND NOT WIDENED. That case adds exactly one: alice.invitation#1, the
+	// handle of the entity whose EXPIRY the new observation reads -- the first
+	// handle in this corpus naming a thing that carries an instant. It is
+	// accepted by the shape below, which is the half this oracle exists to
+	// assert.
+	const wantHandles = 18
 	if len(handles) != wantHandles {
 		t.Fatalf("found %d distinct handle(s) in the examples and this test declares %d: %v. A change in the corpus must be seen, not absorbed",
 			len(handles), wantHandles, handles)

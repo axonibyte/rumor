@@ -152,6 +152,62 @@ response = { status = 200 }
   source = "handle"
   of = "event"
 
+# THE TWO INVITATION ACTIONS (R7.4, issue 103). An invitation is the first
+# thing in this domain that carries an INSTANT, and `[deadline]` at the end of
+# this file names where that instant is read.
+#
+# BOTH ARE WEIGHTED ZERO IN `[weights.default]` AND HAVE NO PROFILE YET, which
+# is said here as well as there because a reader of this block will ask: a
+# profile that raised them today would manufacture findings, since the walk
+# records a claim for an action the SYSTEM REFUSED (ibis, coop r7/64, measured)
+# -- and an invitation is refusable three ways cmd/toy owns and the ledger
+# cannot see (not yours, already accepted, expired). The profile arrives with
+# the row, after that is placed.
+[[action]]
+name = "invite_user"
+context = "api"
+emits = ["invitation.sent"]
+requires = ["may_invite", "has_user"]
+# IT CREATES AN `invitation`, for recount_event's reason one block up: the
+# expiry is only a question once an invitation exists, and an observation
+# declaring the EVENT handle would be makeable on every step that touched one.
+creates = ["invitation"]
+touches = ["store"]
+response = { status = 201 }
+
+  [[action.args]]
+  name = "event"
+  source = "handle"
+  of = "event"
+
+  # THE INVITEE IS NAMED BY HANDLE, which is how the engine says WHICH user
+  # without an id ever crossing the wire: it resolves the handle to cmd/toy's
+  # own id at the request. A walk with one user draws itself, and cmd/toy
+  # refuses an invitation to a member -- a refusal the ledger cannot see, which
+  # is the comment above.
+  [[action.args]]
+  name = "user"
+  source = "handle"
+  of = "user"
+
+[[action]]
+name = "accept_invitation"
+context = "api"
+# IT EMITS `event.joined`, THE EXISTING TYPE, because that is what accepting
+# DOES: the invitee becomes an attendee and cmd/toy's own count moves with the
+# write, exactly as a join does. A type of its own would have left the join
+# invisible to `believed` and made the R7 row a disagreement between two
+# numbers nobody reads.
+emits = ["event.joined"]
+requires = ["may_accept", "has_user"]
+touches = ["store"]
+response = { status = 200 }
+
+  [[action.args]]
+  name = "invitation"
+  source = "handle"
+  of = "invitation"
+
 [[action]]
 name = "delete_event"
 context = "api"
@@ -226,6 +282,25 @@ args = ["event"]
 # This is the SECOND ORACLE behind the API's count: cmd/toy computes it from the
 # attendee list where the API reports a denormalized counter, and an oracle that
 # read the same field could not disagree with it.
+# THE EXPIRY, AND ITS VALUE IS AN INSTANT RATHER THAN A COUNT (R7.4). This is
+# the observation `[deadline].instants` names: the engine reads WHEN this
+# invitation stops being honored, in nanoseconds from the run's epoch, and the
+# number is the system's own -- cmd/toy computes it from its clock when the
+# invitation is made and enforces it on accept. Nothing here declares a
+# lifetime; a declared one would be a second copy of a number the application
+# already holds (docs/contract.md's `[deadline]` row).
+#
+# `args = ["invitation"]` IS LOAD-BEARING TWICE, which is recount's argument
+# again: it names the entity invite_user creates, so the observation is
+# unmakeable until that action is drawn (an unresolved arg is a SKIP, not a
+# refusal), and that is why this block existing leaves the control seeds where
+# they were.
+[[observation]]
+name = "invitation_expiry"
+source = "api"
+of = "invitation.sent"
+args = ["invitation"]
+
 [[observation]]
 name = "store_event_count"
 source = "direct"
@@ -317,6 +392,16 @@ timing = "immediate"
 timing = "eventual"
 bound = "quiesce"
 
+# `invitation.sent` IS IMMEDIATE, and the deadline does not make it eventual.
+# An eventual type is one whose claim SETTLES later (docs/vocabulary.md); an
+# invitation is sent at once and its truth is immediate. What arrives later is
+# its EXPIRY, which is a fact about the world's clock and not about when this
+# claim becomes true -- and a `bound` here would ask the engine to hold the
+# claim open until a duration passed, which is a different thing entirely and
+# would put every invitation in `pending`.
+[claim."invitation.sent"]
+timing = "immediate"
+
 # `event.left` STAYS IMMEDIATE, and the asymmetry is deliberate rather than an
 # oversight. A leave enqueues a recount too, so its lag is real -- but no
 # observation declares `of = "event.left"`, so no check is judged against it and
@@ -373,3 +458,24 @@ contexts = ["api"]
 # of rumor/1039 against the live toy: what HAPPENED does not move.
 [clock]
 form = "adapter"
+
+# WHERE THIS PROJECT'S DEADLINES ARE READ (R7.4, fable r7/42 ruling 2).
+#
+# Each name is an OBSERVATION whose value IS an instant in nanoseconds from the
+# run's epoch -- `invitation_expiry`, declared above, which answers when one
+# invitation stops being honored. The walk extends `advance`'s targets to these
+# beside the live pending bounds, so a seeded run can land exactly on a
+# deadline instead of near it.
+#
+# AN OBSERVATION AND NOT A LIFETIME, which is the choice docs/contract.md's row
+# argues and this is the first project to make: `invitation = "30s"` here would
+# be a second copy of a number cmd/toy already holds and enforces, and the
+# engine would then target an instant computed from ITS copy -- so a walk could
+# miss the real deadline while both files looked right. The project says where
+# the instant is READ and the run asks.
+#
+# WHAT THIS TABLE COSTS THE CONTROL: nothing, measured. The observation it
+# names is unmakeable until `invite_user` is drawn, and that action's weight is
+# zero in `[weights.default]`.
+[deadline]
+instants = ["invitation_expiry"]

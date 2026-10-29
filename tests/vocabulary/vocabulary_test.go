@@ -207,7 +207,15 @@ const root = "../.."
 // is no code to read and nothing to notice if a later phase assembles that
 // project out of parts instead. A sentence in the vocabulary and no arm under
 // it is what this count exists to make visible.
-const declaredQuotes = 49
+// 49 -> 55 AT R7.4, AND NOT A WORD OF NEW PROSE: examples/toy's statute gained
+// three rules, so it gained three MUTANTS, and every mutant is a copy of the
+// statute -- which carries two attributed quotes as this oracle counts them
+// (the file holds three, and one does not survive the split into comment
+// blocks). Three files times two is the whole of the move. The oracle reported
+// 0 absent and refused on the count alone, which is the count doing its job:
+// the quotes are the statute's own and were already checked, and what changed
+// is how many copies of them the tree holds.
+const declaredQuotes = 55
 
 // knownChainGaps are the places where this file's warrant chain does NOT join,
 // each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which

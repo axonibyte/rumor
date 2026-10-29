@@ -1,5 +1,5 @@
 {
-  "why": "bob was told of alice's event and joined it himself, so he holds both claims and believes one attendee; the API agrees. `may_join` is false for him because he has ALREADY joined, which is the precondition reading `[[action]].requires` names.",
+  "why": "bob was told of alice's event and joined it himself, so he holds both claims and believes one attendee; the API agrees. `may_join` is false for him because he has ALREADY joined, which is the precondition reading `[[action]].requires` names. THE THREE R7.4 RULES ARE ASSERTED HERE AND ALL THREE ARE FALSE, which is what gives their mutants a case to die against: bob made no event so `may_invite` is false, he holds no `invitation.sent` so `may_accept` is false, and this observation is a COUNT so `expiry_sound` is false. A rule only ever read where it is true cannot be killed by a mutant that makes it always true.",
   "expect": {
     "believed": 1,
     "role_sees_subject": true,
@@ -10,7 +10,10 @@
     "may_create_user": false,
     "has_user": true,
     "may_create_event": true,
-    "may_delete": false
+    "may_delete": false,
+    "may_invite": false,
+    "may_accept": false,
+    "expiry_sound": false
   },
   "input": {
     "observation": {

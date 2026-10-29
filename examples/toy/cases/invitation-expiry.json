@@ -1,0 +1,77 @@
+{
+  "why": "alice invited bob to her event and told him of the invitation, so bob holds the `invitation.sent` claim and may accept. The observation is the EXPIRY and not a count: its value is an instant in nanoseconds from the run's epoch, which is what `[deadline].instants` names this observation for. `expiry_sound` is the whole of what this statute can say about it -- the instant is after the epoch and the invitation is in the prefix -- because judging whether the deadline was HONORED needs the run's clock, and no statute is handed one (ibis, coop r7/63). `may_invite` is false for bob, who made no event. AND `may_join` IS FALSE WHERE `may_accept` IS TRUE, which is the two-door asymmetry at the ledger tier rather than in cmd/toy's prose: alice told bob the INVITATION claim and not the creation claim, so `knows_of_subject` is false for him. Being invited to an event does not make you know of it, and the route that lets him in is the one the invitation is the key to. My first draft of this case expected true and `rumor check` said otherwise.",
+  "expect": {
+    "believed": 0,
+    "role_sees_subject": true,
+    "finding": "consistent",
+    "rests_on_planted": false,
+    "expiry_sound": true,
+    "may_accept": true,
+    "may_invite": false,
+    "may_join": false,
+    "may_leave": false,
+    "may_create_user": false,
+    "has_user": true,
+    "may_create_event": true,
+    "may_delete": false
+  },
+  "input": {
+    "observation": {
+      "actor": "bob",
+      "of": "invitation.sent",
+      "query": "invitation_expiry",
+      "source": "api",
+      "value": 30000000000,
+      "role": "guest",
+      "position": 5
+    },
+    "known": [
+      "bob.user#1",
+      "alice.invitation#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handles": [
+          "alice.user#1"
+        ]
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 2,
+        "handles": [
+          "bob.user#1"
+        ]
+      },
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 3,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest"
+        ]
+      },
+      {
+        "ref": "alice.invitation#1",
+        "actor": "alice",
+        "type": "invitation.sent",
+        "position": 4,
+        "handles": [
+          "alice.invitation#1",
+          "alice.event#1"
+        ]
+      }
+    ]
+  }
+}

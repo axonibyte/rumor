@@ -259,6 +259,96 @@ may_delete if {
 	not deleted
 }
 
+# THE TWO INVITATION PRECONDITIONS (R7.4). Each is the LEDGER-EXPRESSIBLE HALF
+# of cmd/toy's own rule, which is all a statute can hold an application to --
+# the same sentence `may_join` carries above, and the same constraint: a rule
+# naming something the ledger cannot say would be a precondition in name only.
+#
+# WHAT THE LEDGER CANNOT SAY HERE, and it is the whole of the gap: a claim
+# carries `type`, `actor`, `position`, `handles`, `planted` and `visible_to`,
+# and an `invitation.sent` claim's ACTOR is the inviter. WHO WAS INVITED is in
+# the application's data and in no field of the ledger, so neither rule can ask
+# whether this actor is the invitee -- cmd/toy answers that with a 403 and the
+# statute does not pretend to. Nor can either ask whether the deadline has
+# passed: that needs the run's CLOCK, which no statute is handed today (ibis,
+# coop r7/63, measured on both paths).
+#
+# SO WHAT IS LEFT IS STILL WORTH DECLARING, because an action with no
+# precondition is one the walk may take from any state (validate's arm 3), and
+# because both of these are FALSE SOMETIMES, which is what keeps the arm that
+# reads them from being decoration.
+
+# Inviting is the admin's, like deleting: the actor made the event and nothing
+# has deleted it.
+#
+# A LISTED RULE AND NOT A SECOND USE OF A HELPER, for the reason `has_user`
+# gives one rule up: `requires` may only name a rule rules.json declares
+# (validate arm 19 cell 1), so a precondition has to BE a listed rule. Its two
+# conditions read the same as `may_delete`'s, which is a fact about the two
+# actions rather than a duplication to fold away -- the admin's two powers over
+# a live event happen to have one gate, and a reader comparing them should find
+# that out from the rules rather than guess it from a shared helper.
+default may_invite := false
+
+may_invite if {
+	made_event
+	not deleted
+}
+
+# Accepting needs an invitation the actor KNOWS OF and a join it has not
+# already made.
+#
+# `knows_of_invitation` AND NOT `made_invitation`: the actor accepting is never
+# the actor who sent, so the claim it acts on is one it was TOLD of -- which is
+# exactly what `held_claims` means (what it made plus what it was told), and
+# the reason this rule is not `already_joined`'s mirror.
+default may_accept := false
+
+may_accept if {
+	knows_of_invitation
+	not already_joined
+}
+
+knows_of_invitation if {
+	some c in held_claims
+	c.type == "invitation.sent"
+}
+
+# AN EXPIRY OBSERVATION IS NOT A COUNT, and this rule exists so the value rules
+# below do not judge it as one (R7.4).
+#
+# WITHOUT IT EVERY EXPIRY READ IS A BUG. `finding` compares the observation's
+# value with `believed`, which is a join count; an instant in nanoseconds never
+# equals one, and `explained` compares it with `visible_truth`, which is a
+# count too -- so the default would take every expiry observation and this
+# project would report a defect for reading its own deadline. That is the same
+# shape as the adapter's "the value is the COUNT, not the body that carries
+# it": a judgement written for one kind of observation cannot be handed a
+# second kind.
+expiry_observation if input.observation.of == "invitation.sent"
+
+# WHAT CAN BE SAID ABOUT AN EXPIRY TODAY, AND IT IS LESS THAN THE ROW NEEDS:
+# the instant is after the run's epoch, and the invitation it is about is in
+# the prefix. Both are ledger-expressible.
+#
+# WHETHER THE DEADLINE WAS HONORED IS NOT HERE, and the reason is measured
+# rather than deferred by preference: composing that verdict needs the run's
+# CLOCK, and no statute is handed one -- engine.Input builds
+# {observation, known, claims} and prefixFacts projects claims and tells only
+# (ibis, coop r7/63, driven on the case path and the run path with a positive
+# control each way). The epic's R7 row waits on that placement; this rule is
+# what the ledger can carry in the meantime, and it is FALSIFIABLE rather than
+# decorative: an expiry at or before the epoch, or one about an invitation no
+# claim carries, is a bug by the default below.
+default expiry_sound := false
+
+expiry_sound if {
+	expiry_observation
+	input.observation.value > 0
+	some c in prefix_claims
+	c.type == "invitation.sent"
+}
+
 # THE FINDING. Every outcome below is reachable from this package's own cases,
 # which the vocabulary requires of an example, and `bug` is reached by the two
 # ledger rows a run can catch in R5: the visibility leak and the stale count.
@@ -267,6 +357,16 @@ default finding := "bug"
 finding := "consistent" if {
 	not deleted
 	input.observation.value == believed
+}
+
+# AN EXPIRY THAT IS SOUND IS CONSISTENT, which is this statute saying it has
+# nothing against the reading rather than that it checked the deadline. The
+# `not deleted` guard the count branch carries is deliberately absent: a
+# deleted event does not make an invitation's expiry instant wrong, and the
+# stale-count row is about a NUMBER the application still reports.
+finding := "consistent" if {
+	expiry_observation
+	expiry_sound
 }
 
 # THE UNTOLD CLAIMS BALANCE IT: the observer saw more than it believes, and the

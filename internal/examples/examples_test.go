@@ -17,7 +17,7 @@ const realTree = "../../examples"
 // count of what was EXAMINED is asserted first.
 const (
 	wantPackages = 5
-	wantCases    = 30
+	wantCases    = 31
 )
 
 func TestRunOverTheCommittedTree(t *testing.T) {

@@ -215,8 +215,8 @@ func TestTheSuiteExaminesSomething(t *testing.T) {
 		totalCases += len(p.cases)
 		totalMutants += len(p.mutants)
 	}
-	if totalCases != 30 {
-		t.Errorf("expected 30 cases across the five packages, counted %d", totalCases)
+	if totalCases != 31 {
+		t.Errorf("expected 31 cases across the five packages, counted %d", totalCases)
 	}
 	// 19, NOT 20, and the shortfall is documented rather than accidental: I
 	// declared 20 from a guess and this assertion caught it. planted-lie has
@@ -225,8 +225,8 @@ func TestTheSuiteExaminesSomething(t *testing.T) {
 	// was moved to transitive-count (which carries it as m2) rather than left to
 	// survive. 6 + 7 + 6. A surviving mutant and a missing one look the same in
 	// a total, which is why the number is declared and the gap is named.
-	if totalMutants != 33 {
-		t.Errorf("expected 33 mutants across the five packages, counted %d", totalMutants)
+	if totalMutants != 36 {
+		t.Errorf("expected 36 mutants across the five packages, counted %d", totalMutants)
 	}
 	t.Logf("PROOF examined %d package(s), %d case(s), %d mutant(s)",
 		len(pkgs), totalCases, totalMutants)
@@ -514,11 +514,11 @@ func TestNoStatuteCallsPrint(t *testing.T) {
 
 	// COUNT WHAT WAS EXAMINED, not only what was refused: zero findings reads
 	// identically whether every module was clean or none was opened.
-	if modulesScanned != 38 {
-		t.Errorf("scanned %d modules, expected 38 (5 statutes + 33 mutants); a count that drifts means a file stopped being examined", modulesScanned)
+	if modulesScanned != 41 {
+		t.Errorf("scanned %d modules, expected 41 (5 statutes + 36 mutants); a count that drifts means a file stopped being examined", modulesScanned)
 	}
-	if evaluations != 30 {
-		t.Errorf("evaluated %d cases under the print hook, expected 30", evaluations)
+	if evaluations != 31 {
+		t.Errorf("evaluated %d cases under the print hook, expected 31", evaluations)
 	}
 	// The proof line states the count it MEASURED. Printing "0 prints"
 	// unconditionally put a contradiction one line under the finding when this

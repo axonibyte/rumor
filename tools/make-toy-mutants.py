@@ -77,6 +77,17 @@ MUTATIONS = {
     "m10-has-user-always": (
         "has_user if made_user",
         "has_user if true"),
+    # R7.4's three. Each `old` is unique in the statute, which this tool
+    # asserts before it writes.
+    "m11-may-invite-always": (
+        "may_invite if {\n\tmade_event\n\tnot deleted\n}",
+        "may_invite if true"),
+    "m12-may-accept-always": (
+        "may_accept if {\n\tknows_of_invitation\n\tnot already_joined\n}",
+        "may_accept if true"),
+    "m13-expiry-sound-always": (
+        "expiry_sound if {\n\texpiry_observation\n\tinput.observation.value > 0\n\tsome c in prefix_claims\n\tc.type == \"invitation.sent\"\n}",
+        "expiry_sound if true"),
 }
 
 

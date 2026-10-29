@@ -56,8 +56,8 @@ const statutePackage = "data.rumor.statute"
 // before any verdict is reported. They match tests/statute's own declarations.
 const (
 	wantPackages = 5
-	wantCases    = 30
-	wantMutants  = 33
+	wantCases    = 31
+	wantMutants  = 36
 )
 
 type observation struct {

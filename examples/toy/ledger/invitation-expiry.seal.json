@@ -1,0 +1,12 @@
+{
+ "bound": 5,
+ "known_in_prefix": [
+  "alice.invitation#1",
+  "bob.user#1"
+ ],
+ "observer": "bob",
+ "own_claims_need_no_tell": [
+  "bob.user#1"
+ ],
+ "seal": 5
+}

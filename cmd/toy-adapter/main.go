@@ -51,6 +51,8 @@ var (
 		{Name: "leave_event", Context: "api"},
 		{Name: "delete_event", Context: "api"},
 		{Name: "recount_event", Context: "api"},
+		{Name: "invite_user", Context: "api"},
+		{Name: "accept_invitation", Context: "api"},
 		{Name: "join_event_ui", Context: "browser"},
 	}
 	observations = []wire.Observation{
@@ -60,6 +62,10 @@ var (
 		// session, where `direct` is the engine's look into the store.
 		{Name: "event_tally", Source: wire.SourceAPI},
 		{Name: "store_event_count", Source: wire.SourceDirect},
+		// THE EXPIRY, whose value is an INSTANT and not a count: the only
+		// observation in this adapter that answers a time. `api`, because an
+		// actor reads it through its own session the way it reads a count.
+		{Name: "invitation_expiry", Source: wire.SourceAPI},
 	}
 	contexts = []string{"api", "browser"}
 	// THE STORE IS STATEFUL AND THE API IS NOT, which is the distinction
@@ -452,6 +458,19 @@ func (a *adapter) execute(id string, m wire.ExecuteRequest) any {
 		// mints that kind. An observation declaring the EVENT handle instead
 		// is makeable on every step that touches an event (ibis, coop r6/100).
 		p = plan{http.MethodPost, "/events/" + subject + "/recount", nil, "recount"}
+	case "invite_user":
+		// THE INVITEE RIDES IN THE BODY as the id the engine resolved from the
+		// `user` handle: no run-local handle crosses the wire, which is the
+		// contract's own rule, so what the toy receives is its own id.
+		p = plan{http.MethodPost, "/events/" + subject + "/invitations",
+			map[string]any{"user": arg("user")}, "invitation"}
+	case "accept_invitation":
+		inv, _ := m.Args["invitation"].(string)
+		if inv == "" {
+			return fault(id, wire.FaultField, "args.invitation",
+				"accept_invitation needs an invitation id in args and got none")
+		}
+		p = plan{http.MethodPost, "/invitations/" + inv + "/accept", nil, ""}
 	case "join_event_ui":
 		// THE UI ACTION GOES THROUGH THE PAGE'S OWN ROUTE, not the API's, so
 		// what the flow declares and what the browser would do in R9 are the
@@ -530,7 +549,7 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 	// says so rather than substituting one.
 	var want wire.Source
 	switch name {
-	case "event_count", "event_tally":
+	case "event_count", "event_tally", "invitation_expiry":
 		want = wire.SourceAPI
 	case "store_event_count":
 		want = wire.SourceDirect
@@ -567,6 +586,16 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 				"event_tally names one recount: send it as args.recount")
 		}
 		path = "/recounts/" + rid + "/tally"
+	case "invitation_expiry":
+		// THE SUBJECT IS AN INVITATION, so the arg is `invitation` -- the
+		// entity invite_user creates, for the reason event_tally names a
+		// recount: an expiry is only a question once an invitation exists.
+		inv, _ := m.Args["invitation"].(string)
+		if inv == "" {
+			return fault(id, wire.FaultField, "args",
+				"invitation_expiry names one invitation: send it as args.invitation")
+		}
+		path = "/invitations/" + inv + "/expiry"
 	case "store_event_count":
 		if subject == "" {
 			return fault(id, wire.FaultField, "args",
@@ -605,6 +634,10 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 		Tally int  `json:"tally"`
 		Depth int  `json:"depth"`
 		Idle  bool `json:"idle"`
+		// ExpiresAt IS AN INSTANT IN NANOSECONDS and an int64 rather than an
+		// int: the unit is docs/contract.md's for `clock.t`, and a 32-bit int
+		// would overflow at a little over two seconds of run time.
+		ExpiresAt int64 `json:"expires_at"`
 	}
 	code, err := a.call(http.MethodGet, path, m.Token, nil, &body)
 	if err != nil {
@@ -627,6 +660,8 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 		value = body.Depth
 	case "worker_idle":
 		value = body.Idle
+	case "invitation_expiry":
+		value = body.ExpiresAt
 	}
 	return wire.ObserveResponse{
 		Envelope: wire.Envelope{Kind: wire.KindObserve, Contract: wire.ContractVersion, ID: id},
