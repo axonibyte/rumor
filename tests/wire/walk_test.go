@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/fake"
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
@@ -1525,5 +1527,114 @@ default may_join := false
 	for i, m := range observes {
 		a, _ := m["args"].(map[string]any)
 		t.Logf("PROOF observe %d: query=%v args.event=%v", i+1, m["query"], a["event"])
+	}
+}
+
+// TestAReplayReproducesARefusalFromTheRecord is fable's first condition at
+// coop rumor/1410, stated as the rule when they accepted R7.4's two
+// deviations: "a seed's replay reproduces the refusal from the record byte for
+// byte".
+//
+// WHY A REPLAY COULD FAIL TO: the refusal is in the RECORD and not in the
+// ledger, which is the deviation fable accepted -- so the property that a
+// replay re-asks the world and arrives at the same account is exactly what
+// carries the weight a fifth fact kind would have carried. A refusal that
+// replayed as an acceptance, or whose words differed between two attempts,
+// would make the record an unreliable witness to the one thing it is now the
+// only witness for.
+//
+// THE WORLD ANSWERS THE SAME WAY BOTH TIMES, which is what makes this a test
+// of the walk and not of the adapter: the surface is a file, so the fake's
+// answer is fixed, and the ID SALT differs between the two sessions -- the ids
+// behind the handles move while the record must not.
+func TestAReplayReproducesARefusalFromTheRecord(t *testing.T) {
+	ctx := context.Background()
+	const seed = 2
+	const steps = 10
+
+	dir := t.TempDir()
+	surfacePath := filepath.Join(dir, "surface.json")
+	sf := fake.Default()
+	rec := sf.Execute["join_event"]
+	rec.Response = map[string]any{"status": 409}
+	sf.Execute["join_event"] = rec
+	raw, err := json.MarshalIndent(sf, "", " ")
+	if err != nil {
+		t.Fatalf("encoding the surface: %v", err)
+	}
+	if err := os.WriteFile(surfacePath, raw, 0o600); err != nil {
+		t.Fatalf("writing the surface: %v", err)
+	}
+
+	project := func() schedule.Project {
+		p := walkProject(t)
+		// THE DECLARATION IS WHAT MAKES A 409 A REFUSAL (docs/contract.md,
+		// R7.4): without it the walk has nothing to compare the answer
+		// against and accepts everything.
+		for i := range p.Actions {
+			if p.Actions[i].Name == "join_event" {
+				p.Actions[i].Response = map[string]any{"status": int64(200)}
+			}
+		}
+		return p
+	}
+
+	session := func(salt string) *wire.Session {
+		t.Helper()
+		sess, oerr := wire.Open(ctx, fakeSpawn("--surface", surfacePath, "--id-salt", salt),
+			20*time.Second)
+		if oerr != nil {
+			t.Fatalf("Open: %v", oerr)
+		}
+		t.Cleanup(func() { _ = sess.Close() })
+		return sess
+	}
+
+	first, err := schedule.Walk(ctx, project(), session("one"), seed, steps, 1)
+	if err != nil {
+		t.Fatalf("the original walk: %v", err)
+	}
+	// THE EXACT SENTENCE, AND NOT A SUBSTRING BATTERY. A mutant appending to
+	// the recorded reason at its CALL SITE survived every other cell: the
+	// internal ones call `refusal` directly and cannot see the call site, and
+	// the trace cells assert the line NAMES the action, the key and the two
+	// values -- all of which a suffix satisfies while turning "answered 409"
+	// into "answered 4091" in front of the reader. Only an equality here sees
+	// an addition.
+	const want = "join_event declares response.status = 200 and the system answered 409"
+	refusals := 0
+	for _, s := range first.Steps {
+		if s.Refused == "" {
+			continue
+		}
+		refusals++
+		if s.Refused != want {
+			t.Errorf("a refused step records %q, want exactly %q", s.Refused, want)
+		}
+	}
+	if refusals == 0 {
+		t.Fatalf("no step was refused with join_event answered 409, so this arm asserts nothing "+
+			"about a refusal: %v", first.KindSequence())
+	}
+
+	_, again, _, err := schedule.Replay(ctx, project(), session("two"), seed, 1, steps, nil)
+	if err != nil {
+		t.Fatalf("the replay: %v", err)
+	}
+	if len(again) != len(first.Steps) {
+		t.Fatalf("the replay took %d step(s) and the original %d", len(again), len(first.Steps))
+	}
+	for i := range first.Steps {
+		if again[i].Refused != first.Steps[i].Refused {
+			t.Errorf("step %d replayed its refusal as %q where the record says %q",
+				i+1, again[i].Refused, first.Steps[i].Refused)
+		}
+		// AND THE WHOLE STEP, not only the refusal: a replay that reproduced
+		// the words while diverging in the kind, the handles or what it
+		// consumed would satisfy the condition's letter and break the
+		// property it exists for.
+		if !reflect.DeepEqual(again[i], first.Steps[i]) {
+			t.Errorf("step %d replayed as %+v where the record says %+v", i+1, again[i], first.Steps[i])
+		}
 	}
 }

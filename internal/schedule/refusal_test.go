@@ -87,6 +87,36 @@ func TestARefusedActionIsReadOffTheDeclaredResponse(t *testing.T) {
 	}
 }
 
+// TestTheRefusalReasonIsExactlyThis pins the WHOLE sentence for one case, and
+// it exists because a mutant got past everything else: appending
+// `len(step.Used)` to the recorded reason survived the entire tree. Every
+// other cell asserts that the reason NAMES certain things -- the action, the
+// key, the two values -- and a suffix satisfies all of them while turning "the
+// system answered 409" into "answered 4091", which is a wrong status in front
+// of the reader. A substring battery cannot see an addition; one exact
+// comparison can.
+//
+// IT IS ONE CASE AND NOT FIVE, deliberately: the exact text of every shape is
+// a brittle thing to pin, and the shapes are already covered by name. What
+// needs pinning is that nothing is ADDED to the sentence the reader sees.
+func TestTheRefusalReasonIsExactlyThis(t *testing.T) {
+	a := bindings.Action{
+		Name:     "join_event",
+		Emits:    []string{"event.joined"},
+		Response: map[string]any{"status": int64(200)},
+	}
+	const want = "join_event declares response.status = 200 and the system answered 409"
+	why, refused := refusal(a, wire.ExecuteResponse{
+		Response: map[string]any{"status": float64(409)},
+	})
+	if !refused {
+		t.Fatalf("a 409 against a declared 200 read as accepted")
+	}
+	if why != want {
+		t.Errorf("the reason is %q, want exactly %q", why, want)
+	}
+}
+
 // TestTheRefusalReasonIsStableAcrossAttempts pins the ORDER of the keys the
 // reason is composed from. A map's own order would make two attempts of one
 // seed record different words for one disagreement, and the record comparison
