@@ -792,3 +792,77 @@ func TestAProbeThatGaveUpIsTheQuiesceTimeoutFinding(t *testing.T) {
 	}
 	t.Logf("PROOF %s", f.Says())
 }
+
+// TestUntilsIsSortedDeduplicatedAndNotAMapsOrder drives R7.3's one exported
+// accessor (fable, coop r7/42): the instants the live pendings' bounds expire
+// at, which is what the walk lands `advance` on.
+//
+// THE DETERMINISM CELL IS THE POINT OF THE ARM. `open` is a Go map and its
+// iteration order is deliberately randomized per range, so an accessor that
+// returned it raw would hand the walk a different target order for the same
+// seed on the same tree -- and every reproducibility claim in this repository
+// rests on that not happening. One call cannot see it: the cell calls Untils
+// REPEATEDLY on a register big enough that an unsorted order would differ
+// between calls with overwhelming probability, and compares each answer with
+// the first.
+//
+// THE REGISTER IS BUILT DIRECTLY and not through Judge, which is this
+// package's own privilege as an internal test: what is under test is the
+// accessor's contract over a map, not how a pending came to be in it.
+func TestUntilsIsSortedDeduplicatedAndNotAMapsOrder(t *testing.T) {
+	// EMPTY FIRST, so "sorted" is not read off a one-element answer.
+	if got := NewRegister().Untils(); len(got) != 0 {
+		t.Errorf("an empty register answers %v, want nothing", got)
+	}
+
+	reg := NewRegister()
+	held := []struct {
+		actor, query string
+		until        int64
+	}{
+		{"alice", "count", 300},
+		{"bob", "count", 100},
+		{"carol", "count", 100}, // THE DUPLICATE: one instant, two pendings
+		{"dave", "count", 200},
+		{"erin", "tally", 250},
+		// A QUIESCE-BOUNDED PENDING, which carries no instant: its `Until` is
+		// the zero value because `pendingOverlay`'s QuiesceBusy arm sets none,
+		// and the field's own declaration says "0 for a quiesce bound". It is
+		// NOT a target -- the quiesce form asks whether the system settled,
+		// not when a bound expires -- and a walk reading it as one would land
+		// `advance` on the run's epoch: a tick before zero is a clock moving
+		// backward, which the ledger refuses.
+		{"frank", "quiet", 0},
+	}
+	for _, h := range held {
+		reg.open[registerKey{actor: h.actor, query: h.query}] = Pending{Until: h.until}
+	}
+
+	want := []int64{100, 200, 250, 300}
+	got := reg.Untils()
+	if len(got) != len(want) {
+		t.Fatalf("Untils answers %v, want %v: SIX pendings over four instants -- two bounds "+
+			"expiring together are ONE landing, and a quiesce bound is no landing at all",
+			got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Untils answers %v, want %v", got, want)
+		}
+	}
+
+	// AND THE SAME ANSWER EVERY TIME. Twenty calls over six keys: a raw map
+	// range would have to agree with the first answer twenty times in a row.
+	for i := 0; i < 20; i++ {
+		again := reg.Untils()
+		for j := range got {
+			if again[j] != got[j] {
+				t.Fatalf("call %d answers %v where the first answered %v: a map's order is not "+
+					"a run's, and a walk drawing a target from this could not replay",
+					i+2, again, got)
+			}
+		}
+	}
+	t.Logf("PROOF %v from six pendings (one quiesce-bounded, one duplicate instant), "+
+		"identical over twenty-one calls", got)
+}

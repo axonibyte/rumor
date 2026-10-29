@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
@@ -430,6 +431,53 @@ func (r *Register) Open() map[string][]string {
 
 // Len is how many findings are held open.
 func (r *Register) Len() int { return len(r.open) }
+
+// Untils is the instants the live pendings' bounds expire at, ascending.
+//
+// IT IS R7.3's ONE EXPORTED ACCESSOR, and fable ruled the shape at coop r7/42:
+// "the TARGET IS THE BOUND, NOT A PROXY -- 102 lands `advance` relative to each
+// live pending's `Until` (`claimTime + Bound`, already computed), the instant
+// `pendingOverlay` compares". So the walk asks the register what instants
+// matter rather than re-deriving them from claim times and bounds, which would
+// be a second computation of the same number and a second place to get it
+// wrong.
+//
+// SORTED, BECAUSE A MAP'S ORDER IS NOT A RUN'S. `open` is a Go map, and its
+// iteration order is deliberately random: a walk that drew a target from it
+// would draw a different one for the same seed on the same tree, which is the
+// one property every arm in this repository rests on. Ascending is the order a
+// reader of a trace expects, and nothing here depends on which end is first.
+//
+// DEDUPLICATED, BECAUSE A TARGET IS AN INSTANT AND NOT A PENDING. Two pendings
+// whose bounds expire together name one landing, and carrying it twice would
+// double its weight in the draw for no reason any declaration gives.
+//
+// A QUIESCE-BOUNDED PENDING IS NOT A TARGET AND IS SKIPPED BY ITS ZERO. The
+// field's own declaration says it -- "the clock time its bound expires at; 0
+// for a quiesce bound" -- because the quiesce form asks whether the system has
+// SETTLED and not how long ago the claim was made, so there is no instant for
+// the clock to be moved to. `pendingOverlay`'s QuiesceBusy arm builds its
+// overlay with no `Until` at all, so the register holds the zero value, and a
+// walk that read it as a target would land `advance` on the run's own epoch:
+// one tick before zero is a clock moving BACKWARD, which the ledger refuses,
+// and at zero it is a step that moves nothing while claiming to have moved
+// time. Found by reading this function's consumer before writing it.
+func (r *Register) Untils() []int64 {
+	seen := make(map[int64]struct{}, len(r.open))
+	out := make([]int64, 0, len(r.open))
+	for _, p := range r.open {
+		if p.Until == 0 {
+			continue
+		}
+		if _, dup := seen[p.Until]; dup {
+			continue
+		}
+		seen[p.Until] = struct{}{}
+		out = append(out, p.Until)
+	}
+	slices.Sort(out)
+	return out
+}
 
 // Judge evaluates one check and applies the run's bindings, holding a finding
 // open as `pending` where an eventual type's bound covers the disagreement.
