@@ -24,7 +24,7 @@ offered as the check. One line per case, then a tally:
 ```
 planted-lie      honest-only                consistent  statute.rego:55            72 trace event(s)  agrees
 transitive-count charlie-explained          explained   statute.rego:61           284 trace event(s)  agrees
-check: 31 case(s) over 5 package(s) from ledger files, 31 agreed, 0 disagreed
+check: 32 case(s) over 5 package(s) from ledger files, 32 agreed, 0 disagreed
 ```
 
 Each line carries the finding, **the definition that produced it** — module and
@@ -246,7 +246,7 @@ planted-lie      m1-ignores-position        alive from the cases only (the seal 
 planted-lie      bug                        reached by stripped-tag
 planted-lie      with-planted               cleared by removing 1 planted claim(s)
 transitive-count charlie-own-lie            planted but not a control: the strip clause is not applied
-attaint: 5 package(s), 31 case(s), 29 rule(s), 36 mutant(s); 3 planted lie(s) corroborated of 6, 3 cleared by removal, 3 planted-not-control; 29 rule(s) killed, 0 unmutated; 0 refusal(s)
+attaint: 5 package(s), 32 case(s), 30 rule(s), 37 mutant(s); 3 planted lie(s) corroborated of 6, 3 cleared by removal, 3 planted-not-control; 30 rule(s) killed, 0 unmutated; 0 refusal(s)
 LINES
 
 # BOTH GUARDS BELOW ARE UNCONDITIONAL, which the first cut got wrong: the total

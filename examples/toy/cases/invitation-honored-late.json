@@ -1,0 +1,94 @@
+{
+  "why": "R7.4's LEDGER ROW, and the first case in this package to carry clock facts. alice invited bob at t=0 and his invitation expires at 30000000000ns -- which is what the expiry observation answers. The run's clock then moved to 30000000001, ONE TICK past it, and bob's `event.joined` claim was made there: the application honored an invitation after it had stopped being honorable. `honored_past_expiry` reads the join's own `t` against the observation's value, and `finding` falls to its default `bug`. THE TIME OF THE JOIN AND NOT THE TIME OF THE CHECK is the whole of the rule: `input.clock.now` is the same number here either way, so a rule reading it could not tell this case from an honest one whose clock advanced afterwards. EVERY CLAIM CARRIES ITS `t` HERE, which tests/engine's two-path arm is what taught me: the LEDGER path derives the time from the clock facts and the CASE path reads this block, so a hand-written claim with no `t` made the two disagree about which case kills a mutant -- the ledger said the row fires and the case said it does not.",
+  "expect": {
+    "honored_past_expiry": true,
+    "expiry_sound": true,
+    "finding": "bug",
+    "rests_on_planted": false,
+    "believed": 1,
+    "role_sees_subject": true,
+    "may_accept": false,
+    "may_invite": false,
+    "may_join": false,
+    "may_leave": true,
+    "has_user": true,
+    "may_create_user": false,
+    "may_create_event": true,
+    "may_delete": false
+  },
+  "input": {
+    "observation": {
+      "actor": "bob",
+      "of": "invitation.sent",
+      "query": "invitation_expiry",
+      "source": "api",
+      "value": 30000000000,
+      "role": "guest",
+      "position": 8
+    },
+    "known": [
+      "bob.user#1",
+      "alice.invitation#1",
+      "bob.accept#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 2,
+        "handles": [
+          "alice.user#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 3,
+        "handles": [
+          "bob.user#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 4,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "alice.invitation#1",
+        "actor": "alice",
+        "type": "invitation.sent",
+        "position": 5,
+        "handles": [
+          "alice.invitation#1",
+          "alice.event#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "bob.accept#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 8,
+        "handles": [
+          "bob.accept#1",
+          "alice.invitation#1"
+        ],
+        "t": 30000000001
+      }
+    ]
+  }
+}

@@ -31,6 +31,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -56,8 +58,8 @@ const statutePackage = "data.rumor.statute"
 // before any verdict is reported. They match tests/statute's own declarations.
 const (
 	wantPackages = 5
-	wantCases    = 31
-	wantMutants  = 36
+	wantCases    = 32
+	wantMutants  = 37
 )
 
 type observation struct {
@@ -186,7 +188,12 @@ func load(t *testing.T) []pkg {
 // position-bounded cases, which are the ones whose bound this path must honour.
 func (c kase) sealed(t *testing.T) *ledger.Ledger {
 	t.Helper()
-	l, err := ledger.Load(strings.NewReader(c.raw), false)
+	// UNDER THE PROJECT'S OWN CONTROL (R7.4): `false` refused every clock
+	// fact, so a clocked project's cases could not be read here at all, and
+	// R7.4's ledger row is one. Asked through bindings.ClockControlledAt, the
+	// one expression cmd/rumor/run.go uses.
+	l, err := ledger.Load(strings.NewReader(c.raw),
+		bindings.ClockControlledAt(filepath.Dir(filepath.Dir(c.ledgerPath)), decl.TOML))
 	if err != nil {
 		t.Fatalf("%s: the committed ledger does not load: %v", c.name, err)
 	}

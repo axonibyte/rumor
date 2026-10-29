@@ -21,6 +21,7 @@ package bindings
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -70,6 +71,54 @@ const (
 	// the engine's own `t` is the world's.
 	ClockFaked ClockForm = "faked"
 )
+
+// ClockControlled reports whether these bindings declare clock control, which
+// is the `[clock]` TABLE BEING THERE (R7.1) and not any key inside it.
+//
+// ONE EXPRESSION, THREE CALLERS, which is why it is a function and not three
+// copies of `b.Clock != nil`: `rumor run` decides whether a run may hold a
+// clock, and `rumor check` and `rumor attaint` decide whether a project's
+// COMMITTED ledger may carry a clock fact -- and those two answers must agree
+// with the run's or a clocked project's own cases could not be loaded. Three
+// sites reading one field is how a mirrored call site stops being a mirrored
+// fix (ibis, coop 5/1082's lesson, met again here).
+//
+// PRESENCE AND NOT CONTENTS, deliberately, and the asymmetry is REPORTED
+// rather than harmonized here: `rumor validate`'s arms 8 and 20 read the
+// table's CONTENTS -- a bare `[clock]` declares nothing, which fable ruled at
+// coop rumor/1359 -- while this is the run's reading. internal/bindings' own
+// TestABareReservedTableIsPRESENTAndAnAbsentOneIsNIL is what makes either
+// reading observable, and ratchet's /1373 is the open question of whether a
+// default form would put the two against each other on a real project.
+func ClockControlled(b Bindings) bool { return b.Clock != nil }
+
+// ClockControlledAt is ClockControlled for a project DIRECTORY, which is what
+// `rumor check` and `rumor attaint` need (R7.4): they decide whether a
+// project's COMMITTED ledgers may carry clock facts, and ledger.Load refuses
+// one where control is not declared.
+//
+// WITHOUT IT A CLOCKED PROJECT COULD HAVE NO CASES AT ALL. Both readers passed
+// FALSE unconditionally, so a case carrying the fact R7 writes at every seal
+// failed to load -- measured on a copy of examples/toy with one clock fact
+// appended: "the committed ledger does not load: clock fact at position 6 with
+// no clock control declared". R7.4's own ledger row needs such a case, which is
+// how this was found rather than reasoned.
+//
+// ONE FUNCTION AND NOT A COPY IN EACH READER, for ClockControlled's reason run
+// one level out: a project's cases must load the way its runs are walked.
+//
+// A PROJECT WITH NO READABLE bindings.toml IS NOT CLOCKED, and that is not a
+// silent fallback: three of the five committed examples declare no bindings at
+// all -- they are statute fixtures -- so a missing file means no clock control
+// rather than an error. `rumor validate` is the verb that refuses a project
+// for its declarations, and these two readers are not it.
+func ClockControlledAt(dir string, dec decl.Decoder) bool {
+	rep, err := Load(filepath.Join(dir, "bindings.toml"), dec)
+	if err != nil || !rep.OK() {
+		return false
+	}
+	return ClockControlled(rep.Bindings)
+}
 
 // Quiesce is the bound meaning "until the system settles", as opposed to a
 // duration. R6 builds the probe; the word is fixed here because the arm on an

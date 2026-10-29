@@ -201,9 +201,19 @@ CASES_31 = pathlib.Path(__file__).parent / "fixtures" / "check-cases-v0.1.31.txt
 # drive at coop rumor/1411 refused on its absence and declined to edit the
 # expectation at drive time to make their own drill green, which is the right
 # call and why this line is here instead.
+# A PHASE MAY PLANT MORE THAN ONE, AND 103 IS THE FIRST THAT DOES, so the
+# values are LISTS rather than single names: the expiry observation needs a
+# case to be carried at all (tests/contract refuses a declared observation no
+# case carries), and the ROW it judges needs its own, because a rule only ever
+# read where it is false cannot be killed by a mutant that makes it true. A
+# map of single names would have forced one of the two to go undeclared, which
+# is the state rook's D7 refused at coop rumor/1411.
 ADDED_BY = {
-    "91": "toy/dropped-recount",      # R6.3: a retry dropped, the eventual row
-    "103": "toy/invitation-expiry",    # R7.4: the expiry observation's case
+    "91": ["toy/dropped-recount"],      # R6.3: a retry dropped, the eventual row
+    "103": [                            # R7.4: the expiry, and the row it judges
+        "toy/invitation-expiry",
+        "toy/invitation-honored-late",
+    ],
 }
 
 
@@ -244,7 +254,7 @@ def cases_verdict(observed, cases, agreed, disagreed, expect):
         out.append(f"  *** {len(missing)} case(s) LOST since v0.1.31: {missing}"
                    f" -- ruling 3 is the R1-R5 set unchanged")
 
-    allowed = sorted(ADDED_BY.values()) if expect == "same-finding" else []
+    allowed = sorted(c for v in ADDED_BY.values() for c in v) if expect == "same-finding" else []
     if added != allowed:
         ok = False
         out.append(f"  *** additions are {added}, expected {allowed} "

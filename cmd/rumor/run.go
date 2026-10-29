@@ -146,7 +146,7 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		// CLOCK CONTROL IS THE `[clock]` TABLE BEING THERE (R7.1). The run may
 		// hold a clock only where the project declares one, and internal/ledger
 		// refuses a clock fact without it; the table's presence is the control.
-		ClockControl: brep.Bindings.Clock != nil,
+		ClockControl: bindings.ClockControlled(brep.Bindings),
 		// AND R7.2's TYPED `form` SAYS HOW. It is carried straight through:
 		// the parser has already refused a word that is neither form, and a
 		// table that names NO form is refused by the walk, which is the reader

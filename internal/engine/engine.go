@@ -508,7 +508,18 @@ func prefixFacts(l *ledger.Ledger) (flatten.Ledger, []map[string]any) {
 	prefix := l.SealedPrefix()
 	var fl flatten.Ledger
 	claims := make([]map[string]any, 0, len(prefix))
+	// THE RUN'S TIME AS THE PREFIX IS WALKED, so each claim can carry the time
+	// it was made in (R7.4). It is tracked in this one pass rather than looked
+	// up per claim: the prefix is ordered by position, so the latest clock
+	// fact SEEN is the latest clock fact at or before the claim -- which is
+	// `timeAt`'s rule, computed here without walking the prefix again for
+	// every claim.
+	var t int64
+	clocked := false
 	for _, f := range prefix {
+		if f.Kind == ledger.KindClock && f.T != nil {
+			t, clocked = *f.T, true
+		}
 		switch f.Kind {
 		case ledger.KindClaim:
 			m := map[string]any{
@@ -516,6 +527,27 @@ func prefixFacts(l *ledger.Ledger) (flatten.Ledger, []map[string]any) {
 				"actor":    f.Actor,
 				"type":     f.Type,
 				"position": f.Position,
+			}
+			// THE RUN'S TIME WHEN THIS CLAIM WAS MADE, and a statute cannot
+			// compose R7's row without it (R7.4). `input.clock.now` is the
+			// time at the SEAL -- one number for the whole evaluation -- so a
+			// rule reading it can say "the run is past the deadline" and NOT
+			// "this join happened past the deadline", and the two are
+			// different claims: a clock that advanced AFTER an honest accept
+			// satisfies the first and not the second. Found by trying to write
+			// the rule, which is the only way I would have found it.
+			//
+			// PRESENT ONLY WHERE THE RUN HAS A CLOCK, for the reason the three
+			// keys below are conditional: a project with no clock control
+			// holds no clock fact, so there is no time to carry and a rule
+			// reading `c.t` goes undefined rather than reading zero -- which
+			// would be the epoch, a real instant, and wrong.
+			//
+			// `t` AND NOT `at`, for the vocabulary's word: a clock fact is
+			// `clock(position, t)` and the wire's clock request carries `t`,
+			// so the run's time has one name everywhere it appears.
+			if clocked {
+				m["t"] = t
 			}
 			// `planted` and `visible_to` are emitted only when present, which
 			// is how the cases and the ledger dumps carry them. In Rego an

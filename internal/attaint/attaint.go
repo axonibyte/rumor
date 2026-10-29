@@ -50,6 +50,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"io"
 	"os"
 	"path/filepath"
@@ -1015,7 +1017,7 @@ func loadCase(pdir, pkgName, cf string) (exCase, error) {
 	if err := rerr; err != nil {
 		return exCase{}, fmt.Errorf("%s/%s has no ledger file: %w", pkgName, name, err)
 	}
-	l, err := ledger.Load(strings.NewReader(string(lraw)), false)
+	l, err := ledger.Load(strings.NewReader(string(lraw)), bindings.ClockControlledAt(pdir, decl.TOML))
 	if err != nil {
 		return exCase{}, fmt.Errorf("%s/%s: the committed ledger does not load: %w", pkgName, name, err)
 	}

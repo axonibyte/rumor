@@ -1,6 +1,7 @@
 package bindings
 
 import (
+	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"os"
 	"path/filepath"
 	"strings"
@@ -741,5 +742,68 @@ func TestAnActionsArgumentsAreReadBySource(t *testing.T) {
 		t.Errorf("an action with no args must still parse: %v", rep.Refusals)
 	} else if n := len(rep.Bindings.Actions[0].Args); n != 0 {
 		t.Errorf("an action declaring no args has %d", n)
+	}
+}
+
+// TestClockControlledAtReadsTheProjectAndNotAGuess is the question `rumor
+// check` and `rumor attaint` ask before loading a committed ledger (R7.4):
+// both passed FALSE unconditionally until this landed, so a clocked project's
+// own cases could not load at all.
+//
+// THREE CELLS BECAUSE THERE ARE THREE ANSWERS, and the third is the one a
+// default would get wrong: a project that declares `[clock]`, one that does
+// not, and a DIRECTORY WITH NO bindings.toml -- which three of the five
+// committed examples are, being statute fixtures. A missing file means no
+// clock control rather than an error, because the verb that refuses a project
+// for its declarations is `rumor validate` and these readers are not it.
+func TestClockControlledAtReadsTheProjectAndNotAGuess(t *testing.T) {
+	write := func(dir, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "bindings.toml"), []byte(body), 0o600); err != nil {
+			t.Fatalf("writing bindings.toml: %v", err)
+		}
+	}
+	// THE MINIMUM A PROJECT MUST SAY to parse at all: one action with a
+	// precondition and the claim type it emits. Anything less is refused by
+	// the parser and `ClockControlledAt` answers false for a project it could
+	// not read -- which is a fourth answer and not this cell's subject.
+	const minimum = `[[action]]
+name = "do"
+context = "none"
+emits = ["thing.done"]
+requires = ["may_do"]
+
+[claim."thing.done"]
+timing = "immediate"
+`
+	clocked := t.TempDir()
+	write(clocked, minimum+"\n[clock]\nform = \"faked\"\n")
+	if !ClockControlledAt(clocked, decl.TOML) {
+		rep, err := Load(filepath.Join(clocked, "bindings.toml"), decl.TOML)
+		t.Errorf("a project declaring [clock] reads as unclocked: parse ok=%v err=%v refusals=%v",
+			rep.OK(), err, rep.Refusals)
+	}
+
+	plain := t.TempDir()
+	write(plain, minimum)
+	if ClockControlledAt(plain, decl.TOML) {
+		t.Error("a project declaring no [clock] reads as clocked, which would let a committed " +
+			"ledger carry a clock fact the vocabulary forbids there")
+	}
+
+	empty := t.TempDir()
+	if ClockControlledAt(empty, decl.TOML) {
+		t.Error("a directory with no bindings.toml reads as clocked")
+	}
+
+	// AND THE TABLE'S PRESENCE IS THE TEST, NOT ITS CONTENTS: a bare `[clock]`
+	// is clock control to a RUN, which is the asymmetry
+	// TestABareReservedTableIsPRESENTAndAnAbsentOneIsNIL exists to make
+	// visible. A reader that required a form here would disagree with
+	// cmd/rumor/run.go about the same project.
+	bare := t.TempDir()
+	write(bare, minimum+"\n[clock]\n")
+	if !ClockControlledAt(bare, decl.TOML) {
+		t.Error("a bare [clock] reads as unclocked here, where cmd/rumor/run.go reads it as control")
 	}
 }

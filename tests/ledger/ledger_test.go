@@ -15,6 +15,8 @@ package ledger_test
 
 import (
 	"encoding/json"
+	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"os"
 	"path/filepath"
 	"sort"
@@ -118,7 +120,15 @@ func TestEveryLedgerAgreesWithItsCase(t *testing.T) {
 				t.Fatalf("read: %v", err)
 			}
 			// 1. THE GUARDS APPLY. Load refuses anything a writer would have.
-			l, err := ledger.Load(strings.NewReader(string(raw)), false)
+			//
+			// // A COMMITTED LEDGER LOADS UNDER ITS OWN PROJECT'S CONTROL (R7.4). `false`
+			// here refused every clock fact -- "wall-clock time never enters
+			// the ledger" -- so a clocked project's own cases could not be
+			// read, and R7.4's ledger row needs one. Asked through
+			// bindings.ClockControlledAt, the ONE expression cmd/rumor/run.go
+			// uses for the same decision.
+			l, err := ledger.Load(strings.NewReader(string(raw)),
+				bindings.ClockControlledAt(filepath.Dir(filepath.Dir(lf)), decl.TOML))
 			if err != nil {
 				t.Fatalf("the committed ledger does not load: %v", err)
 			}
@@ -226,7 +236,10 @@ func TestABoundExcludesALateTellStructurally(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		l, err := ledger.Load(strings.NewReader(string(raw)), false)
+		// UNDER THE PROJECT'S OWN CONTROL, for the reason the loader above
+		// carries: a clocked project's committed ledger holds clock facts.
+		l, err := ledger.Load(strings.NewReader(string(raw)),
+			bindings.ClockControlledAt(filepath.Dir(filepath.Dir(lf)), decl.TOML))
 		if err != nil {
 			t.Fatal(err)
 		}

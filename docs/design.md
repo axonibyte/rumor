@@ -864,6 +864,24 @@ unlike `of`, `query`, `value` and `role` -- absent from a precondition because
 a candidate step cannot have them -- the run's time is a fact of the world at
 the moment the question is asked, and each input reads it at its own seal.
 
+**AND EACH CLAIM CARRIES THE RUN'S TIME WHEN IT WAS MADE** -- `c.t`, the
+latest `clock` fact at or before that claim's position, present wherever the
+run has a clock. It arrived with R7.4's ledger row because `input.clock.now`
+cannot compose it: `now` is the time at the SEAL, one number for the whole
+evaluation, so a rule reading it says *the run is past the deadline* and never
+*this join happened past the deadline* -- and a clock that advanced after an
+honest accept satisfies the first while the second is false. The two are the
+difference between the application behaving and the application honoring an
+expired invitation, which is the row R7 exists to catch. `t` is the
+vocabulary's own word for the run's time (`clock(position, t)`), so it has one
+name everywhere it appears.
+
+**A HAND-WRITTEN CASE MUST CARRY IT TOO.** A case's `input` block is a mirror
+of its committed ledger, and tests/engine drives both paths and requires them
+to agree about which case kills each mutant -- so a claim written there without
+its `t` makes the ledger path see the row and the case path miss it. That arm
+is what caught the omission in R7.4's own case.
+
 **Where the run has no clock the key is ABSENT, not zero.** `internal/ledger`
 refuses a `clock` fact outright without declared control, so an unclocked run's
 prefix holds none and nothing is added; a rule reading `input.clock.now` there

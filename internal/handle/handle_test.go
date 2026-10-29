@@ -84,7 +84,11 @@ func TestTheShapeAcceptsEveryHandleTheExamplesUse(t *testing.T) {
 	// handle in this corpus naming a thing that carries an instant. It is
 	// accepted by the shape below, which is the half this oracle exists to
 	// assert.
-	const wantHandles = 18
+	// 19 SINCE examples/toy/cases/invitation-honored-late (R7.4): one more,
+	// `bob.accept#1`, the handle of the join that redeemed an invitation PAST
+	// its expiry. It is accepted by the shape below, which is the half this
+	// oracle exists to assert.
+	const wantHandles = 19
 	if len(handles) != wantHandles {
 		t.Fatalf("found %d distinct handle(s) in the examples and this test declares %d: %v. A change in the corpus must be seen, not absorbed",
 			len(handles), wantHandles, handles)

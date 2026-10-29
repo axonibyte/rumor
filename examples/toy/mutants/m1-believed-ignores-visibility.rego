@@ -363,14 +363,53 @@ finding := "consistent" if {
 	input.observation.value == believed
 }
 
-# AN EXPIRY THAT IS SOUND IS CONSISTENT, which is this statute saying it has
-# nothing against the reading rather than that it checked the deadline. The
-# `not deleted` guard the count branch carries is deliberately absent: a
-# deleted event does not make an invitation's expiry instant wrong, and the
-# stale-count row is about a NUMBER the application still reports.
+# AN INVITATION HONORED PAST ITS EXPIRY -- R7.4's LEDGER ROW, and the first
+# rule in this statute that reads the run's CLOCK.
+#
+# THE INSTANT COMES FROM THE OBSERVATION AND THE TIME FROM THE CLAIM. The
+# expiry is `input.observation.value`, which `[deadline].instants` declares
+# this observation answers; the join's own time is `c.t`, the run's time when
+# that claim was made. A join whose `t` is past the expiry is an invitation the
+# application honored after it had stopped being honorable.
+#
+# `c.t` AND NOT `input.clock.now`, which is the distinction that cost a commit
+# to find: `now` is the time at the SEAL, one number for the whole evaluation,
+# so a rule reading it says "the run is past the deadline" and never "this join
+# happened past the deadline". A clock that advanced AFTER an honest accept
+# satisfies the first and not the second -- and that is precisely the
+# difference between cmd/toy behaving and cmd/toy honoring an expired
+# invitation. The per-claim time arrived with this rule for that reason.
+#
+# STRICTLY PAST, mirroring cmd/toy's own `now > ExpiresAt` and the engine's
+# `now - claimTime > bound`: AT the expiry an invitation still works, so a join
+# exactly at the instant is honest and one tick later is the row. There is ONE
+# reading of "past a deadline" in this repository and this is it at the third
+# tier.
+#
+# WHAT THIS CANNOT ASK, said rather than left as a gap: WHICH invitation the
+# join redeemed. A claim carries `handles` and an observation carries none
+# (internal/engine's prefixFacts), so the pairing is unavailable and this rule
+# rests on the single-subject convention every package in examples/ keeps --
+# the same limit this file's header states at length for the counts. One
+# invitation per case, and the toy's profile for this row draws one.
+default honored_past_expiry := false
+
+honored_past_expiry if {
+	expiry_observation
+	some c in prefix_claims
+	c.type == "event.joined"
+	c.t > input.observation.value
+}
+
+# AN EXPIRY THAT IS SOUND AND WAS NOT HONORED LATE IS CONSISTENT, which is this
+# statute saying it has nothing against the reading. The `not deleted` guard the
+# count branch carries is deliberately absent: a deleted event does not make an
+# invitation's expiry instant wrong, and the stale-count row is about a NUMBER
+# the application still reports.
 finding := "consistent" if {
 	expiry_observation
 	expiry_sound
+	not honored_past_expiry
 }
 
 # THE UNTOLD CLAIMS BALANCE IT: the observer saw more than it believes, and the

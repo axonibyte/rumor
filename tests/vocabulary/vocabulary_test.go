@@ -222,7 +222,12 @@ const root = "../.."
 // r7/63 -- so the quotation is the warrant for the function existing, in the
 // shape this file's own header asks for: a comment quoting a document is a
 // claim about that document, and this one is checked.
-const declaredQuotes = 56
+// 56 -> 58 AT R7.4's ROW: the statute gained `honored_past_expiry` and so
+// gained a fourteenth MUTANT, and every mutant is a copy of the statute, which
+// carries two attributed quotes as this oracle counts them. One file times
+// two, the same arithmetic as the 49 -> 55 move and for the same reason -- not
+// a word of new prose, just another copy of prose already checked. 0 absent.
+const declaredQuotes = 58
 
 // knownChainGaps are the places where this file's warrant chain does NOT join,
 // each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which

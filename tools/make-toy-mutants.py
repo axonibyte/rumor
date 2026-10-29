@@ -85,6 +85,9 @@ MUTATIONS = {
     "m12-may-accept-always": (
         "may_accept if {\n\tknows_of_invitation\n\tnot already_joined\n}",
         "may_accept if true"),
+    "m14-honored-past-expiry-always": (
+        "honored_past_expiry if {\n\texpiry_observation\n\tsome c in prefix_claims\n\tc.type == \"event.joined\"\n\tc.t > input.observation.value\n}",
+        "honored_past_expiry if true"),
     "m13-expiry-sound-always": (
         "expiry_sound if {\n\texpiry_observation\n\tinput.observation.value > 0\n\tsome c in prefix_claims\n\tc.type == \"invitation.sent\"\n}",
         "expiry_sound if true"),

@@ -3,6 +3,8 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,7 +40,14 @@ func fixture(t *testing.T, pkg, name string) (*ledger.Ledger, seal, string) {
 	if err != nil {
 		t.Fatalf("%s: %v", base+".jsonl", err)
 	}
-	l, err := ledger.Load(strings.NewReader(string(raw)), false)
+	// A COMMITTED LEDGER LOADS UNDER ITS OWN PROJECT'S CONTROL (R7.4). `false`
+	// here refused every clock fact -- "wall-clock time never enters the ledger"
+	// -- so a clocked project's own cases could not be read at all, and R7.4's
+	// ledger row needs one. The question is asked through
+	// bindings.ClockControlledAt, the ONE expression cmd/rumor/run.go uses, so a
+	// project's cases load the way its runs are walked.
+	l, err := ledger.Load(strings.NewReader(string(raw)),
+		bindings.ClockControlledAt(filepath.Join(examplesDir, pkg), decl.TOML))
 	if err != nil {
 		t.Fatalf("the committed ledger does not load: %v", err)
 	}
@@ -414,8 +423,8 @@ func allFixtures(t *testing.T) [][2]string {
 	// 30 SINCE examples/toy/cases/dropped-recount (R6.3, 2026-10-26). The
 	// number is declared so a corpus that SHRANK is a failure and not a quiet
 	// pass; it is re-read when a case lands, never widened to what was found.
-	if len(out) != 31 {
-		t.Fatalf("expected the 31 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
+	if len(out) != 32 {
+		t.Fatalf("expected the 32 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
 	}
 	return out
 }
@@ -425,8 +434,10 @@ func allFixtures(t *testing.T) [][2]string {
 // applied it; mutating that argument upward kills nothing, so the mutant is
 // equivalent and the honest thing is to state and check the premise it rests
 // on: nothing handed to the flattener sits past the seal. Checked across all
-// 31 fixtures, including the three whose files hold facts beyond it. 30 until
-// R7.4 added examples/toy's invitation-expiry case.
+// 32 fixtures, including the three whose files hold facts beyond it. 30 until
+// R7.4 added examples/toy's invitation-expiry case and the row it judges,
+// invitation-honored-late -- the first committed ledger in this corpus to
+// carry CLOCK facts.
 func TestNothingHandedToTheFlattenerSitsPastTheSeal(t *testing.T) {
 	beyond := 0
 	for _, f := range allFixtures(t) {
@@ -734,6 +745,97 @@ sees_known if input.known
 	// default-reading cells by accident.
 	if _, present := got.Input["clock"]; present {
 		t.Errorf("the input carries a `clock` key for an unclocked run: %v", got.Input["clock"])
+	}
+}
+
+// TestAClaimCarriesTheRunsTimeWhenItWasMade is the half `input.clock.now`
+// cannot give a statute, and R7.4's row cannot be composed without it.
+//
+// WHY ONE NUMBER AT THE SEAL IS NOT ENOUGH: `now` is the run's time when the
+// check runs, so a rule reading it says "the run is past the deadline" and
+// never "this join happened past the deadline". A clock that advanced AFTER an
+// honest accept satisfies the first and not the second -- which is exactly the
+// difference between the toy behaving and the toy honoring an expired
+// invitation.
+//
+// THE LEDGER HERE IS THE SHAPE THAT SEPARATES THEM: a claim at t=100, the
+// clock moved to 110, then a second claim. The first claim must carry 100 and
+// not 110, which a reader taking the LATEST clock fact for every claim would
+// get wrong -- and that reader is the plausible mistake, because it is what
+// `Now` does for the seal.
+func TestAClaimCarriesTheRunsTimeWhenItWasMade(t *testing.T) {
+	const statute = `package rumor.statute
+
+times contains c.t if some c in input.claims
+
+default early := -1
+
+early := min([c.t | some c in input.claims; c.type == "item.created"])
+
+default late := -1
+
+late := max([c.t | some c in input.claims; c.type == "item.tallied"])
+`
+	rules := []string{"times", "early", "late"}
+
+	l := ledger.New(true)
+	must := func(f ledger.Fact) {
+		t.Helper()
+		if _, err := l.Append(f); err != nil {
+			t.Fatalf("building the ledger: %v", err)
+		}
+	}
+	var t0, t1 int64 = 100, 110
+	must(ledger.Fact{Kind: ledger.KindClock, Actor: "run", T: &t0})
+	must(ledger.Fact{Kind: ledger.KindClaim, Actor: "alice", Type: "item.created", Ref: "alice.item#1"})
+	must(ledger.Fact{Kind: ledger.KindClock, Actor: "run", T: &t1})
+	must(ledger.Fact{Kind: ledger.KindClaim, Actor: "alice", Type: "item.tallied", Ref: "alice.tally#1"})
+	if err := l.SealAt(l.Len()); err != nil {
+		t.Fatalf("sealing: %v", err)
+	}
+
+	got, err := Evaluate(context.Background(), statute, rules,
+		l, Check{Actor: "alice", Of: "item.created", Query: "q", Source: ledger.SourceAPI, Value: 1})
+	if err != nil {
+		t.Fatalf("evaluating: %v", err)
+	}
+	if !sameNumber(got.Rules["early"], 100) {
+		t.Errorf("the claim made at 100 carries t=%v: a reader taking the LATEST clock fact "+
+			"for every claim would say 110, which is the mistake this cell exists for",
+			got.Rules["early"])
+	}
+	if !sameNumber(got.Rules["late"], 110) {
+		t.Errorf("the claim made at 110 carries t=%v", got.Rules["late"])
+	}
+
+	// AND NO CLOCK MEANS NO KEY, not a zero: zero is the epoch, a real instant,
+	// and a rule comparing against it would read every claim as made at the
+	// start of the run.
+	plain := ledger.New(false)
+	if _, err := plain.Append(ledger.Fact{Kind: ledger.KindClaim, Actor: "alice",
+		Type: "item.created", Ref: "alice.item#1"}); err != nil {
+		t.Fatalf("building the unclocked ledger: %v", err)
+	}
+	if err := plain.SealAt(plain.Len()); err != nil {
+		t.Fatalf("sealing: %v", err)
+	}
+	got, err = Evaluate(context.Background(), statute, rules,
+		plain, Check{Actor: "alice", Of: "item.created", Query: "q", Source: ledger.SourceAPI, Value: 1})
+	if err != nil {
+		t.Fatalf("evaluating over an unclocked ledger: %v", err)
+	}
+	if !sameNumber(got.Rules["early"], -1) {
+		t.Errorf("a claim in an unclocked run carries t=%v, want the rule's own default of -1",
+			got.Rules["early"])
+	}
+	// READ OFF THE INPUT TOO, because a rule's default and an absent key agree
+	// in Rego and this is the one place the difference is visible.
+	cl, _ := got.Input["claims"].([]map[string]any)
+	if len(cl) != 1 {
+		t.Fatalf("the input carries %d claim(s), want 1", len(cl))
+	}
+	if _, present := cl[0]["t"]; present {
+		t.Errorf("an unclocked run's claim carries a `t` of %v", cl[0]["t"])
 	}
 }
 
