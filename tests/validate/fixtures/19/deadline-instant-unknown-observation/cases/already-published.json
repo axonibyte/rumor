@@ -1,0 +1,30 @@
+{
+  "why": "alice reads her own ledger: her own claim needs no tell, so she counts one. The precondition is FALSE for alice, who has already published in the sealed prefix -- one publish per actor. This case kills a mutant defaulting `may_publish` to true, which is what makes the rule load-bearing rather than decoration.",
+  "expect": {
+    "believed": 1,
+    "may_publish": false,
+    "finding": "consistent"
+  },
+  "input": {
+    "observation": {
+      "actor": "alice",
+      "position": 1,
+      "of": "doc.published",
+      "query": "doc.count",
+      "source": "direct",
+      "value": 1
+    },
+    "known": [
+      "alice.doc#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.published",
+        "position": 1,
+        "handle": "alice.doc#1"
+      }
+    ]
+  }
+}

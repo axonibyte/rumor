@@ -103,6 +103,24 @@ def build():
                  '# is not read here (fable, coop rumor/1359).\n'
                  'instants = ["doc.count"]\n')
 
+    # ARM 19's CELL 7 FIXTURE: a `[deadline].instants` name no observation
+    # declares. TWO TABLES ARE ADDED AND THAT IS ONE CHANGE, with the reason
+    # exactly as wide as what it covers: the DEFECT is the dangling name, and
+    # `[clock]` is the PRECONDITION that keeps arm 20 quiet -- a `[deadline]`
+    # with contents in a project with no clock control is arm 20's refusal
+    # (fable, coop rumor/1359), so without the clock table this fixture would
+    # trip two arms and show neither. `faked` is the form that asks nothing of
+    # an adapter, which is right for a fixture validate never walks.
+    d = fresh("19/deadline-instant-unknown-observation")
+    head(os.path.join(d, "bindings.toml"),
+         "# FIXTURE for arm 19 cell 7: the twin with one change -- [deadline]\n"
+         "# names an instant no [[observation]] declares. The [clock] table\n"
+         "# beside it is the precondition that keeps arm 20 quiet, not a\n"
+         "# second defect.\n")
+    with open(os.path.join(d, "bindings.toml"), "a") as fh:
+        fh.write('\n[clock]\nform = "faked"\n'
+                 '\n[deadline]\ninstants = ["doc.expiry"]\n')
+
     d = fresh("10a-no-seeds-file")
     os.remove(os.path.join(d, "seeds.lock"))
     open(os.path.join(d, "WHY-no-seeds-file.md"), "w").write(

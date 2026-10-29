@@ -124,11 +124,18 @@ type Bindings struct {
 	// deadline and the walk would find nothing while both files looked right.
 	// So the project says where its deadline can be READ and the run asks.
 	//
-	// A NAME DECLARED TWICE IS NOT REFUSED, which is said rather than left to
-	// look like an oversight: the consumer uses these as a SET of instants and
-	// `Landings` dedupes, so a repeat changes no draw. The names that ARE how
-	// something is asked for -- an action's, an observation's, a role's -- are
-	// the ones this parse refuses a duplicate of, below.
+	// A NAME DECLARED TWICE IS NOT REFUSED, AND THAT PERMISSION IS PROVISIONAL
+	// ON A CONSUMER THAT DOES NOT EXIST YET (ratchet, coop r7/60). The reason
+	// given for it is that the targets are a SET and `schedule.Landings`
+	// dedupes, so a repeat changes no draw -- which is true of `Landings` and
+	// says nothing about the path from a DECLARED instant to a landing,
+	// because that path is not built in this commit. A reader that took this
+	// list positionally, or weighted a landing by how often it appears, would
+	// make the permission wrong; whoever writes that reader owns this
+	// sentence. The names that ARE how something is asked for -- an action's,
+	// an observation's, a role's -- are the ones this parse refuses a
+	// duplicate of, below, and a name here is not one of them: it is a
+	// reference, which `rumor validate`'s arm 19 cell 7 resolves.
 	DeadlineInstants []string
 	Seeding          map[string]any
 

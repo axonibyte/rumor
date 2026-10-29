@@ -27,7 +27,7 @@ import (
 // fixture, so `19/kind-without-a-weight` is the thirty-first. A fixture
 // directory that vanished would otherwise leave every remaining arm passing and
 // the suite quiet about it.
-const wantFixtures = 32
+const wantFixtures = 33
 
 // ARM 19 IS ONE ARM WITH SEVERAL CELLS, so it is the one arm with more than one
 // fixture -- and the count is declared here for the same reason every count in
@@ -38,6 +38,14 @@ const wantFixtures = 32
 // examples; and cell 2's REVERSE went in -- an action or nemesis kind with no
 // weight -- after quill measured that gap from the walk's side.
 //
+// 10 -> 11 AT R7.4, AND THIS TIME A CELL WAS ADDED: `[deadline].instants`
+// holds observation names as of R7.4, and this arm's own sentence -- "a name
+// the project uses that the project does not declare" -- covered them while
+// nothing checked them. ratchet drove that gap before the cell existed (coop
+// r7/60: an undeclared name passed at rc 0), which is why it is a cell here
+// rather than a twenty-third arm whose arrival would have left this sentence
+// overreaching.
+//
 // 9 -> 10 AT R6.2, AND NO CELL WAS ADDED. Cell 2's reverse refuses on TWO
 // loops -- a declared ACTION with no weight, and an engine POOL KIND with no
 // weight -- and only the first had a fixture, so the second was a refusal
@@ -45,7 +53,7 @@ const wantFixtures = 32
 // the shape. `19/kind-without-a-weight` trips it. The ARM count does not move,
 // because a cell is not an arm; this number counts the fixtures that pair with
 // cells, and it was short by one for as long as that loop existed.
-const wantCells19 = 10
+const wantCells19 = 11
 
 // armOf is the fixture naming convention: <arm>-<slug>, or <arm>/<slug> for an
 // arm with several cells. The arm is the part before the first separator, so
@@ -829,6 +837,11 @@ var changedBy = map[string][]string{
 	"19/flow-placeholder-unknown-handle": {"bindings.toml"},
 	"19/claim-table-unemitted-type":      {"bindings.toml"},
 	"19/observation-not-in-describe":     {"bindings.toml"},
+	// TWO TABLES, ONE CHANGE: the defect is the dangling instant name, and
+	// `[clock]` is the precondition that keeps arm 20 quiet. Without it a
+	// `[deadline]` with contents trips arm 20 as well, and a fixture tripping
+	// two arms shows neither.
+	"19/deadline-instant-unknown-observation": {"bindings.toml"},
 
 	"9a-fault-unavailable":   {"bindings.toml"},
 	"9b-volume-unavailable":  {"bindings.toml"},

@@ -82,6 +82,11 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 	for _, r := range b.Roles {
 		role[r.Name] = true
 	}
+	observedNames := make([]string, 0, len(b.Observations))
+	for _, o := range b.Observations {
+		observedNames = append(observedNames, o.Name)
+	}
+	observed := declared(observedNames)
 
 	var bad []string
 	note := func(f string, a ...any) { bad = append(bad, fmt.Sprintf(f, a...)) }
@@ -237,6 +242,31 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 	for t := range b.Claims {
 		if !emitted[t] {
 			note("bindings.toml: [claim.%q] describes a type no action emits", t)
+		}
+	}
+
+	// CELL 7: a `[deadline].instants` name that no `[[observation]]` declares.
+	//
+	// IT IS A CELL OF THIS ARM AND NOT A NEW NUMBER, on ratchet's measurement
+	// at coop r7/60: this arm's own sentence is "a name the project uses that
+	// the project does not declare", `instants` holds exactly such names as of
+	// R7.4, and they were NOT seen here -- an undeclared name passed at rc 0,
+	// driven. A twenty-third arm would have left that sentence claiming a
+	// class it did not cover, which is the shape of defect arm 19 itself was
+	// created by (rook, coop r5/22: a precondition naming no rule, eighteen
+	// arms green).
+	//
+	// THE REFERENT SET IS THIS FILE'S OBSERVATIONS, not the adapter's. An
+	// instant is read through an observation the project DECLARES; whether the
+	// adapter serves that observation is cell 19-observations' pairing, which
+	// runs against `describe` and reports could-not-run when nothing answers.
+	// One name, two pairings, each named where its referent lives -- so a
+	// project whose adapter is absent is still refused for a name its own
+	// bindings cannot resolve.
+	for _, name := range b.DeadlineInstants {
+		if !observed[name] {
+			note("bindings.toml: [deadline] instants names %s: no observation of that name, "+
+				"and an instant is read through one", name)
 		}
 	}
 
