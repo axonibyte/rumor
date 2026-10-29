@@ -947,7 +947,31 @@ func (s *server) acceptInvitation(w http.ResponseWriter, r *http.Request, id str
 		fail(w, http.StatusConflict, "that invitation has been accepted already")
 		return
 	}
-	if s.st.Now > inv.ExpiresAt {
+	// THE DEFECT: AN UNDECLARED GRACE PERIOD. The check is here, it reads the
+	// world's clock, and it compares against the wrong instant -- `ExpiresAt`
+	// plus another whole lifetime -- so an invitation is honored for twice as
+	// long as the system told everybody it would be.
+	//
+	// IT IS THE R7 LEDGER ROW (epic): "an invitation honored past its expiry".
+	// `GET /invitations/<id>/expiry` still answers `ExpiresAt`, which is the
+	// instant the project DECLARES through `[deadline].instants` -- so the
+	// system reports one deadline and enforces another, and the statute's
+	// `honored_past_expiry` catches exactly that disagreement by reading the
+	// join's own time against the reported expiry.
+	//
+	// ONE DEFECT WIDE, which is this file's rule for every plant. The check
+	// is not removed: an invitation a WHOLE EXTRA LIFETIME past its expiry is
+	// still refused, so the route has not become unconditional and the arm
+	// below drives both sides. A grace of this shape is the ordinary way real
+	// systems acquire it -- somebody adds slack to a deadline and nobody
+	// updates what the API reports -- which is why it is this rather than a
+	// deleted comparison.
+	//
+	// AND THE COMPARISON STAYS STRICT. `>` is the repository's one reading of
+	// "past a deadline" (cmd/toy, internal/engine, examples/toy's statute);
+	// moving it to `>=` would plant a SECOND defect about the boundary, and
+	// the boundary is the thing R7.3's three landings measure.
+	if s.st.Now > inv.ExpiresAt+invitationLifetime {
 		fail(w, http.StatusGone, fmt.Sprintf(
 			"invitation %s expired at %dns and it is now %dns", inv.ID, inv.ExpiresAt, s.st.Now))
 		return

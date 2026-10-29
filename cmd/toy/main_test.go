@@ -1134,6 +1134,21 @@ func (h *harness) invite(adminToken, eventID, userID string) (string, int64) {
 // fifth method entry: a suite assembled from "a case that works and a case
 // that fails" has both and lacks the only cell that separates them.
 //
+// THE THIRD LANDING NOW READS 200, AND THAT IS THE R7 LEDGER ROW. This cell
+// asserted 410 one tick past the expiry until the plant landed:
+// acceptInvitation compares against `ExpiresAt` plus a whole extra LIFETIME, an
+// undeclared grace, while `GET /invitations/<id>/expiry` still reports
+// `ExpiresAt`. So the system says one deadline and enforces another, which is
+// the epic's "an invitation honored past its expiry" and what examples/toy's
+// `honored_past_expiry` catches. A future reader who "fixes" the toy breaks
+// this cell, which says in words that the defect is load-bearing -- this
+// file's own opening argument.
+//
+// AND THE FOURTH LANDING IS WHY THE PLANT IS ONE DEFECT WIDE: past the grace
+// the route still refuses, so it has not become unconditional. A plant that
+// deleted the comparison would pass every cell above and leave nothing to
+// measure a deadline with at all.
+//
 // A FRESH WORLD PER LANDING, because an accepted invitation cannot be accepted
 // again and a refused one leaves state behind; three invitations in one world
 // would also share a capacity and an attendee list.
@@ -1145,7 +1160,8 @@ func TestAnInvitationIsHonoredATItsExpiryAndRefusedPastIt(t *testing.T) {
 	}{
 		{"one tick before the expiry", -1, http.StatusOK},
 		{"exactly AT the expiry", 0, http.StatusOK},
-		{"one tick past the expiry", 1, http.StatusGone},
+		{"one tick past the expiry -- THE PLANTED ROW", 1, http.StatusOK},
+		{"one tick past the undeclared grace", invitationLifetime + 1, http.StatusGone},
 	} {
 		h := start(t)
 		admin, _ := h.actorWithID("alice")

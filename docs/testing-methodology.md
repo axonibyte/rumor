@@ -1609,3 +1609,39 @@ the fixture's answer must be a value the subject could not have computed, and
 both directions get an assertion. It is `A control can be the case it controls
 for` applied to a relay: here the control's value and the subject's own
 arithmetic coincide unless the fixture deliberately makes them differ.
+
+### A reader of a fact nothing writes passes every cell that builds its input
+
+R7.4 extended `advance`'s targets to the deadlines a project declares, and the
+first mechanism I wrote for it could not work at all: it harvested the SEALED
+PREFIX for `observed` facts whose query `[deadline].instants` names.
+`ledger.KindObserved` has validation and has **never had a producer** -- "the
+observation is the check's INPUT while the sealed prefix is the DATA" (fable,
+coop breakout-r2/13, ratified) -- and `internal/schedule`'s own comment says
+NOTHING IS APPENDED eight lines above where I was working.
+
+**THE UNIT CELLS PASSED, AND THEY PASSED BECAUSE THEY BUILT THE INPUT.** Each
+one appended `observed` facts to a ledger by hand and then asserted the
+harvest found them: the matching query, the non-matching one, two at different
+instants, a non-numeric value refused. Four cells, four green, over a shape no
+run produces.
+
+**THE END-TO-END ARM SAID "no step advanced where the deadline is declared".**
+It is the only arm that could, because it asks the question through the
+product: a walk, a real adapter answering an instant, and a landing drawn from
+what the run had actually read.
+
+**THE RULE THAT FALLS OUT IS NARROW AND NOT "WRITE MORE INTEGRATION TESTS":
+where a reader's subject is a FACT KIND, one arm has to obtain that fact the
+way production obtains it.** A cell that constructs its own input measures the
+reader's arithmetic, which is worth measuring -- the fractional-nanosecond
+refusal is still armed there -- and says nothing about whether the thing it
+reads is ever written. tests/quiesce's header carries this class from the other
+side: an arm proving a mechanism the live path never REACHES. This is its
+mirror, a reader of a fact the live path never WRITES, and the same arm answers
+both: drive it through the product once.
+
+**AND THE SAME TICK SUPPLIED THE SMALLER VERSION.** A mutant appending to a
+recorded reason survived cells that pinned that reason's exact text -- because
+those cells called the function that BUILDS it, and the mutation was at the
+CALL SITE. A cell has to sit where the value it pins is READ.
