@@ -143,6 +143,22 @@ type Step struct {
 	// draws diverged.
 	Kind string
 
+	// AdvancedTo is the instant an `advance` step DREW, in nanoseconds from the
+	// run's epoch; zero for every other kind.
+	//
+	// IT IS RECORDED FOR Used's REASON: a choice that appears nowhere in the
+	// record cannot be compared between two attempts, and a mutant replacing
+	// the draw with "take the first landing" would survive every arm that
+	// reads only the kind. The shrink needs it too -- R7.4's done-when is a
+	// shrunk trace CONTAINING the advance that crossed a deadline, which is a
+	// claim about which landing was taken and not merely that one was.
+	//
+	// THE DRAW AND THE OUTCOME ARE TWO FACTS AND THIS IS THE DRAW. Where the
+	// clock actually ended up is the ledger's clock fact, because the world
+	// answers that (fable, coop r7/51): the pair says whether the adapter put
+	// the clock where the walk asked.
+	AdvancedTo int64
+
 	// Handles are the run-local handles this step minted, in creation order.
 	Handles []string
 
@@ -516,6 +532,41 @@ func Landings(untils []int64, now int64) []int64 {
 	return out
 }
 
+// advanceStep is the `advance` kind's effect: draw one of the landings this
+// step was offered and move the clock to it.
+//
+// THE LANDING IS DRAWN FROM THE GENERATOR, like every other choice a walk
+// makes, so one seed replays to the same instant. The list is the same one the
+// pool's gate counted -- handed in rather than rebuilt -- so the kind cannot
+// be drawn from a set the step then disagrees with.
+//
+// THE DELTA IS COMPUTED HERE AND THE INSTANT IS RECORDED. The wire carries a
+// delta for `advance` (the contract's own shape), while what a reader of a
+// trace wants is WHERE the clock was sent; the step records the instant and
+// the ledger records where the world put it.
+func advanceStep(clk *runClock, a clockAsker, src *Source, landings []int64, step *Step) error {
+	if len(landings) == 0 {
+		// DRAWN WITH NOTHING TO LAND ON IS A REFUSAL AND NOT A SKIP, which is
+		// fable's rule for a drawn kind whose effect cannot run (coop r5/58):
+		// a skip drops a draw silently. Reaching here means the pool's gate
+		// and this step disagreed about the same list, which is the defect the
+		// one-set rule exists to prevent -- so it is named rather than
+		// absorbed.
+		return fmt.Errorf("advance was drawn with no landing offered: the pool's gate and the " +
+			"step read one list, so this is the two disagreeing rather than an empty world")
+	}
+	i, err := src.IntN(len(landings))
+	if err != nil {
+		return fmt.Errorf("drawing a landing from %d: %w", len(landings), err)
+	}
+	to := landings[i]
+	if _, err := clk.advance(a, to-clk.t); err != nil {
+		return fmt.Errorf("advancing to %dns: %w", to, err)
+	}
+	step.AdvancedTo = to
+	return nil
+}
+
 // advance moves the run's clock FORWARD and answers where it ended up.
 //
 // IT IS R7.3's MOVER and the other half of `ask`. The two exchanges differ in
@@ -653,20 +704,22 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 			return rec, fmt.Errorf("schedule: step %d: the handles %s knows: %w", n, actor, err)
 		}
 
-		// THE TARGETS ARE READ ONCE, HERE, AND HANDED TO THE POOL. `advance`
-		// is live iff there is an instant to land on (fable, coop r7/42), and
-		// the pool's gate and the step's draw have to quantify over one set --
-		// the Tellable rule. Reading the register twice would be two answers
-		// to one question, which is the shape the pool's own comment calls the
-		// defect being closed.
+		// THE LANDINGS ARE READ ONCE, HERE, AND HANDED TO BOTH THE POOL AND
+		// THE STEP. `advance` is live iff there is an instant to land on
+		// (fable, coop r7/42), and the pool's gate and the step's draw have to
+		// quantify over ONE set -- the Tellable rule. Reading the register
+		// twice would be two answers to one question, which is the shape the
+		// pool's own comment calls the defect being closed.
+		//
+		// LANDINGS AND NOT BOUNDS, for the reason `Landings` states: every
+		// element here is an instant the mover will accept, so the gate cannot
+		// say live where the draw would be refused.
 		//
 		// AN UNCLOCKED RUN'S LIST IS EMPTY BY CONSTRUCTION, not by a second
 		// check of `[clock]`: a duration-bounded disagreement in a run with no
 		// clock is REFUSED by engine.Judge rather than held, so no pending
 		// with an instant can reach the register, and a quiesce-bounded one
 		// carries no instant at all.
-		// THE LANDINGS, NOT THE BOUNDS: see Landings' own note. Read once per
-		// step, from the clock as it stands at this step's top.
 		landings := Landings(reg.Untils(), clk.t)
 
 		pool, err := Pool(ctx, p.Statute, p.Actions, l, actor, p.Weights, p.Stage, p.Profile, table,
@@ -693,7 +746,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		}
 
 		step := Step{N: n, Actor: actor, Kind: kind}
-		if err := take(ctx, p, sess, sessions, l, table, mint, src, known, &step); err != nil {
+		if err := take(ctx, p, sess, sessions, l, table, mint, src, known, clk, landings, &step); err != nil {
 			return rec, fmt.Errorf("schedule: step %d: %s taking %s: %w", n, actor, kind, err)
 		}
 		// AND THE WALK OBSERVES, after every step (fable, coop r5/152). The
@@ -1432,7 +1485,7 @@ func stopsTheWalk(v any) bool {
 // take performs one drawn kind: the honest action, or the lie.
 func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions,
 	l *ledger.Ledger, table *handle.Table, mint *minter, src *Source, known []string,
-	step *Step) error {
+	clk *runClock, landings []int64, step *Step) error {
 
 	switch step.Kind {
 	case Canard:
@@ -1449,6 +1502,8 @@ func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions
 		// other end driving the toy (coop r5/88): seed 4242 reaches step 3 and
 		// step 3 draws palter.
 		return palter(ctx, p, sess, sessions, l, table, mint, src, known, step)
+	case Advance:
+		return advanceStep(clk, sess, src, landings, step)
 	case Essoin:
 		// STILL UNREACHABLE AND STILL A REFUSAL rather than a skip: fable ruled
 		// at coop r5/58 that a drawn kind whose effect is unimplemented is

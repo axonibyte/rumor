@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -465,4 +466,75 @@ func TestLandingsAreTheThreeAndOnlyWhatIsAHEAD(t *testing.T) {
 	}
 	t.Logf("PROOF %v from bounds 1001 and 1500 at a clock of 1000, every one drivable",
 		Landings([]int64{1_001, 1_500}, now))
+}
+
+// TestAnAdvanceStepDrawsItsLandingAndRecordsIt drives the `advance` kind's
+// effect: the landing comes from the GENERATOR, the clock moves to it, and the
+// step records which one was taken.
+//
+// THE RECORD IS THE HALF A MUTANT HIDES IN. `Step.Used` exists because a draw
+// that appears nowhere in the record cannot be compared between two attempts
+// -- a mutant replacing `chooseHandles` with "take the first candidate"
+// survived the whole suite until that field existed. The same hole is here:
+// without `AdvancedTo`, "take the first landing" would pass every arm that
+// reads only the kind. So the cells below assert the INSTANT, and the seed
+// used is one whose draw is not the first element.
+func TestAnAdvanceStepDrawsItsLandingAndRecordsIt(t *testing.T) {
+	landings := Landings([]int64{1_000, 5_000}, 0) // [999 1000 1001 4999 5000 5001]
+	if len(landings) != 6 {
+		t.Fatalf("the fixture's landings are %v, want six", landings)
+	}
+
+	// EVERY SEED LANDS ON ONE OF THE SIX AND THE CLOCK FOLLOWS IT, and across
+	// seeds the draw is not constant -- which is what makes the record worth
+	// asserting rather than a formality.
+	seen := map[int64]int{}
+	for seed := uint64(1); seed <= 40; seed++ {
+		clk := &runClock{control: true, form: bindings.ClockFaked}
+		step := &Step{N: 1, Actor: "alice", Kind: Advance}
+		if err := advanceStep(clk, &stubClock{answer: echo}, New(seed), landings, step); err != nil {
+			t.Fatalf("seed %d: %v", seed, err)
+		}
+		if !slices.Contains(landings, step.AdvancedTo) {
+			t.Fatalf("seed %d recorded %d, which is not one of %v", seed, step.AdvancedTo, landings)
+		}
+		if clk.t != step.AdvancedTo {
+			t.Errorf("seed %d: the clock holds %d and the step records %d", seed, clk.t, step.AdvancedTo)
+		}
+		seen[step.AdvancedTo]++
+	}
+	if len(seen) < 2 {
+		t.Fatalf("forty seeds drew %d distinct landing(s): %v -- a constant draw would pass an "+
+			"arm that only checked membership", len(seen), seen)
+	}
+
+	// ONE SEED REPLAYS TO ONE INSTANT, which is the property every record in
+	// this repository rests on.
+	first := &Step{}
+	second := &Step{}
+	c1 := &runClock{control: true, form: bindings.ClockFaked}
+	c2 := &runClock{control: true, form: bindings.ClockFaked}
+	if err := advanceStep(c1, &stubClock{answer: echo}, New(7), landings, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := advanceStep(c2, &stubClock{answer: echo}, New(7), landings, second); err != nil {
+		t.Fatal(err)
+	}
+	if first.AdvancedTo != second.AdvancedTo {
+		t.Errorf("seed 7 landed on %d and then %d", first.AdvancedTo, second.AdvancedTo)
+	}
+
+	// AND DRAWN WITH NOTHING TO LAND ON IS REFUSED BY NAME, not skipped: it
+	// means the pool's gate and this step disagreed about one list, which is
+	// the defect the one-set rule exists to prevent.
+	empty := &Step{N: 1, Actor: "alice", Kind: Advance}
+	err := advanceStep(&runClock{control: true, form: bindings.ClockFaked},
+		&stubClock{answer: echo}, New(1), nil, empty)
+	if err == nil {
+		t.Fatal("advance with no landing was accepted")
+	}
+	if !strings.Contains(err.Error(), "no landing offered") {
+		t.Errorf("refused as %q, which does not name the empty list", err)
+	}
+	t.Logf("PROOF forty seeds over %v drew %d distinct landings", landings, len(seen))
 }
