@@ -128,6 +128,51 @@ cellf "$R7FIX" r7-explain-dropped 1 sed -i '' '/was held open as/d' seed-12.out
 #    regex matches text I had just written into a fixture, which is a test of
 #    the fixture. D7's absence half is the ledger tier's (tests/clock).
 
+# P. THE ADDITIONS LIST, DRIVEN AS A FUNCTION (R7.4). Every cell above drives
+#    the SEED half from a capture, and no fixture carries a `rumor check`
+#    output -- so `cases_verdict`'s additions rule was asserted by nothing.
+#    rook's D7 drive at coop rumor/1411 refused on a stale ADDED_BY, declined
+#    to edit the expectation at drive time, and that is what this cell exists
+#    to catch next time: the map is per phase, and a phase that plants a case
+#    without declaring it here must REFUSE rather than pass.
+#
+#    It is python because the subject is a python function over text, and the
+#    alternative -- a captured `rumor check` output per phase -- would need a
+#    new fixture every time the case set grows, which is the rot the SET
+#    invariant exists to avoid.
+addcell() {                     # addcell <name> <want-ok> <observed-extra...>
+  name=$1; want=$2; shift 2
+  # PYTHONDONTWRITEBYTECODE, AND IT IS NOT HOUSEKEEPING: importing d4control by
+  # path writes tools/__pycache__/, which `rumor docs --check` refuses as a
+  # path no coverage entry names -- measured the moment this cell first ran.
+  # The same shape as `go build` dropping a binary in the tree.
+  got=$(PYTHONDONTWRITEBYTECODE=1 python3 - "$HERE" "$@" <<'PYEOF'
+import sys, pathlib, importlib.util
+here = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location("d4", here / "d4control.py")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+want = set(mod.CASES_31.read_text().split())
+observed = set(want) | set(sys.argv[2:])
+ok, _ = mod.cases_verdict(observed, len(observed), len(observed), 0, "same-finding")
+print("ok" if ok else "refused")
+PYEOF
+)
+  if [ "$got" = "$want" ]; then
+    pass=$((pass + 1)); printf '  ok   %-18s %s\n' "$name" "$got"
+  else
+    fail=$((fail + 1)); printf '  *** %-18s %s, wanted %s\n' "$name" "$got" "$want"
+  fi
+}
+
+# BOTH DECLARED ADDITIONS PRESENT: the only shape that passes.
+addcell add-both-declared ok toy/dropped-recount toy/invitation-expiry
+# ONE MISSING: a phase's row lost is a refusal, not a pass.
+addcell add-one-missing refused toy/dropped-recount
+# AN UNDECLARED ADDITION: a case that arrives without an ADDED_BY entry, which
+# is exactly rook's /1411 refusal.
+addcell add-undeclared refused toy/dropped-recount toy/invitation-expiry toy/nobody-declared-me
+
 printf 'D4CONTROL ARMS: %s passed, %s failed\n' "$pass" "$fail"
 rm -rf "$WORK"
 [ "$fail" -eq 0 ]

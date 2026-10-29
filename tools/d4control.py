@@ -192,7 +192,19 @@ BINS = ("rumor", "toy", "toy-adapter")
 # and names the one that should. v0.1.31's 29 case names are in
 # fixtures/check-cases-v0.1.31.txt, captured from the tag itself.
 CASES_31 = pathlib.Path(__file__).parent / "fixtures" / "check-cases-v0.1.31.txt"
-ADDED_BY = {"91": "toy/dropped-recount"}      # phase -> the one row it plants
+#
+# THE MAP IS PER PHASE AND NOT A RUNNING TOTAL, which is what makes it
+# auditable: each entry names the phase and the ONE case that phase planted, so
+# a reader can ask of each line "did that phase's done-when add this?" rather
+# than trusting a set that grew. 103's entry is `toy/invitation-expiry`, the
+# case that carries `invitation.sent` and the expiry observation -- rook's D7
+# drive at coop rumor/1411 refused on its absence and declined to edit the
+# expectation at drive time to make their own drill green, which is the right
+# call and why this line is here instead.
+ADDED_BY = {
+    "91": "toy/dropped-recount",      # R6.3: a retry dropped, the eventual row
+    "103": "toy/invitation-expiry",    # R7.4: the expiry observation's case
+}
 
 
 def refuse(msg, detail=""):
