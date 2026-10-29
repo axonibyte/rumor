@@ -3,6 +3,52 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.41 — 2026-10-29
+
+**The walk can move the run's clock, and it lands where a bound expires** —
+issue 102, R7.3, the third of R7's four children.
+
+- **`advance` is a pool kind, drawn by weight like everything else.** It moves
+  the RUN's clock rather than the system under test, so no actor does it and it
+  is not a nemesis kind: it tells no lie, which is the honest `tell`'s
+  distinction. Every weight table owes it a line — thirty-five of them in this
+  tree — because `rumor validate`'s arm 19 asks for a weight for every engine
+  kind, and absent is not zero: zero means the project decided the kind is
+  never drawn, which is what `examples/toy` declares, and absent means nobody
+  decided. A project's default walk is therefore unchanged by this release.
+- **It is live only where it can act.** A declared `[clock]` and a live
+  pending's bound to land on, else INAPPLICABLE rather than a no-op, so it is
+  never drawn into nothing. Both halves reach the pool as one argument — the
+  landings themselves — because the gate and the draw must quantify over one
+  set; a gate over bounds would offer a kind whose draw the mover then refuses.
+  An unclocked run's list is empty by construction, since a duration bound with
+  no clock is refused rather than held and a quiesce bound carries no instant.
+- **The three landings, and the middle one is the hinge.** A drawn advance
+  lands one tick before a bound, exactly ON it, or one tick past; a tick is one
+  nanosecond, the contract's unit. The overlay holds a disagreement open while
+  `now-claimTime > bound` is false, so the bound's own instant is the one input
+  that separates a strict comparison from a loose one — and a walk now reaches
+  it on purpose. Two seeds of one project differ by a single tick and produce
+  different verdicts: one finds nothing, the other composes `stale`.
+- **The ledger records the world and not the ask.** An `advance` names a
+  distance, so where the clock lands is the adapter's answer: a coarse tick or
+  a clamp answers honestly and the fact carries what came back. A `set` still
+  must come back exactly, since it names an instant. What is refused is a clock
+  that went BACKWARD — replay and every duration bound rest on a ledger whose
+  times never decrease — and a non-positive delta, which is the engine's own
+  arithmetic error and never reaches the adapter. The step records the instant
+  it drew, so two attempts of one seed can be compared on where the clock was
+  sent as well as where it arrived.
+- **The register answers which instants matter.** One accessor, sorted and
+  deduplicated, reading the `Until` a pending already computed rather than
+  re-deriving it: a map's iteration order is not a run's, two bounds expiring
+  together are one landing, and a quiesce-bounded pending carries no instant at
+  all and is not a target.
+- **Two refusals now name the rule rather than the table's shape.** Arms 8 and
+  20 said "declares no `[clock]` table" where a project may hold a `[clock]`
+  that declares nothing; both say "declares no clock control" now, which is the
+  phrasing `docs/vocabulary.md` has used since R4. Behavior is unchanged.
+
 ## 0.1.40 — 2026-10-29
 
 **The run can move the system under test's own clock, and a `[clock]` table
