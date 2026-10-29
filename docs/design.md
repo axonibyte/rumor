@@ -824,6 +824,35 @@ v0.1.27's changelog carries it as "a claim carries the handles it names". So a
 walked join does name its event, and the toy third waits on nothing here.
 Measured 2026-10-24, reading the call rather than the note.
 
+**A statute is handed the run's CLOCK, and that key was missing for three
+phases** (R7.4; fable's ruling at coop rumor/1405 item 1). `input.clock` is a
+table with `now`, the run's time in nanoseconds at the position being judged --
+the latest `clock` fact at or before it, read by the same `timeAt` the
+`pending` overlay uses, so the statute and the overlay cannot disagree about
+what time it is. It is in BOTH inputs: a check's and a precondition's, because
+unlike `of`, `query`, `value` and `role` -- absent from a precondition because
+a candidate step cannot have them -- the run's time is a fact of the world at
+the moment the question is asked, and each input reads it at its own seal.
+
+**Where the run has no clock the key is ABSENT, not zero.** `internal/ledger`
+refuses a `clock` fact outright without declared control, so an unclocked run's
+prefix holds none and nothing is added; a rule reading `input.clock.now` there
+goes UNDEFINED, which is the state `rumor validate`'s arm 8 refuses the project
+for asking about. That is what makes "nothing changes for a project that
+declares no control" structural rather than promised.
+
+**IT WAS A HALF CHANNEL AND THAT IS WHY THIS PARAGRAPH IS HERE.** `clock` has
+been a ledger fact since R2.3, the vocabulary has said "rules may read `clock`
+facts" since v1, and arm 8 has refused a statute for reading `input.clock`
+since R4 -- while `Input` built `{observation, known, claims}` and
+`prefixFacts` projected claims and tells only. Measured both ways before it was
+filled (ibis, coop r7/63): a listed rule over `input.clock` read false on the
+case path and never fired on the run path, where the same rule over
+`input.known` read true and fired every time. A channel written at every seal
+that reaches nothing is the shape of defect this project's own
+"every field has a consumer" rule exists to catch, run backwards -- a CONSUMER
+with no field.
+
 **What a PRECONDITION is shown is a partial observation** (coop r5/16).
 `input.observation` carries `actor` and `position` -- `seal+1`, the position the
 action would occupy -- and nothing else: `of`, `query`, `source`, `value` and

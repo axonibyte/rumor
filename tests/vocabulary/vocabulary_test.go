@@ -215,7 +215,14 @@ const root = "../.."
 // 0 absent and refused on the count alone, which is the count doing its job:
 // the quotes are the statute's own and were already checked, and what changed
 // is how many copies of them the tree holds.
-const declaredQuotes = 55
+// 55 -> 56 AT R7.4's CHANNEL ITSELF: internal/engine's addClock quotes
+// the Time section's "rules may read `clock` facts" beside the projection that
+// finally makes it true. The sentence had been in the document since v1 and
+// nothing put the key in the input, which is the hole ibis measured at coop
+// r7/63 -- so the quotation is the warrant for the function existing, in the
+// shape this file's own header asks for: a comment quoting a document is a
+// claim about that document, and this one is checked.
+const declaredQuotes = 56
 
 // knownChainGaps are the places where this file's warrant chain does NOT join,
 // each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which

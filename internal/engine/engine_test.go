@@ -649,3 +649,108 @@ func TestCanardSubjectsAnswersTheEmptyWorld(t *testing.T) {
 		t.Errorf("nothing has been planted, so canard has no subject; got %v", subjects)
 	}
 }
+
+// TestAStatuteIsHandedTheRunsClock is R7.4's channel, and the cell fable asked
+// for at coop rumor/1405 item 1: my own positive control from r7/63, turned
+// from a measurement of an absence into an arm against its presence.
+//
+// THE CONTROL IS NOT OPTIONAL AND THE DRILL IS VOID WITHOUT IT. A rule reading
+// `input.clock` that reads false says two different things -- the key is absent,
+// or the key is there and the rule is wrong -- and before this landed it was
+// the first. So the SAME rule form is driven over `input.known`, which has been
+// in the input since R1: if that reads false too, the arm is measuring Rego and
+// not the clock.
+func TestAStatuteIsHandedTheRunsClock(t *testing.T) {
+	const statute = `package rumor.statute
+
+default sees_clock := false
+
+sees_clock if input.clock.now > 0
+
+default clock_now := -1
+
+clock_now := input.clock.now
+
+default sees_known := false
+
+sees_known if input.known
+`
+	rules := []string{"sees_clock", "clock_now", "sees_known"}
+	check := Check{Actor: "alice", Of: "item.created", Query: "q", Source: ledger.SourceAPI, Value: 1}
+
+	// CLOCKED: the ledger carries clock facts at 1 and 3, sealed at 3, so the
+	// run's time at the seal is the LATER of the two.
+	clocked := timedLedger(t, 100, 110)
+	got, err := Evaluate(context.Background(), statute, rules, clocked, check)
+	if err != nil {
+		t.Fatalf("evaluating over a clocked ledger: %v", err)
+	}
+	if got.Rules["sees_clock"] != true {
+		t.Errorf("sees_clock is %v over a clocked ledger, want true: the clock facts are in the "+
+			"prefix and a statute that cannot read them is the hole r7/63 measured", got.Rules["sees_clock"])
+	}
+	// AND THE VALUE, NOT ONLY ITS PRESENCE: a key carrying the wrong instant
+	// would pass the arm above. 110 is the LATER fact, which is what `timeAt`
+	// and the `pending` overlay both read.
+	if !sameNumber(got.Rules["clock_now"], 110) {
+		t.Errorf("clock_now is %v, want 110 -- the latest clock fact at or before the seal",
+			got.Rules["clock_now"])
+	}
+	if got.Rules["sees_known"] != true {
+		t.Fatalf("sees_known is %v over a clocked ledger: the control for the rule FORM failed, "+
+			"so the cells above measure nothing", got.Rules["sees_known"])
+	}
+
+	// UNCLOCKED: a ledger with no clock control holds no clock fact -- the
+	// store refuses one -- so the key must be ABSENT and the rule undefined
+	// rather than reading zero.
+	plain := ledger.New(false)
+	if _, err := plain.Append(ledger.Fact{Kind: ledger.KindClaim, Actor: "alice",
+		Type: "item.created", Ref: "alice.item#1"}); err != nil {
+		t.Fatalf("building the unclocked ledger: %v", err)
+	}
+	if err := plain.SealAt(plain.Len()); err != nil {
+		t.Fatalf("sealing: %v", err)
+	}
+	got, err = Evaluate(context.Background(), statute, rules, plain, check)
+	if err != nil {
+		t.Fatalf("evaluating over an unclocked ledger: %v", err)
+	}
+	if got.Rules["sees_clock"] != false {
+		t.Errorf("sees_clock is %v with no clock in the ledger, want false", got.Rules["sees_clock"])
+	}
+	if !sameNumber(got.Rules["clock_now"], -1) {
+		t.Errorf("clock_now is %v with no clock in the ledger, want the rule's DEFAULT of -1: a "+
+			"zero here would read as the epoch and a missing clock is not time zero",
+			got.Rules["clock_now"])
+	}
+	if got.Rules["sees_known"] != true {
+		t.Errorf("sees_known is %v over the unclocked ledger: the control must hold on both sides",
+			got.Rules["sees_known"])
+	}
+	// AND THE KEY ITSELF, read off the input the evaluation was given: the two
+	// rules above say what a STATUTE sees, and this says what the engine put
+	// there -- a projection that emitted `{"now": 0}` would satisfy the
+	// default-reading cells by accident.
+	if _, present := got.Input["clock"]; present {
+		t.Errorf("the input carries a `clock` key for an unclocked run: %v", got.Input["clock"])
+	}
+}
+
+// sameNumber compares a Rego number against an int64 without caring which
+// numeric type the evaluator handed back. json.Number, float64 and int all
+// reach this from one evaluator version to the next.
+func sameNumber(got any, want int64) bool {
+	switch v := got.(type) {
+	case int:
+		return int64(v) == want
+	case int64:
+		return v == want
+	case float64:
+		return int64(v) == want
+	case json.Number:
+		n, err := v.Int64()
+		return err == nil && n == want
+	}
+	return false
+}

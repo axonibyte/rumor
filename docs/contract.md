@@ -479,6 +479,15 @@ a consequence of it:
   unit has to hold up, not a caution beside it: a clock measured from an
   absolute epoch would make every run's facts differ by when it ran.
 
+**AND THE FACT REACHES A RULE, as of R7.4.** The engine hands every statute
+evaluation `input.clock`, a table whose `now` is the run's time in nanoseconds
+at the position being judged; a project with no clock control has no such key
+at all, and a rule reading it goes undefined. The unit above is therefore an
+agreement among three readers and not two: the engine that writes the fact, the
+adapter that answers for the world, and the statute that compares an instant
+against it. Where the key comes from and why it was missing until R7.4 is
+docs/design.md's, beside the rest of the statute's input.
+
 **A project with no `[clock]` has no clock**, and that is R7's third ruling
 rather than a silence: nothing is read as "time did not pass". ALL THREE
 refusals that ruling names exist as of R7.2; the third arrived with issue 101

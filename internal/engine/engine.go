@@ -311,11 +311,53 @@ func Input(l *ledger.Ledger, c Check) (map[string]any, error) {
 		obs["role"] = c.Role
 	}
 
-	return map[string]any{
+	in := map[string]any{
 		"observation": obs,
 		"known":       known,
 		"claims":      claims,
-	}, nil
+	}
+	// AND THE RUN'S CLOCK, WHERE THE RUN HAS ONE (R7.4, fable's ruling at coop
+	// rumor/1405 item 1 on ibis's measurement at r7/63).
+	addClock(in, l, seal)
+	return in, nil
+}
+
+// addClock gives the statute the run's time, under the key the vocabulary
+// fixed, and does nothing where the run has no clock.
+//
+// WHY IT EXISTED AS A HOLE FOR THREE PHASES: `clock(position, t)` has been a
+// ledger fact since R2.3 and the vocabulary has said "rules may read `clock`
+// facts" for as long; `rumor validate`'s arm 8 has refused a statute that
+// reads `input.clock` in a project with no clock control since R4. Nothing
+// ever put the key in. Measured both ways before it was filled (ibis, coop
+// r7/63): a listed rule `clock_present if input.clock` read FALSE on the case
+// path while the same rule over `input.observation` or `input.known` read
+// true, and on the run path a `finding` branch over `input.clock` never fired
+// while the same line over `input.known` took every observation. A channel
+// that is written at every seal and reaches nothing is half a channel.
+//
+// ABSENT AND NOT ZERO WHERE THERE IS NO CLOCK, which is what makes "nothing
+// changes for a project that declares no control" structural rather than
+// promised: internal/ledger refuses a clock fact outright without control, so
+// an unclocked run's prefix holds none, `timeAt` reports not-found, and the
+// key is never added. A rule reading `input.clock.now` in such a project goes
+// UNDEFINED, which is the answer arm 8 refuses the project for asking.
+//
+// ONE READER, SHARED WITH THE OVERLAY. The time comes from `timeAt`, the same
+// function `Now` and the `pending` overlay read -- so the statute and the
+// overlay cannot disagree about what time it is at a seal, which two readers
+// of one fact eventually would.
+//
+// A TABLE AND NOT A SCALAR, so `now` can be joined by a second field (a
+// position, a zone) without the key moving under every rule that reads it.
+// `now` is the spelling tests/validate's arm-8 fixture already used --
+// `input.clock.now > 0` -- which was a shape nobody evaluated until here.
+func addClock(in map[string]any, l *ledger.Ledger, seal int) {
+	t, ok := timeAt(l.SealedPrefix(), seal)
+	if !ok {
+		return
+	}
+	in["clock"] = map[string]any{"now": t}
 }
 
 // Evaluate judges one check against a sealed ledger under one statute.
@@ -609,14 +651,24 @@ func PreconditionInput(l *ledger.Ledger, actor string) (map[string]any, error) {
 		return nil, fmt.Errorf("engine: flattening %s's knowledge at the seal: %w", actor, err)
 	}
 
-	return map[string]any{
+	in := map[string]any{
 		"observation": map[string]any{
 			"actor":    actor,
 			"position": seal + 1,
 		},
 		"known":  known,
 		"claims": honestOnly(claims),
-	}, nil
+	}
+	// THE CLOCK IS IN BOTH INPUTS, and that is deliberate where `of`, `query`,
+	// `source`, `value` and `role` are deliberately absent from this one. The
+	// reason those are missing is that a CANDIDATE STEP cannot have them -- a
+	// rule reaching for them should go undefined rather than read "". The run's
+	// time is not of that kind: it is a fact of the world at the moment the
+	// question is asked, and a precondition asking "is this action applicable
+	// now" is entitled to it. The seal differs between the two inputs, so each
+	// gets the time at ITS own position rather than a shared number.
+	addClock(in, l, seal)
+	return in, nil
 }
 
 // honestOnly drops the claims the RUN PLANTED, and it is the whole of fable's
