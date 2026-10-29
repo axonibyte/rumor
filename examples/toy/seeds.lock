@@ -100,3 +100,41 @@
 # one. fable took the committed seed over a `recovering` profile as the
 # smaller change (rumor/1235).
 66 profile=settling steps=24 witness=cleared
+
+# 3 -- R7.4'S ROW, AN INVITATION HONORED PAST ITS EXPIRY, in EIGHT steps under
+# `profile=expiring`. The first promotion here whose row needs the CLOCK.
+#
+# WHAT HAPPENS, from the shrunk trace: admin_1 and member_2 make users, admin_1
+# creates an event, member_1 makes a user, admin_1 INVITES (its own user handle,
+# which the walk is free to draw), member_2 creates an event, guest_1 draws an
+# ADVANCE that carries the run's clock past the invitation's expiry, and
+# admin_1 ACCEPTS -- and the system honors it. cmd/toy compares against
+# `ExpiresAt` plus a whole extra lifetime, an undeclared grace, while
+# `GET /invitations/<id>/expiry` goes on reporting `ExpiresAt`; the statute's
+# `honored_past_expiry` reads the join's own `t` against the reported expiry and
+# the finding falls to `default finding := "bug"`.
+#
+# THE SHRUNK TRACE CONTAINS THE ADVANCE THAT CROSSED THE DEADLINE, which is the
+# epic's done-when word for word: step 7 of 8, with the accept at 8. `REDUCED
+# 23 step(s) to 8 -- 14 candidate(s)`, dropping `tell` -- the hop turned out
+# unnecessary, since the actor that accepted was the actor that invited and so
+# already held the claim `may_accept` reads.
+#
+# `steps=24` IS ON THE LINE for seed 12's reason: the row is a SEQUENCE --
+# invite, advance past the expiry, accept -- and it does not fit in ten.
+#
+# PROVED TO BE THE PLANT AND NOT SOMETHING ELSE, two-sided, which no field of
+# the finding could say: both R5 rows and this one arrive as
+# `default finding := "bug"` with no clause fired (ratchet, coop r5/178). So
+# the same seed was run against an HONEST toy -- the grace removed and nothing
+# else -- and it walks all 24 steps at exit 0 with NO finding, its accepts
+# refused by name: "accept_invitation declares response.status = 200 and the
+# system answered 410". Remove the defect and the row goes; restore it and the
+# row returns.
+#
+# `FOUND bug after step 23 -- data.rumor.statute.finding, rests_on_planted
+# false`, byte-identical across two attempts (a2c20f20769767d5), 0 bytes of
+# stderr in both. The HONEST finding: it rests on no planted claim, so it is
+# the application's own defect and not a lie the run told.
+# Measured 2026-10-29 at 8d42087.
+3 profile=expiring steps=24

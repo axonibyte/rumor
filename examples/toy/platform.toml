@@ -179,6 +179,49 @@ recount_event = 40
 create_event = 8
 delete_event = 0
 
+# THE `expiring` PROFILE, WHICH R7.4's ROW IS CAUGHT UNDER. The bug ledger says
+# each row is caught by the stage or feature listed for it, and this one's is
+# the clock -- so the actions that reach it are weighted HERE and nowhere else,
+# which is `settling`'s shape and the reason the control seeds are unmoved by
+# any of it existing.
+[profiles.expiring]
+stages = ["api"]
+seeds = 1
+budget = "1m"
+
+# THE `expiring` WEIGHTS, AND THE ROW IS A SEQUENCE OF FIVE THINGS, not a count:
+# make two users, make an event, INVITE one of them, TELL the invitee about the
+# invitation -- without which `may_accept` is false, since it reads the claims
+# the actor HOLDS -- let an `advance` carry the clock past the expiry, and then
+# ACCEPT. The mix is tuned for that chain and each line has a reason:
+#
+#   invite_user HIGH, because the chain cannot start without one and the
+#     invitation is also what makes the expiry observable at all
+#   accept_invitation HIGH, because it is the step that commits the defect
+#   advance HIGH, because it is the only thing that moves the clock and the row
+#     needs the clock PAST the deadline -- it is live only once an expiry has
+#     been observed, so it cannot be drawn into nothing
+#   tell AT THE DEFAULT's level and no higher: it is already applicable to any
+#     actor holding any claim, so a heavier weight spends the walk on hops
+#   create_event LOW for `settling`'s measured reason -- few events means the
+#     invitations and the joins land on the same one, where the row needs them
+#     together
+#   delete_event ZERO because a delete reaches R5's stale-count row, which stops
+#     the walk before this sequence completes; the R5 rows are found under the
+#     default table, not here
+#   join_event ZERO because a join by the invitee makes `may_accept` false --
+#     `already_joined` -- and the row needs the invitation to be the way in
+#   recount_event ZERO so R6's row does not stop the walk first, for
+#     delete_event's reason exactly
+[weights.profile.expiring]
+invite_user = 20
+accept_invitation = 20
+advance = 20
+create_event = 6
+delete_event = 0
+join_event = 0
+recount_event = 0
+
 [[rollback]]
 # THE PROCESS-RESTART PROVIDER, which C3 implements and R5.3 consumes. It covers
 # `store` -- the component the bindings name on the `direct` observation, and
