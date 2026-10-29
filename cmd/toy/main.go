@@ -321,9 +321,20 @@ func (s *server) load() error {
 	// state file may carry an explicit `null` for a map -- `DisallowUnknownFields`
 	// stops an unknown key and says nothing about a known one being null -- and
 	// a write into a nil map panics. `recounts` had no guard before R7.4 and
-	// `invitations` would have shipped without one by copying its neighbors; the
-	// hazard is the same for all four, so the list is now complete rather than
-	// historical. Armed by TestAStateFileWhoseMapsAreNullReloadsAndStillWrites.
+	// `invitations` would have shipped without one by copying its neighbors.
+	//
+	// FIVE MAPS AND FIVE GUARDS, which is the number this comment got wrong
+	// (ratchet, coop r7/65): it said "all four" with its own sentence adding
+	// two to three, and a figure that disagrees with the code beside it sends
+	// the next reader hunting for an exempt map. `state` declares users,
+	// events, sessions, invitations and recounts; the list below is complete
+	// rather than historical, and ratchet swept for a sibling before reporting
+	// -- no nested maps anywhere, and `event` carries only slices, where
+	// appending to a nil one is safe.
+	//
+	// ARMED FIVE FOR FIVE by TestAStateFileWhoseMapsAreNullReloadsAndStillWrites:
+	// each guard removed on its own kills it (ratchet drove all five, where I
+	// had driven the two I added).
 	if st.Recounts == nil {
 		st.Recounts = map[string]string{}
 	}
