@@ -3,6 +3,7 @@ package clock_test
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -68,6 +69,33 @@ func durationBounded(t *testing.T, withClock bool) string {
 		}
 	}
 	return dir
+}
+
+// withAdvance raises `advance`'s weight in a derived copy's `settling`
+// profile.
+//
+// THE COMMITTED TOY KEEPS ZERO, which is fable's placement at coop r7/42 --
+// "`advance` = 0 goes in examples/toy's weights beside `essoin` = 0" -- so the
+// default walk's composition is byte-identical to v0.1.40's and every control
+// digest still holds. A project that wants its clock moved raises the weight in
+// a profile, which is what this does and what the drill below is about.
+func withAdvance(t *testing.T, dir string, w int) {
+	t.Helper()
+	p := filepath.Join(dir, "platform.toml")
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const table = "[weights.profile.settling]"
+	out := strings.Replace(string(raw), table,
+		table+"\nadvance = "+strconv.Itoa(w), 1)
+	if out == string(raw) {
+		t.Fatalf("%s declares no %s, so advance's weight was not raised and the drill "+
+			"would be measuring a walk that cannot draw it", p, table)
+	}
+	if err := os.WriteFile(p, []byte(out), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // THE SEEDS ARE CHOSEN BY WHAT THEY DO, measured at coop r7/11 over the
@@ -266,4 +294,84 @@ func TestAClosedPendingIsNotARefusal(t *testing.T) {
 				"-- it never reached the state the refusal is about", seed)
 		}
 	}
+}
+
+// TestTheHINGEFromAWalk is R7.3's drill and fable's hinge measured end to end:
+// two walks of ONE project differing only in their seed, each drawing exactly
+// one `advance`, one landing EXACTLY ON a pending's bound and one landing ONE
+// TICK PAST it -- and the verdicts differ.
+//
+// WHAT IT MAKES FALSIFIABLE. `pendingOverlay` holds a disagreement open while
+// `now-claimTime > bound` is FALSE. A unit test can hand that comparison any
+// pair of numbers; a WALK could not reach it at all before this issue, because
+// the clock never moved and a duration-bounded pending could only end as the
+// run's unmeasured refusal. With the mover, landing AT the bound keeps the
+// disagreement inside it and landing a tick past composes `stale`. Loosen the
+// comparison to `>=` and the two walks stop differing.
+//
+// THE FIGURES ARE MEASURED AND NOT CHOSEN: at `advance = 20` in the settling
+// profile, seed 140 draws one advance to 30000000000 -- the bound itself, since
+// `event.tallied` is bounded 30s and the claim sits at the run's epoch -- and
+// seed 1 draws one to 30000000001. Seeds 2 and 40 draw none, seed 3 draws four,
+// and seed 66 draws none and is refused for it, which is the control below.
+func TestTheHINGEFromAWalk(t *testing.T) {
+	dir := durationBounded(t, true)
+	withAdvance(t, dir, 20)
+
+	const bound = int64(30_000_000_000)
+	for _, tc := range []struct {
+		name    string
+		seed    uint64
+		landing int64
+		says    string
+	}{
+		{"landing ON the bound keeps it inside", 140, bound, ""},
+		{"landing ONE TICK past it composes stale", 1, bound + 1, "stale"},
+	} {
+		rec, err := tryWalkProfile(t, dir, tc.seed, heldSteps, heldProfile)
+		if err != nil {
+			t.Fatalf("%s: seed %d refused: %v", tc.name, tc.seed, err)
+		}
+		var landed []int64
+		for _, st := range rec.Steps {
+			if st.Kind == "advance" {
+				landed = append(landed, st.AdvancedTo)
+			}
+		}
+		if len(landed) != 1 || landed[0] != tc.landing {
+			t.Fatalf("%s: seed %d advanced %v, want exactly [%d] -- the pair is only a pair "+
+				"while each walk moves the clock once and to the instant named",
+				tc.name, tc.seed, landed, tc.landing)
+		}
+		got := ""
+		if rec.Finding != nil {
+			got = rec.Finding.Kind
+		}
+		if got != tc.says {
+			t.Errorf("%s: seed %d found kind %q, want %q", tc.name, tc.seed, got, tc.says)
+		}
+	}
+
+	// THE CONTROL, AND IT IS THE RUN'S OWN REFUSAL: a seed that draws NO
+	// advance ends holding a pending it could not measure, which is R7.1's
+	// end-of-run refusal naming the clock that never moved. Without this the
+	// pair above could pass against a build where the clock moves by itself.
+	_, err := tryWalkProfile(t, dir, 66, heldSteps, heldProfile)
+	if err == nil {
+		t.Fatal("seed 66 ran clean: it draws no advance, so its pending must be unmeasured")
+	}
+	if !strings.Contains(err.Error(), "moved no time") {
+		t.Errorf("seed 66 refused without naming the unmoved clock: %v", err)
+	}
+
+	// AND THE WEIGHT IS WHAT CHANGED IT. The same seed on the same project with
+	// advance left at the committed ZERO draws none and is refused like 66 --
+	// so the verdicts above are the advance's doing and not the fixture's.
+	zero := durationBounded(t, true)
+	if _, err := tryWalkProfile(t, zero, 1, heldSteps, heldProfile); err == nil {
+		t.Error("seed 1 ran clean with advance at zero: then the landing above was not what " +
+			"made the difference")
+	}
+	t.Logf("PROOF seed 140 landed at %d and found nothing; seed 1 landed at %d and found stale",
+		bound, bound+1)
 }
