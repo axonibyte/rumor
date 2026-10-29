@@ -132,6 +132,46 @@ in both cases, with the live side being whichever party has to do the thing.
 | `ids` | object, declared name to id | the engine binds each to the handle it is assigning. Keys are the names the action declares it creates, not handles |
 | `response` | any | the bindings' declared response shape, and the read-back an `api` observation checks |
 
+**WHICH ANSWERS ARE REFUSALS, as of R7.4** (fable's ruling, coop rumor/1405
+item 2). `response` is compared against the action's own
+`[[action]].response`: every key the project declares must be present in the
+answer and equal to the declared value. Anything else is the system REFUSING
+the action, and a refused action **appends no claim** -- the ledger records the
+world, and an action the system declined did not happen in it. Numbers are
+compared as numbers, because a TOML `status = 200` is an integer and a JSON
+`200` is a float, and a strict comparison would make every action in every
+project a refusal.
+
+**THE PROJECT SAYS WHAT ACCEPTANCE IS, AND THIS PROTOCOL DOES NOT KNOW ABOUT
+HTTP.** "400 or more is a refusal" is a fact about one transport; the wire
+carries `response any` and nothing named `status`. So the test is the
+declaration, which also gives `response` its first consumer -- this document
+has called it "the bindings' declared response shape" since R4.2 and no code
+read it, which is this document's own "every field has a consumer" rule run
+backwards.
+
+**A project that declares no `response` cannot have its refusals seen**, and
+that is stated rather than hidden: the key is optional, so an action without it
+is accepted whatever comes back -- the behavior every project had before R7.4.
+An arm that refuses such an action is `rumor validate`'s to add and has not
+been added.
+
+**The refusal is recorded in the walk's RECORD and not as a ledger fact**: the
+step carries which action was refused, the declared key and what came back, so
+a replay and a shrink see a draw that was made and an action the world
+declined. A fifth fact kind would be a vocabulary move, and R7 moves no word of
+it; fable's ruling says "recorded as what it is", and this is the record.
+
+**There is no refused OBSERVATION to record, and that asymmetry is measured
+rather than assumed.** An `execute` that the system declines rides its answer
+back as a RESULT, which is why the walk has to read it. An adapter that cannot
+observe answers the **error envelope** instead -- `observe`'s own rows below
+say so -- and every envelope is could-not-run, so the run stops and nothing is
+appended. Driven on the walkable fixture with the surface's `attendance` entry
+removed: `rc 2`, "observing attendance (direct) after step 1: the adapter
+answered a internal fault to the observe request". A value is never recorded
+for an observation that was refused, because there is no value.
+
 **No run-local handle crosses the wire, in either direction.** The engine owns
 the handle table (`docs/design.md`: it "maps each to whatever id the server
 returned on the current attempt"), so the engine resolves a handle to an id

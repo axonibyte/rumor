@@ -824,6 +824,36 @@ v0.1.27's changelog carries it as "a claim carries the handles it names". So a
 walked join does name its event, and the toy third waits on nothing here.
 Measured 2026-10-24, reading the call rather than the note.
 
+**A REFUSED ACTION APPENDS NO CLAIM, as of R7.4** (fable's ruling, coop
+rumor/1405 item 2, on ibis's measurement at r7/64). The walk reads what the
+system answered: an accepted action appends its claims, and one the system
+declined appends none and is RECORDED AS REFUSED in the step, carrying which
+action, which declared key and what came back. Until R7.4 the walk appended on
+the action's `emits` alone and never read the answer, so a refused step
+recorded a claim the system never made and every finding downstream of it was
+the walk's bookkeeping -- measured: with `join_event` wedged at 409 the toy's
+clean seed 1 produced a bug whose shrunk trace ended at the refused step, and
+it produces none now.
+
+**It changes what the walk DOES next, and that is the mechanism working.** A
+refused join leaves the actor able to join again, because `may_join` reads the
+ledger and the ledger now reflects the world -- so two runs differing only in
+the system's answer diverge from that step on. Before, the scheduler believed
+a claim nothing had done.
+
+**A palter of a refused action plants nothing**: a palter is "an action that
+happened described wrongly", and where the system declined there is no
+happening to describe. Appending the claim anyway would plant a lie the
+corroboration control could never clear, since the strip would remove a claim
+about an action that never ran -- a suborn's shape under palter's name.
+
+**And a step that appends NOTHING AT ALL makes no observation**, which R7.4 is
+what made reachable: the engine refuses a check over an unsealed ledger and a
+seal of zero IS unsealed, so a first step whose action was refused would have
+taken the walk to a sequencing refusal. There is no question to put -- an
+observation compares against what the ledger says happened, and the ledger
+says nothing has.
+
 **A statute is handed the run's CLOCK, and that key was missing for three
 phases** (R7.4; fable's ruling at coop rumor/1405 item 1). `input.clock` is a
 table with `now`, the run's time in nanoseconds at the position being judged --

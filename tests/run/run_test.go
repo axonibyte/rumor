@@ -3,6 +3,7 @@
 package run_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/fake"
 	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
@@ -1713,5 +1716,197 @@ func TestAPendingClearedMidWalkSaysWhichStepRecheckedIt(t *testing.T) {
 			t.Errorf("a pending re-checked at a STEP is reported as the reconciliation's, so "+
 				"D3's two paths are one string again:\n  %s", line)
 		}
+	}
+}
+
+// refusingProject copies the walkable fixture into a temp dir, declares a
+// response on `join_event`, and points the adapter at a surface that answers
+// `want` for it. The returned directory is a project that walks.
+//
+// IT IS A FIXTURE AND A SURFACE AND NOT A PATCHED TOY, which is what makes
+// this an ARM rather than a drive: fable's cell at coop rumor/1405 describes
+// wedging cmd/toy, and a test cannot rebuild a binary with one route broken.
+// The fake adapter answers whatever a surface file says, so the same
+// discriminator is reachable from a fixture -- and the project's DECLARED
+// response is the thing under test, which the toy would only have exercised
+// incidentally.
+func refusingProject(t *testing.T, want int) string {
+	t.Helper()
+	return refusingProjectFor(t, "join_event", 200, want, "")
+}
+
+// refusingProjectFor is refusingProject over any one action, with an optional
+// extra line for the weight table -- which is how the palter cell below gets a
+// lie drawn in a fixture whose kinds are all declared zero.
+func refusingProjectFor(t *testing.T, action string, declared, want int, weights string) string {
+	t.Helper()
+	dir := t.TempDir()
+	surface := filepath.Join(dir, "surface.json")
+	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego"} {
+		b, err := os.ReadFile(filepath.Join(fixture, f))
+		if err != nil {
+			t.Fatalf("reading %s: %v", f, err)
+		}
+		s := string(b)
+		switch f {
+		case "bindings.toml":
+			// THE DECLARATION IS THE TEST. Without a declared response the
+			// walk has nothing to compare an answer against and accepts
+			// everything, which is the pre-R7.4 behavior and is armed below
+			// as its own case.
+			anchor := "name = \"" + action + "\"\ncontext = \"api\""
+			if !strings.Contains(s, anchor) {
+				t.Fatalf("the fixture does not declare %s the way this helper edits it", action)
+			}
+			s = strings.Replace(s, anchor,
+				anchor+fmt.Sprintf("\nresponse = { status = %d }", declared), 1)
+		case "platform.toml":
+			s = strings.Replace(s, `command = ["rumor", "fake-adapter"]`,
+				`command = ["rumor", "fake-adapter", "--surface", "`+surface+`"]`, 1)
+			if !strings.Contains(s, "--surface") {
+				t.Fatal("could not point the adapter at a surface file")
+			}
+			if weights != "" {
+				// THE KEY IS REPLACED AND NOT PREPENDED. The fixture already
+				// declares every kind at zero -- that is its own decision,
+				// "zero is a decision where absent is nobody deciding" -- so
+				// adding a line gives TOML the same key twice and the parser
+				// refuses the file. Measured: "Key
+				// 'weights.default.palter' has already been defined".
+				key := strings.SplitN(weights, " ", 2)[0]
+				if !strings.Contains(s, key+" = 0") {
+					t.Fatalf("the fixture does not declare %s at zero, so this cell cannot raise it", key)
+				}
+				s = strings.Replace(s, key+" = 0", weights, 1)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(dir, f), []byte(s), 0o600); err != nil {
+			t.Fatalf("writing %s: %v", f, err)
+		}
+	}
+	// THE DEFAULT SURFACE WITH ONE FIELD CHANGED, built from the package the
+	// adapter itself reads so the two cannot drift: a hand-written JSON copy
+	// would go stale the first time the default gained an observation.
+	sf := fake.Default()
+	rec, ok := sf.Execute[action]
+	if !ok {
+		t.Fatalf("the fake's default surface records no %s", action)
+	}
+	rec.Response = map[string]any{"status": want}
+	sf.Execute[action] = rec
+	raw, err := json.MarshalIndent(sf, "", " ")
+	if err != nil {
+		t.Fatalf("encoding the surface: %v", err)
+	}
+	if err := os.WriteFile(surface, raw, 0o600); err != nil {
+		t.Fatalf("writing the surface: %v", err)
+	}
+	return dir
+}
+
+// TestARefusedActionAppendsNoClaimAndIsRecordedAsRefused is R7.4's second
+// half, end to end through the verb (fable's ruling, coop rumor/1405 item 2;
+// ibis's measurement, r7/64).
+//
+// THE TWO SIDES ARE ONE SEED AND ONE DIFFERENCE: the system's answer to
+// join_event. At 200 the walk appends the claim and the trace shows the
+// handle; at 409 it appends none, the step says REFUSED and names the
+// disagreement, and the run still ends cleanly -- a refusal is the system
+// behaving, not the harness failing.
+func TestARefusedActionAppendsNoClaimAndIsRecordedAsRefused(t *testing.T) {
+	accepted := refusingProject(t, 200)
+	out, errb, code := run(t, "run", accepted, "--seed", "2", "--steps", "10")
+	if code != 0 {
+		t.Fatalf("the accepting project exits %d, want 0\nstdout %s\nstderr %s", code, out, errb)
+	}
+	if strings.Contains(out, "REFUSED") {
+		t.Errorf("a 200 answer was read as a refusal:\n%s", out)
+	}
+	joins := strings.Count(out, "join_event")
+	if joins == 0 {
+		t.Fatalf("the accepting run drew no join_event, so this arm has nothing to compare:\n%s", out)
+	}
+
+	refused := refusingProject(t, 409)
+	rout, rerrb, rcode := run(t, "run", refused, "--seed", "2", "--steps", "10")
+	if rcode != 0 {
+		t.Fatalf("the refusing project exits %d, want 0: a refusal is the system behaving\n"+
+			"stdout %s\nstderr %s", rcode, rout, rerrb)
+	}
+	if !strings.Contains(rout, "REFUSED") {
+		t.Fatalf("no step is marked REFUSED where every join_event was answered 409:\n%s", rout)
+	}
+	// THE REASON IS IN THE TRACE and names the action, the declared key and
+	// what came back -- a bare mark would send the reader to the adapter's log.
+	for _, want := range []string{"join_event", "status", "200", "409"} {
+		if !strings.Contains(rout, want) {
+			t.Errorf("the refusal in the trace does not name %q:\n%s", want, rout)
+		}
+	}
+	// AND THE CLAIM IS NOT THERE. A refused join mints no handle, so the
+	// trace's join_event lines carry none -- which is the ledger half visible
+	// from outside: the walk appended nothing for it.
+	for _, line := range strings.Split(rout, "\n") {
+		if !strings.Contains(line, "join_event") {
+			continue
+		}
+		if strings.Contains(line, ".join_event#") {
+			t.Errorf("a refused join_event minted a handle: %q", line)
+		}
+	}
+	// AND THE DRAWS MAY MOVE, WHICH THIS CELL MEASURED THE HARD WAY. My first
+	// version asserted the two runs drew the SAME number of join_events and it
+	// failed: 7 accepted against 6 refused. That is correct and it is the
+	// mechanism working. Applicability reads the ledger -- `may_join` is false
+	// for an actor that has already joined -- so a refused join leaves the
+	// actor able to join again, and the walk from that step on is a different
+	// walk. Before R7.4 the refusal was recorded as a join and the scheduler
+	// believed it; now the ledger reflects the world and the scheduler reads
+	// the world.
+	//
+	// SO WHAT IS ASSERTED IS THAT THE ARM IS NOT VACUOUS: the refusing run
+	// still DRAWS the action, so the REFUSED lines above are refusals of draws
+	// that happened and not an empty set.
+	if strings.Count(rout, "join_event") == 0 {
+		t.Errorf("the refusing run drew no join_event at all, so the cells above read nothing:\n%s", rout)
+	}
+}
+
+// TestAPalterOfARefusedActionPlantsNothing is the other caller of the same
+// fix, and it needs its own cell because the first mutant I drove against
+// palter's guard SURVIVED: the walkable fixture declares every nemesis kind at
+// zero, so no arm reached that branch at all.
+//
+// A PALTER IS "AN ACTION THAT HAPPENED DESCRIBED WRONGLY" (design.md). Where
+// the system declined, there is no happening to describe -- and appending the
+// claim anyway would plant a lie the corroboration control could never clear,
+// because the strip would be removing a claim about an action that never ran.
+// That is a suborn's shape wearing palter's name.
+func TestAPalterOfARefusedActionPlantsNothing(t *testing.T) {
+	// create_event IS THE PALTERABLE ACTION: it declares a drawn `visible_to`
+	// over two subsets, which is the falsifiable field palter needs.
+	const lie = "palter = 6"
+
+	planted := refusingProjectFor(t, "create_event", 201, 201, lie)
+	out, errb, code := run(t, "run", planted, "--seed", "2", "--steps", "10")
+	if code != 0 && code != 3 {
+		t.Fatalf("the accepting project exits %d, want 0 or 3\nstdout %s\nstderr %s", code, out, errb)
+	}
+	if !strings.Contains(out, "PLANTED") {
+		t.Fatalf("no step is PLANTED where palter is weighted 6 and create_event is accepted, "+
+			"so this cell cannot see the guard:\n%s", out)
+	}
+
+	refused := refusingProjectFor(t, "create_event", 201, 500, lie)
+	rout, rerrb, rcode := run(t, "run", refused, "--seed", "2", "--steps", "10")
+	if rcode != 0 {
+		t.Fatalf("the refusing project exits %d, want 0: a refusal is the system behaving\n"+
+			"stdout %s\nstderr %s", rcode, rout, rerrb)
+	}
+	if strings.Contains(rout, "PLANTED") {
+		t.Errorf("a palter of a refused action planted a claim:\n%s", rout)
+	}
+	if !strings.Contains(rout, "REFUSED") {
+		t.Errorf("no step is marked REFUSED where every create_event was answered 500:\n%s", rout)
 	}
 }

@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -207,6 +208,21 @@ type Step struct {
 	// question. Zero is the ordinary case for a step whose subject no
 	// observation declares.
 	Observed int
+
+	// Refused is why the SYSTEM declined this step, empty where it did not.
+	//
+	// THE WORDS AND NOT A FLAG, because the disagreement is what a reader of a
+	// trace needs: "join_event declares response.status = 200 and the system
+	// answered 409" says which action, which key and what came back, where a
+	// bare `true` would send the reader to the adapter's log. It is composed
+	// from the DECLARATION in sorted key order, so two attempts of one seed
+	// name the same disagreement and the record still compares.
+	//
+	// A REFUSED STEP IS RECORDED AND NOT DROPPED, which is the same rule an
+	// inapplicable drawn kind follows: the record is an account of the DRAWS,
+	// and one that silently omitted a declined action would let two attempts'
+	// records agree while their walks diverged.
+	Refused string
 
 	// Hop is the tell this step made, where it made one: the receiver and the
 	// claim that travelled, as "guest_1 <- alice.event#1".
@@ -1162,6 +1178,27 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 	if len(obs) == 0 {
 		return nil, nil
 	}
+	// AND NOTHING HAS HAPPENED IS NOTHING TO JUDGE (R7.4). The engine refuses
+	// a check over an unsealed ledger, and a seal of ZERO *is* unsealed
+	// (engine.Input's `seal <= 0`) -- so a step that appended NEITHER a claim
+	// NOR a tell leaves the ledger empty and the next line would take the walk
+	// to a sequencing refusal instead of a verdict.
+	//
+	// R7.4 IS WHAT MADE THAT REACHABLE and an arm is what found it: before a
+	// refused action appended nothing, every first step appended something, so
+	// the case could not arise. Measured on the walkable fixture with every
+	// create_event answered 500 -- "step 1: judging attendance (direct) after
+	// step 1: engine: the ledger is unsealed", that project's first
+	// observation being a `direct` one which needs no handle and is therefore
+	// tried on every step.
+	//
+	// SKIPPED AND NOT REFUSED, because there is no question to put: an
+	// observation is a comparison against what the ledger says happened, and
+	// the ledger says nothing has. The step is still recorded, carrying its
+	// refusal.
+	if l.Len() == 0 {
+		return nil, nil
+	}
 	// THE PREFIX IS SEALED FIRST, which is what "against the sealed prefix"
 	// requires and what the vocabulary states: "A ledger is sealed at a
 	// position before any check runs; the check reads the sealed prefix."
@@ -1531,6 +1568,127 @@ type performed struct {
 	Args   map[string]any
 	Handle string
 	Emits  bool
+
+	// Refused says the SYSTEM DID NOT DO IT: the adapter's response disagreed
+	// with the one the action declares. Nothing is appended for such a step
+	// and nothing is minted -- see refusal below.
+	Refused bool
+}
+
+// refusal reports whether the system refused the action, and in what words.
+//
+// THE LEDGER RECORDS THE WORLD (fable, coop r7/51 and v0.1.41's own bullet),
+// and an action the system refused did not happen in it. Until R7.4 this
+// function did not exist: the walk appended a claim on the action's `emits`
+// alone and never read the answer, so a refused step recorded a claim the
+// system never made and every finding downstream of it was the walk's
+// bookkeeping. Measured two-sided (ibis, coop r7/64): the honest toy at seed 1
+// runs clean, and with `join_event` wedged at 409 the same seed FOUND a bug
+// whose shrunk trace ends at the refused step. ratchet reproduced it from a
+// second clone and measured the half I had left open (r7/66): seed 12 refuses
+// one join at 409 inside the shipped control, so the path is reached today.
+//
+// THE TEST IS THE PROJECT'S DECLARED RESPONSE, AND THAT IS A DEVIATION FROM
+// THE LETTER OF THE RULING WORTH NAMING. fable's words at coop rumor/1405 are
+// "by the status the adapter answered", and this reads `[[action]].response`
+// instead, for three reasons the ruling's own "the builder picks the
+// mechanics" leaves open:
+//
+//   - THE WIRE HAS NO STATUS. `execute`'s response carries `ids` and
+//     `response any` (docs/contract.md), and `{"status": 200}` is
+//     cmd/toy-adapter's own convention. Reading a status here would either
+//     invent a wire field -- a contract-version question fable told me to
+//     raise rather than take -- or hard-code one adapter's shape into the
+//     engine.
+//   - HTTP DOES NOT BELONG IN THE WALK. "400 or more is a refusal" is a fact
+//     about one transport, and this protocol is deliberately not HTTP.
+//   - `response` WAS DECLARED AND READ BY NOTHING. The contract has called it
+//     "the bindings' declared response shape" since R4.2 and no code read it:
+//     a field with no consumer, which is the defect this document's own rule
+//     exists to catch. Now it has one.
+//
+// SO ACCEPTANCE IS WHAT THE PROJECT SAYS IT IS: every key the action declares
+// must be present in the answer and equal to the declared value. An adapter
+// that answers 409 where the project declared 200 is refusing; one that
+// answers 200 is doing it.
+//
+// A PROJECT THAT DECLARES NO RESPONSE CANNOT HAVE ITS REFUSALS SEEN, and that
+// is stated rather than hidden: `response` is optional in the schema, so an
+// action without it is accepted unconditionally -- the behavior every project
+// had before this commit. The arm that would close it is `rumor validate`'s
+// and it is not taken here.
+func refusal(a bindings.Action, resp wire.ExecuteResponse) (string, bool) {
+	if len(a.Response) == 0 {
+		return "", false
+	}
+	got, ok := resp.Response.(map[string]any)
+	if !ok {
+		// A DECLARED SHAPE AND AN ANSWER THAT IS NOT ONE. The project said
+		// what acceptance looks like and the adapter answered something else
+		// entirely, which cannot be the declared shape -- so it is a refusal
+		// and the answer is quoted rather than guessed at.
+		return fmt.Sprintf("%s declares a response of %v and the adapter answered %v, "+
+			"which is not a table", a.Name, a.Response, resp.Response), true
+	}
+	for _, k := range sortedKeys(a.Response) {
+		want := a.Response[k]
+		have, present := got[k]
+		if !present {
+			return fmt.Sprintf("%s declares response.%s = %v and the adapter's answer "+
+				"carries no %s: %v", a.Name, k, want, k, got), true
+		}
+		if !sameValue(want, have) {
+			return fmt.Sprintf("%s declares response.%s = %v and the system answered %v",
+				a.Name, k, want, have), true
+		}
+	}
+	return "", false
+}
+
+// sortedKeys is the declaration's keys in a fixed order, so two attempts of one
+// seed name the SAME disagreement when an answer breaks more than one key. A
+// map's own order would make the recorded reason differ between attempts and
+// the comparison fail for a reason that is not a difference.
+func sortedKeys(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// sameValue compares a value a TOML declaration carries against one that came
+// back as JSON, without caring which numeric type each arrived as.
+//
+// IT EXISTS BECAUSE `status = 200` IS AN int64 AND THE ANSWER IS A float64.
+// decl reads TOML integers as int64 and the wire decodes JSON numbers as
+// float64, so `want == have` is false for two values that are the same number
+// -- and every action in every project would read as refused. Driven: without
+// the numeric branch, examples/toy's first create_user is a refusal.
+func sameValue(want, have any) bool {
+	wf, wok := asFloat(want)
+	hf, hok := asFloat(have)
+	if wok && hok {
+		return wf == hf
+	}
+	return reflect.DeepEqual(want, have)
+}
+
+func asFloat(v any) (float64, bool) {
+	switch n := v.(type) {
+	case int:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case float32:
+		return float64(n), true
+	case float64:
+		return n, true
+	}
+	return 0, false
 }
 
 // perform executes an action and does everything that is true of BOTH an honest
@@ -1586,6 +1744,34 @@ func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
 		return out, fmt.Errorf("executing %s: %w", a.Name, err)
 	}
 
+	// WHAT THE SYSTEM ANSWERED, READ BEFORE ANYTHING IS RECORDED (R7.4,
+	// fable's ruling at coop rumor/1405 item 2). A refused action appends no
+	// claim and MINTS NO HANDLE: the system created nothing, so a handle here
+	// would resolve to no id and sit in the table as a suborn's does -- and a
+	// suborn's unbound handle is for a LIE the engine told, not for a step the
+	// world declined.
+	//
+	// IT ALSO ENDS A HARD ERROR THAT WAS NOT ONE. A refused action declaring
+	// `creates` used to reach the `ids` check below with an empty map and kill
+	// the run ("the handle would resolve to nothing"), so a project whose
+	// system can refuse a creating action could not be walked at all; the
+	// refusal is now a recorded step.
+	// EMITS IS SET BEFORE THE REFUSAL IS READ, AND THE ORDER IS LOAD-BEARING.
+	// It was set after, and the first mutant I drove against this fix SURVIVED
+	// because of it: with `out.Emits` still false for a refused action,
+	// honest's `if done.Refused` was unreachable -- `!done.Emits` stopped the
+	// append first -- so removing the refusal guard changed nothing and both
+	// suites stayed green. A guard that cannot fail is not evidence. Setting
+	// it here makes the refusal the one reason an emitting action records no
+	// claim, and the mutant dies in tests/run.
+	out.Emits = len(a.Emits) > 0
+
+	if why, refused := refusal(a, resp); refused {
+		out.Refused = true
+		step.Refused = why
+		return out, nil
+	}
+
 	// AN ACTION THAT EMITS NOTHING MINTS NOTHING, and this is checked BEFORE
 	// the handle kind is asked for. fable ruled at coop r5/62 that such a step
 	// "appends no claim and mints no handle, recorded as a step" -- so the
@@ -1593,10 +1779,9 @@ func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
 	// action declaring two `creates` must not reach a step that was never
 	// going to mint one. My first version asked in the other order and would
 	// have refused a recorded-and-harmless step.
-	if len(a.Emits) == 0 {
+	if !out.Emits {
 		return out, nil
 	}
-	out.Emits = true
 
 	kind, err := mintKind(a)
 	if err != nil {
@@ -1645,7 +1830,11 @@ func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledg
 	if err != nil {
 		return err
 	}
-	if !done.Emits {
+	// A REFUSED ACTION APPENDS NO CLAIM, which is the whole of the fix: the
+	// ledger records the world and this did not happen in it. The STEP is
+	// recorded, carrying the refusal, so replay and the shrink see a draw that
+	// was made and an action the system declined.
+	if done.Refused || !done.Emits {
 		return nil
 	}
 	seen, err := visibleTo(a, done.Args)
@@ -2239,6 +2428,15 @@ func palter(ctx context.Context, p Project, sess *wire.Session, sessions *Sessio
 	done, err := perform(ctx, sess, sessions, table, mint, src, a, known, step)
 	if err != nil {
 		return err
+	}
+	// A PALTER OF A REFUSED ACTION LIES ABOUT NOTHING. design.md's palter is
+	// "an action that happened described wrongly"; where the system declined,
+	// there is no happening to describe, and appending the claim anyway would
+	// plant a lie the control could never clear -- the strip would remove a
+	// claim about an action that never ran, which is a suborn's shape under
+	// palter's name.
+	if done.Refused {
+		return nil
 	}
 	if !done.Emits {
 		// UNREACHABLE WHILE lieAbout FILTERS ON emits, and a refusal rather

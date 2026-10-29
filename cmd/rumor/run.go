@@ -244,6 +244,16 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		if s.Planted {
 			mark = " PLANTED"
 		}
+		// AND WHERE THE SYSTEM DECLINED (R7.4). A refused step appends no
+		// claim, so without this line the trace shows a draw with no handle
+		// and no effect and a reader cannot tell it from a step that minted
+		// nothing -- a tell, or an inapplicable kind. The REASON rides along
+		// because it names the action, the declared key and what came back,
+		// which is what the reader would otherwise go to the adapter's log
+		// for.
+		if s.Refused != "" {
+			mark = " REFUSED: " + s.Refused
+		}
 		// WHAT THE STEP WAS ABOUT, where it consumed anything. A trace showing
 		// only what a step CREATED cannot tell two joins of different events
 		// apart, which is exactly the difference a reader is looking for when a

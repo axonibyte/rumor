@@ -236,6 +236,21 @@ context = "browser"
 emits = ["event.joined"]
 requires = ["may_join"]
 touches = ["store"]
+# THE LAST ACTION IN THIS PROJECT TO DECLARE ITS RESPONSE, and it was the only
+# one left blind after R7.4 made the declaration load-bearing: a refused action
+# appends no claim, and the comparison is against what this key says. Measured:
+# ratchet found seed 12 refusing one join at 409 inside the control (coop
+# r7/66), and with every other action declared the five control seeds did not
+# move -- because the refusal ratchet saw is on THIS action, which declared
+# nothing to compare against.
+#
+# 200 BECAUSE IT IS THE SAME HANDLER. /ui/events/<id>/join dispatches to
+# cmd/toy's joinEvent, so this route answers exactly what the api action does,
+# capacity 409 included. R9 drives this page with a real browser and what a
+# "response" means for a browser step is that phase's question; today the
+# adapter answers the status, and this says so rather than leaving the one
+# action whose refusals nothing can see.
+response = { status = 200 }
 
   # THE SAME EVENT HANDLE THE API ACTION TAKES, and the flow's `{event}`
   # placeholder below names the same kind: the browser action reaches the same
