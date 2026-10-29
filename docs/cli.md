@@ -181,8 +181,14 @@ demonstrated what it was cut to demonstrate.
 Plus four counting guards — no package, no case, no rule, no mutant — because
 every arm above is satisfied for free by an empty walk.
 
-**Seven kinds of line**, then a tally. Over `examples/` the run prints 84 of them;
+**Seven kinds of line**, then a tally. Over `examples/` the run prints 92 of them;
 one of each kind is shown here, and the counts in the tally are the whole run's:
+
+It was 84 until R7.4, and the block below is what said so: the figure is one
+line per rule-and-mutant pairing the corpus holds, so 103's three cases and its
+fourteenth mutant moved it. The gate caught the drift on the run that added
+them -- `docs --check` stayed green throughout, because a path-coverage check
+cannot see a quoted figure.
 
 ```sh run
 # THIS BLOCK IS THE SAMPLE AND ITS OWN CHECK. `release-gate.py` executes every
