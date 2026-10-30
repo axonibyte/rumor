@@ -3,6 +3,82 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.44 — 2026-10-30
+
+**Two requests in flight against one world, a verdict that reads the world, and
+a stage that runs** — issue 109, R8.2, the second of R8's four children.
+
+- **A FAN-OUT IS N PROCESSES AGAINST ONE WORLD.** The wire allows one
+  outstanding request per process, so contention is a set of sessions, each
+  driven by one goroutine. And the N processes must SHARE a world: an adapter
+  given no address starts a system of its own, so two spawned carelessly
+  contend on nothing — two requests, two servers, both succeeding, and a race
+  reported as absent. The arm proves one world before it proves any timing.
+- **"CONCURRENT" IS A CLAIM THAT CAN BE FALSE**, so every attempt carries its
+  span and a fan-out that serialized is a could-not-run rather than a pass. The
+  verdict is clock-free and its duration is a separate method whose name says it
+  goes to stderr: a duration on the hashed stream moves a digest every run.
+- **`[[action]].contended` DECLARES WHAT TWO CALLERS CAN RACE**, by name on the
+  action — `limit` naming the creating action's drawn argument and `held` the
+  declared query that reads what the system holds. Declared and not derived,
+  because three actions emit the toy's `event.joined` and one of them holds its
+  lock: a stage deriving its subject from the claim type can select the CONTROL
+  and report no overfill. Both references resolve at `rumor validate`. And a
+  subject whose handle is NOT the contended thing is refused by name: a fan-out
+  sends one set of arguments to every contender, so a thing belonging to one of
+  them would have the others refused for a reason that is not the limit — 1 of
+  2 accepted into room for 1, which no vacuity condition catches.
+- **THE VERDICT READS THE WORLD AND NOT THE ANSWERS.** Counting acceptances
+  makes the clause a claim about responses, so a system answering 200 and
+  persisting nothing reads as an overfill. The race's signature is the system's
+  own quantity, read back through the declared query before the barrier and
+  after it; a disagreement between answers and world is its own finding.
+- **THE STAGE RUNS UNDER `rumor run`, AND EVERY SELECTED STAGE IS CONSUMED.**
+  The dispatch read one element of a list and walked unconditionally, so the
+  second runnable stage would have had one run and the other dropped with no
+  refusal and no skip reason; a tripwire written for that moment failed in the
+  same change and the fix is the loop it asked for. The walk is the `api` case
+  and runs only when `api` is selected. A finding outranks a later stage's
+  refusal: the project being wrong does not unfind a bug.
+- **ITS WORLDS ARE ENUMERATED AND NOT DRAWN.** Two of the toy's three declared
+  `visible_to` subsets cannot be contended at all — a would-be joiner is a
+  `guest` relative to the event, so the subsets without `guest` answer 404
+  before the capacity check — and a stage that drew its setup would report "the
+  system was never asked to choose between them" two times in three over a
+  system whose race is one try away. The sweep moves one declared coordinate at
+  a time and stops at the first world the clause can answer in; what the SEED
+  chooses is the plan.
+- **A FINDING ENDS THE SWEEP AND AN ABSENCE DOES NOT.** One overfill is a
+  witness and needs no second. "No overfill" is an absence, and reported off a
+  single fan-out it cannot be told from a race that missed its window — driven
+  on a toy whose re-check held four times in five, which answered clean at exit
+  0 over a fan-out that genuinely overlapped. So the stage contends every
+  declared world and the line carries the count of fan-outs the clause could
+  judge. How many an absence NEEDS is not derivable from any declaration, and
+  the number is reported rather than chosen.
+- **A SHRINK's SUBJECT IS A VERDICT, AND A VERDICT IS NOT ONLY A STATUTE's.**
+  Every reducer took the statute's finding, so a stage finding had no subject at
+  all — the toy's statute rules a capacity overrun out of its own reach for a
+  data-model reason. The type is an interface, the candidate carries a stage's
+  verdict beside the statute's, and a stage's race is SHRUNK: `rumor run`
+  replays it on worlds restored and verified, and the trace names the oracle
+  rather than reading "no finding". It is not a fifth finding or a new kind:
+  `bug` is an observation disagreeing with its observer, and the vocabulary's
+  slot beside the four is spent.
+- **AND A VERDICT THAT RECURS ONLY SOMETIMES IS PROBED k OF n**, restoring
+  before every probe, stopping at the kth, and reporting "recurred k of n"
+  rather than "unstable". The overfill asks for a majority of three, derived
+  from the two ways the gate can be wrong rather than from a measured rate: a
+  reproduction rate taken at one load is not a rate. That threshold guards the
+  REDUCTION of a found race and not the finding of one, which is why the
+  absence carries its own count.
+- **THE RECORD CARRIES THE SCALARS THE SEED DREW**, a slice in declared argument
+  order beside the advanced clock, so a replay reads the same limit the walk
+  handed the system. `contended` is a new word in the bindings, and
+  `examples/toy` enables the stage it declares one for — with the two unprofiled
+  rows of its seeds.lock taking a profile that narrows stages and nothing else,
+  so the mix they were promoted under is the mix they still replay.
+
 ## 0.1.43 — 2026-10-30
 
 **A hostile corpus derived from the project's own declarations, and an oracle
