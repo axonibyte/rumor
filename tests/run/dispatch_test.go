@@ -178,3 +178,77 @@ func wanted(b bool) string {
 	}
 	return "did not want"
 }
+
+// THE STAGE'S OWN FINDING IS SHRUNK, ON VERIFIED CLEAN WORLDS, AND THE TRACE
+// SPEAKS THE ORACLE'S WORDS.
+//
+// THIS IS D8's FIRST HALF MADE READABLE: a shrunk race replaying to the same
+// verdict. It could not be driven before -- the reductions took the STATUTE's
+// finding as the thing to keep, and a capacity overrun "is not nameable from a
+// ledger case" by the toy's own statute, so a stage finding had no `want` to
+// hand the shrinker at all. fable widened the type at coop rumor/1521, the head
+// before this one gave a candidate somewhere to carry a stage's verdict, and
+// this is the stage handing both to the real Shrink.
+//
+// IT DRIVES THE BINARY AND NOT THE PACKAGE, which is the whole point: fable's
+// ruling 3 at r6/78 forbids proving a claim on a path the product does not
+// take, and a shrink exercised only from a test would be that defect with a
+// different package name. The cell turns `api` off so the only shrink in the
+// output is the stage's -- the walk's own finding shrinks too, and a grep over
+// a run with both could read one for the other.
+func TestTheStagesFindingIsShrunkOnACleanWorld(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego", "seeds.lock"} {
+		b, err := os.ReadFile(filepath.Join("../../examples/toy", f))
+		if err != nil {
+			t.Fatalf("reading the toy's %s: %v", f, err)
+		}
+		body := string(b)
+		if f == "platform.toml" {
+			body = apiOff(requireConcurrency(body))
+		}
+		if err := os.WriteFile(filepath.Join(dir, f), []byte(body), 0o644); err != nil {
+			t.Fatalf("writing %s: %v", f, err)
+		}
+	}
+	out, errb, code := run(t, "run", dir, "--seed", "0", "--steps", "6")
+	if code != 3 {
+		t.Fatalf("exit %d, wanted 3\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	}
+	// THE REDUCTION RAN AND SAYS WHAT IT RESTED ON. Either line is a result --
+	// the toy's setup is irreducible, so NOT REDUCED is the expected one -- and
+	// what matters is that candidates were replayed on worlds restored and
+	// verified, which is the clause D8 reads.
+	if !strings.Contains(out, "shrink: NOT REDUCED") && !strings.Contains(out, "shrink: REDUCED") {
+		t.Fatalf("the stage's finding was not shrunk at all:\nstdout:\n%s\nstderr:\n%s", out, errb)
+	}
+	if !strings.Contains(out, "each replayed on a verified clean world") {
+		t.Errorf("the shrink does not report the clean-world replay:\n%s", out)
+	}
+	// THE TRACE IS THE STAGE'S OWN SHAPE: the bootstrap per actor, the world,
+	// and the fan-out as ONE step whose actor field names every contender.
+	for _, want := range []string{
+		"trace: seed 0,", "create_user", "create_event",
+		"member_1+member_2 join_event",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the trace does not carry %q:\n%s", want, out)
+		}
+	}
+	// AND THE VERDICT IS THE ORACLE'S, NOT THE STATUTE'S. Without the carrier
+	// this line read `trace: finding no finding` over a trace that reproduced a
+	// real race, and the report claimed a partial reproduction of a finding
+	// nobody authored.
+	if !strings.Contains(out, "trace: verdict ") ||
+		!strings.Contains(out, "by rumor.concurrency.overfill on join_event") {
+		t.Errorf("the trace does not name the oracle and its subject:\n%s", out)
+	}
+	for _, forbidden := range []string{"trace: finding no finding", "fired (none recorded)",
+		"PARTIAL REPRODUCTION"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("the report speaks the statute's words over a stage verdict (%q):\n%s",
+				forbidden, out)
+		}
+	}
+	t.Logf("PROOF\n%s", out)
+}

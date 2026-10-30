@@ -72,7 +72,16 @@ func Subjects(b bindings.Bindings) ([]Subject, error) {
 // LIMIT PLUS ONE AND NOT MORE, which is fable's wording and has a reason beyond
 // economy: the smallest fan-out that can exceed a limit is the one that proves
 // the check and the insert are not one step, and every request past it adds a
-// contender whose refusal says nothing new. It is also what keeps the trace
-// inside issue 1's "under five actions" -- two users, the event, and the
-// fan-out as one.
+// contender whose refusal says nothing new.
+//
+// AND IT DOES NOT KEEP THE TRACE UNDER FIVE ACTIONS, which this comment claimed
+// -- "two users, the event, and the fan-out as one" -- until the trace existed
+// to be counted. The creator needs its own user to create anything, and it must
+// not be one of the contenders: at the toy's `visible_to = ["admin"]` the
+// creator can see the event and a member cannot, so a fan-out including it is
+// answerable-and-CLEAN at the first world and the sweep stops there, reporting
+// no overfill over a system whose race is two tries away. So the shipped toy's
+// trace is five steps -- three create_users, the create_event, the fan-out --
+// and issue 1's figure is about the WALK's traces rather than a stage's. The
+// count is in world.Trace's own comment, beside the thing that builds it.
 func Width(limit int) int { return limit + 1 }

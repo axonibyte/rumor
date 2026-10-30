@@ -168,11 +168,21 @@ func TestAHeldQueryNothingDeclaresIsRefused(t *testing.T) {
 func TestAHandleTheSetupNeverObtainedIsRefused(t *testing.T) {
 	a := bindings.Action{Name: "take_seat", Args: []bindings.Arg{
 		{Name: "room", Source: bindings.ArgHandle, Of: "room"}}}
-	if _, err := arguments(a, "member_1", map[string]string{}, nil); err == nil {
-		t.Fatal("a handle argument with no id composed a request")
-	} else if !strings.Contains(err.Error(), "room") {
-		t.Errorf("the refusal does not name the kind: %v", err)
+	// IT IS A REFUSAL AND NOT AN ERROR, which is what lets a kind-removal probe
+	// report "this candidate did not reproduce" instead of aborting the whole
+	// reduction: the first drive of the shrink died on exactly that, dropping
+	// `create_event` and then failing the run rather than the candidate.
+	_, refused, err := argsFor(a, "member_1", map[string]string{}, nil)
+	if err != nil {
+		t.Fatalf("a missing handle id is a refusal, not an error: %v", err)
 	}
+	if refused == "" {
+		t.Fatal("a handle argument with no id composed a request")
+	}
+	if !strings.Contains(refused, "room") {
+		t.Errorf("the refusal does not name the kind: %v", refused)
+	}
+	t.Logf("PROOF %s", refused)
 }
 
 func rendered(cs []choice) [][]string {

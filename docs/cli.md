@@ -421,6 +421,30 @@ LONG they overlapped is a clock: `run: concurrency join_event try 3 overlapped
 by 30.466099ms` goes where the adapter's own timings go, because two attempts of
 one seed must print the same bytes on stdout and a duration never does.
 
+**And the stage's own finding is shrunk, like the walk's.** A race is reduced
+on worlds the project's `[[rollback]]` provider restores and VERIFIES, the same
+gate a walk's finding goes through, and the trace that comes back speaks the
+oracle's words rather than a statute's:
+
+```
+shrink: NOT REDUCED -- 5 step(s) is the shortest trace that reproduces; 8 candidate(s), each replayed on a verified clean world and each settled with no pending left open
+trace: seed 0, 5 step(s)
+trace:   1 admin_1 create_user []
+trace:   2 member_1 create_user []
+trace:   3 member_2 create_user []
+trace:   4 admin_1 create_event []
+trace:   5 member_1+member_2 join_event []
+trace: verdict join_event left the system holding 2 against its own limit of 1 ... by rumor.concurrency.overfill on join_event
+```
+
+The trace is the setup plus the fan-out as ONE step, whose actor field names
+every contender that raced. A candidate is replayed up to three times and must
+reproduce twice: a race that recurs only sometimes would otherwise be marked
+unstable on one probe and never shrunk at all, and a threshold below a majority
+would keep a reduction on a candidate that overfilled once by luck. `rumor run`
+promotes nothing — a promotion is a decision, and this verb is the report
+caller.
+
 **A stage that could not contend is told to you, not hidden.** A fan-out needs
 one world that N adapter processes can be pointed at — N adapters each starting
 a system of their own would contend on nothing — so the stage asks the project's

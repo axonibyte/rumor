@@ -1620,6 +1620,56 @@ that wrote a new word into a finding's value would be amending the vocabulary by
 assignment. The four findings keep their meanings and a stage's verdict stands
 beside them.
 
+**AND THE CONCURRENCY STAGE IS THE FIRST AUTHOR OF ONE.** Its oracle is named
+`rumor.concurrency.overfill` — not a rego path, because no rego produced it, so
+it cannot collide with a statute's `data.rumor.…` — and its verdict's subject is
+the contended action. What a candidate must still give is the DEFECT and not the
+DEGREE: the same oracle finding an overfill of the same action. The quantities a
+race produces move with it, two of two requests landing this time and two of
+three the next, and both are the same defect — that the check and the insert are
+not one step — so a comparison on the counts would read a recurrence as a
+different finding and mark a real race unstable.
+
+**THE STAGE'S TRACE IS THE SETUP PLUS THE FAN-OUT AS ONE STEP**, which is what
+the reductions are given: the bootstrap once per actor, the world the limit is
+set in, and the contention itself. On the shipped toy that is five steps —
+three `create_user`, the `create_event`, the fan-out — and the fan-out's actor
+field names every contender joined, because the field is one actor wide and a
+fan-out is N. Each setup step carries its own drawn values, so a replay composes
+every request from the step that describes it rather than re-deriving it: the
+request sent is the one the record says was sent.
+
+**THE WORLD IS CHECKPOINTED BEFORE THE STAGE CONTENDS IT**, and that is the one
+ordering difference from the shrink of a walk's finding. The walk drives its own
+adapter's system, so the provider's world is still clean when the shrink asks
+for a checkpoint afterwards; the concurrency stage contends IN the provider's
+world, so a checkpoint taken after it would checkpoint the overfill — and every
+candidate restored to that would start with the race already run.
+
+**A STAGE AND A REPLAY TAKE ONE PATH THROUGH THE STAGE.** The replay runs
+whatever step list it is handed against a freshly opened set of sessions; what
+differs between the original run and a candidate is the LIST, which is data
+rather than a branch. So a setup step the system declines means two things to
+the two callers and the code says both: to the original run it is a
+could-not-run, because the stage was building its own world and the system said
+no, and to a replay it is the candidate not reproducing, because a reduction
+that removed a step the setup needed is supposed to fail that way. Returning an
+error for both aborted the whole reduction on its first kind-removal probe; the
+refusal travels separately now and the reason is kept either way.
+
+**AND THE THRESHOLD IS A MAJORITY OF MORE THAN ONE PROBE, chosen from the two
+ways the gate can be wrong rather than from a measured rate.** A reproduction
+rate measured at one load is not a rate: the same fan-out's overlap read
+30.448ms and then 212.909ms on one machine against a window the toy holds for
+25ms. What does not depend on the rate is the cost of each error. Too low a
+threshold accepts a candidate that overfilled once by luck, and a reduction kept
+on it reports — and in another caller promotes — a trace whose own replay would
+usually find nothing. Too high refuses a real race that recurs sometimes, so the
+finding is marked unstable and not shrunk while the stage still reports the
+overfill: the product loses a minimal trace and keeps the finding. The second is
+the recoverable direction, so the threshold is a majority, and the smallest n
+that admits a majority while letting one probe fail is three. Two of three.
+
 **SO THREE READERS STOP SPEAKING THE STATUTE'S WORDS OVER IT.** A trace prints
 the oracle's sentence and names the oracle, instead of "no finding" and "fired
 (none recorded)" — which is what a trace that reproduced a real race read

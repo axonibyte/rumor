@@ -45,6 +45,11 @@ type Try struct {
 	// session each attempt was carried by against the session the plan chose.
 	// Render prints none of this -- the attempts carry a clock.
 	Attempts []Attempt
+	// Steps are the trace this try ran, in the shape a shrink reduces: the
+	// bootstrap, the world, and the fan-out as one step. It is what the
+	// stage's own verdict is handed to internal/shrink with.
+	Steps []schedule.Step
+
 	// Measured is the clock-derived half, for stderr only: Overlapped is the
 	// clock-free fact and rides on the hashed stream.
 	Measured   string
@@ -223,155 +228,62 @@ func contend(b bindings.Bindings, sub Subject, host *wire.Session,
 	}
 	v.Setup = chain.Names()
 
-	limitAction, _ := actionNamed(b, sub.LimitAction)
-	limitArg, _ := argNamed(limitAction, sub.LimitArg)
-	limit, err := limitValue(sub, limitArg)
+	w, err := newWorld(b, sub, host, open, actors, seed)
 	if err != nil {
 		return v, err
 	}
-	width := Width(limit)
+	defer w.close()
+	v.Plan = w.plan
+	hostActor := HostActor(actors)
 
-	// THE VENIRE HAS TO HOLD THE HOST AND EVERY CONTENDER, and a short one is
-	// refused by name rather than contended with a repeated actor. Two requests
-	// from one actor have the second refused by the precondition, which would
-	// lower the acceptances for a reason that is not the limit -- and the
-	// verdict would read as a system that held its limit.
-	if len(actors) < width+1 {
-		return v, fmt.Errorf("contending %s needs a host and %d contender(s) -- its limit is %d "+
-			"and a fan-out is limit plus one -- and the platform's venire declares %d actor(s) "+
-			"(%s): two requests from one actor have the second refused by the precondition, which "+
-			"would lower the acceptances for a reason that is not the limit",
-			sub.Action.Name, width, limit, len(actors), strings.Join(actors, ", "))
-	}
-	hostActor, contenders := actors[0], actors[1:width+1]
-
-	plan, err := PlanFor(seed, width)
-	if err != nil {
-		return v, err
-	}
-	v.Plan = plan
-
-	held, err := observationNamed(b, sub.Held)
-	if err != nil {
-		return v, fmt.Errorf("contending %s: %w", sub.Action.Name, err)
-	}
-
-	hostTokens := schedule.NewSessions(host)
-	type party struct {
-		actor  string
-		sess   *wire.Session
-		tokens *schedule.Sessions
-	}
-	parties := make([]party, 0, width)
-	for i, actor := range contenders {
-		s, oerr := open()
-		if oerr != nil {
-			return v, fmt.Errorf("opening contender %d of %d for %s: %w",
-				i+1, width, sub.Action.Name, oerr)
-		}
-		defer func() { _ = s.Close() }()
-		parties = append(parties, party{actor: actor, sess: s, tokens: schedule.NewSessions(s)})
+	// THE BOOTSTRAP RUNS ONCE AND THE SWEEP DOES NOT REPEAT IT, which is a fact
+	// about what it makes rather than a convenience: an actor exists after its
+	// own `create_user`, and running it again is answered with the refusal
+	// cmd/toy gives a name already taken. So it is executed here, through the
+	// SAME runner as everything else, with only the bootstrap's steps in the
+	// list -- the step list is data and the runner has no branch for this.
+	//
+	// AND IT IS STILL IN THE TRACE THE SHRINK IS HANDED, because a replay runs
+	// against a world RESTORED to clean, where nothing has created anything. A
+	// trace that omitted the bootstrap would be a trace that cannot be replayed
+	// -- which is the one thing the record exists to be.
+	boot := w.Trace(Chain{PerActor: chain.PerActor}, nil, hostActor)
+	boot = boot[:len(boot)-1] // the builder always ends with the fan-out; not yet
+	switch _, fanned, refused, rerr := w.run(boot); {
+	case rerr != nil:
+		return v, fmt.Errorf("bootstrapping %s: %w", sub.Action.Name, rerr)
+	case refused != "":
+		return v, fmt.Errorf("bootstrapping %s: %s", sub.Action.Name, refused)
+	case fanned:
+		return v, fmt.Errorf("the bootstrap list held a fan-out of %s, which would spend the "+
+			"room before the sweep released anything", sub.Action.Name)
 	}
 
-	// THE BOOTSTRAP RUNS ON THE SESSION ITS ACTOR WILL RACE FROM, once each.
-	// It is outside the sweep because what it makes persists: an actor exists
-	// after its first `create_user`, and running it again would be answered
-	// with the refusal cmd/toy gives a name already taken.
-	for _, a := range chain.PerActor {
-		if _, serr := step(a, hostActor, host, hostTokens, nil, nil); serr != nil {
-			return v, fmt.Errorf("bootstrapping the host %s: %w", hostActor, serr)
-		}
-	}
-	for _, p := range parties {
-		for _, a := range chain.PerActor {
-			if _, serr := step(a, p.actor, p.sess, p.tokens, nil, nil); serr != nil {
-				return v, fmt.Errorf("bootstrapping the contender %s: %w", p.actor, serr)
-			}
-		}
-	}
-
-	for _, choice := range sweep(chain.Once, sub, limit) {
+	for _, c := range sweep(chain.Once, sub, w.limit) {
 		// THE WORLD IS BUILT FRESH FOR EVERY TRY, which is what makes the
 		// sweep sound rather than a retry: each try creates its own subject to
 		// contend, so a vacuous one leaves nothing behind for the next -- the
 		// room is per-thing, and the precondition that bars a second request
 		// from one actor is per-thing too.
-		ids := map[string]string{}
-		for _, a := range chain.Once {
-			got, serr := step(a, hostActor, host, hostTokens, ids, choice)
-			if serr != nil {
-				return v, fmt.Errorf("building the world for %s: %w", sub.Action.Name, serr)
-			}
-			for kind, id := range got {
-				ids[kind] = id
-			}
+		//
+		// THE TRACE IS BUILT WHOLE AND RUN FROM ITS WORLD STEPS ON, so the
+		// steps the record carries are the steps that ran: the bootstrap's
+		// prefix is in the trace and was run above, and what this try executes
+		// is the rest of the same list.
+		full := w.Trace(chain, c, hostActor)
+		t, fanned, refused, rerr := w.run(full[len(boot):])
+		if rerr != nil {
+			return v, rerr
 		}
-
-		before, oerr := observe(host, held, ids)
-		if oerr != nil {
-			return v, fmt.Errorf("reading %s before the fan-out: %w", sub.Held, oerr)
+		if refused != "" {
+			return v, fmt.Errorf("building the world for %s: %s", sub.Action.Name, refused)
 		}
-
-		reqs := make([]wire.ExecuteRequest, 0, width)
-		sessions := make([]*wire.Session, 0, width)
-		for _, p := range parties {
-			args, aerr := arguments(sub.Action, p.actor, ids, choice)
-			if aerr != nil {
-				return v, fmt.Errorf("composing %s for %s: %w", sub.Action.Name, p.actor, aerr)
-			}
-			tok, terr := p.tokens.Token(p.actor, sub.Action.Context)
-			if terr != nil {
-				return v, fmt.Errorf("a session for %s in context %q: %w",
-					p.actor, sub.Action.Context, terr)
-			}
-			reqs = append(reqs, wire.ExecuteRequest{Action: sub.Action.Name, Token: tok, Args: args})
-			sessions = append(sessions, p.sess)
+		if !fanned {
+			return v, fmt.Errorf("the trace built for %s holds no fan-out step, so this try "+
+				"contended nothing", sub.Action.Name)
 		}
-
-		atts, ferr := Fan(plan, sessions, reqs)
-		if ferr != nil {
-			return v, ferr
-		}
-		// A FAN-OUT THAT DID NOT OVERLAP IS A COULD-NOT-RUN AND NOT A TRY TO
-		// SWEEP PAST. It is not a fact about the project's choices, which is
-		// what the sweep varies; it is this run having exercised the
-		// sequential path, where a correct system and one with no check at all
-		// answer identically. Sweeping on would send more requests against the
-		// same unanswerable question.
-		if !Overlapped(atts) {
-			return v, fmt.Errorf("the %d requests of %s did not overlap, so this run exercised "+
-				"the sequential path and a check-then-act defect could not be reached by it: a "+
-				"non-overlapping fan-out is a could-not-run, because a correct system and one "+
-				"with no check at all answer it the same way", width, sub.Action.Name)
-		}
-		accepted := 0
-		for _, att := range atts {
-			if att.Fault != "" {
-				return v, fmt.Errorf("session %d faulted, so the fan-out never reached the "+
-					"system and its count is not a measurement: %s", att.Session, att.Fault)
-			}
-			// ACCEPTANCE IS THE PROJECT's OWN DECLARATION, read through the
-			// walk's one reading of it: `[[action]].response` is an equality
-			// contract for exactly this question, and a 2xx range here would
-			// be a second answer about one transport that could disagree with
-			// the first.
-			if _, refused := schedule.Refusal(sub.Action, att.Response); !refused {
-				accepted++
-			}
-		}
-		observed, oerr := observe(host, held, ids)
-		if oerr != nil {
-			return v, fmt.Errorf("reading %s after the fan-out: %w", sub.Held, oerr)
-		}
-
-		t := Try{
-			Choices:    choice.render(),
-			Attempts:   atts,
-			Overlapped: true,
-			Measured:   OverlapMeasured(atts),
-			Contention: Contention{Action: sub.Action.Name, Limit: limit, Before: before,
-				Accepted: accepted, Observed: observed, Width: width},
-		}
+		t.Choices = c.render()
+		t.Steps = full
 		v.Tries = append(v.Tries, t)
 		if t.Contention.Vacuous() == "" {
 			return v, nil
@@ -551,151 +463,4 @@ func asInt(v any) (int, bool) {
 		return int(n), true
 	}
 	return 0, false
-}
-
-// step executes one setup action and returns the ids its answer carried.
-//
-// A SETUP STEP THE SYSTEM REFUSED IS A COULD-NOT-RUN, named: the stage was
-// building a world and the system declined, so whatever the fan-out went on to
-// observe would be about a world the stage does not know the shape of. It is
-// the reading internal/fuzz's setup takes, for the same reason.
-func step(a bindings.Action, actor string, sess *wire.Session, tokens *schedule.Sessions,
-	ids map[string]string, c choice) (map[string]string, error) {
-
-	args, err := arguments(a, actor, ids, c)
-	if err != nil {
-		return nil, err
-	}
-	tok, err := tokens.Token(actor, a.Context)
-	if err != nil {
-		return nil, fmt.Errorf("a session for %s in context %q: %w", actor, a.Context, err)
-	}
-	resp, err := sess.Execute(wire.ExecuteRequest{Action: a.Name, Token: tok, Args: args})
-	if err != nil {
-		return nil, fmt.Errorf("%s as %s: %w", a.Name, actor, err)
-	}
-	if why, refused := schedule.Refusal(a, resp); refused {
-		return nil, fmt.Errorf("the setup step %s was refused, so the world the fan-out would "+
-			"contend in was never built: %s", a.Name, why)
-	}
-	got := map[string]string{}
-	for kind, id := range resp.IDs {
-		got[kind] = fmt.Sprint(id)
-	}
-	for _, kind := range a.Creates {
-		if _, ok := got[kind]; !ok {
-			return nil, fmt.Errorf("%s declares it creates %q and the system's answer carried no "+
-				"such id: the fan-out would name a thing it never obtained", a.Name, kind)
-		}
-	}
-	return got, nil
-}
-
-// arguments composes one request's `args` from the declaration, the ids the
-// setup obtained and the try's own choices.
-//
-// IT IS NOT schedule.ExecuteArgs, AND THE DIFFERENCE IS THE HANDLE. The walk
-// resolves a handle argument through the run-local handle TABLE, because a walk
-// is a sequence of steps whose handles belong to actors; this stage has no walk
-// and no table -- it has the ids its own setup just obtained, keyed by the kind
-// the creating action declared. internal/fuzz composes the same way and for the
-// same reason.
-func arguments(a bindings.Action, actor string, ids map[string]string, c choice) (map[string]any, error) {
-	args := make(map[string]any, len(a.Args))
-	for _, arg := range a.Args {
-		switch arg.Source {
-		case bindings.ArgHandle:
-			id, ok := ids[arg.Of]
-			if !ok {
-				return nil, fmt.Errorf("action %q takes a handle of kind %q and the setup holds "+
-					"no id for one: the request would carry a name the system never minted",
-					a.Name, arg.Of)
-			}
-			args[arg.Name] = id
-		case bindings.ArgLiteral:
-			args[arg.Name] = arg.Value
-		case bindings.ArgDraw:
-			if v, ok := c.valueFor(a.Name, arg.Name); ok {
-				args[arg.Name] = v
-				continue
-			}
-			if len(arg.From) == 0 {
-				return nil, fmt.Errorf("action %q's argument %q draws from an empty list",
-					a.Name, arg.Name)
-			}
-			// THE FIRST DECLARED VALUE, which is Run's rule for everything the
-			// sweep is not moving: the subject's own draws included, so every
-			// contender sends the same request and the fan-out is a contention
-			// on one thing rather than N requests that differ.
-			args[arg.Name] = arg.From[0]
-		case bindings.ArgActor:
-			if actor == "" {
-				return nil, fmt.Errorf("action %q declares argument %q as the acting actor's "+
-					"name and no actor was given", a.Name, arg.Name)
-			}
-			args[arg.Name] = actor
-		default:
-			return nil, fmt.Errorf("action %q's argument %q declares source %q, which is not one "+
-				"of %v", a.Name, arg.Name, arg.Source, bindings.ArgSources)
-		}
-	}
-	return args, nil
-}
-
-// observationNamed is the declared query `contended.held` names.
-//
-// REFUSED BY NAME WHEN IT IS NOT DECLARED, and the refusal lists what is: the
-// verdict rests on this read-back, so a stage that went on without it would be
-// judging the overfill clause on the acceptances alone -- a claim about
-// RESPONSES, which is the reading rook corrected at coop r8/45.
-func observationNamed(b bindings.Bindings, name string) (bindings.Observation, error) {
-	var names []string
-	for _, o := range b.Observations {
-		if o.Name == name {
-			return o, nil
-		}
-		names = append(names, o.Name)
-	}
-	sort.Strings(names)
-	return bindings.Observation{}, fmt.Errorf("`contended.held` names the query %q and the "+
-		"project declares no such observation (it declares %v): the verdict rests on what the "+
-		"system HOLDS, so there is nothing to read it with", name, names)
-}
-
-// observe reads the held quantity back through the declared observation.
-//
-// THE ARGUMENT NAMES ARE HANDLE KINDS, which is the walk's own rule rather than
-// a convention invented here: observeHandles matches a declared argument name
-// against the KIND of a handle the step touched (internal/schedule/walk.go), so
-// `store_event_count`'s `event` takes the event. The ids this stage holds are
-// keyed by kind for the same reason, so the pairing is direct -- and an
-// argument whose kind the setup never minted is refused by name rather than
-// sent empty.
-func observe(sess *wire.Session, decl bindings.Observation, ids map[string]string) (int, error) {
-	var args map[string]any
-	if len(decl.Args) > 0 {
-		args = make(map[string]any, len(decl.Args))
-		for _, name := range decl.Args {
-			id, ok := ids[name]
-			if !ok {
-				return 0, fmt.Errorf("the observation %q declares an argument %q and the setup "+
-					"minted no %q: the read-back would be about nothing", decl.Name, name, name)
-			}
-			args[name] = id
-		}
-	}
-	resp, err := sess.Observe(wire.ObserveRequest{
-		Query:  decl.Name,
-		Source: decl.Source,
-		Args:   args,
-	})
-	if err != nil {
-		return 0, fmt.Errorf("observing %s: %w", decl.Name, err)
-	}
-	n, ok := asInt(resp.Value)
-	if !ok {
-		return 0, fmt.Errorf("the observation %q answered %v (%T), which is not a count: the "+
-			"overfill clause compares it against a limit", decl.Name, resp.Value, resp.Value)
-	}
-	return n, nil
 }

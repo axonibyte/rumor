@@ -18,6 +18,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/quiesce"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
+	"forge.axonibyte.com/axonibyte/rumor/internal/shrink"
 	"forge.axonibyte.com/axonibyte/rumor/internal/stage"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 
@@ -792,6 +793,25 @@ func concurrencyStage(ctx context.Context, dir string, prep platform.Report,
 	}
 	defer func() { _ = host.Close() }()
 
+	// THE CHECKPOINT IS TAKEN BEFORE THE STAGE CONTENDS ANYTHING, which is the
+	// one ordering difference from the shrink of a walk's finding. The walk
+	// drives its own adapter's system, so the provider's world is still clean
+	// when shrinkFound asks for a checkpoint afterwards; this stage contends IN
+	// the provider's world, so a checkpoint taken after it would checkpoint the
+	// overfill. A candidate restored to that would start with the race already
+	// run.
+	//
+	// IT IS TAKEN EVEN WHEN NOTHING IS FOUND, because what it costs is one call
+	// and what it buys is that the decision to shrink is made on the finding
+	// rather than on whether a checkpoint happens to exist.
+	cp, cerr := prov.Checkpoint(ctx)
+	if cerr != nil {
+		_, _ = fmt.Fprintf(stderr, "run: could not run: checkpointing the clean world of %q "+
+			"before contending it: %v\n", name, cerr)
+		return 2
+	}
+	defer func() { _ = prov.Discard(ctx, cp) }()
+
 	rep, rerr := concurrency.Run(b, host, open, actors, seed)
 	// THE REPORT IS PRINTED EVEN WHEN THE STAGE COULD NOT FINISH, for the
 	// walk's reason: the tries it did release are what a reader needs to see
@@ -815,8 +835,121 @@ func concurrencyStage(ctx context.Context, dir string, prep platform.Report,
 		_, _ = fmt.Fprintf(stderr, "run: could not run: %v\n", rerr)
 		return 2
 	}
-	if len(rep.Findings()) > 0 {
-		return findingStatus
+	if len(rep.Findings()) == 0 {
+		return 0
 	}
-	return 0
+
+	// AND THE FINDING IS SHRUNK, which is what makes D8's first half readable
+	// at all: a shrunk race replaying to the same verdict. The walk's finding
+	// has gone through this since R6.4; a stage's had no `want` to hand the
+	// shrinker until fable widened the type (coop rumor/1521) and no way to
+	// carry its own verdict on a candidate until the head before this one.
+	//
+	// A SHRINK REFUSAL DOES NOT OVERTURN THE FINDING, which is shrinkFound's
+	// own decision and for its reason: the project's rollback declarations
+	// being wrong does not make a found race unfound, and a gate reading the
+	// refusal would lose a finding it exists to catch. The reason prints and
+	// the status stays the finding's.
+	for _, v := range rep.Verdicts {
+		t, ok := v.Answered()
+		if !ok || v.Finding() == "" {
+			continue
+		}
+		sub, serr := subjectNamed(b, v.Subject)
+		if serr != nil {
+			_, _ = fmt.Fprintf(stderr, "run: could not shrink the contention: %v\n", serr)
+			continue
+		}
+		res, sherr := shrink.Shrink(ctx, shrink.Request{
+			Seed:  seed,
+			Steps: t.Steps,
+			Kinds: kindsDrawn(t.Steps),
+			// THE STAGE's OWN VERDICT IS THE SUBJECT, named by its oracle and
+			// its action: "two oracles finding the same word are not the same
+			// finding" (rook, coop rumor/1522).
+			Want:       concurrency.Overfill{Action: v.Subject},
+			Provider:   prov,
+			Checkpoint: cp,
+			// NOTHING IS PROMOTED, for the walk's reason exactly: a promotion
+			// is a decision, and `rumor run` is the report caller. Driving it
+			// the other way appended a row to a project's checked-in
+			// regression suite as a side effect of a plain run.
+			SeedsFile: "",
+			Replay: func(c context.Context, steps int, without []string) (shrink.Candidate, error) {
+				// THE ADAPTER IS RE-OPENED AGAINST THE RESTORED WORLD, whose
+				// address the restore has rebound: a session opened once and
+				// reused would be talking to a world that no longer exists.
+				if err := os.Setenv(ae.AddrEnv(), at.Addr()); err != nil {
+					return shrink.Candidate{}, fmt.Errorf("naming the restored world in %s: %w",
+						ae.AddrEnv(), err)
+				}
+				fresh, oerr := open()
+				if oerr != nil {
+					return shrink.Candidate{}, fmt.Errorf("re-opening the host on the restored "+
+						"world: %w", oerr)
+				}
+				defer func() { _ = fresh.Close() }()
+				return concurrency.Replay(b, sub, fresh, open, actors, seed,
+					cutTrace(t.Steps, steps, without))
+			},
+		})
+		if sherr != nil {
+			_, _ = fmt.Fprintf(stderr, "run: could not shrink the contention of %s: %v\n",
+				v.Subject, sherr)
+			continue
+		}
+		if _, werr := io.WriteString(stdout, res.Render()); werr != nil {
+			_, _ = fmt.Fprintf(stderr, "run: writing the contention's shrink: %v\n", werr)
+			return 2
+		}
+	}
+	return findingStatus
+}
+
+// cutTrace is the reduction internal/shrink asks for, applied to a stage's
+// trace: the first `steps` steps with every kind in `without` dropped.
+//
+// IT IS DONE HERE AND NOT IN THE STAGE because it is the SHRINKER's two
+// reductions expressed over a step list -- a length prefix and a kind removal
+// -- and the stage's business is running whatever list it is handed. The
+// positions are the steps' own and are not renumbered: a shrunk trace has gaps
+// where a kind was taken out of the middle, and renumbering would produce a
+// trace that reads as contiguous and replays as something else.
+func cutTrace(all []schedule.Step, steps int, without []string) []schedule.Step {
+	drop := map[string]bool{}
+	for _, k := range without {
+		drop[k] = true
+	}
+	var out []schedule.Step
+	for i, s := range all {
+		if i >= steps {
+			break
+		}
+		if drop[s.Kind] {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// subjectNamed is the declared subject a verdict is about, re-derived for the
+// replay.
+//
+// IT IS RE-DERIVED RATHER THAN CARRIED so the Verdict stays a record of what
+// happened: a Subject is the project's declaration and Subjects() is the one
+// reading of it, and a copy on the verdict could disagree with the bindings the
+// replay is composed from.
+func subjectNamed(b bindings.Bindings, action string) (concurrency.Subject, error) {
+	subs, err := concurrency.Subjects(b)
+	if err != nil {
+		return concurrency.Subject{}, err
+	}
+	for _, s := range subs {
+		if s.Action.Name == action {
+			return s, nil
+		}
+	}
+	return concurrency.Subject{}, fmt.Errorf("the stage contended %q and the project declares no "+
+		"such contended action, so its trace cannot be replayed", action)
 }
