@@ -1483,6 +1483,38 @@ would be N identical requests, and a creating action answers the second of
 those with a refusal, which would manufacture a setup failure instead of a
 world.
 
+**THE STAGE'S WORLDS ARE ENUMERATED AND NOT DRAWN.** A seed chooses the plan,
+and nothing else about a contention. Drawing the setup would make the stage's
+own reachability a lottery, and the shipped toy measures how bad a one: two of
+the three `visible_to` subsets `create_event` draws from cannot be contended at
+all, because a would-be joiner's role is relative to the event — anyone who is
+neither its admin nor already an attendee is a `guest` — so the subsets that
+omit `guest` answer every join 404 before the capacity check is reached. A
+stage that drew once would report "the system was never asked to choose between
+them" two times in three over a system whose race is right there. So the sweep
+is the first declared value of every drawn argument, then ONE COORDINATE MOVED
+AT A TIME, stopping at the first world the clause can be answered in. A product
+over the declared lists would be exponential and every point of it costs a
+creation and a fan-out; a coordinate sweep is linear and reaches every value a
+project declared. A contention needing two choices moved together is a world
+this sweep cannot build, and it says so by reporting every try's vacuity rather
+than by passing quietly. The limit is not swept: the width is derived from it,
+and the sessions are opened before the sweep begins.
+
+**WHAT WAS ALREADY TAKEN IS READ BACK, NOT ASSUMED.** The stage builds each
+try's world itself, so it could have passed zero; instead it reads the held
+quantity through the declared query BEFORE releasing the barrier and again
+after. A setup that left something behind — a world not as clean as the stage
+believed — then shows up as a room the verdict is computed from rather than as
+an overfill nobody can explain.
+
+**AND ACCEPTANCE HAS ONE READING IN THIS PROJECT.** `[[action]].response` is
+the project's equality contract for what the system taking an action looks
+like, and the walk has read it since R8.1. A fan-out counting 2xx answers would
+be a second answer, about one transport, to a question the bindings already
+answer — and the two could then disagree about the same response. So the stage
+calls the walk's reading rather than carrying its own.
+
 ## A shrink's subject is the stage's own verdict
 
 **EVERY REDUCER TOOK `want engine.Finding`** — `Once`, `Bisect` and

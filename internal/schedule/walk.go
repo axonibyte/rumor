@@ -1770,7 +1770,13 @@ type performed struct {
 // action without it is accepted unconditionally -- the behavior every project
 // had before this commit. The arm that would close it is `rumor validate`'s
 // and it is not taken here.
-func refusal(a bindings.Action, resp wire.ExecuteResponse) (string, bool) {
+// IT IS EXPORTED BECAUSE THE SECOND READER OF ACCEPTANCE ARRIVED (R8.2). A
+// fan-out has to count how many of its requests the system TOOK, and that
+// question has exactly one right answer in this project -- the one above. A
+// 2xx range in internal/concurrency would have been a second answer, about one
+// transport, to a question the bindings already answer, and the two could then
+// disagree about the same response. So the stage calls this.
+func Refusal(a bindings.Action, resp wire.ExecuteResponse) (string, bool) {
 	if len(a.Response) == 0 {
 		return "", false
 	}
@@ -1927,7 +1933,7 @@ func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
 	// claim, and the mutant dies in tests/run.
 	out.Emits = len(a.Emits) > 0
 
-	if why, refused := refusal(a, resp); refused {
+	if why, refused := Refusal(a, resp); refused {
 		out.Refused = true
 		step.Refused = why
 		return out, nil
