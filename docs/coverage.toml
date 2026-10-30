@@ -120,6 +120,18 @@ path = "internal/stage/*.go"
 docs = ["docs/contract.md", "docs/design.md"]
 
 [[entry]]
+# The fan-out: two or more requests in flight against ONE system, which is the
+# only way a check-then-act defect can be reached. Mapped to design.md because
+# what it carries is a reading about the SHAPE of a concurrent attempt -- N
+# sessions and not N outstanding requests on one, and N adapter processes that
+# must be pointed at one world or they contend on nothing -- and both halves are
+# consequences of decisions design.md and the wire contract already made. No
+# contract.md entry: this package declares no schema and adds no wire request;
+# it uses `[adapter].env` and TOY_ADDR exactly as they are already specified.
+path = "internal/concurrency/*.go"
+docs = ["docs/design.md"]
+
+[[entry]]
 # THE HOSTILE CORPUS (R8.1, issue 108). Mapped to design.md alone, and the
 # reason is that this package DECLARES NOTHING: it reads `[[action.args]]`'s
 # `source`, `from`, `of` and `value`, all of which contract.md already

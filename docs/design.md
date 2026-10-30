@@ -1330,3 +1330,41 @@ way the stages were. Setting it moves no recorded figure today because no
 project in the tree declares one — measured before it was wired, which is the
 control for that line — and the profile's table still wins over it, so a
 profile naming a kind keeps its weight.
+
+## A fan-out is N processes against one world
+
+**TWO REQUESTS IN FLIGHT IS THE ONLY WAY A CHECK-THEN-ACT DEFECT CAN BE
+REACHED**, and the walk cannot do it: a `wire.Session` is not safe for
+concurrent use, deliberately, because "the protocol says `where N sessions are
+wanted, N processes` rather than N outstanding requests on one ... the engine
+owns the timing". So the concurrency stage is a SET of sessions, each driven by
+one goroutine, and no session is ever touched by two.
+
+**AND THE N PROCESSES MUST SHARE ONE WORLD, WHICH IS SILENT WHEN WRONG.**
+`cmd/toy-adapter` has two modes: it takes an address from `TOY_ADDR`, and when
+that is absent it starts a toy of its own — the mode that makes `rumor
+validate` answer with no engine at all. Two adapters spawned carelessly
+therefore contend on NOTHING: two requests against two servers, both
+succeeding, and a capacity race reported as absent by a run that never put two
+callers in one world. The provider owns the process and the adapter is pointed
+at it, which is what `[adapter].env` and the provider's own `Addr()` already
+exist for — `Addr` being deliberately off the rollback trait, since "the five
+verbs are about putting a world back, and where a system under test listens is
+not one of them".
+
+**SO THE ARM PROVES ONE WORLD BEFORE IT PROVES ANY TIMING.** The second actor
+joins the event the FIRST actor created; against two toys that join is a 404,
+because the second adapter's world has no such event. Measured through two
+adapters on one provider-owned toy: both joins accepted, overlapping by 28.4ms
+with each request in flight about 29ms.
+
+**AND "CONCURRENT" IS A CLAIM THAT CAN BE FALSE, so every attempt carries its
+span.** A fan-out whose requests happened to serialize — a slow spawn, a busy
+box, a barrier released late — would exercise the sequential path and report
+the race as absent, which is indistinguishable from a system that has none. The
+spans are what let a run be REFUSED rather than believed, and the barrier is a
+closed channel rather than a sleep so the release is one event instead of a
+function of the box's load. The spans are taken client-side, around the
+exchange, so two requests count as in flight together whether the system
+interleaves them or serializes them under a held lock: that keeps the mechanism
+arm independent of the defect it exists to reach.

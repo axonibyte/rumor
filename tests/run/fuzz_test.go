@@ -2,15 +2,19 @@ package run_test
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/concurrency"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/fuzz"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
+	"forge.axonibyte.com/axonibyte/rumor/internal/rollback/toyrestart"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
@@ -259,4 +263,190 @@ func TestTheFuzzStageRefusesToClearASystemThatNeverAnsweredIt(t *testing.T) {
 	}
 
 	t.Logf("PROOF %d case(s) sent, %d reached, refused with: %v", len(rep.Results), rep.Reached(), rerr)
+}
+
+// THE FAN-OUT MECHANISM, AGAINST ONE PROVIDER-OWNED TOY AND TWO ADAPTERS.
+//
+// 109's whole premise is that two requests can be in flight against ONE system
+// at once, and two things have to be true for that which are easy to get wrong
+// and silent when wrong. The wire allows one outstanding request per process,
+// so a fan-out is N SESSIONS; and cmd/toy-adapter starts a toy of its OWN when
+// TOY_ADDR is absent, so two adapters spawned carelessly contend on nothing --
+// two requests, two worlds, both succeeding, and a capacity race reported as
+// absent.
+//
+// SO THIS ARM PROVES ONE WORLD BEFORE IT PROVES ANY TIMING. The second actor
+// joins the event the FIRST actor created: against two toys that join is a 404,
+// because the second adapter's world has no such event.
+//
+// AND IT DOES NOT DEPEND ON THE DEFECT. The spans are measured around Execute,
+// client side, so two requests are "in flight together" whether the server
+// interleaves them or serializes them under a held lock -- which is what keeps
+// this arm about the mechanism and leaves the race to the oracle.
+func TestTheFanOutReachesOneWorldThroughTwoAdapters(t *testing.T) {
+	ctx := context.Background()
+	dir := filepath.Join("..", "..", "examples", "toy")
+
+	prep, err := platform.Load(filepath.Join(dir, "platform.toml"), decl.TOML)
+	if err != nil || !prep.OK() {
+		t.Fatalf("platform: %v %v", err, prep.Refusals)
+	}
+	actors, err := schedule.Actors(prep.Platform.Venire)
+	if err != nil {
+		t.Fatalf("Actors: %v", err)
+	}
+	if len(actors) < 2 {
+		t.Fatalf("the toy declares %d actor(s); a fan-out needs two distinct ones", len(actors))
+	}
+
+	// ONE TOY, OWNED BY THE PROVIDER, which is the mode `[adapter].env` and
+	// TOY_ADDR exist for. tests/shrink opens it the same way.
+	prov, err := rollback.Open(toyrestart.Name, rollback.Options{Dir: dir})
+	if err != nil {
+		t.Fatalf("opening %s: %v", toyrestart.Name, err)
+	}
+	if r, ok := prov.(interface{ RemoveWorld() }); ok {
+		defer r.RemoveWorld()
+	} else if c, ok := prov.(interface{ Close() }); ok {
+		defer c.Close()
+	}
+	at, ok := prov.(interface{ Addr() string })
+	if !ok {
+		t.Fatalf("%s does not expose the address it bound, so the adapters cannot be pointed at "+
+			"one world", toyrestart.Name)
+	}
+	// t.Setenv AND NOT os.Setenv, which cost the whole suite once: a package's
+	// tests share one process, so an os.Setenv here leaked TOY_ADDR into every
+	// later test in tests/run, and once this arm's RemoveWorld had stopped the
+	// toy they all dialled a dead address -- eleven arms failing with
+	// "connection refused" against a world this one had removed. t.Setenv
+	// restores the previous value when the test ends. Found by running the
+	// WHOLE suite; `-run` over this arm alone passed and showed nothing.
+	t.Setenv("TOY_ADDR", at.Addr())
+
+	open := func() (*wire.Session, *schedule.Sessions) {
+		s, oerr := wire.Open(ctx, wire.Spawn{
+			Command: prep.Platform.Adapter.Command,
+			Cwd:     dir,
+			Env:     prep.Platform.Adapter.Env,
+		}, 30*time.Second)
+		if oerr != nil {
+			t.Fatalf("Open: %v", oerr)
+		}
+		return s, schedule.NewSessions(s)
+	}
+	sessA, tokA := open()
+	defer func() { _ = sessA.Close() }()
+	sessB, tokB := open()
+	defer func() { _ = sessB.Close() }()
+
+	do := func(s *wire.Session, toks *schedule.Sessions, actor, action, context string,
+		args map[string]any) wire.ExecuteResponse {
+		t.Helper()
+		tok, terr := toks.Token(actor, context)
+		if terr != nil {
+			t.Fatalf("token for %s/%s: %v", actor, context, terr)
+		}
+		resp, rerr := s.Execute(wire.ExecuteRequest{Action: action, Token: tok, Args: args})
+		if rerr != nil {
+			t.Fatalf("%s as %s: %v", action, actor, rerr)
+		}
+		return resp
+	}
+
+	// Each actor registers on its OWN session, then the first creates an event
+	// with room for both joins.
+	do(sessA, tokA, actors[0], "create_user", "none", map[string]any{"name": actors[0]})
+	do(sessB, tokB, actors[1], "create_user", "none", map[string]any{"name": actors[1]})
+	ev := do(sessA, tokA, actors[0], "create_event", "api", map[string]any{
+		"title": "Standup", "capacity": 3, "visible_to": []any{"admin", "member", "guest"},
+	})
+	id, hasID := ev.IDs["event"]
+	if !hasID {
+		t.Fatalf("create_event carried no event id, so there is nothing for the second adapter "+
+			"to find: %v", ev.Response)
+	}
+	eventID := fmt.Sprint(id)
+
+	// THE FAN-OUT. Both joins are legal against a capacity of 3, so nothing
+	// here rests on the race.
+	reqA, rerr := joinReq(tokA, actors[0], eventID)
+	if rerr != nil {
+		t.Fatalf("join request for %s: %v", actors[0], rerr)
+	}
+	reqB, rerr := joinReq(tokB, actors[1], eventID)
+	if rerr != nil {
+		t.Fatalf("join request for %s: %v", actors[1], rerr)
+	}
+	attempts, ferr := concurrency.Fan([]*wire.Session{sessA, sessB},
+		[]wire.ExecuteRequest{reqA, reqB})
+	if ferr != nil {
+		t.Fatalf("Fan: %v", ferr)
+	}
+
+	// ONE WORLD: the second adapter found the first's event. Against two toys
+	// this is a 404.
+	for _, a := range attempts {
+		if a.Fault != "" {
+			t.Fatalf("session %d faulted, so the fan-out never reached the system: %s",
+				a.Session, a.Fault)
+		}
+		status, errText := statusOf(t, a.Response)
+		if status == 404 {
+			t.Fatalf("session %d was told %q: the adapters are not sharing a world, so a "+
+				"fan-out would contend on nothing and a race would read as absent",
+				a.Session, errText)
+		}
+		if status < 200 || status > 299 {
+			t.Fatalf("session %d answered %d (%s); both joins are legal against a capacity of 3, "+
+				"so this arm's premise is gone", a.Session, status, errText)
+		}
+	}
+
+	// AND THEY WERE IN FLIGHT TOGETHER. A serialized fan-out exercises the
+	// sequential path and would report a race as absent.
+	overlapped, by := concurrency.Overlapped(attempts)
+	if !overlapped {
+		t.Fatalf("the two requests did not overlap (%v and %v), so this run exercised the "+
+			"sequential path and could not have reached a check-then-act defect",
+			attempts[0].InFlight(), attempts[1].InFlight())
+	}
+	t.Logf("PROOF one world through two adapters, both joins accepted; overlapped by %v "+
+		"(in flight %v and %v)", by, attempts[0].InFlight(), attempts[1].InFlight())
+}
+
+// joinReq builds one honest join_event request for an actor's api session.
+func joinReq(toks *schedule.Sessions, actor, eventID string) (wire.ExecuteRequest, error) {
+	tok, err := toks.Token(actor, "api")
+	if err != nil {
+		return wire.ExecuteRequest{}, err
+	}
+	return wire.ExecuteRequest{Action: "join_event", Token: tok,
+		Args: map[string]any{"event": eventID}}, nil
+}
+
+// statusOf reads the adapter's `{status, body}` answer the way the fuzz stage
+// does, which is the shape cmd/toy-adapter writes on both paths.
+func statusOf(t *testing.T, resp wire.ExecuteResponse) (int, string) {
+	t.Helper()
+	m, isMap := resp.Response.(map[string]any)
+	if !isMap {
+		t.Fatalf("the adapter answered %v, which is not a table", resp.Response)
+	}
+	var status int
+	switch v := m["status"].(type) {
+	case float64:
+		status = int(v)
+	case int:
+		status = v
+	case int64:
+		status = int(v)
+	}
+	var msg string
+	if body, isBody := m["body"].(map[string]any); isBody {
+		if e, has := body["error"]; has {
+			msg = fmt.Sprint(e)
+		}
+	}
+	return status, msg
 }
