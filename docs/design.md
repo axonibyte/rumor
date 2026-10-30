@@ -1486,3 +1486,30 @@ stage and is not reduced, and the refusal of width 1 stands because one request
 in flight is the sequential path. A candidate at which the verdict does not
 recur is refused and the finding marked unstable and not shrunk — never read as
 clean.
+
+**AND A VERDICT THAT RECURS ONLY SOMETIMES IS PROBED k OF n.** One probe at the
+gate collapses a race into `Reproduced=false`, so the finding is marked unstable
+and never shrunk — and the clean-world check over it is then satisfied
+VACUOUSLY, because the shrink never ran. A candidate at which the verdict does
+not recur k-of-n is refused and the finding marked unstable, which is design's
+own rule, and never read as clean.
+
+**ONE OF ONE UNLESS THE WANT ASKS OTHERWISE.** Whether a verdict is
+deterministic is a fact about what produced it — a statute evaluating rules
+against a sealed ledger gives the same answer every time, a race does not — so
+the author declares it and a want that says nothing is probed once, exactly as
+before. Probing a verdict that cannot differ would double every replay in a
+shrink for nothing.
+
+**THE WORLD IS RESTORED BEFORE EVERY PROBE**, not once before the first: a probe
+run against the world the previous one left would attribute its finding to both,
+which is the whole of what the clean-world check exists to prevent. And k of n
+is a THRESHOLD and not a quota — the probes stop at the kth recurrence, because
+running the rest would spend replays to learn nothing the verdict turns on.
+
+**THE REASON READS "RECURRED k OF n" AND NOT "unstable".** A reader told only
+that a seed is unstable cannot tell a trace that never causes the finding from
+one that causes it two times in five, and those are acted on differently; the
+verdict carries both counts so the distinction survives into the report. A
+threshold that is not one — k below one, or n below k — is refused by name
+rather than read as 1-of-1 or as never.

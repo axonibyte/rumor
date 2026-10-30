@@ -62,6 +62,18 @@ type Verdict struct {
 	// when they matched.
 	Why string
 
+	// Attempts and Recurred are how many times the candidate was probed and
+	// how many of those gave the verdict.
+	//
+	// THEY ARE CARRIED SO "UNSTABLE" CAN BE TOLD FROM "SOMETIMES", which is
+	// the distinction a one-probe gate could not express: a reader told only
+	// that a seed is unstable cannot tell a trace that never causes the
+	// finding from one that causes it two times in five, and those are acted
+	// on differently. Both are 1 for a deterministic want, which is every
+	// want that does not implement Probabilistic.
+	Attempts int
+	Recurred int
+
 	// PendingOpen is what the replay's own run left open. It is carried so a
 	// reader of the verdict can see that the comparison rested on a settled
 	// run, and so Shrink can say so in the product's output rather than assert
@@ -158,55 +170,134 @@ func Once(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
 			"handle a provider issued, and an empty one is a caller defect rather than a dirty world")
 	}
 
-	if err := pr.Restore(ctx, cp); err != nil {
-		return Verdict{}, fmt.Errorf("shrink: restoring the world to checkpoint %s: %w", cp.ID, err)
-	}
-	switch err := pr.Verify(ctx, cp); {
-	case err == nil:
-		// Proven clean. This is the only branch that may run the replay.
-	case errors.Is(err, rollback.ErrDirty):
-		return Verdict{}, ErrDirty
-	default:
-		return Verdict{}, fmt.Errorf("shrink: the provider could not tell whether the world is "+
-			"checkpoint %s, which is not the same as clean: %w", cp.ID, err)
-	}
-
-	cand, err := replay(ctx)
-	if err != nil {
-		return Verdict{}, fmt.Errorf("shrink: replaying the failure on the clean world: %w", err)
-	}
-	got := cand.Finding
-
-	// EVERY CANDIDATE QUIESCES BEFORE IT IS JUDGED, which is R6.4's first
-	// done-when and the reason Candidate carries the figure at all. A run that
-	// ended holding a disagreement open as `pending` has not finished settling,
-	// so its finding is not the finding that trace produces -- it is whatever
-	// the trace had reached when the walk stopped asking. Comparing it would
-	// make a candidate look like a reproduction or a failure to reproduce on
-	// the strength of where the clock happened to be.
+	// HOW MANY TIMES THE CANDIDATE IS PROBED, which is the want's to say.
 	//
-	// IT REFUSES RATHER THAN REPORTING "did not reproduce", because the two are
-	// different facts and a reader acts on them differently: one says the trace
-	// no longer causes the finding, the other says nobody waited to find out.
-	// R2.3's rule is that a run ends with no pending open, so a non-zero figure
-	// here is a defect in the candidate's run and not a verdict about the
-	// trace.
-	if cand.PendingOpen != 0 {
-		return Verdict{}, fmt.Errorf("shrink: refusing to judge a candidate that did not settle: "+
-			"its run ended with %d finding(s) still held open as `pending`, so what it found is "+
-			"where the walk stopped asking rather than what the trace causes", cand.PendingOpen)
+	// A VERDICT THAT RECURS ONLY SOMETIMES IS THE COMMON CASE FOR A RACE, and
+	// one probe collapses it into Reproduced=false -> Stable=false: the
+	// finding is marked unstable and never shrunk, so the clean-world check
+	// over it is satisfied VACUOUSLY because the shrink never ran (rook, coop
+	// r8/38). fable ruled the cure at rumor/1521 item 3: a candidate at which
+	// the verdict does not recur k-of-n is REFUSED and the finding marked
+	// unstable, design.md's own words, and never read as clean.
+	//
+	// ONE OF ONE UNLESS THE WANT ASKS OTHERWISE, so the statute's path is the
+	// path it was: a deterministic verdict probed twice would double every
+	// replay in a shrink for nothing, and the walk is the only caller today.
+	k, n := 1, 1
+	if pw, ok := want.(Probabilistic); ok {
+		k, n = pw.Attempts()
+		if k < 1 || n < k {
+			return Verdict{}, fmt.Errorf("shrink: the verdict asks to recur %d of %d, which is "+
+				"not a threshold: a candidate cannot be judged against it", k, n)
+		}
 	}
 
-	v := Verdict{Got: got, PendingOpen: cand.PendingOpen}
-	// THE ATTRIBUTION FIELD BELONGS TO THE WANT THAT HAS ONE. Only a statute
-	// verdict carries a `rests_on_planted` rule to compare, so asking every
-	// Want for one would make the field read "false" where it means "not
-	// applicable" -- which is the distinction its own comment exists for.
-	if sv, ok := want.(interface{ Compares(Candidate) bool }); ok {
-		v.AttributionCompared = sv.Compares(cand)
+	var v Verdict
+	recurred, reasons := 0, make([]string, 0, n)
+	for attempt := 0; attempt < n; attempt++ {
+		// RESTORED BEFORE EVERY PROBE, not once before the first. Each probe
+		// is a replay against a world proven clean, which is the whole of
+		// what makes a candidate's finding attributable to the candidate; a
+		// second probe on the world the first left would attribute its
+		// finding to both.
+		if err := pr.Restore(ctx, cp); err != nil {
+			return Verdict{}, fmt.Errorf("shrink: restoring the world to checkpoint %s: %w", cp.ID, err)
+		}
+		switch err := pr.Verify(ctx, cp); {
+		case err == nil:
+			// Proven clean. This is the only branch that may run the replay.
+		case errors.Is(err, rollback.ErrDirty):
+			return Verdict{}, ErrDirty
+		default:
+			return Verdict{}, fmt.Errorf("shrink: the provider could not tell whether the world is "+
+				"checkpoint %s, which is not the same as clean: %w", cp.ID, err)
+		}
+
+		cand, err := replay(ctx)
+		if err != nil {
+			return Verdict{}, fmt.Errorf("shrink: replaying the failure on the clean world: %w", err)
+		}
+
+		// EVERY CANDIDATE QUIESCES BEFORE IT IS JUDGED, which is R6.4's first
+		// done-when and the reason Candidate carries the figure at all. A run
+		// that ended holding a disagreement open as `pending` has not finished
+		// settling, so its finding is not the finding that trace produces -- it
+		// is whatever the trace had reached when the walk stopped asking.
+		//
+		// IT REFUSES RATHER THAN REPORTING "did not reproduce", because the two
+		// are different facts and a reader acts on them differently: one says
+		// the trace no longer causes the finding, the other says nobody waited
+		// to find out.
+		if cand.PendingOpen != 0 {
+			return Verdict{}, fmt.Errorf("shrink: refusing to judge a candidate that did not settle: "+
+				"its run ended with %d finding(s) still held open as `pending`, so what it found is "+
+				"where the walk stopped asking rather than what the trace causes", cand.PendingOpen)
+		}
+
+		// THE LAST PROBE's ANSWER IS THE ONE REPORTED, because a reader of an
+		// unstable candidate wants to see what it produced and the most recent
+		// is the one they can go and re-run.
+		v.Got = cand.Finding
+		v.PendingOpen = cand.PendingOpen
+		if sv, ok := want.(interface{ Compares(Candidate) bool }); ok {
+			v.AttributionCompared = sv.Compares(cand)
+		}
+
+		ok, why := want.Recurs(cand)
+		if ok {
+			recurred++
+			if recurred >= k {
+				// ENOUGH, AND THE REST ARE NOT RUN. k of n is a threshold and
+				// not a quota: probing past it would spend replays to learn
+				// nothing the verdict turns on.
+				v.Reproduced = true
+				v.Attempts, v.Recurred = attempt+1, recurred
+				if n > 1 {
+					v.Why = ""
+				}
+				return v, nil
+			}
+			continue
+		}
+		reasons = append(reasons, why)
 	}
-	v.Reproduced, v.Why = want.Recurs(cand)
+
+	v.Attempts, v.Recurred = n, recurred
+	// THE REASON SAYS "RECURRED k OF n" AND NOT "unstable", which rook and
+	// fable both asked for by name: a reader told "unstable" cannot tell a
+	// trace that never causes the finding from one that causes it sometimes,
+	// and those are acted on differently.
+	if n > 1 {
+		v.Why = fmt.Sprintf("the verdict recurred %d of %d attempt(s) and %d was wanted; last: %s",
+			recurred, n, k, lastReason(reasons))
+		return v, nil
+	}
+	v.Why = lastReason(reasons)
 	return v, nil
+}
+
+// Probabilistic is a Want whose verdict does not recur every time, and says how
+// many attempts it wants and how many must recur.
+//
+// IT IS THE WANT's TO DECLARE AND NOT THE SHRINKER's TO GUESS: whether a
+// verdict is deterministic is a fact about what produced it -- a statute
+// evaluating rules against a sealed ledger gives the same answer every time,
+// and a race does not -- so the author says so and a want that does not
+// implement this is probed once, exactly as before.
+type Probabilistic interface {
+	// Attempts is how many recurrences are wanted (k) out of how many probes
+	// (n). A candidate recurring fewer than k times in n is refused and the
+	// finding marked unstable, never read as clean.
+	Attempts() (k, n int)
+}
+
+// lastReason is the most recent probe's reason, or a stand-in when every probe
+// recurred and none was recorded.
+func lastReason(reasons []string) string {
+	if len(reasons) == 0 {
+		return "no probe reported a reason"
+	}
+	return reasons[len(reasons)-1]
 }
 
 func defined(ok bool) string {
