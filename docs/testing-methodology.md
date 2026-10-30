@@ -1751,3 +1751,81 @@ can make, every known stage enabled, and fails in the SAME CHANGE that makes a
 second one runnable, naming which. Driven by flipping that flag: one failure
 over the whole tree, and its message says to extend the dispatch rather than
 widen the arm.
+
+### A fixture whose plan is the identity is the no-plan case
+
+109's fan-out carries a seeded plan: which session issues each request, in
+issue order. A width check refuses a plan the dispatch does not match, and two
+live arms drove the fan-out end to end. The plan could still have been
+decoration, and was: turning the dispatch off — `sessions[sess]` to
+`sessions[k]`, and the recorded session with it — left both suites green.
+
+**THE REASON WAS THE FIXTURE AND NOT THE ARM's SHAPE.** At width 2 there are
+two permutations, and SIX OF TWELVE seeds draw the identity `[0 1]` — seeds 1,
+4, 6, 8, 9 and 11. Both arms pinned seeds from that half. A fixture whose plan
+is the identity cannot tell a dispatch that follows the plan from one that
+ignores it, because the two produce the same assignment: the fixture *is* the
+no-plan case, and every assertion over it passes under either reading.
+
+**SO THE CURE HAS TWO HALVES AND ONLY ONE IS THE OBVIOUS ONE.** Asserting that
+the recorded session is the one the plan chose catches the mutant today.
+Asserting that the FIXTURE IS A REAL PERMUTATION is what keeps it caught: the
+gap came from a seed, so a seed changed next month would restore it silently
+while the first assertion went on passing against nothing. An arm that refuses
+its own vacuous setup is the durable half.
+
+**AND THE SAME SHAPE APPEARED THREE TIMES IN ONE CHILD**, which is why it is
+written as a shape rather than an incident. A monoculture fixture built from
+`"bad request"` tripped a *different* clause and so proved nothing about the
+one it named. An accepted-case fixture held a speaking refusal beside the
+silent one, so a mutant that widened the refusal set to every result survived.
+And the identity plan above. In all three the code was right and the arm
+established nothing, so the question to ask of a new fixture is not "does this
+pass" but **what would this look like if the thing I am testing were absent** —
+and if the answer is "the same", the fixture is the subject's twin and not its
+test.
+
+### A verdict's author owns the comparison, and a moved reading needs its own evidence
+
+Every reducer in the shrinker took `want engine.Finding`, so the only verdict a
+shrink could keep was the statute's. Widening it to an interface moved the
+statute's six-clause comparison out of the gate and behind
+`StatuteVerdict.Recurs`, unchanged.
+
+**"MOVED AND NOT REWRITTEN" IS A CLAIM THAT NEEDS ITS OWN CHECK, AND THE ARMS
+PASSING IS THE WEAKER ONE.** A suite going green over a refactor says the
+suite's assertions still hold; it does not say every clause is still reachable
+at the new site. The stronger pair is textual and reachability: the clause
+messages extracted at the new site and diffed byte for byte against the old,
+and then each clause disabled one at a time to see which arm dies. Six of six
+clauses died, with the per-clause arm counts recorded — and five of the six
+rest on a SINGLE arm each, so one deleted or re-scoped test silently uncovers a
+clause. That margin is worth knowing before it is spent.
+
+**A ONE-IMPLEMENTATION INTERFACE SAYS NOTHING**, so the widening's own arm is a
+want that is not the statute's, driven through the real shrinker with the
+statute's finding held CONSTANT across every candidate: a reducer still reading
+the old type sees them all reproduce and reduces to nothing, so the reduction
+that comes back is the new author's doing and not the old reader's.
+
+### A harness must tell four outcomes apart, not two
+
+Mutation runs in this child reported a kill or a survival, and both readings
+were wrong at least once.
+
+**A HARNESS THAT READS ONE STREAM CAN REPORT A WORKING ORACLE AS A DEAD ONE.**
+Two genuine kills came back as SURVIVED because the classifier grepped `--- FAIL`
+out of stdout alone: both arms fired correctly and the nil receiver then
+panicked, and the FAIL line did not reach the stream being read. The return
+code was 1 throughout. Reading one stream of a two-stream process is the same
+defect as reading a figure without its command, and it costs more than the
+reverse — a survivor sends you to look at real code, while a false survivor
+sends you to "fix" an arm that was already right.
+
+**AND rc ALONE CANNOT TELL A KILL FROM A MUTANT THAT DIED OF ITS OWN
+MALFORMITY.** A `goto` into a loop did not compile, which is not a kill. A
+format verb applied to the wrong type panicked, which gave rc 1 for the wrong
+reason and would have been counted. A mutant whose anchor equals its
+replacement changes nothing and silently joins the skips. So the four outcomes
+a harness owes its reader are: killed, survived, no-op, and malformed — and
+only the first two are evidence about the arms.
