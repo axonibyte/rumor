@@ -29,6 +29,15 @@ import (
 // API is the main loop: the walk `rumor run` has always taken.
 const API = "api"
 
+// Concurrency is the fan-out stage: limit-plus-one requests in flight against
+// one world, for every action a project declares as contended (R8.2, 109).
+//
+// IT IS A CONSTANT BECAUSE THE DISPATCH BRANCHES ON IT. `api` has been one
+// since the dispatch existed, and the second runnable name wants the same: a
+// string literal in cmd/rumor's switch and another in this map is one name in
+// two places, which is the drift the tripwire below is about.
+const Concurrency = "concurrency"
+
 // Known is every stage name the dispatcher recognises, with whether it can
 // run one today.
 //
@@ -39,10 +48,10 @@ const API = "api"
 // either -- it simply does not appear among the stages that ran, and D13's skip
 // reasons are 111's to report.
 var Known = map[string]bool{
-	API:           true,  // the main loop, runnable now
-	"fuzz":        false, // 108's own stage, runnable when it lands
-	"concurrency": false, // 109
-	"browser":     false, // R9
+	API:         true,  // the main loop, runnable now
+	Concurrency: true,  // 109's fan-out, runnable now
+	"fuzz":      false, // 108's own stage, runnable when it lands
+	"browser":   false, // R9
 }
 
 // Select is the stages a run will take, in a fixed order, and the refusal for

@@ -392,6 +392,42 @@ that printed number is exactly what `--seed` takes.
 | 2 | could-not-run: an adapter that will not start, a weight the project never declared, or a usage error |
 | 3 | **a bug was found**, and the line above the verdict names it |
 
+**The run takes the stages the project enables, and every one it takes says
+what it did.** `[stages]` names them and this build runs two: `api`, which is
+the walk above, and `concurrency`, which puts limit-plus-one requests in flight
+against every action declaring `contended` and judges each against the quantity
+the system itself holds. A declared stage this build cannot run is refused
+before anything runs, and a project that enables `concurrency` without `api`
+gets the fan-out and no walk — selecting a stage is what selects it.
+
+```
+concurrency: join_event -- setup create_user (per actor), create_event; fan-out of 2, issued 1 then 0
+concurrency:   try 1 -- create_event.capacity=1 create_event.visible_to=[admin]; room for 1 of 2 request(s), 0 accepted over 0 held, the system holds 0 against a limit of 1
+concurrency:     NOT CONTENDED -- join_event accepted none of 2 request(s): the system was never asked to choose between them, so its limit was not exercised
+concurrency:   try 3 -- create_event.capacity=1 create_event.visible_to=[admin member guest]; room for 1 of 2 request(s), 2 accepted over 0 held, the system holds 2 against a limit of 1
+concurrency:   FOUND join_event left the system holding 2 against its own limit of 1: 1 more than it allows, after 2 request(s) were answered acceptance over 0 already held. The check it makes and the insert it does are not one step
+```
+
+The try lines are the worlds the stage BUILT, in the order it built them: a
+drawn setup argument is swept one declared value at a time until the overfill
+clause can be answered, because a world where nothing can be accepted reports
+"no overfill" exactly as a correct system does. A try the clause cannot judge
+says so in those words rather than passing. The prefixes above are held by an
+arm in `tests/run`; the figures are one run's own.
+
+**The overlap is on stderr and the verdict is not.** Whether two requests were
+in flight together is the run's own evidence that it tested anything, and HOW
+LONG they overlapped is a clock: `run: concurrency join_event try 3 overlapped
+by 30.466099ms` goes where the adapter's own timings go, because two attempts of
+one seed must print the same bytes on stdout and a duration never does.
+
+**A stage that could not contend is told to you, not hidden.** A fan-out needs
+one world that N adapter processes can be pointed at — N adapters each starting
+a system of their own would contend on nothing — so the stage asks the project's
+`[[rollback]]` provider for it. A project declaring none prints
+`concurrency: NOT CONTENDED` with that reason and the run is not failed by it:
+its declarations are correct and simply do not reach a world this stage can use.
+
 **A found bug is shrunk, and the result says what it did.** When the walk finds
 something and the project declares a `[[rollback]]` provider this build
 registers, `rumor run` reduces the trace and prints one report line before the

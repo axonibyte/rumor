@@ -6,8 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
@@ -52,61 +50,20 @@ import (
 func shrinkFound(ctx context.Context, dir string, prep platform.Report, p schedule.Project,
 	probes []bindings.Probe, seed uint64, rec schedule.Record, stdout io.Writer) (int, error) {
 
-	// NO PROVIDER IS NOT A REFUSAL AND NOT AN ERROR. docs/design.md requires the
-	// replay to run "on a verified clean rollback", so a project that declares
-	// no provider cannot be shrunk at all -- and most of the examples declare
-	// none on purpose. The line is printed because a reader who expected a
-	// minimal trace needs to know why there is none, which is the same reason
-	// the quiesce line prints when nothing was reconciled.
-	if len(prep.Platform.Rollback) == 0 {
-		_, err := fmt.Fprintf(stdout, "shrink: NOT SHRUNK -- the project declares no "+
-			"[[rollback]] provider, so there is no world to replay the failure on\n")
+	// WHICH PROVIDER OWNS THE WORLD IS ONE QUESTION WITH TWO ASKERS NOW, so
+	// the reading lives in soleProvider and this call site owns only its own
+	// prefix and its own statuses. A shrink and a contention need the same
+	// thing for different reasons -- one replays a failure on a world it can
+	// put back, the other points N adapters at one world -- and two copies of
+	// "more than one is a refusal" could have drifted apart.
+	name, skip, refusal := soleProvider(prep, "the world a shrink replays in")
+	if skip != "" {
+		_, err := fmt.Fprintf(stdout, "shrink: NOT SHRUNK -- %s\n", skip)
 		return 0, err
 	}
-	// MORE THAN ONE IS A REFUSAL AND NOT A FIRST-WINS. Which world a shrink
-	// replays in is the project's statement, and `covers` names components
-	// rather than ranking providers, so nothing in the document says which to
-	// use. Picking the first would be this code inventing a precedence the
-	// format does not have.
-	if len(prep.Platform.Rollback) > 1 {
-		names := make([]string, 0, len(prep.Platform.Rollback))
-		for _, rb := range prep.Platform.Rollback {
-			names = append(names, rb.Provider)
-		}
-		_, err := fmt.Fprintf(stdout, "shrink: REFUSED the project declares %d rollback "+
-			"providers (%s) and nothing says which owns the world a shrink replays in\n",
-			len(names), strings.Join(names, ", "))
+	if refusal != "" {
+		_, err := fmt.Fprintf(stdout, "shrink: REFUSED %s\n", refusal)
 		return 1, err
-	}
-
-	name := prep.Platform.Rollback[0].Provider
-
-	// A DECLARED PROVIDER THIS BUILD DOES NOT REGISTER IS A CARRIED NAME, NOT A
-	// FAILURE (fable, coop rumor/1202, on rook's /1197). examples/twin declares
-	// `doc-store-truncate` and says in its own comment that the name is carried
-	// AS DECLARED until docs/rollback.md defines the interface in R13, so the
-	// contract permits a name nothing can open yet. My first cut sent that
-	// through the could-not-run path, which printed "run: could not shrink: no
-	// provider named ..." on stderr for a shipped R4 example -- a misleading
-	// line on a row that is behaving exactly as its document says.
-	//
-	// IT IS CHECKED BEFORE Open AND NOT FROM Open's ERROR, because an error
-	// string is not a state: "not registered" and "registered but would not
-	// start" are different facts and only the first is the contract's.
-	registered := rollback.Registered()
-	known := false
-	for _, r := range registered {
-		if r == name {
-			known = true
-		}
-	}
-	if !known {
-		sort.Strings(registered)
-		_, werr := fmt.Fprintf(stdout, "shrink: NOT SHRUNK -- the project declares the rollback "+
-			"provider %q, which this build does not register (%s): the name is carried as "+
-			"declared until the interface is defined, so no shrink was attempted\n",
-			name, strings.Join(registered, ", "))
-		return 0, werr
 	}
 
 	prov, err := rollback.Open(name, rollback.Options{Dir: dir, Env: prep.Platform.Adapter.Env})
@@ -255,48 +212,4 @@ func kindsDrawn(steps []schedule.Step) []string {
 		out = append(out, s.Kind)
 	}
 	return out
-}
-
-// providerAddress answers whether the adapter can be pointed at the world this
-// provider owns, and names the reason when it cannot.
-//
-// IT IS A FUNCTION SO THE THREE REFUSALS HAVE A FIXTURE. No committed project
-// can reach them: the product registers exactly one provider and it implements
-// both methods, and examples/toy passes TOY_ADDR through, so a refusal driven
-// only from the CLI would be a refusal nothing trips -- arm 19's shape, which I
-// named at coop r6/148 rather than leave for the review. A provider is an
-// interface value, so a stub missing a method is expressible in a test and not
-// in a project document.
-//
-// THE ENV CHECK IS HERE WITH THEM BECAUSE IT IS THE SAME QUESTION ONE STEP ON:
-// a provider can own an address and name its variable, and the project can
-// still fail to pass that variable to the adapter -- docs/testing-methodology.md
-// records exactly that defect, where an `env` list omitting TOY_ADDR meant the
-// value could never reach the adapter, so it started a system of its own and
-// every candidate ran against a world the provider did not control. A
-// reproduction that proves nothing, with nothing to notice.
-//
-// IT RETURNS THE REASON RATHER THAN PRINTING IT, so the caller owns the one
-// "shrink: REFUSED" prefix and an arm can read the words without a stdout.
-func providerAddress(prov any, name string, env []string) (interface{ Addr() string }, interface{ AddrEnv() string }, string) {
-	at, ok := prov.(interface{ Addr() string })
-	if !ok {
-		return nil, nil, fmt.Sprintf("%s does not expose the address of the world it owns, so "+
-			"the adapter cannot be pointed at it and every candidate would run against a "+
-			"system this provider cannot put back", name)
-	}
-	ae, ok := prov.(interface{ AddrEnv() string })
-	if !ok {
-		return nil, nil, fmt.Sprintf("%s does not name the environment variable its adapter "+
-			"reads the address from, and guessing one out of the adapter's env list would be "+
-			"this code choosing a convention", name)
-	}
-	for _, e := range env {
-		if e == ae.AddrEnv() {
-			return at, ae, ""
-		}
-	}
-	return nil, nil, fmt.Sprintf("%s owns its world's address and reads it from %s, which "+
-		"[adapter] env does not pass through (%v): the adapter would start a system of its own "+
-		"and the candidates would not be replays", name, ae.AddrEnv(), env)
 }

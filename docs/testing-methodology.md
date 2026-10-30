@@ -1862,3 +1862,28 @@ guard like that is otherwise armed by nothing while looking armed: the suite is
 green, the clause is reachable in principle, and no run has ever reached it.
 The input the guard exists to catch has to be built on purpose, and if it
 cannot be, the guard is a comment.
+
+**A STAGE THAT DRAWS ITS OWN SETUP MAKES ITS REACHABILITY A LOTTERY.** The
+concurrency stage builds the world it contends in, and the obvious way to build
+it was the walk's: draw each setup argument from the project's declared list
+through the run's own generator. Measured on the shipped toy, that would have
+failed two times in three. `create_event.visible_to` draws from three subsets of
+roles and a would-be contender is a GUEST relative to the event it has not
+joined, so the two subsets that omit `guest` answer every request 404 before the
+capacity check is reached — the stage would have reported "the system was never
+asked to choose between them" over a system whose race is one line away. The
+drawn setup was replaced by an enumeration: the first declared value of every
+argument, then one coordinate moved at a time, stopping at the first world the
+clause can be answered in. WHAT A SEED CHOOSES IS THE PART A REPLAY HAS TO
+REPRODUCE — here the issue order of the fan-out — and not the part that decides
+whether the question can be asked at all. Where a harness has to construct the
+conditions of its own measurement, drawing them is how an oracle becomes
+intermittently vacuous, and the vacuity looks exactly like a pass.
+
+**AND I DID NOT PREDICT THE SECOND UNREACHABLE WORLD.** I expected one -- the
+subset naming only `admin` -- and wrote that into the code's comment before
+running it. The run showed two, with both members answered "no such event",
+because the role in `visible_to` is relative to the event and not the actor's
+own. The comment was corrected from the output. A count asserted from reading
+the declaration, where the mechanism is in the system under test rather than in
+the declaration, is a prediction wearing a measurement's clothes.

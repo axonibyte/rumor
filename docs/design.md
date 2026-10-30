@@ -1331,6 +1331,26 @@ project in the tree declares one — measured before it was wired, which is the
 control for that line — and the profile's table still wins over it, so a
 profile naming a kind keeps its weight.
 
+**AND THE DISPATCH CONSUMES EVERY STAGE THE SELECTION NAMES.** `Select`
+returned a list from the day it existed and `cmd/rumor` read one element of it,
+walking unconditionally: so the second runnable stage would have had a project
+enabling both run one and drop the other with no refusal and no skip reason.
+The arm that fails in the same change as the flip is what caught it, and the
+fix is the loop it asked for — a case per stage, the walk among them, running
+only when `api` is selected. The statuses across stages are ranked for
+shrinkFound's reason: a refusal stops the run where it is found, a finding is
+the product and a later stage's could-not-run does not unfind it, and a
+could-not-run otherwise outranks a clean exit.
+
+**A STAGE THAT NEEDS THE WORLD ASKS THE PROVIDER FOR IT.** The walk drives one
+session and an adapter spawned alone starts a system of its own, so a fan-out
+cannot be built out of the walk's arrangement: the world has to belong to
+something that can hand out its address. In this binary that is the
+`[[rollback]]` provider, which is what the shrink already uses for its own
+reason. A project declaring none is told so and the run is not failed by it —
+its declarations are correct and simply do not reach a world the stage can use,
+which is the same reading the shrink takes of the same absence.
+
 ## A fan-out is N processes against one world
 
 **TWO REQUESTS IN FLIGHT IS THE ONLY WAY A CHECK-THEN-ACT DEFECT CAN BE

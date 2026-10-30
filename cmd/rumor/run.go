@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/concurrency"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
@@ -263,6 +264,8 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		switch name {
 		case stage.API:
 			st = walkStage(ctx, dir, prep, brep.Bindings.Probes, p, seed, steps, stdout, stderr)
+		case stage.Concurrency:
+			st = concurrencyStage(ctx, dir, prep, brep.Bindings, seed, stdout, stderr)
 		default:
 			// Select has already refused every name this build cannot run, and
 			// Known marks the runnable ones; a name that reached here with no
@@ -649,4 +652,117 @@ func parseRunArgs(args []string) (dir string, seed uint64, haveSeed bool, steps 
 		return "", 0, false, 0, "", "run wants a project directory"
 	}
 	return dir, seed, haveSeed, steps, profile, ""
+}
+
+// concurrencyStage is the `concurrency` stage: it puts limit-plus-one requests
+// in flight against every action the project declares as contended and judges
+// each against the system's own quantity.
+//
+// IT NEEDS THE PROVIDER AND THE WALK DOES NOT, which is the whole reason this
+// is not a second loop beside the walk. The walk drives ONE session, and an
+// adapter spawned on its own starts a system of its own -- "When TOY_ADDR is
+// absent the adapter starts a toy of its own". N of those would contend on
+// NOTHING: N requests against N worlds, every one accepted, and a capacity race
+// reported as absent. So the world has to belong to something that can hand out
+// its address, and in this binary that is the rollback provider.
+//
+// A PROJECT WITH NO PROVIDER IS SKIPPED WITH ITS REASON AND NOT FAILED, which
+// is shrinkFound's shape and the same judgment: the project's declarations are
+// correct and simply do not reach a world this stage can use. The line prints
+// because a reader who enabled the stage needs to know why nothing contended --
+// an absence with no reason is the shape this project keeps finding.
+func concurrencyStage(ctx context.Context, dir string, prep platform.Report,
+	b bindings.Bindings, seed uint64, stdout, stderr io.Writer) int {
+
+	actors, err := schedule.Actors(prep.Platform.Venire)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "run: could not run: the venire this stage would contend "+
+			"with: %v\n", err)
+		return 2
+	}
+	name, skip, refusal := soleProvider(prep, "one world a fan-out can contend in")
+	if skip != "" {
+		_, _ = fmt.Fprintf(stdout, "concurrency: NOT CONTENDED -- %s: N adapters with no world "+
+			"to share would each start a system of their own, so every request would be "+
+			"accepted and nothing would be contended\n", skip)
+		return 0
+	}
+	if refusal != "" {
+		_, _ = fmt.Fprintf(stdout, "concurrency: REFUSED %s\n", refusal)
+		return 1
+	}
+	prov, err := rollback.Open(name, rollback.Options{Dir: dir, Env: prep.Platform.Adapter.Env})
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "run: could not run: opening the rollback provider %q to own "+
+			"the contended world: %v\n", name, err)
+		return 2
+	}
+	// REMOVE THE WORLD AND NOT ONLY THE PROCESS (issue 88), which is the
+	// shrink's deferral for the same reason: Close stops the system and leaves
+	// its directory by contract, so a run would leave one world behind per
+	// stage.
+	defer func() {
+		if r, ok := prov.(interface{ RemoveWorld() }); ok {
+			r.RemoveWorld()
+		} else if c, ok := prov.(interface{ Close() }); ok {
+			c.Close()
+		}
+	}()
+	at, ae, refusal := providerAddress(prov, name, prep.Platform.Adapter.Env)
+	if refusal != "" {
+		_, _ = fmt.Fprintf(stdout, "concurrency: REFUSED %s\n", refusal)
+		return 1
+	}
+	// THE ADDRESS IS NAMED IN THE ENVIRONMENT ONCE AND READ BY EVERY ADAPTER
+	// THIS STAGE SPAWNS. It is the same arrangement the shrink makes per
+	// candidate; here nothing restores between the fan-outs, so the world keeps
+	// the address it bound and the sessions all reach it.
+	if err := os.Setenv(ae.AddrEnv(), at.Addr()); err != nil {
+		_, _ = fmt.Fprintf(stderr, "run: could not run: naming the provider's world in %s: %v\n",
+			ae.AddrEnv(), err)
+		return 2
+	}
+	open := func() (*wire.Session, error) {
+		return wire.Open(ctx, wire.Spawn{
+			Command: prep.Platform.Adapter.Command,
+			Cwd:     dir,
+			Env:     prep.Platform.Adapter.Env,
+		}, 0)
+	}
+	host, err := open()
+	if err != nil {
+		// COULD-NOT-RUN AND NEVER A REFUSAL: "the project is not wrong; its
+		// adapter is" (docs/contract.md:57).
+		_, _ = fmt.Fprintf(stderr, "run: could not run: %v\n", err)
+		return 2
+	}
+	defer func() { _ = host.Close() }()
+
+	rep, rerr := concurrency.Run(b, host, open, actors, seed)
+	// THE REPORT IS PRINTED EVEN WHEN THE STAGE COULD NOT FINISH, for the
+	// walk's reason: the tries it did release are what a reader needs to see
+	// where it stopped, and a vacuity reason is the one thing that tells the
+	// project's author which precondition failed.
+	if _, werr := io.WriteString(stdout, rep.Render()); werr != nil {
+		_, _ = fmt.Fprintf(stderr, "run: writing the contention: %v\n", werr)
+		return 2
+	}
+	// AND THE MEASURED HALF ON STDERR, NEVER BESIDE THE VERDICT. An overlap is
+	// a duration, and two attempts of one seed gave 360.257µs and 34.835828ms
+	// for the same fan-out; D1 requires those two attempts to be
+	// byte-identical, so a measurement on stdout would make it unreachable for
+	// every run that contends. It is not dropped -- the overlap is the run's own
+	// evidence that it was concurrent at all -- it is printed where the
+	// adapter's own timings already go.
+	for _, line := range rep.Measured() {
+		_, _ = fmt.Fprintf(stderr, "run: concurrency %s\n", line)
+	}
+	if rerr != nil {
+		_, _ = fmt.Fprintf(stderr, "run: could not run: %v\n", rerr)
+		return 2
+	}
+	if len(rep.Findings()) > 0 {
+		return findingStatus
+	}
+	return 0
 }
