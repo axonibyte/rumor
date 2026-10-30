@@ -230,7 +230,78 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		return 1
 	}
 
+	// THE STAGES RUN IN Select's ORDER, AND EACH ONE THE SELECTION NAMES IS
+	// CONSUMED. Until 109 this read `Stage: stages[0]` and walked
+	// unconditionally: the selection was a list, one element of it reached the
+	// walk, and nothing read the rest -- so the first project to enable two
+	// stages would have had one run and one silently dropped. The tripwire in
+	// internal/stage exists for exactly that moment, and this is the change
+	// that answers it rather than loosening it.
+	//
+	// THE WALK IS `api` AND IT RUNS ONLY WHEN `api` IS SELECTED. A project that
+	// enables the concurrency stage alone gets its fan-out and no walk, which
+	// is what selecting a stage means; before this, such a project would have
+	// walked anyway and read as a run of something it had not asked for.
 	ctx := context.Background()
+	selected := map[string]bool{}
+	for _, name := range stages {
+		selected[name] = true
+	}
+
+	// THE STATUSES ACROSS STAGES, RANKED, and the ranking is shrinkFound's
+	// reasoning one level up. A REFUSAL (1) stops the run where it is found:
+	// the project's own documents are wrong and the stages after it would be
+	// run against the same wrong declaration. A FINDING (3) is the run's
+	// product and a later stage's could-not-run does not unfind it -- "a gate
+	// reading the refusal's 1 would lose a finding it exists to catch" -- so a
+	// finding outranks a 2 and the 2 still prints its reason. A COULD-NOT-RUN
+	// (2) otherwise wins over 0, because what an observation would have said is
+	// unknown.
+	found, couldNotRun := false, false
+	for _, name := range stages {
+		var st int
+		switch name {
+		case stage.API:
+			st = walkStage(ctx, dir, prep, brep.Bindings.Probes, p, seed, steps, stdout, stderr)
+		default:
+			// Select has already refused every name this build cannot run, and
+			// Known marks the runnable ones; a name that reached here with no
+			// case is a stage made runnable without its dispatch, which is the
+			// tripwire's subject. It says so rather than running nothing.
+			_, _ = fmt.Fprintf(stderr, "run: could not run: the stage %q is marked runnable and "+
+				"this dispatch has no case for it\n", name)
+			st = 2
+		}
+		switch st {
+		case 1:
+			return 1
+		case findingStatus:
+			found = true
+		case 2:
+			couldNotRun = true
+		}
+	}
+	if found {
+		return findingStatus
+	}
+	if couldNotRun {
+		return 2
+	}
+	return 0
+}
+
+// walkStage is the `api` stage: the walk `rumor run` has always taken, with its
+// trace, its finding, its shrink and its quiesce lines.
+//
+// IT IS A FUNCTION BECAUSE THE DISPATCH HAS A SECOND CASE NOW. Through 108 this
+// was the body of runProject and the only thing a run could do, so a stage
+// selection that did not name `api` had nowhere to be read. Nothing in it
+// changed when it moved: the same output on the same seeds, which is the
+// property the refactor is answerable for and the one measured before it was
+// committed.
+func walkStage(ctx context.Context, dir string, prep platform.Report, probes []bindings.Probe,
+	p schedule.Project, seed uint64, steps int, stdout, stderr io.Writer) int {
+
 	sess, err := wire.Open(ctx, wire.Spawn{
 		Command: prep.Platform.Adapter.Command,
 		Cwd:     dir,
@@ -253,8 +324,8 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 	// that does not read one, which is the project's own document being wrong
 	// -- validate's 7c, 7d and 7e by name, re-checked here because a run need
 	// not have been validated.
-	if len(brep.Bindings.Probes) > 0 {
-		pr, qerr := quiesce.New(brep.Bindings.Probes, sess)
+	if len(probes) > 0 {
+		pr, qerr := quiesce.New(probes, sess)
 		if qerr != nil {
 			_, _ = fmt.Fprintf(stdout, "run: REFUSED %v\n", qerr)
 			return 1
@@ -416,7 +487,7 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		// does not make a found bug unfound, and a gate reading the refusal's 1
 		// would lose a finding it exists to catch. The refusal prints, so the
 		// reader is told why there is no minimal trace.
-		if st, serr := shrinkFound(ctx, dir, prep, p, brep.Bindings.Probes, seed, rec, stdout); serr != nil {
+		if st, serr := shrinkFound(ctx, dir, prep, p, probes, seed, rec, stdout); serr != nil {
 			_, _ = fmt.Fprintf(stderr, "run: could not shrink: %v\n", serr)
 			_ = st
 		}
