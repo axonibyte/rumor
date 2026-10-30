@@ -550,6 +550,81 @@ run: walkable -- seed 42, 5 step(s), 4 handle(s), 1 session(s), 5 observation(s)
 run:   quiesce -- 0 pending(s) open at the end; reconciliation: no quiesce probes are declared, so nothing was asked and nothing reconciled
 ```
 
+**Both `run:` transcripts in this file are EXECUTED, and the block reads them
+OUT OF THE DOCUMENT.** R8's D14 (rook, coop r8/10): a verbatim transcript sits
+inside a block the gate runs, or the gate records it unchecked and names the
+file. These two were checked by neither of this file's executed blocks --
+measured, neither invokes `rumor run` -- and the file already records this
+class once, at the attaint sample above: "`docs --check` stayed green
+throughout, because a path-coverage check cannot see a quoted figure". That one
+was cured with an executed block and the `run:` transcripts never were.
+
+THE LINES ARE EXTRACTED AND NOT RESTATED, which is the attaint block's own rule
+one step further: a copy inside the block would be a second copy of the same
+lines, and the readable transcript could then go stale while the gate stayed
+green. So the block greps the transcript out of `docs/cli.md` and fails loudly
+if it is no longer where it looks -- the cost is that moving either sample
+breaks this block, which is the intended direction.
+
+```sh run
+# D14, and the two samples are checked against the tool rather than each other.
+GO=""
+for c in go go126 go125; do
+  command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
+done
+test -n "$GO" || {
+  echo "no go, go126 or go125 on PATH: a PROVISIONING finding and not a code one"
+  exit 1
+}
+export GOTOOLCHAIN=local
+
+# THREE BINARIES AND NOT ONE. The walkable fixture's adapter is `["rumor",
+# "fake-adapter"]` -- rumor itself -- but the toy's surface is `toy` and
+# `toy-adapter`, and without them on PATH a run exits 1 with a 12-byte stdout
+# that would compare equal to nothing and read as a changed transcript.
+bin=$(mktemp -d) || exit 1
+trap 'rm -rf "$bin"' EXIT
+for c in rumor toy toy-adapter; do
+  "$GO" build -o "$bin/$c" "./cmd/$c" || exit 1
+done
+PATH="$bin:$PATH"; export PATH
+
+fail=0
+
+want=$(awk '/^\$ rumor run tests\/run\/fixtures\/walkable --seed 42 --steps 5$/{f=1;next} f&&/^```$/{exit} f' docs/cli.md)
+[ -n "$want" ] || {
+  echo 'the walkable transcript is no longer where this block looks for it'
+  exit 1
+}
+got=$(rumor run tests/run/fixtures/walkable --seed 42 --steps 5) || {
+  echo 'the walkable run did not exit 0, which this sample documents as its outcome'
+  exit 1
+}
+if [ "$want" != "$got" ]; then
+  echo 'the walkable transcript in docs/cli.md is not what the tool prints:'
+  printf 'documented:\n%s\ntool:\n%s\n' "$want" "$got"
+  fail=1
+fi
+
+# THE FINDING SAMPLE IS A DIFFERENT RUN, and it cannot join the walkable block:
+# seed 42 exits 0 with no finding, so that block can never print a FOUND line.
+# Found by sweeping the toy's seeds 1-12 -- five print one and only seed 7 is
+# "after step 5".
+wantf=$(awk '/^\*\*The finding is a line and not only a status\.\*\*$/{f=1;next} f&&/^run: /{print; exit}' docs/cli.md)
+[ -n "$wantf" ] || {
+  echo 'the finding sample is no longer where this block looks for it'
+  exit 1
+}
+gotf=$(rumor run examples/toy --seed 7 --steps 10 | grep '^run: FOUND')
+if [ "$wantf" != "$gotf" ]; then
+  echo 'the finding line in docs/cli.md is not what the tool prints:'
+  printf 'documented: %s\ntool:       %s\n' "$wantf" "$gotf"
+  fail=1
+fi
+
+exit $fail
+```
+
 **The quiesce line is printed by every run, including one with no `[quiesce]`
 block.** It carries the two halves of R6's third control clause: how many
 findings the run still holds open for re-check when it ends, which
