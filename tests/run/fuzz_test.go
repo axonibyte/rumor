@@ -95,8 +95,29 @@ func TestTheFuzzStageDrivesTheToyAndFindsNo5xx(t *testing.T) {
 		t.Errorf("%d result(s) but %d refused + %d accepted + %d faulted: an answer went uncounted",
 			len(rep.Results), refused, accepted, faulted)
 	}
-	t.Logf("PROOF setup %v; %d case(s): %d refused, %d accepted, %d faulted; statuses %s",
-		rep.Setup, len(rep.Results), refused, accepted, faulted, rep.Statuses())
+	// THE DENOMINATOR IS PINNED, which is rook's addition to D2 at coop r8/20
+	// on this arm's own first figures. "No 5xx over 45" is a claim about the
+	// 27 that REACHED: the other 18 were refused by the adapter's argument
+	// check before the toy saw a request. The two numbers are asserted
+	// together because a reached count that FALLS while the corpus GROWS is
+	// itself the finding -- more cases arriving at the adapter and fewer at
+	// the system means the new ones test the adapter. Moving either figure is
+	// a deliberate act, the way the mutant counts are.
+	if got, want := rep.Reached(), 27; got != want {
+		t.Errorf("%d of %d case(s) reached the system, expected %d: a reached count that falls "+
+			"while the corpus grows means the new cases are testing the adapter, not the toy",
+			got, len(rep.Results), want)
+	}
+	if got, want := len(rep.Results), 45; got != want {
+		t.Errorf("the corpus sent %d case(s), expected %d", got, want)
+	}
+	if rep.Reached() != refused+accepted {
+		t.Errorf("%d reached but %d refused + %d accepted: a reached case went uncounted",
+			rep.Reached(), refused, accepted)
+	}
+	t.Logf("PROOF setup %v; %s", rep.Setup, rep.Summary())
+	t.Logf("PROOF %d refused, %d accepted, %d faulted of %d sent",
+		refused, accepted, faulted, len(rep.Results))
 
 	// EVERY REFUSAL NAMES SOMETHING, which is D4's subject and is measured
 	// here rather than asserted: a 4xx with an empty body says the system

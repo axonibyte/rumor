@@ -46,6 +46,30 @@ type Report struct {
 	Findings []string
 }
 
+// Reached is how many cases the SYSTEM answered, as against how many were
+// sent.
+//
+// THE DENOMINATOR OF AN ABSENCE CLAIM (rook, coop r8/20, on my own figures at
+// r8/19). "No 5xx over 45 cases" is not a claim about 45: 18 of them were
+// refused by the ADAPTER's own argument check before the toy saw a request, so
+// the clause speaks for the 27 that reached. An absence is only as strong as
+// the number that reached, which is D10's shape appearing inside D2 -- "did
+// not look" and "looked and did not find" are different claims, and a count is
+// the only thing that tells them apart.
+//
+// SO A REACHED COUNT THAT FALLS WHILE THE CORPUS GROWS IS ITSELF A FINDING:
+// more cases and fewer arriving means the new ones are testing the adapter.
+// DERIVED IS NOT EFFECTIVE, and those are two readings of one corpus.
+func (r Report) Reached() int {
+	n := 0
+	for _, res := range r.Results {
+		if res.Fault == "" && res.Status != 0 {
+			n++
+		}
+	}
+	return n
+}
+
 // Run executes the setup and then the corpus.
 func Run(ctx context.Context, b bindings.Bindings, sess *wire.Session, actor string) (Report, error) {
 	var rep Report
@@ -232,6 +256,15 @@ func caseArgs(a bindings.Action, c Case, actor string, ids map[string]string) (m
 		out[arg.Name] = v
 	}
 	return out, nil
+}
+
+// Summary is the one line a reader needs: what reached, out of what was sent,
+// and the answers. The two numbers travel TOGETHER because either alone
+// misleads -- 45 cases says nothing about coverage, and 27 reached says
+// nothing about how much was attempted.
+func (r Report) Summary() string {
+	return fmt.Sprintf("%d of %d case(s) reached the system; %s",
+		r.Reached(), len(r.Results), r.Statuses())
 }
 
 // Statuses is the answers the report saw, counted, for the one-line summary.
