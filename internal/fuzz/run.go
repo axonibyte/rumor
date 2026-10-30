@@ -17,6 +17,7 @@ package fuzz
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -230,6 +231,14 @@ func Run(ctx context.Context, b bindings.Bindings, sess *wire.Session, actor str
 		rep.Results = append(rep.Results, r)
 	}
 
+	// NOTHING REACHED IS A COULD-NOT-RUN, and it is checked BEFORE the oracle
+	// clauses so that a run with an empty corpus cannot return their silence as
+	// a clean verdict. The report travels with the error: the faults are the
+	// evidence for why it could not run.
+	if why := rep.Vacuous(); why != "" {
+		return rep, errors.New(why)
+	}
+
 	// D2: NO 5xx. The finding names the action, the class and the field,
 	// because "a 5xx happened" cannot be acted on and "delete_event refused a
 	// missing event with 500" can.
@@ -377,6 +386,36 @@ func caseArgs(a bindings.Action, c Case, actor string, ids map[string]string) (m
 		out[arg.Name] = v
 	}
 	return out, nil
+}
+
+// Vacuous is why this run cannot answer D2, or "" when it can.
+//
+// D2's clause is "no 5xx", and it is read off the results. A run in which NO
+// case reached the system produces an empty Findings for the same reason a
+// clean one does, so the two are indistinguishable to a reader: a server that
+// died after the setup, or an adapter whose surface answers nothing, would
+// report the corpus as having found no 5xx when the system never saw it.
+// This is a COULD-NOT-RUN and not a finding, for the same reason a refused
+// setup step is: the defect is in the run, and blaming the system under test
+// for a request it never received is the false finding this stage exists to
+// avoid.
+//
+// WHY THE LINE IS AT ZERO AND NOT A FRACTION: a nonzero line needs a NUMBER,
+// and nothing in the declarations supplies one. 18 of the honest run's 45 cases
+// fault at the adapter, because cmd/toy-adapter's surface genuinely does not
+// carry every action the bindings declare -- and that rate is a property of one
+// adapter's surface, not of the question, so a constant chosen from it would
+// refuse correct runs against a thinner surface and clear vacuous ones against
+// a fuller. Zero is the only line this stage can derive rather than guess.
+func (r Report) Vacuous() string {
+	if len(r.Results) == 0 {
+		return "the corpus sent no case at all, so \"no 5xx\" is a statement about nothing"
+	}
+	if r.Reached() == 0 {
+		return fmt.Sprintf("none of the %d case(s) reached the system -- every one faulted at the "+
+			"adapter or went unanswered -- so \"no 5xx\" is a statement about nothing", len(r.Results))
+	}
+	return ""
 }
 
 // Summary is the one line a reader needs: what reached, out of what was sent,

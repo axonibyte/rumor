@@ -177,3 +177,86 @@ func TestTheFuzzStageDrivesTheToyAndFindsNo5xx(t *testing.T) {
 	}
 	t.Logf("PROOF %d of %d refusals carry no error text", silent, refused)
 }
+
+// D5's PRESENCE PARTNER: a run in which nothing reached the system must not be
+// reported as having found no 5xx.
+//
+// WHY THIS NEEDS THE LIVE SESSION AND NOT A FAKE: the clause this drives is
+// Report.Vacuous, and the half worth proving is that fuzz.Run CONSULTS it.
+// Run takes a *wire.Session, so there is no interface to substitute -- and a
+// unit arm over Vacuous alone would pass with the call site deleted, which is
+// the one failure this arm exists to catch.
+//
+// HOW ZERO REACHED IS PRODUCED HONESTLY: the corpus is the actions that emit,
+// so stripping Emits from every declared action and appending ONE write action
+// the adapter has never heard of leaves a corpus whose every case faults at the
+// adapter. The replacement needs no handle, so the derived setup is empty and
+// the run gets as far as sending -- which is the state a server that died after
+// its setup would leave behind.
+func TestTheFuzzStageRefusesToClearASystemThatNeverAnsweredIt(t *testing.T) {
+	ctx := context.Background()
+	dir := filepath.Join("..", "..", "examples", "toy")
+
+	prep, err := platform.Load(filepath.Join(dir, "platform.toml"), decl.TOML)
+	if err != nil || !prep.OK() {
+		t.Fatalf("platform: %v %v", err, prep.Refusals)
+	}
+	brep, err := bindings.Load(filepath.Join(dir, "bindings.toml"), decl.TOML)
+	if err != nil || !brep.OK() {
+		t.Fatalf("bindings: %v %v", err, brep.Refusals)
+	}
+	actors, err := schedule.Actors(prep.Platform.Venire)
+	if err != nil {
+		t.Fatalf("Actors: %v", err)
+	}
+
+	b := brep.Bindings
+	stripped := make([]bindings.Action, 0, len(b.Actions)+1)
+	for _, a := range b.Actions {
+		a.Emits = nil
+		stripped = append(stripped, a)
+	}
+	const absent = "an_action_the_adapter_does_not_carry"
+	stripped = append(stripped, bindings.Action{
+		Name:    absent,
+		Context: "none",
+		Emits:   []string{"anything"},
+		Args:    []bindings.Arg{{Name: "title", Source: "literal", Value: "a title"}},
+	})
+	b.Actions = stripped
+
+	sess, err := wire.Open(ctx, wire.Spawn{
+		Command: prep.Platform.Adapter.Command,
+		Cwd:     dir,
+		Env:     prep.Platform.Adapter.Env,
+	}, 30*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	rep, rerr := fuzz.Run(ctx, b, sess, actors[0])
+	if rerr == nil {
+		t.Fatalf("the stage returned no error over %d case(s) of which %d reached: a corpus the "+
+			"system never saw was reported as a clean run", len(rep.Results), rep.Reached())
+	}
+	if rep.Reached() != 0 {
+		t.Fatalf("this arm's premise is gone: %d case(s) reached the system, so the error above is "+
+			"about something other than the vacuity this drives (%v)", rep.Reached(), rerr)
+	}
+	if len(rep.Results) == 0 {
+		t.Fatalf("no case was sent at all, so the corpus -- not the answer -- is what failed: %v", rerr)
+	}
+	if !strings.Contains(rerr.Error(), "reached the system") {
+		t.Errorf("the refusal does not say what was wrong with the run: %v", rerr)
+	}
+
+	// AND THE FINDINGS ARE NOT WHERE THIS LANDED, because a request the system
+	// never received is not a defect in the system.
+	if len(rep.Findings) != 0 {
+		t.Errorf("a run that reached nothing produced %d finding(s) against the system: %v",
+			len(rep.Findings), rep.Findings)
+	}
+
+	t.Logf("PROOF %d case(s) sent, %d reached, refused with: %v", len(rep.Results), rep.Reached(), rerr)
+}

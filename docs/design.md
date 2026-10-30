@@ -1264,6 +1264,21 @@ write action, or write actions with no arguments between them, is refused by
 name — because an empty corpus and a corpus nobody generated read identically
 in a report, which is the shape D1's partner exists to catch.
 
+**AND A CORPUS NOTHING ANSWERED IS THE SAME REFUSAL ONE LAYER LATER.** The
+"no 5xx" clause is read off the results, so a run in which NO case reached the
+system produces an empty finding list for the same reason a clean one does: a
+server that died after its setup, or an adapter whose surface answers nothing,
+would be reported as having found no 5xx over requests the system never
+received. Zero reached is a COULD-NOT-RUN and not a finding, for the reason a
+refused setup step is — the defect is in the run, and the system under test is
+not answerable for a request that never arrived. The line is at zero and not
+at a fraction because a nonzero line needs a NUMBER and nothing in the
+declarations supplies one: 18 of the toy's 45 cases fault at the adapter in the
+HONEST run, its surface genuinely not carrying every declared action, and that
+rate is a property of one adapter rather than of the question — a constant taken
+from it would refuse correct runs against a thinner surface and clear vacuous
+ones against a fuller. Zero is the only line derivable rather than guessed.
+
 ## The walk is the `api` stage, and the dispatcher says so
 
 **`[stages]` was declared, cross-checked and never dispatched.** Every
