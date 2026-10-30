@@ -158,10 +158,13 @@ func shrinkFound(ctx context.Context, dir string, prep platform.Report, p schedu
 	}
 
 	res, serr := shrink.Shrink(ctx, shrink.Request{
-		Seed:       seed,
-		Steps:      rec.Steps,
-		Kinds:      kindsDrawn(rec.Steps),
-		Want:       *rec.Finding,
+		Seed:  seed,
+		Steps: rec.Steps,
+		Kinds: kindsDrawn(rec.Steps),
+		// THE WALK's WANT IS THE STATUTE's VERDICT, named as such now that a
+		// stage can author one too (fable, coop rumor/1521). The reading is
+		// unchanged -- StatuteVerdict carries the comparison that was in Once.
+		Want:       shrink.StatuteVerdict{Finding: *rec.Finding},
 		Provider:   prov,
 		Checkpoint: cp,
 		// NOTHING IS PROMOTED, AND THAT IS NOT AN OVERSIGHT. Request.SeedsFile's

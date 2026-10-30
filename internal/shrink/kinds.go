@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
 )
 
@@ -48,7 +47,7 @@ type KindReduction struct {
 // establishes the failure is real before any of this; this says so again at the
 // one point where the trace stops existing.
 func RemoveKinds(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
-	want engine.Finding, kinds []string,
+	want Want, kinds []string,
 	run func(ctx context.Context, without []string) (Candidate, error)) (KindReduction, error) {
 
 	if run == nil {

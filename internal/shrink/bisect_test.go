@@ -25,7 +25,7 @@ func needs(k int) func(context.Context, int) (engine.Finding, error) {
 
 func TestBisectFindsTheShortestReproducingPrefix(t *testing.T) {
 	f := &fake{}
-	r, err := Bisect(context.Background(), f, cp, bug(), 10, settledN(needs(3)))
+	r, err := Bisect(context.Background(), f, cp, wantBug(), 10, settledN(needs(3)))
 	if err != nil {
 		t.Fatalf("Bisect: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestBisectFindsTheShortestReproducingPrefix(t *testing.T) {
 // both, which is what makes the number evidence about the SEARCH rather than
 // about the answer.
 func TestBisectHalvesRatherThanScanning(t *testing.T) {
-	r, err := Bisect(context.Background(), &fake{}, cp, bug(), 64, settledN(needs(33)))
+	r, err := Bisect(context.Background(), &fake{}, cp, wantBug(), 64, settledN(needs(33)))
 	if err != nil {
 		t.Fatalf("Bisect: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestBisectHalvesRatherThanScanning(t *testing.T) {
 // THE WHOLE TRACE IS THE ANSWER WHEN NOTHING SHORTER REPRODUCES, and Found says
 // so rather than the caller inferring it from Steps == n.
 func TestBisectKeepsTheWholeTraceWhenNothingShorterReproduces(t *testing.T) {
-	r, err := Bisect(context.Background(), &fake{}, cp, bug(), 8, settledN(needs(8)))
+	r, err := Bisect(context.Background(), &fake{}, cp, wantBug(), 8, settledN(needs(8)))
 	if err != nil {
 		t.Fatalf("Bisect: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestBisectUnderNonMonotonicReproductionReturnsAReproducingLength(t *testing
 		return engine.Finding{Defined: true, Value: "consistent",
 			Rule: "data.rumor.statute.finding"}, nil
 	}
-	r, err := Bisect(context.Background(), &fake{}, cp, bug(), 9, settledN(odd))
+	r, err := Bisect(context.Background(), &fake{}, cp, wantBug(), 9, settledN(odd))
 	if err != nil {
 		t.Fatalf("Bisect: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestBisectUnderNonMonotonicReproductionReturnsAReproducingLength(t *testing
 // no single world.
 func TestBisectStopsOnADirtyWorld(t *testing.T) {
 	f := &fake{verify: rollback.ErrDirty}
-	r, err := Bisect(context.Background(), f, cp, bug(), 10, settledN(needs(3)))
+	r, err := Bisect(context.Background(), f, cp, wantBug(), 10, settledN(needs(3)))
 	if err == nil {
 		t.Fatal("a dirty world did not stop the bisection")
 	}
@@ -151,7 +151,7 @@ func TestBisectStopsOnADirtyWorld(t *testing.T) {
 // shorter version of a failure that is not there would make every length it
 // reported meaningless, so it refuses and names the gate that establishes this.
 func TestBisectRefusesATraceThatDoesNotReproduce(t *testing.T) {
-	_, err := Bisect(context.Background(), &fake{}, cp, bug(), 6,
+	_, err := Bisect(context.Background(), &fake{}, cp, wantBug(), 6,
 		settledN(func(context.Context, int) (engine.Finding, error) {
 			return engine.Finding{Defined: true, Value: "consistent",
 				Rule: "data.rumor.statute.finding"}, nil
@@ -175,7 +175,7 @@ func TestBisectRefusals(t *testing.T) {
 		{"a negative length", -3, needs(1), "cannot be bisected"},
 		{"no run function", 5, nil, "no run function"},
 	} {
-		_, err := Bisect(context.Background(), &fake{}, cp, bug(), c.n, settledN(c.fn))
+		_, err := Bisect(context.Background(), &fake{}, cp, wantBug(), c.n, settledN(c.fn))
 		if err == nil {
 			t.Errorf("%s: accepted", c.label)
 			continue
@@ -190,7 +190,7 @@ func TestBisectRefusals(t *testing.T) {
 // reading an error as "did not reproduce" would shorten a trace on the strength
 // of a broken replay.
 func TestBisectDoesNotReadARunErrorAsNonReproduction(t *testing.T) {
-	_, err := Bisect(context.Background(), &fake{}, cp, bug(), 10,
+	_, err := Bisect(context.Background(), &fake{}, cp, wantBug(), 10,
 		settledN(func(_ context.Context, steps int) (engine.Finding, error) {
 			if steps == 10 {
 				return bug(), nil

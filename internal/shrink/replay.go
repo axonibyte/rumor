@@ -137,7 +137,12 @@ var ErrDirty = fmt.Errorf("shrink: refusing to replay: %w", rollback.ErrDirty)
 // project with no planted claims need not define the rule and a reader must be
 // able to tell "all three agreed" from "two were available".
 func Once(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
-	want engine.Finding, replay func(context.Context) (Candidate, error)) (Verdict, error) {
+	want Want, replay func(context.Context) (Candidate, error)) (Verdict, error) {
+
+	if want == nil {
+		return Verdict{}, fmt.Errorf("shrink: no verdict to keep, so no candidate could be " +
+			"judged: a reduction with nothing to reproduce would accept every candidate")
+	}
 
 	if pr == nil {
 		return Verdict{}, fmt.Errorf("shrink: no rollback provider: a trace cannot be replayed on " +
@@ -192,56 +197,15 @@ func Once(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
 			"where the walk stopped asking rather than what the trace causes", cand.PendingOpen)
 	}
 
-	wantAttr, wantHas := want.Rules[attributionRule]
-	gotAttr, gotHas := got.Rules[attributionRule]
-
-	v := Verdict{Got: got, PendingOpen: cand.PendingOpen, AttributionCompared: wantHas || gotHas}
-	switch {
-	case want.Defined != got.Defined:
-		v.Why = fmt.Sprintf("the original %s and the replay %s", defined(want.Defined), defined(got.Defined))
-	case want.Defined && want.Value != got.Value:
-		v.Why = fmt.Sprintf("the original found %v and the replay found %v", want.Value, got.Value)
-	case want.Defined && want.Kind != got.Kind:
-		// A KIND JOINS THE RULE, THE VALUE AND THE ATTRIBUTION in "the same
-		// finding" (fable, coop breakout-r6/0, R6.4's clause). `stale` is a
-		// `bug` whose kind says WHY it is one -- a pending past its bound -- so
-		// two findings that agree on the value and differ on the kind are two
-		// different defects wearing one word, and a shrink that traded one for
-		// the other would reduce against a failure it did not find.
-		//
-		// IT LANDS WITH R6.1 RATHER THAN R6.4 BECAUSE R6.1 CREATED THE GAP:
-		// engine.Finding gained Kind there, and until this clause read it the
-		// comparison treated a stale and a plain bug as one reproduction.
-		// Leaving a field written and unread is the shape this package was
-		// already caught by once, at Verdict.AttributionCompared.
-		v.Why = fmt.Sprintf("both found %v, but the original is of kind %s and the replay %s",
-			want.Value, kindName(want.Kind), kindName(got.Kind))
-	case wantHas != gotHas:
-		// THE RULE BECOMING UNDEFINED IS A DIFFERENCE, not an absence to pass
-		// over: engine.Finding's Rules is documented there as carrying every
-		// rule the caller named and being absent when undefined, so one side
-		// having an attribution and the other not is a finding that no longer
-		// rests on what it rested on.
-		//
-		// THE ATTRIBUTION OF THAT PHRASE IS internal/engine's AND NOT THE
-		// VOCABULARY'S. My first version credited it to the vocabulary, which
-		// does not say it, and tests/vocabulary's sweep refused by name: "1
-		// absent". Citing the document that happens to be nearby is the same
-		// defect as citing a guarantee by line number.
-		v.Why = fmt.Sprintf("the original %s an attribution and the replay %s one",
-			had(wantHas), had(gotHas))
-	case wantHas && gotHas && wantAttr != gotAttr:
-		v.Why = fmt.Sprintf("both found %v, but the original rests_on_planted %v and the replay %v",
-			want.Value, wantAttr, gotAttr)
-	case want.Rule != got.Rule:
-		// A FINDING NAMES THE RULE THAT PRODUCED IT, so one value reached by a
-		// different rule is a different finding. Without this clause a statute
-		// whose clauses both yield "bug" would make two distinct failures look
-		// like one reproduction.
-		v.Why = fmt.Sprintf("both found %v, but by %s and then %s", want.Value, want.Rule, got.Rule)
-	default:
-		v.Reproduced = true
+	v := Verdict{Got: got, PendingOpen: cand.PendingOpen}
+	// THE ATTRIBUTION FIELD BELONGS TO THE WANT THAT HAS ONE. Only a statute
+	// verdict carries a `rests_on_planted` rule to compare, so asking every
+	// Want for one would make the field read "false" where it means "not
+	// applicable" -- which is the distinction its own comment exists for.
+	if sv, ok := want.(interface{ Compares(Candidate) bool }); ok {
+		v.AttributionCompared = sv.Compares(cand)
 	}
+	v.Reproduced, v.Why = want.Recurs(cand)
 	return v, nil
 }
 

@@ -1448,3 +1448,41 @@ than a live finding.
 in: those two are facts the setup holds, the room is arithmetic over them, and a
 caller computing it itself could get it wrong in the direction that hides a
 finding.
+
+## A shrink's subject is the stage's own verdict
+
+**EVERY REDUCER TOOK `want engine.Finding`** — `Once`, `Bisect` and
+`RemoveKinds` alike — so the only verdict a shrink could keep was one the
+statute produced by evaluating rules against the ledger. A concurrency overfill
+is not such a verdict and cannot become one, and the toy's statute says so of
+ITSELF for a data-model reason rather than a wording one: "THERE IS NO CAPACITY
+FIELD ... an event's capacity is not a ledger fact, a capacity OVERRUN is not
+nameable from a ledger case, and this statute does not pretend otherwise." So a
+stage finding had no `want` to hand the shrinker at all, whatever the gate did,
+and the clean-world check over it was UNREACHABLE rather than merely unreached.
+
+**A VERDICT IS NOT ONLY A STATUTE's.** The type is widened to an interface: a
+want answers whether a candidate still gives it, and writes its own reason when
+it does not. The reason belongs to the want because only the author of a
+verdict knows what separated it from what came back — the statute's reading
+names values, kinds, rules and attribution, a stage's names its own quantities,
+and a shrinker that composed the sentence itself would have to know every
+verdict there will ever be. The statute's own disclaimer stays true, and that
+is exactly why the finding is the stage's to name rather than the statute's to
+be taught.
+
+**THE STATUTE's READING MOVED AND WAS NOT REWRITTEN.** The walk is the only
+caller today, so a widening that altered what a statute verdict means would be
+a change to the walk disguised as a refactor: the clause order, the wording of
+every reason and the attribution handling are the ones that were in `Once`, and
+the package's existing arms passing unchanged is what says so. The attribution
+field stays the question of the want that HAS one — only a statute verdict
+carries a `rests_on_planted` rule, and asking every want would make the field
+read "false" where it means "not applicable".
+
+**WHAT SHRINKS IS THE SETUP.** The step prefix and the action kinds in it, as
+the two reducers already do; a fan-out is one step of width N, N belongs to the
+stage and is not reduced, and the refusal of width 1 stands because one request
+in flight is the sequential path. A candidate at which the verdict does not
+recur is refused and the finding marked unstable and not shrunk — never read as
+clean.

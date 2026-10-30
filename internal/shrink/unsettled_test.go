@@ -70,7 +70,7 @@ func TestACandidateThatDidNotSettleIsRefusedRatherThanJudged(t *testing.T) {
 	}
 
 	for _, open := range []int{1, 7} {
-		_, err := Once(context.Background(), &fake{}, cp, bug(), unsettled(open))
+		_, err := Once(context.Background(), &fake{}, cp, wantBug(), unsettled(open))
 		if err == nil {
 			t.Fatalf("a candidate holding %d pending(s) was JUDGED: its finding is where the "+
 				"walk stopped asking rather than what the trace causes, and comparing it makes "+
@@ -89,7 +89,7 @@ func TestACandidateThatDidNotSettleIsRefusedRatherThanJudged(t *testing.T) {
 	}
 
 	// THE CONTROL: the same finding on a settled candidate reproduces.
-	v, err := Once(context.Background(), &fake{}, cp, bug(), unsettled(0))
+	v, err := Once(context.Background(), &fake{}, cp, wantBug(), unsettled(0))
 	if err != nil {
 		t.Fatalf("a settled candidate was refused, so the refusal is not about the pending: %v", err)
 	}

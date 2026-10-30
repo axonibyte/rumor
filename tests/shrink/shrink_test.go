@@ -304,7 +304,7 @@ func TestTheToyBugsAreFoundByAWalkAndShrinkToUnderFiveActions(t *testing.T) {
 				Seed:       tc.seed,
 				Steps:      rec.Steps,
 				Kinds:      kindsDrawn(rec.Steps),
-				Want:       *rec.Finding,
+				Want:       shrink.StatuteVerdict{Finding: *rec.Finding},
 				Provider:   prov,
 				Checkpoint: cp,
 				SeedsFile:  filepath.Join(t.TempDir(), "seeds.lock"),

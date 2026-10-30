@@ -15,7 +15,7 @@ type Request struct {
 	Seed  uint64
 	Steps []schedule.Step // the failing trace, whole
 	Kinds []string        // the action kinds it drew
-	Want  engine.Finding  // the finding to keep reproducing
+	Want  Want            // the verdict to keep reproducing, statute's or a stage's
 
 	Provider   rollback.Provider
 	Checkpoint rollback.Checkpoint

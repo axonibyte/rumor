@@ -36,7 +36,7 @@ func TestAFinalReplayThatDoesNotReproduceIsAnError(t *testing.T) {
 	//    reproduces at all -- without this the arm below could "pass" because the
 	//    reduction never got as far as a final replay.
 	base, err := Shrink(context.Background(), Request{
-		Seed: 42, Steps: steps(12), Kinds: kinds, Want: bug(),
+		Seed: 42, Steps: steps(12), Kinds: kinds, Want: wantBug(),
 		Provider: &fake{}, Checkpoint: cp, Replay: settledReplay(newWorld().replay),
 	})
 	if err != nil {
@@ -64,7 +64,7 @@ func TestAFinalReplayThatDoesNotReproduceIsAnError(t *testing.T) {
 	}
 
 	got, err := Shrink(context.Background(), Request{
-		Seed: 42, Steps: steps(12), Kinds: kinds, Want: bug(),
+		Seed: 42, Steps: steps(12), Kinds: kinds, Want: wantBug(),
 		Provider: &fake{}, Checkpoint: cp, Replay: settledReplay(flip),
 	})
 	if err == nil {
@@ -97,7 +97,7 @@ func TestAFinalReplayThatDoesNotReproduceIsAnError(t *testing.T) {
 		return f, ran, rerr
 	}
 	ctl, cerr := Shrink(context.Background(), Request{
-		Seed: 42, Steps: steps(12), Kinds: kinds, Want: bug(),
+		Seed: 42, Steps: steps(12), Kinds: kinds, Want: wantBug(),
 		Provider: &fake{}, Checkpoint: cp, Replay: settledReplay(early),
 	})
 	if cerr != nil && strings.Contains(cerr.Error(), "final clean replay") {

@@ -87,7 +87,7 @@ func TestShrinkRunsTheWholeReduction(t *testing.T) {
 
 	got, err := Shrink(context.Background(), Request{
 		Seed: 42, Steps: steps(12), Kinds: []string{"create_event", "join_event", "leave_event"},
-		Want: bug(), Provider: f, Checkpoint: cp, SeedsFile: seeds, Replay: settledReplay(w.replay),
+		Want: wantBug(), Provider: f, Checkpoint: cp, SeedsFile: seeds, Replay: settledReplay(w.replay),
 	})
 	if err != nil {
 		t.Fatalf("Shrink: %v", err)
@@ -141,7 +141,7 @@ func TestShrinkReportsTheTraceThatRan(t *testing.T) {
 	w := &world{needSteps: 4, needKinds: []string{"create_event"}, all: steps(12)}
 	got, err := Shrink(context.Background(), Request{
 		Seed: 7, Steps: steps(12), Kinds: []string{"create_event", "join_event", "leave_event"},
-		Want: bug(), Provider: &fake{}, Checkpoint: cp, Replay: settledReplay(w.replay),
+		Want: wantBug(), Provider: &fake{}, Checkpoint: cp, Replay: settledReplay(w.replay),
 	})
 	if err != nil {
 		t.Fatalf("Shrink: %v", err)
@@ -182,7 +182,7 @@ func TestKindRemovalRunsOnTheShortenedTrace(t *testing.T) {
 	}
 	got, err := Shrink(context.Background(), Request{
 		Seed: 5, Steps: steps(12), Kinds: []string{"create_event", "join_event", "leave_event"},
-		Want: bug(), Provider: &fake{}, Checkpoint: cp, Replay: settledReplay(w.replay),
+		Want: wantBug(), Provider: &fake{}, Checkpoint: cp, Replay: settledReplay(w.replay),
 	})
 	if err != nil {
 		t.Fatalf("Shrink: %v", err)
@@ -206,7 +206,7 @@ func TestAnUnstableSeedIsNotShrunkOrPromoted(t *testing.T) {
 
 	got, err := Shrink(context.Background(), Request{
 		Seed: 13, Steps: steps(5), Kinds: []string{"create_event"},
-		Want: bug(), Provider: f, Checkpoint: cp, SeedsFile: seeds, Replay: settledReplay(w.replay),
+		Want: wantBug(), Provider: f, Checkpoint: cp, SeedsFile: seeds, Replay: settledReplay(w.replay),
 	})
 	if err != nil {
 		t.Fatalf("an unstable seed is a verdict, not an error: %v", err)
@@ -238,7 +238,7 @@ func TestShrinkPromotesNothingWithoutASeedsFile(t *testing.T) {
 	w := &world{needSteps: 2, needKinds: []string{"create_event"}, all: steps(6)}
 	got, err := Shrink(context.Background(), Request{
 		Seed: 1, Steps: steps(6), Kinds: []string{"create_event", "join_event"},
-		Want: bug(), Provider: &fake{}, Checkpoint: cp, Replay: settledReplay(w.replay),
+		Want: wantBug(), Provider: &fake{}, Checkpoint: cp, Replay: settledReplay(w.replay),
 	})
 	if err != nil {
 		t.Fatalf("Shrink: %v", err)
@@ -286,7 +286,7 @@ func TestOnlyAReproducedFailureIsShrunk(t *testing.T) {
 		return Request{
 			Seed: 99, Steps: steps(n),
 			Kinds: []string{"create_event", "join_event", "leave_event"},
-			Want:  bug(), Provider: &fake{}, Checkpoint: cp,
+			Want:  wantBug(), Provider: &fake{}, Checkpoint: cp,
 			SeedsFile: seeds, Replay: settledReplay(w.replay),
 		}
 	}

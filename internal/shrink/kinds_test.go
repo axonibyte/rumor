@@ -35,7 +35,7 @@ func needsKinds(required ...string) func(context.Context, []string) (engine.Find
 // in one pass, not the best single one.
 func TestRemoveKindsDropsEveryKindTheFailureSurvivesWithout(t *testing.T) {
 	f := &fake{}
-	r, err := RemoveKinds(context.Background(), f, cp, bug(),
+	r, err := RemoveKinds(context.Background(), f, cp, wantBug(),
 		[]string{"join_event", "create_event", "leave_event", "suborn"},
 		settledK(needsKinds("create_event")))
 	if err != nil {
@@ -57,12 +57,12 @@ func TestRemoveKindsDropsEveryKindTheFailureSurvivesWithout(t *testing.T) {
 // THE ORDER IS SORTED AND NOT THE CALLER'S, so a slice built from a map cannot
 // make one seed shrink two ways. Two call orders of the same SET must agree.
 func TestRemoveKindsIsAFunctionOfTheSetNotTheSliceOrder(t *testing.T) {
-	a, err := RemoveKinds(context.Background(), &fake{}, cp, bug(),
+	a, err := RemoveKinds(context.Background(), &fake{}, cp, wantBug(),
 		[]string{"a_kind", "b_kind", "c_kind"}, settledK(needsKinds("b_kind")))
 	if err != nil {
 		t.Fatalf("first order: %v", err)
 	}
-	b, err := RemoveKinds(context.Background(), &fake{}, cp, bug(),
+	b, err := RemoveKinds(context.Background(), &fake{}, cp, wantBug(),
 		[]string{"c_kind", "a_kind", "b_kind"}, settledK(needsKinds("b_kind")))
 	if err != nil {
 		t.Fatalf("second order: %v", err)
@@ -75,7 +75,7 @@ func TestRemoveKindsIsAFunctionOfTheSetNotTheSliceOrder(t *testing.T) {
 // A KIND NAMED TWICE IS TRIED ONCE: the second attempt would be removing what
 // is already gone, and the probe count is where that shows.
 func TestRemoveKindsDeduplicates(t *testing.T) {
-	r, err := RemoveKinds(context.Background(), &fake{}, cp, bug(),
+	r, err := RemoveKinds(context.Background(), &fake{}, cp, wantBug(),
 		[]string{"a_kind", "a_kind", "b_kind"}, settledK(needsKinds("b_kind")))
 	if err != nil {
 		t.Fatalf("RemoveKinds: %v", err)
@@ -90,7 +90,7 @@ func TestRemoveKindsDeduplicates(t *testing.T) {
 
 // A FAILURE THAT NEEDS EVERY KIND LOSES NONE.
 func TestRemoveKindsKeepsEveryNeededKind(t *testing.T) {
-	r, err := RemoveKinds(context.Background(), &fake{}, cp, bug(),
+	r, err := RemoveKinds(context.Background(), &fake{}, cp, wantBug(),
 		[]string{"x_kind", "y_kind"}, settledK(needsKinds("x_kind", "y_kind")))
 	if err != nil {
 		t.Fatalf("RemoveKinds: %v", err)
@@ -107,7 +107,7 @@ func TestRemoveKindsKeepsEveryNeededKind(t *testing.T) {
 // would be reported with full confidence.
 func TestRemoveKindsRefusesAnEmptyTraceThatReproduces(t *testing.T) {
 	always := func(context.Context, []string) (engine.Finding, error) { return bug(), nil }
-	_, err := RemoveKinds(context.Background(), &fake{}, cp, bug(),
+	_, err := RemoveKinds(context.Background(), &fake{}, cp, wantBug(),
 		[]string{"only_kind"}, settledK(always))
 	if err == nil {
 		t.Fatal("a trace that reproduced with every kind removed was accepted")
@@ -124,7 +124,7 @@ func TestRemoveKindsRefusesAnEmptyTraceThatReproduces(t *testing.T) {
 // world where it should NOT fire, without which the arm above would pass on a
 // guard that refused every full pass.
 func TestRemoveKindsDoesNotRefuseWhenAKindRemains(t *testing.T) {
-	r, err := RemoveKinds(context.Background(), &fake{}, cp, bug(),
+	r, err := RemoveKinds(context.Background(), &fake{}, cp, wantBug(),
 		[]string{"a_kind", "b_kind"}, settledK(needsKinds("b_kind")))
 	if err != nil {
 		t.Fatalf("refused a reduction that leaves b_kind in place: %v", err)
@@ -138,7 +138,7 @@ func TestRemoveKindsDoesNotRefuseWhenAKindRemains(t *testing.T) {
 // removals judged in different worlds are not comparable.
 func TestRemoveKindsStopsOnADirtyWorld(t *testing.T) {
 	f := &fake{verify: rollback.ErrDirty}
-	_, err := RemoveKinds(context.Background(), f, cp, bug(),
+	_, err := RemoveKinds(context.Background(), f, cp, wantBug(),
 		[]string{"a_kind", "b_kind"}, settledK(needsKinds("b_kind")))
 	if err == nil {
 		t.Fatal("a dirty world did not stop the pass")
@@ -162,7 +162,7 @@ func TestRemoveKindsRefusals(t *testing.T) {
 		{"no run function", []string{"a_kind"}, nil, "no run function"},
 		{"an unnamed kind", []string{"a_kind", ""}, ok, "empty name"},
 	} {
-		_, err := RemoveKinds(context.Background(), &fake{}, cp, bug(), c.kinds, settledK(c.fn))
+		_, err := RemoveKinds(context.Background(), &fake{}, cp, wantBug(), c.kinds, settledK(c.fn))
 		if err == nil {
 			t.Errorf("%s: accepted", c.label)
 			continue
@@ -174,7 +174,7 @@ func TestRemoveKindsRefusals(t *testing.T) {
 
 	// NO KINDS AT ALL IS A NO-OP AND NOT A REFUSAL: a trace with nothing to
 	// remove has been reduced as far as this pass can take it.
-	r, err := RemoveKinds(context.Background(), &fake{}, cp, bug(), nil, settledK(ok))
+	r, err := RemoveKinds(context.Background(), &fake{}, cp, wantBug(), nil, settledK(ok))
 	if err != nil {
 		t.Errorf("an empty kind list is a no-op, not an error: %v", err)
 	}

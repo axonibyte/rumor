@@ -30,7 +30,7 @@ import (
 // that Shrink SAYS SO.
 func TestAPartialReproductionIsReachable(t *testing.T) {
 	// Exactly what a statute declaring no rests_on_planted produces twice.
-	v, err := Once(context.Background(), &fake{}, cp, bug(),
+	v, err := Once(context.Background(), &fake{}, cp, wantBug(),
 		settled(func(context.Context) (engine.Finding, error) { return bug(), nil }))
 	if err != nil {
 		t.Fatalf("Once: %v", err)
@@ -47,7 +47,7 @@ func TestAPartialReproductionIsReachable(t *testing.T) {
 	// third part actually compared.
 	planted := engine.Finding{Defined: true, Value: "bug", Rule: "data.rumor.statute.finding",
 		Rules: map[string]any{"rests_on_planted": true}}
-	full, err := Once(context.Background(), &fake{}, cp, planted,
+	full, err := Once(context.Background(), &fake{}, cp, StatuteVerdict{Finding: planted},
 		settled(func(context.Context) (engine.Finding, error) { return planted, nil }))
 	if err != nil {
 		t.Fatalf("Once: %v", err)
@@ -107,7 +107,7 @@ func TestShrinkSaysWhenTheReproductionWasPartial(t *testing.T) {
 			got, err := Shrink(context.Background(), Request{
 				Seed: 42, Steps: steps(12),
 				Kinds: []string{"create_event", "join_event", "leave_event"},
-				Want:  f, Provider: &fake{}, Checkpoint: cp,
+				Want:  StatuteVerdict{Finding: f}, Provider: &fake{}, Checkpoint: cp,
 				Replay: func(c context.Context, n int, without []string) (Candidate, error) {
 					was, ran, rerr := w.replay(c, n, without)
 					if rerr != nil || was.Value != "bug" {

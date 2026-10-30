@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
 )
 
@@ -58,7 +57,7 @@ type Reduction struct {
 // not actually reproduce searches for a shorter version of a failure that is
 // not there, and every length it reports would be meaningless.
 func Bisect(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
-	want engine.Finding, n int,
+	want Want, n int,
 	run func(ctx context.Context, steps int) (Candidate, error)) (Reduction, error) {
 
 	if n < 1 {

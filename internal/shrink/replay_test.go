@@ -46,6 +46,11 @@ func bug() engine.Finding {
 	return engine.Finding{Defined: true, Value: "bug", Rule: "data.rumor.statute.finding"}
 }
 
+// wantBug is bug() as the verdict a shrink keeps. The two are separate because
+// bug() is also what a CANDIDATE produces, and a helper that served both would
+// hide which side of the comparison each call site is on.
+func wantBug() Want { return StatuteVerdict{Finding: bug()} }
+
 // A REPLAY THAT REPRODUCES CLEARS THE GATE, and the ORDER is asserted: restore
 // then verify then run. A gate that ran the replay before verifying would pass
 // this arm on the value alone, which is why the order is read off the provider
@@ -53,7 +58,7 @@ func bug() engine.Finding {
 func TestAReproducedFailureClearsTheGate(t *testing.T) {
 	f := &fake{}
 	ran := false
-	v, err := Once(context.Background(), f, cp, bug(), settled(func(context.Context) (engine.Finding, error) {
+	v, err := Once(context.Background(), f, cp, wantBug(), settled(func(context.Context) (engine.Finding, error) {
 		ran = true
 		f.order = append(f.order, "replay")
 		return bug(), nil
@@ -80,7 +85,7 @@ func TestAReproducedFailureClearsTheGate(t *testing.T) {
 func TestAProvenDirtyWorldRefusesBeforeRunning(t *testing.T) {
 	f := &fake{verify: rollback.ErrDirty}
 	ran := false
-	_, err := Once(context.Background(), f, cp, bug(), settled(func(context.Context) (engine.Finding, error) {
+	_, err := Once(context.Background(), f, cp, wantBug(), settled(func(context.Context) (engine.Finding, error) {
 		ran = true
 		return bug(), nil
 	}))
@@ -106,7 +111,7 @@ func TestAProvenDirtyWorldRefusesBeforeRunning(t *testing.T) {
 func TestAProviderThatCannotTellIsNotCleanAndNotDirty(t *testing.T) {
 	f := &fake{verify: fmt.Errorf("the checksum file is unreadable")}
 	ran := false
-	_, err := Once(context.Background(), f, cp, bug(), settled(func(context.Context) (engine.Finding, error) {
+	_, err := Once(context.Background(), f, cp, wantBug(), settled(func(context.Context) (engine.Finding, error) {
 		ran = true
 		return bug(), nil
 	}))
@@ -146,7 +151,7 @@ func TestAFailureThatDoesNotReturnIsUnstable(t *testing.T) {
 			Rule: "data.rumor.statute.other"}, "by data.rumor.statute.finding and then"},
 	} {
 		f := &fake{}
-		v, err := Once(context.Background(), f, cp, bug(), settled(func(context.Context) (engine.Finding, error) {
+		v, err := Once(context.Background(), f, cp, wantBug(), settled(func(context.Context) (engine.Finding, error) {
 			return c.got, nil
 		}))
 		if err != nil {
@@ -182,7 +187,7 @@ func TestOnceRefusals(t *testing.T) {
 		{"a restore that fails", &fake{restore: fmt.Errorf("the process will not die")}, cp, ok,
 			"restoring the world"},
 	} {
-		_, err := Once(context.Background(), c.pr, c.cp, bug(), settled(c.fn))
+		_, err := Once(context.Background(), c.pr, c.cp, wantBug(), settled(c.fn))
 		if err == nil {
 			t.Errorf("%s: accepted", c.label)
 			continue
@@ -205,7 +210,7 @@ func TestADriftInAttributionIsNotAReproduction(t *testing.T) {
 	honest := engine.Finding{Defined: true, Value: "bug", Rule: "data.rumor.statute.finding",
 		Rules: map[string]any{"rests_on_planted": false}}
 
-	v, err := Once(context.Background(), &fake{}, cp, planted,
+	v, err := Once(context.Background(), &fake{}, cp, StatuteVerdict{Finding: planted},
 		settled(func(context.Context) (engine.Finding, error) { return honest, nil }))
 	if err != nil {
 		t.Fatalf("Once: %v", err)
@@ -222,7 +227,7 @@ func TestADriftInAttributionIsNotAReproduction(t *testing.T) {
 
 	// AND THE OTHER DIRECTION: identical attribution reproduces, without which
 	// the arm above would pass on a gate that called everything different.
-	same, err := Once(context.Background(), &fake{}, cp, planted,
+	same, err := Once(context.Background(), &fake{}, cp, StatuteVerdict{Finding: planted},
 		settled(func(context.Context) (engine.Finding, error) { return planted, nil }))
 	if err != nil {
 		t.Fatalf("Once: %v", err)
@@ -240,7 +245,7 @@ func TestAnAttributionGoingAbsentIsADifference(t *testing.T) {
 		Rules: map[string]any{"rests_on_planted": true}}
 	bare := engine.Finding{Defined: true, Value: "bug", Rule: "data.rumor.statute.finding"}
 
-	v, err := Once(context.Background(), &fake{}, cp, planted,
+	v, err := Once(context.Background(), &fake{}, cp, StatuteVerdict{Finding: planted},
 		settled(func(context.Context) (engine.Finding, error) { return bare, nil }))
 	if err != nil {
 		t.Fatalf("Once: %v", err)
@@ -257,7 +262,7 @@ func TestAnAttributionGoingAbsentIsADifference(t *testing.T) {
 // verdict says the third part was not available, so a reader can tell "all
 // three agreed" from "two were".
 func TestAProjectWithoutTheAttributionRuleSaysSo(t *testing.T) {
-	v, err := Once(context.Background(), &fake{}, cp, bug(),
+	v, err := Once(context.Background(), &fake{}, cp, wantBug(),
 		settled(func(context.Context) (engine.Finding, error) { return bug(), nil }))
 	if err != nil {
 		t.Fatalf("Once: %v", err)
@@ -287,7 +292,7 @@ func TestAKindDifferenceIsNotTheSameFinding(t *testing.T) {
 	plain := engine.Finding{Defined: true, Value: "bug",
 		Rule: "data.rumor.statute.finding"}
 
-	v, err := Once(ctx, &fake{}, cp, stale,
+	v, err := Once(ctx, &fake{}, cp, StatuteVerdict{Finding: stale},
 		settled(func(context.Context) (engine.Finding, error) { return plain, nil }))
 	if err != nil {
 		t.Fatalf("Once: %v", err)
@@ -305,7 +310,7 @@ func TestAKindDifferenceIsNotTheSameFinding(t *testing.T) {
 
 	// THE CONTROL, BOTH WAYS: the same kind on both sides reproduces, and so
 	// does the no-kind pair that every finding in the tree is today.
-	same, err := Once(ctx, &fake{}, cp, stale,
+	same, err := Once(ctx, &fake{}, cp, StatuteVerdict{Finding: stale},
 		settled(func(context.Context) (engine.Finding, error) { return stale, nil }))
 	if err != nil {
 		t.Fatalf("Once: %v", err)
@@ -313,7 +318,7 @@ func TestAKindDifferenceIsNotTheSameFinding(t *testing.T) {
 	if !same.Reproduced {
 		t.Fatalf("two stales did not reproduce each other: %s", same.Why)
 	}
-	none, err := Once(ctx, &fake{}, cp, plain,
+	none, err := Once(ctx, &fake{}, cp, StatuteVerdict{Finding: plain},
 		settled(func(context.Context) (engine.Finding, error) { return plain, nil }))
 	if err != nil {
 		t.Fatalf("Once: %v", err)
