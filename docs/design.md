@@ -1152,15 +1152,16 @@ once, where two-of-three bought a confident wrong conclusion about the record.
 **R7's done-when carries its own invocation, and BOTH flags are load-bearing in
 opposite directions.** The row R7.4 was built to find — an invitation honored
 past its expiry — is found from the committed seed 3 under
-`[profiles.expiring]`, and the invocation is
-`rumor run examples/toy --seed 3 --steps 24 --profile expiring`, stdout only,
-`sha256` truncated to sixteen: **a2c20f20769767d5**, twice byte-identical, exit
-3, FOUND after step 23 and REDUCED 23 steps to 8 with the crossing advance at
-step 7. `toy` and `toy-adapter` must be on PATH beside `rumor`, since the toy's
-surface is those two binaries; without them the run exits 1 and stdout is a
-12-byte echo of the seed, which five such echoes will compare equal to each
-other and to nothing else. **And the project's own directory basename is in
-the digest**, because the summary line prints it: the same project copied to a
+`[profiles.expiring]`, and the invocation is `rumor run examples/toy --seed 3
+--steps 24 --profile expiring`, stdout only, `sha256` truncated to sixteen, and
+from a project directory whose basename is `toy`, because the summary line
+prints that basename and it is therefore part of what is hashed:
+**a2c20f20769767d5**, twice byte-identical, exit 3, FOUND after step 23 and
+REDUCED 23 steps to 8 with the crossing advance at step 7. `toy` and
+`toy-adapter` must be on PATH beside `rumor`, since the toy's surface is those
+two binaries; without them the run exits 1 and stdout is a 12-byte echo of the
+seed, which five such echoes will compare equal to each other and to nothing
+else. **The basename clause is not pedantry**: the same project copied to a
 directory named `mtoy` gives `7231faa04c99e100`, with the exit code, the
 finding, the shrink and the trace all identical and ONE line of forty
 different. ratchet hit that before reproducing the figure (coop rumor/1451) and
