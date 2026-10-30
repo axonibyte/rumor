@@ -1159,7 +1159,15 @@ past its expiry — is found from the committed seed 3 under
 step 7. `toy` and `toy-adapter` must be on PATH beside `rumor`, since the toy's
 surface is those two binaries; without them the run exits 1 and stdout is a
 12-byte echo of the seed, which five such echoes will compare equal to each
-other and to nothing else.
+other and to nothing else. **And the project's own directory basename is in
+the digest**, because the summary line prints it: the same project copied to a
+directory named `mtoy` gives `7231faa04c99e100`, with the exit code, the
+finding, the shrink and the trace all identical and ONE line of forty
+different. ratchet hit that before reproducing the figure (coop rumor/1451) and
+found out only because the row names the path; measured again here, the diff is
+line 39 and nothing else. So the row is reproducible from `examples/toy` and
+not from a copy under another name — a third way to a complete, self-consistent
+wrong answer, after the two flags.
 
 **Drop either flag and the output still looks like a reproduction.** Without
 `--profile expiring` the same seed at the same step count finds a DIFFERENT bug
