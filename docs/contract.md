@@ -616,7 +616,7 @@ count = 1
 role = "guest"
 count = 3
 
-[stages.api-sim]
+[stages.api]
 enabled = true
 
 [stages.fuzz]
@@ -640,12 +640,12 @@ join_event = 3
 suborn = 3
 
 [profiles.pre-push]
-stages = ["api-sim"]
+stages = ["api"]
 seeds = 4                           # a count, as `rumor run --seeds N` (R22)
 budget = "5m"
 
 [profiles.nightly]
-stages = ["api-sim", "concurrency", "browser"]
+stages = ["api", "concurrency", "browser"]
 seeds = 64
 budget = "2h"
 ```
@@ -714,7 +714,7 @@ run that silently skipped it would replay less than it reported.
 | `[adapter].command` | yes | the engine spawns it. Nothing else in the project says how to reach the system under test |
 | `[adapter].cwd`, `[adapter].env` | no | the spawn; `env` is a list of variable **names** passed through, so a platform's secrets stay out of this file |
 | `[[venire]]` | yes, at least one | the walk draws its actors from these roles and counts. An empty venire can run nothing, which is a parse refusal rather than one of validate's twenty-three |
-| `[stages.<name>].enabled` | yes, at least one enabled | stage selection and skip reasons in the report (R8); `stages.browser.enabled` is what the two browser-stage arms read, and both are vacuous without it |
+| `[stages.<name>].enabled` | yes, at least one enabled | stage selection and skip reasons in the report (R8); `stages.browser.enabled` is what the two browser-stage arms read, and both are vacuous without it. **THE NAMES ARE `api`, `fuzz`, `concurrency` AND `browser`**, and a declared name outside that set is refused by the dispatcher BEFORE the run rather than recorded as having run or been skipped: `[stages]` is parsed as a map keyed by whatever the file says, so nothing else in the stack objects to a misspelling (rook, coop r8/16). `api` is THE MAIN LOOP -- the walk `rumor run` has always taken, which R8's api-sim child gives its settling, its time and its periodic full reconciliation. It was called `api-sim` in this example until R8.1 and that was a stale name for the one loop rather than a second stage beside it: every `platform.toml` in this repository declared `api` and none declared `api-sim` (ibis, coop r8/15; ruled fable rumor/1477) |
 | `[weights.default]` | yes | the walk draws from the applicable set by weight (`docs/design.md`, "the engine owns the seed") |
 | `[weights.stage.<stage>]`, `[weights.profile.<profile>]` | no | the same, per stage and per profile, which is the shape design.md already relies on |
 | `[profiles.<name>]` | no | R22's profiles: `stages`, `seeds` (a count), `budget` (a duration) |

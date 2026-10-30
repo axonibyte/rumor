@@ -1799,3 +1799,64 @@ default may_join := true
 		}
 	}
 }
+
+// THE RECORD CARRIES THE STAGE IT WAS DISPATCHED AS, BOTH WAYS. R8.1's
+// dispatch puts no line on either stream -- stdout is the subject of every
+// recorded digest and stderr's emptiness is what lets a control read a build
+// failure as a build failure (fable, coop rumor/1474, on rook's measurement at
+// /1473) -- so the record is the only place the stages that ran appear, and
+// this is the test that asserts it.
+//
+// BOTH DIRECTIONS, because one of them is rook's partner at coop r8/14: "the
+// record names the stages that ran" is satisfied by a record that names every
+// DECLARED stage unconditionally. A walk dispatched as nothing must record
+// nothing, or the assertion cannot tell RAN from DECLARED.
+func TestTheRecordCarriesTheStageItWasDispatchedAs(t *testing.T) {
+	ctx := context.Background()
+	const seed = 20261030
+
+	walk := func(stage string) schedule.Record {
+		t.Helper()
+		p := walkProject(t)
+		p.Stage = stage
+		sess, err := wire.Open(ctx, fakeSpawn(), 20*time.Second)
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		defer func() { _ = sess.Close() }()
+		rec, err := schedule.Walk(ctx, p, sess, seed, 5, 1)
+		if err != nil {
+			t.Fatalf("Walk(stage=%q): %v", stage, err)
+		}
+		return rec
+	}
+
+	ran := walk("api")
+	if len(ran.Stages) != 1 || ran.Stages[0] != "api" {
+		t.Errorf("a walk dispatched as api recorded %v", ran.Stages)
+	}
+
+	none := walk("")
+	if len(none.Stages) != 0 {
+		t.Errorf("a walk dispatched as no stage recorded %v, so the record cannot tell ran from declared",
+			none.Stages)
+	}
+
+	// AND THE STAGE DOES NOT LEAK INTO THE REST OF THE RECORD: the two walks
+	// are the same seed and must agree step for step, so a reader cannot
+	// mistake "the stage was recorded" for "the stage changed the walk". It
+	// would change one only where a project declares `[weights.stage.<name>]`,
+	// and no project in the tree does.
+	if len(ran.Steps) != len(none.Steps) {
+		t.Fatalf("the two walks took %d and %d steps: recording the stage moved the walk",
+			len(ran.Steps), len(none.Steps))
+	}
+	for i := range ran.Steps {
+		if ran.Steps[i].Kind != none.Steps[i].Kind || ran.Steps[i].Actor != none.Steps[i].Actor {
+			t.Errorf("step %d differs: %s/%s against %s/%s", i+1,
+				ran.Steps[i].Actor, ran.Steps[i].Kind, none.Steps[i].Actor, none.Steps[i].Kind)
+		}
+	}
+	t.Logf("PROOF dispatched as api -> %v, as nothing -> %v, %d steps either way",
+		ran.Stages, none.Stages, len(ran.Steps))
+}

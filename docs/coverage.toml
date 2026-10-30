@@ -110,6 +110,16 @@ path = "internal/schedule/*.go"
 docs = ["docs/design.md"]
 
 [[entry]]
+# THE STAGE DISPATCHER'S VOCABULARY (R8.1, issue 108). Mapped to contract.md
+# because the stage NAMES are that document's -- `[stages.<name>]` is its
+# schema row and this package is what refuses a name outside the set -- and to
+# design.md because "which stage the walk IS" is a design reading rather than a
+# schema rule. No cli.md entry: the dispatch prints nothing on either stream
+# (fable rumor/1474), so there is no surface for that document to describe.
+path = "internal/stage/*.go"
+docs = ["docs/contract.md", "docs/design.md"]
+
+[[entry]]
 # THE HOSTILE CORPUS (R8.1, issue 108). Mapped to design.md alone, and the
 # reason is that this package DECLARES NOTHING: it reads `[[action.args]]`'s
 # `source`, `from`, `of` and `value`, all of which contract.md already

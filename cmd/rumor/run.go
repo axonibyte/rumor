@@ -17,6 +17,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/quiesce"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
+	"forge.axonibyte.com/axonibyte/rumor/internal/stage"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 
 	// THE ONE SHIPPED ROLLBACK PROVIDER, imported for its registration.
@@ -102,6 +103,17 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		}
 		return 1
 	}
+	// THE STAGES ARE CHOSEN BEFORE ANYTHING RUNS (fable, coop rumor/1477). A
+	// declared stage this build cannot run is a project error, and finding it
+	// after a walk would mean reporting a run whose stage list was already
+	// wrong. It is a REFUSAL and not a could-not-run: the project is wrong,
+	// which is exit 1's meaning here.
+	stages, serr := stage.Select(prep.Platform, profile)
+	if serr != nil {
+		_, _ = fmt.Fprintf(stdout, "run: REFUSED %v\n", serr)
+		return 1
+	}
+
 	brep, err := bindings.Load(filepath.Join(dir, "bindings.toml"), decl.TOML)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "run: could not run: reading bindings.toml: %v\n", err)
@@ -157,6 +169,20 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		// does not pass the flag -- so the control seeds are unaffected by the
 		// flag existing.
 		Profile: profile,
+		// THE STAGE BEING RUN, which `[weights.stage.<name>]` is for and which
+		// NOTHING SET until this dispatch existed. platform.Weights.Weight
+		// skips the stage table entirely when the name is empty
+		// (platform.go:112), and run.go never filled it -- so every
+		// `[weights.stage.*]` override in any project was dead, the same shape
+		// as the stages that were declared and never dispatched (my r8/6).
+		// Measured before wiring it: ZERO projects in the tree declare one, so
+		// setting it moves no weight and no recorded digest, which is the
+		// control for this line.
+		//
+		// THE PROFILE STILL WINS OVER IT (platform.go:105-118), so a profile
+		// naming a kind keeps its weight and the stage table is consulted only
+		// for kinds the profile leaves alone.
+		Stage: stages[0],
 	}
 
 	// A QUIESCE BOUND NOTHING CAN JUDGE IS A REFUSAL, NOT A QUIET RUN.

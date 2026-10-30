@@ -251,6 +251,31 @@ type Record struct {
 	Attempt int
 	Steps   []Step
 
+	// Stages are the stages this run RAN.
+	//
+	// IT IS THE RECORD AND NOT A STREAM (fable, coop rumor/1474): a line on
+	// stdout would move thirty-five recorded figures in five files for no
+	// finding, and stderr's emptiness is what lets a control read a build
+	// failure as a build failure -- rook measured both at /1471 and /1473. So
+	// the stages that ran sit here beside the refused actions, and a test
+	// asserts the record carries them; 111's report is where a reader sees
+	// them.
+	//
+	// RAN, NOT DECLARED, which is the whole of rook's partner at coop r8/14:
+	// "the record names the stages that ran" is satisfied by a record that
+	// names every DECLARED stage unconditionally, and that is the
+	// hand-written corpus wearing a different hat. A stage the project
+	// declares and the run did not take is ABSENT here.
+	//
+	// FILLED FROM Project.Stage BY THE WALK ITSELF, and not assigned onto the
+	// record by the caller afterwards. The caller's assignment would have been
+	// a line no test could see: the record is printed and never persisted, so
+	// tests/run -- which drives the BINARY and reads its streams -- has no
+	// view of it, and fable's ruling is that A TEST asserts the record carries
+	// them (coop rumor/1474). Writing it here puts the writer and the
+	// assertion in one place, so a mutant dropping it dies.
+	Stages []string
+
 	// IDs is the attempt's handle table as it stood at the end: handle -> the
 	// id the system gave it.
 	//
@@ -683,6 +708,14 @@ func (c *runClock) advance(a clockAsker, delta int64) (int64, error) {
 
 func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps, attempt int) (Record, error) {
 	rec := Record{Seed: seed, Attempt: attempt}
+	// THE STAGE THIS WALK WAS DISPATCHED AS, recorded before anything can
+	// fail: a walk that stops early still ran as the stage it was given, and
+	// the record is printed even when the walk stopped (the loop below says
+	// so), so a stage filled only on the success path would be absent from
+	// exactly the records a reader reaches for.
+	if p.Stage != "" {
+		rec.Stages = []string{p.Stage}
+	}
 	if steps <= 0 {
 		return rec, fmt.Errorf("schedule: a walk of %d steps is not a walk", steps)
 	}

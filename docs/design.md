@@ -1263,3 +1263,55 @@ field.
 write action, or write actions with no arguments between them, is refused by
 name — because an empty corpus and a corpus nobody generated read identically
 in a report, which is the shape D1's partner exists to catch.
+
+## The walk is the `api` stage, and the dispatcher says so
+
+**`[stages]` was declared, cross-checked and never dispatched.** Every
+non-test reader of `platform.Stages` was the parser, the profile cross-check
+that a named stage exists, one `validate` arm reading `browser.enabled`, and a
+count. Nothing in `internal/schedule` or `internal/engine` read it, and none of
+`rumor`'s verbs ran a stage: `run` walked, and that was the whole of stage
+execution. R8.1 is the first child that must RUN one, so it carries the
+dispatch for all of them.
+
+**THE WALK IS `api`, AND `api-sim` WAS A STALE NAME FOR IT.** All thirty-six
+`platform.toml` in this repository declare `api`; not one declared `api-sim`,
+`fuzz` or `concurrency`, which appeared only in `docs/contract.md`'s example.
+R8's api-sim child does not add a second loop beside this one — it gives this
+one its settling, its time and its periodic full reconciliation — so the
+example was renamed rather than a second stage invented (fable, coop
+rumor/1477).
+
+**A DECLARED NAME THE DISPATCHER CANNOT RUN IS REFUSED BEFORE THE RUN**, and
+the refusal names the stage and lists the set. Nothing else in the stack
+objects: `[stages]` is a map keyed by whatever the file says, `decl`'s
+unknown-key refusal is about keys WITHIN a table, and `validate` counts the
+stages rather than testing membership — so `stages.fuzzz = { enabled = true }`
+parsed, counted, and would have been recorded as a stage of the run. The
+capability set belongs to whatever can RUN a stage, so the refusal lives with
+the dispatcher and happens before a walk whose stage list was already wrong.
+
+**KNOWN AND RUNNABLE ARE TWO FACTS.** `browser` is declared ENABLED by
+thirty-five of those files and no build can run it before R9; refusing them
+would be refusing a declaration the contract invites. So a known name this
+build cannot run yet is neither an error nor a run — it is absent from the
+stages that ran, which is what makes "ran" different from "declared". That
+difference is the drill's point: a record naming every declared stage
+unconditionally satisfies "the record names the stages that ran" and is the
+hand-written corpus wearing a different hat (rook, coop r8/14).
+
+**AN EMPTY SELECTION IS A REFUSAL, NOT A RUN THAT DID NOTHING**, and it names
+the reason per stage. The first version of that message listed the sets and not
+the cause: with a profile named it read "selects api, and this build runs api"
+over a run that took no stage — true in every clause and useless, because the
+fact that explains it is that `api` was declared with `enabled = false`. Before
+that it was worse, reporting the PLATFORM's declarations under the profile's
+name. Both were found by driving the refusal rather than by reading it.
+
+**AND THE STAGE REACHES THE POOL, which is what `[weights.stage.<name>]` was
+for.** `Weights.Weight` skips the stage table entirely when the name is empty,
+and nothing ever filled it, so every per-stage override was dead in the same
+way the stages were. Setting it moves no recorded figure today because no
+project in the tree declares one — measured before it was wired, which is the
+control for that line — and the profile's table still wins over it, so a
+profile naming a kind keeps its weight.
