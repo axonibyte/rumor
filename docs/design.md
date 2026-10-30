@@ -1401,3 +1401,30 @@ seed rather than the goroutine scheduler. A width disagreement between the plan
 and the sessions is refused rather than trusted. What the plan fixes is which
 session carries what and in what order the attempt is recorded — never who wins
 the race, because fixing that would remove the contention the stage exists for.
+
+**AND THE CONTROL HOLDS TOGETHERNESS WHILE VARYING THE DEFECT, which is the
+opposite axis from the one a serialized fan-out tests.** Serializing the fan and
+watching the overlap clause fire proves the clause is sensitive to
+togetherness — but a clause that fired on ANY overlapping fan-out would pass
+that test identically. The complement is to hold togetherness constant and
+change only whether the defect is present, and cmd/toy already contains both
+readings of one rule: `joinEvent` checks capacity, DROPS THE LOCK, then
+inserts; `acceptInvitation` checks capacity and inserts under a HELD lock. Same
+oracle, same check-then-act, same structure, differing in exactly one variable.
+So a fan-out on each at capacity 1 is the control, and it needs no mutation and
+no test hook — which the toy's own comment forbids, since "a hook the test
+flips would be a fixture override standing in for the production path, and this
+project has been bitten by one". Measured: join_event accepted 2 of 2 into room
+for 1 and the clause fires; accept_invitation accepted 1 of 2 and it is silent;
+both fan-outs overlapped, so the decision moved and togetherness did not.
+
+**THE ABSENCE CLAIM CARRIES ITS PRECONDITIONS, because three setups make "no
+overfill" meaningless.** Room below one: every request must refuse whatever the
+system does, so the setup answers rather than the system — a control that is
+the case it controls for. Room at or above the width: every acceptance is
+legitimate, the limit is never under pressure, and a system with no check at
+all would pass. Nothing accepted: the system was never asked to choose between
+them. The mechanism arm sits in the second of those deliberately, running
+capacity 3 against two joins because nothing there is meant to rest on the
+race, which is exactly why the oracle refuses that shape rather than reading it
+as a clean run.
