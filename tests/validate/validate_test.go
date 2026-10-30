@@ -27,7 +27,14 @@ import (
 // fixture, so `19/kind-without-a-weight` is the thirty-first. A fixture
 // directory that vanished would otherwise leave every remaining arm passing and
 // the suite quiet about it.
-const wantFixtures = 33
+//
+// TWO MORE AT R8.2, both cells of arm 19: `[[action]].contended` holds two
+// REFERENCES and the parser resolved neither, so a `limit` or `held` naming
+// nothing passed validate -- and the symptom is quiet, because a limit that
+// resolves to nothing leaves the room unknown and every fan-out is then refused
+// as vacuous, which reads as "no overfill found" rather than as a broken
+// declaration.
+const wantFixtures = 35
 
 // ARM 19 IS ONE ARM WITH SEVERAL CELLS, so it is the one arm with more than one
 // fixture -- and the count is declared here for the same reason every count in
@@ -37,6 +44,16 @@ const wantFixtures = 33
 // cell came off, its referent set unsound enough to refuse both of our own
 // examples; and cell 2's REVERSE went in -- an action or nemesis kind with no
 // weight -- after quill measured that gap from the walk's side.
+//
+// 11 -> 13 AT R8.2, TWO CELLS, AND THE SYMPTOM IS WHY THEY ARE REFUSED HERE.
+// `[[action]].contended` holds two REFERENCES as of R8.2 -- an action's
+// argument where the limit is read, and the declared query that reads what the
+// system holds -- and the parser requires both keys present and nothing more,
+// so nothing resolved either (rook, coop rumor/1528). A `limit` resolving to
+// nothing leaves the room unknown, so every fan-out is refused as VACUOUS, and
+// a vacuous fan-out reads as "no overfill found" rather than as a broken
+// declaration: the one output a reader would act on is the one it cannot
+// produce. Cells and not arms, for the reason the instants cell gives below.
 //
 // 10 -> 11 AT R7.4, AND THIS TIME A CELL WAS ADDED: `[deadline].instants`
 // holds observation names as of R7.4, and this arm's own sentence -- "a name
@@ -53,7 +70,7 @@ const wantFixtures = 33
 // the shape. `19/kind-without-a-weight` trips it. The ARM count does not move,
 // because a cell is not an arm; this number counts the fixtures that pair with
 // cells, and it was short by one for as long as that loop existed.
-const wantCells19 = 11
+const wantCells19 = 13
 
 // armOf is the fixture naming convention: <arm>-<slug>, or <arm>/<slug> for an
 // arm with several cells. The arm is the part before the first separator, so
@@ -842,6 +859,14 @@ var changedBy = map[string][]string{
 	// `[deadline]` with contents trips arm 20 as well, and a fixture tripping
 	// two arms shows neither.
 	"19/deadline-instant-unknown-observation": {"bindings.toml"},
+
+	// `contended`'s TWO REFERENCES, one cell each. Both repair the twin's own
+	// planted `instants` name while they are in bindings.toml -- without that
+	// the fixture would trip the instants cell as well, and a fixture tripping
+	// two cells shows neither. That is one CONDITION per fable's r4/74 rule and
+	// not two changes: the repair is what isolates the condition.
+	"19/contended-limit-unknown-argument":   {"bindings.toml"},
+	"19/contended-held-unknown-observation": {"bindings.toml"},
 
 	"9a-fault-unavailable":   {"bindings.toml"},
 	"9b-volume-unavailable":  {"bindings.toml"},

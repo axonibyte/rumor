@@ -270,11 +270,71 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 		}
 	}
 
+	// AND `contended`'s TWO VALUES ARE REFERENCES TOO, which is rook's finding
+	// at coop rumor/1528: the parser requires both keys present "and nothing
+	// more ... `limit` and `held` are free-form strings ... nothing resolves
+	// either". A name a project uses that the project does not declare is this
+	// arm's own sentence, so these are cells of it rather than new numbers --
+	// the reading `[deadline].instants` established at R7.4.
+	//
+	// AND THE SYMPTOM IS QUIET, which is why it is refused before the run
+	// rather than left to the stage: a `limit` resolving to nothing leaves the
+	// room unknown, so every fan-out is refused as VACUOUS -- and a vacuous
+	// fan-out reads as "no overfill found" and not as a broken declaration.
+	// The one output a reader would act on is the one it cannot produce.
+	//
+	// THE REFERENT OF `limit` IS AN ACTION's ARGUMENT, spelled `<action>.<arg>`
+	// because the limit is set by the action that CREATED the thing and not by
+	// the one that contends on it. The referent of `held` is an observation
+	// this file declares, the same set `instants` resolves against -- and
+	// whether the adapter serves it is cell 19-observations' pairing, exactly
+	// as an instant's is.
+	for _, a := range b.Actions {
+		if a.Contended.Limit == "" && a.Contended.Held == "" {
+			continue
+		}
+		if !argExists(b, a.Contended.Limit) {
+			note("bindings.toml: action %s contends on limit %q: no action declares that "+
+				"argument, and a limit is read from the argument that set it",
+				a.Name, a.Contended.Limit)
+		}
+		if !observed[a.Contended.Held] {
+			note("bindings.toml: action %s contends with held %q: no observation of that name, "+
+				"and what the system holds is read through one", a.Name, a.Contended.Held)
+		}
+	}
+
 	if len(bad) > 0 {
 		sort.Strings(bad)
 		rep.refuse("19", "a name the project uses that the project does not declare: %s",
 			strings.Join(bad, "; "))
 	}
+}
+
+// argExists reports whether `<action>.<arg>` names an argument some action in
+// this file declares.
+//
+// THE SPELLING IS PART OF THE REFERENCE: a bare argument name would be
+// ambiguous across actions -- examples/toy declares `name` on two of them --
+// and the limit belongs to one action's argument and not to whichever action
+// happens to share the word. So a value without exactly one dot resolves to
+// nothing and is refused with the rest.
+func argExists(b bindings.Bindings, ref string) bool {
+	action, arg, ok := strings.Cut(ref, ".")
+	if !ok || action == "" || arg == "" {
+		return false
+	}
+	for _, a := range b.Actions {
+		if a.Name != action {
+			continue
+		}
+		for _, g := range a.Args {
+			if g.Name == arg {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // arm19Observations is the one cell that needs the adapter: a bindings
