@@ -1887,3 +1887,25 @@ because the role in `visible_to` is relative to the event and not the actor's
 own. The comment was corrected from the output. A count asserted from reading
 the declaration, where the mechanism is in the system under test rather than in
 the declaration, is a prediction wearing a measurement's clothes.
+
+**A THRESHOLD ON THE REPRODUCTION GUARDS THE REDUCTION AND NOT THE
+DETECTION.** The concurrency stage's verdict is probed k-of-n before a candidate
+is accepted, which is what keeps a race that recurs only sometimes from being
+marked unstable and never shrunk. It says nothing about whether the race was
+FOUND. rook drove the difference by making the toy's capacity re-check hold four
+times in five — an intermittent race — and the stage reported `no overfill` at
+exit 0 over a fan-out that genuinely overlapped: togetherness held, the window
+was simply missed. The run that found nothing and the system that has nothing to
+find produced the same line and the same status. ASK OF EVERY THRESHOLD WHICH
+CLAIM IT GUARDS, because a gate on the reproduction of a finding reads as a gate
+on the finding, and the absence is the half nobody re-probes.
+
+**AND AN ABSENCE CLAIM SHOULD CARRY ITS SAMPLE SIZE EVEN WHEN NOBODY CAN SAY
+WHAT THE SIZE SHOULD BE.** The cure for the above is not a number: how many
+fan-outs "no overfill" needs is not derivable from any declaration a project
+makes, and a constant chosen here would be the thing this document keeps finding
+— a figure from one afternoon wearing a rule's clothes. What IS available is the
+count of samples the declarations supply, and printing it turns a verdict into a
+measurement: `no overfill in 1 answerable fan-out(s)` and `in 4` are different
+claims, and the reader decides what the first is worth. A silent absence makes
+that judgment for them, wrongly.

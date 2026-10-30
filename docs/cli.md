@@ -415,6 +415,14 @@ clause can be answered, because a world where nothing can be accepted reports
 says so in those words rather than passing. The prefixes above are held by an
 arm in `tests/run`; the figures are one run's own.
 
+**A finding ends the sweep and an absence does not.** One overfill is a witness
+and needs no second; "no overfill" is an absence, so the stage contends every
+world the project declares and the line says how many fan-outs the clause could
+judge — `no overfill in 1 answerable fan-out(s)` is a weaker claim than `in 4`,
+and an intermittent race that missed its window would otherwise read exactly
+like a system that has none. How many an absence NEEDS is not something the
+declarations say, so the count is reported rather than chosen.
+
 **The overlap is on stderr and the verdict is not.** Whether two requests were
 in flight together is the run's own evidence that it tested anything, and HOW
 LONG they overlapped is a clock: `run: concurrency join_event try 3 overlapped

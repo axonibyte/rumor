@@ -1521,6 +1521,27 @@ this sweep cannot build, and it says so by reporting every try's vacuity rather
 than by passing quietly. The limit is not swept: the width is derived from it,
 and the sessions are opened before the sweep begins.
 
+**A FINDING STOPS THE SWEEP AND AN ABSENCE DOES NOT.** The two claims are not
+symmetric. A found overfill needs ONE witness — the system held more than its
+own limit allows, once, and no further sampling makes that less true — so the
+sweep ends there. "No overfill" is an absence, and it was being reported off the
+single fan-out that happened to be answerable. rook drove what that costs: with
+the toy's capacity re-check restored four times in five, an INTERMITTENT race,
+the stage answered `no overfill` at exit 0 with the fan-out overlapping by
+28.8ms, so togetherness held and the race simply missed its window. It read
+exactly like a system that has none. The k-of-n threshold does not help here: it
+guards the SHRINK of a race already found, not the finding of one.
+
+**SO AN ABSENCE CARRIES THE NUMBER OF FAN-OUTS IT RESTS ON**, and the stage
+contends every world the project declares before reporting one. What this does
+NOT do is choose a number: how many fan-outs an absence needs is not derivable
+from anything a project declares, and inventing one would be a constant nobody
+measured. The stage samples what the declarations give it and SAYS how many that
+was — `no overfill in 1 answerable fan-out(s)` is a weaker sentence than `in 4`,
+and a reader can now tell them apart. Separating "this system has no race" from
+"its race did not fire this time" needs more than the declarations carry, and
+that remains open.
+
 **WHAT WAS ALREADY TAKEN IS READ BACK, NOT ASSUMED.** The stage builds each
 try's world itself, so it could have passed zero; instead it reads the held
 quantity through the declared query BEFORE releasing the barrier and again

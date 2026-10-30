@@ -63,14 +63,37 @@ type Try struct {
 // vacuous has no answering try at all, and that is a could-not-run rather than
 // a verdict.
 func (v Verdict) Answered() (Try, bool) {
-	if len(v.Tries) == 0 {
-		return Try{}, false
+	// THE LAST ANSWERABLE TRY AND NOT THE LAST TRY, which is what changed when
+	// an absence stopped ending the sweep: a clean world may be followed by a
+	// vacuous one -- the toy's `visible_to` subsets are not ordered by
+	// contendability -- so reading the final element would report "no try could
+	// answer" over a run that answered twice. A FOUND overfill still ends the
+	// sweep, so where there is a finding the last try is also the answering one.
+	for i := len(v.Tries) - 1; i >= 0; i-- {
+		if v.Tries[i].Contention.Vacuous() == "" {
+			return v.Tries[i], true
+		}
 	}
-	last := v.Tries[len(v.Tries)-1]
-	if last.Contention.Vacuous() != "" {
-		return Try{}, false
+	return Try{}, false
+}
+
+// Answerable is how many of this subject's fan-outs the overfill clause could
+// judge.
+//
+// IT IS ON THE VERDICT'S LINE BECAUSE AN ABSENCE IS A SAMPLE. "No overfill"
+// over one fan-out and over four are different claims, and rook's drive at coop
+// r8/74 is why the difference is printed rather than implied: an intermittent
+// race that missed its window answered exactly as a system with no race does.
+// How many fan-outs an absence NEEDS is not derivable from any declaration, so
+// the number is reported instead of chosen.
+func (v Verdict) Answerable() int {
+	n := 0
+	for _, t := range v.Tries {
+		if t.Contention.Vacuous() == "" {
+			n++
+		}
 	}
-	return last, true
+	return n
 }
 
 // Finding is the overfill this subject's contention found, or "".
@@ -118,9 +141,15 @@ func (v Verdict) Render() string {
 	}
 	if f := v.Finding(); f != "" {
 		fmt.Fprintf(&b, "concurrency:   FOUND %s\n", f)
-	} else if _, ok := v.Answered(); ok {
-		fmt.Fprintf(&b, "concurrency:   no overfill: %s held its own limit under %d "+
-			"overlapping request(s)\n", v.Subject, v.Tries[len(v.Tries)-1].Contention.Width)
+	} else if t, ok := v.Answered(); ok {
+		// THE SAMPLE IS ON THE LINE. A clean verdict is an absence claim, and
+		// an absence over one overlapping fan-out is not the same claim as one
+		// over four -- so the count of fan-outs the clause could judge is
+		// printed beside it, and a reader can tell a system with no race from
+		// one whose race did not fire this time.
+		fmt.Fprintf(&b, "concurrency:   no overfill in %d answerable fan-out(s): %s held its own "+
+			"limit under %d overlapping request(s) each time\n",
+			v.Answerable(), v.Subject, t.Contention.Width)
 	}
 	return b.String()
 }
@@ -285,9 +314,39 @@ func contend(b bindings.Bindings, sub Subject, host *wire.Session,
 		t.Choices = c.render()
 		t.Steps = full
 		v.Tries = append(v.Tries, t)
-		if t.Contention.Vacuous() == "" {
+		// A FINDING STOPS THE SWEEP AND AN ABSENCE DOES NOT, which is rook's
+		// finding at coop r8/74 taken, and it is the asymmetry between the two
+		// claims rather than a preference.
+		//
+		// A FOUND OVERFILL NEEDS ONE WITNESS: the system held more than its own
+		// limit allows, once, and no further sampling makes that less true.
+		//
+		// AN ABSENCE NEEDS AS MANY AS THERE ARE. "No overfill" was reported off
+		// ONE answerable fan-out, and rook drove what that costs: with the
+		// toy's re-check restored four times in five -- an INTERMITTENT race --
+		// the stage answered `no overfill: join_event held its own limit under
+		// 2 overlapping request(s)`, rc 0, with try 3 overlapping by 28.8ms so
+		// togetherness held. A race that missed its window read exactly like a
+		// system that has none. The k-of-n gate does not help: it guards the
+		// SHRINK of a race already found, not the finding of one.
+		//
+		// SO EVERY DECLARED WORLD IS CONTENDED WHEN NOTHING IS FOUND, and the
+		// count of answerable fan-outs is carried into the verdict's line. What
+		// this does NOT do is choose a number: how many fan-outs an absence
+		// needs is not derivable from anything a project declares, so the stage
+		// samples what the declarations give it and SAYS how many that was. One
+		// is still one, and the line says so instead of implying a verdict.
+		if t.Contention.Finding() != "" {
 			return v, nil
 		}
+	}
+
+	// AN ANSWERABLE TRY MEANS THE SWEEP RAN OUT OF WORLDS WITH NO OVERFILL,
+	// which is a verdict and not a could-not-run: the clause was answered, as
+	// many times as the project declares worlds, and the answer was no. The
+	// line carries the count.
+	if _, ok := v.Answered(); ok {
+		return v, nil
 	}
 
 	// EVERY DECLARED WORLD WAS VACUOUS, AND THAT IS A COULD-NOT-RUN. "No

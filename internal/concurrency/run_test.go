@@ -192,3 +192,79 @@ func rendered(cs []choice) [][]string {
 	}
 	return out
 }
+
+// AN ABSENCE IS A SAMPLE AND THE VERDICT SAYS HOW BIG, which is rook's finding
+// at coop r8/74 taken: he made the toy's race intermittent -- the re-check
+// restored four times in five -- and the stage answered `no overfill:
+// join_event held its own limit under 2 overlapping request(s)`, rc 0, with try
+// 3 overlapping by 28.8ms so togetherness held. A race that missed its window
+// read exactly like a system that has none.
+//
+// SO THREE READERS CHANGED AND EACH IS DRIVEN HERE. Answered takes the last
+// ANSWERABLE try rather than the last try, because an absence no longer ends
+// the sweep and a clean world may be followed by a vacuous one -- the toy's
+// `visible_to` subsets are not ordered by contendability. Answerable counts
+// them. And Render prints the count, so "no overfill over one fan-out" and
+// "over four" stop being the same sentence.
+//
+// WHY THESE ARE UNIT CELLS AND NOT A LIVE ONE: the asymmetry needs a project
+// whose answerable world is followed by another, and no shipped project has one
+// -- the toy's three worlds run vacuous, vacuous, overfill, so the finding
+// arrives in the LAST of them. The live arm covers the finding path; this one
+// covers the absence path, built from the tries a run would have produced.
+func TestAnAbsenceCarriesTheNumberOfFanOutsItRestsOn(t *testing.T) {
+	clean := func() Try {
+		return Try{Overlapped: true, Contention: Contention{Action: "join_event", Limit: 1,
+			Before: 0, Accepted: 1, Observed: 1, Width: 2}}
+	}
+	vacuous := func() Try {
+		return Try{Overlapped: true, Contention: Contention{Action: "join_event", Limit: 1,
+			Before: 0, Accepted: 0, Observed: 0, Width: 2}}
+	}
+	if vacuous().Contention.Vacuous() == "" {
+		t.Fatal("the vacuous cell is answerable, so this arm cannot tell the two apart")
+	}
+	if clean().Contention.Vacuous() != "" || clean().Contention.Finding() != "" {
+		t.Fatalf("the clean cell is not a clean answer: %q / %q",
+			clean().Contention.Vacuous(), clean().Contention.Finding())
+	}
+
+	// THE ANSWERING TRY IS NOT THE LAST TRY. Before this, a clean world
+	// followed by a vacuous one read as "no try could answer" -- a run that
+	// answered twice reported as a could-not-run.
+	v := Verdict{Subject: "join_event", Tries: []Try{vacuous(), clean(), vacuous()}}
+	got, ok := v.Answered()
+	if !ok {
+		t.Fatal("a verdict whose middle try answered reports that none did")
+	}
+	if got.Contention.Accepted != 1 {
+		t.Errorf("the answering try is not the one that answered: %+v", got.Contention)
+	}
+	if n := v.Answerable(); n != 1 {
+		t.Errorf("one answerable fan-out counted as %d", n)
+	}
+	if out := v.Render(); !strings.Contains(out, "no overfill in 1 answerable fan-out(s)") {
+		t.Errorf("the clean line does not carry its sample:\n%s", out)
+	}
+
+	// AND THE COUNT MOVES WITH THE SAMPLE, so the line is reporting rather than
+	// printing a constant.
+	four := Verdict{Subject: "join_event",
+		Tries: []Try{clean(), clean(), vacuous(), clean(), clean()}}
+	if n := four.Answerable(); n != 4 {
+		t.Errorf("four answerable fan-outs counted as %d", n)
+	}
+	if out := four.Render(); !strings.Contains(out, "no overfill in 4 answerable fan-out(s)") {
+		t.Errorf("the line does not follow the count:\n%s", out)
+	}
+	// NOTHING ANSWERABLE IS STILL NOT A CLEAN RUN: it is the could-not-run the
+	// sweep reports with every try's reason, and Answered must say so.
+	none := Verdict{Subject: "join_event", Tries: []Try{vacuous(), vacuous()}}
+	if _, ok := none.Answered(); ok {
+		t.Error("a verdict whose every try was vacuous reports an answer")
+	}
+	if n := none.Answerable(); n != 0 {
+		t.Errorf("no answerable fan-out counted as %d", n)
+	}
+	t.Logf("PROOF one answerable: %q", strings.TrimSpace(v.Render()))
+}
