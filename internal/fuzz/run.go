@@ -472,6 +472,42 @@ func (r Report) Vacuous() string {
 		return fmt.Sprintf("none of the %d case(s) reached the system -- every one faulted at the "+
 			"adapter or went unanswered -- so \"no 5xx\" is a statement about nothing", len(r.Results))
 	}
+
+	// AND D4 CANNOT BE ANSWERED WITHOUT HAVING READ ONE REFUSAL's TEXT.
+	//
+	// The stage reads a refusal's message at `body.error`, and NOTHING
+	// DECLARES THAT KEY -- `[[action]].response` is an equality contract for
+	// what acceptance is, not a schema, and this protocol deliberately knows
+	// nothing about HTTP. So an adapter spelling it `message` or `detail`
+	// leaves every message empty, and an empty message is ambiguous: either
+	// the stage is reading the wrong key, or the system really did refuse
+	// without saying anything. The second IS a finding and the first is not.
+	//
+	// MEASURED, not reasoned: with cmd/toy's key changed to `message`, the
+	// clauses emit 27 findings against a system that names every field --
+	// one monoculture over "" and 26 refusals "naming nothing". Every one is
+	// false, and they are the loudest output this stage can produce.
+	//
+	// THE STAGE CALIBRATES ON ITS OWN DATA. Text on ANY system refusal proves
+	// the channel is readable, and a silent refusal beside it is then the
+	// system's own choice and judged as one. Text on NONE of them leaves the
+	// reading unproven, and the honest answer is a could-not-run rather than a
+	// finding for every case. This is the positive control the oracle needs and
+	// it costs no declaration: the run supplies it or it does not.
+	if sys := r.SystemRefusals(); len(sys) > 0 {
+		spoke := false
+		for _, res := range sys {
+			if res.Error != "" {
+				spoke = true
+				break
+			}
+		}
+		if !spoke {
+			return fmt.Sprintf("not one of the %d refusal(s) the system's own rules gave carried any "+
+				"message at `body.error`, so D4 cannot be told apart from an adapter that spells "+
+				"that key otherwise: the oracle's subject is missing, not uninformative", len(sys))
+		}
+	}
 	return ""
 }
 

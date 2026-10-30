@@ -197,3 +197,80 @@ func TestAFiveHundredIsAFindingAndNamesTheCase(t *testing.T) {
 		t.Errorf("a refusal was reported as a server failure: %v", f)
 	}
 }
+
+// THE ORACLE's CHANNEL IS ITS OWN PRECONDITION.
+//
+// `body.error` is declared by nothing -- `[[action]].response` says what
+// ACCEPTANCE is and the protocol knows nothing of HTTP -- so an adapter
+// spelling the key `message` leaves every refusal's text empty. Measured
+// against the live toy with exactly that change: 27 findings, one monoculture
+// over "" and 26 refusals "naming nothing", every one false against a system
+// that names each field. The ambiguity is real and the stage cannot resolve it
+// from a declaration, so it resolves it from the run.
+func TestARefusalTextTheStageNeverReadIsACouldNotRunAndNotAFinding(t *testing.T) {
+	blind := Report{Results: []Result{
+		sys("create_user", "name", ""),
+		sys("create_event", "title", ""),
+		sys("create_event", "capacity", ""),
+	}}
+	why := blind.Vacuous()
+	if why == "" {
+		t.Fatalf("three refusals with no text read as judgeable, and the clauses then say: %v",
+			blind.Findings())
+	}
+	for _, want := range []string{"3 refusal(s)", "body.error", "subject is missing"} {
+		if !strings.Contains(why, want) {
+			t.Errorf("the refusal does not carry %q, so a reader cannot tell it from a real "+
+				"finding: %s", want, why)
+		}
+	}
+}
+
+// ONE SYSTEM REFUSAL THAT SPOKE IS THE POSITIVE CONTROL, and it turns the
+// silent ones back into findings -- which is the half that keeps the guard from
+// swallowing the defect it sits next to. A system that answers some refusals
+// with a message and others with nothing IS uninformative about the others, and
+// that is the system's choice rather than the stage's blindness.
+func TestOneRefusalThatSpokeProvesTheChannelAndTheSilentOnesAreJudged(t *testing.T) {
+	mixed := Report{Results: []Result{
+		sys("create_user", "name", "name is required"),
+		sys("create_event", "capacity", ""),
+	}}
+	if why := mixed.Vacuous(); why != "" {
+		t.Fatalf("a run that read one refusal's text was called unreadable: %s", why)
+	}
+	got := findingAbout(t, mixed, "names neither the field nor a rule")
+	if !strings.Contains(got, "capacity") {
+		t.Errorf("the finding does not name the silent case: %s", got)
+	}
+
+	// AND THE ACCEPTED CASE's EMPTY TEXT IS NOT A SILENT REFUSAL. A 2xx
+	// carries no error by design, so counting it as one would make every
+	// corpus with an accepted case look unreadable.
+	accepted := Report{Results: []Result{
+		{Case: Case{Action: "create_user", Class: ClassMissing, Field: "name"}, Status: 201},
+		sys("create_event", "capacity", "capacity must be at least 1"),
+	}}
+	if why := accepted.Vacuous(); why != "" {
+		t.Fatalf("an accepted case's absent error text was read as a silent refusal: %s", why)
+	}
+
+	// AND THE FIXTURE ABOVE DOES NOT ISOLATE IT, which a mutant showed: with
+	// the guard looping over every Result instead of the system's refusals,
+	// that report still passes, because the refusal beside the accepted case
+	// speaks. The separating case is a report with NO system refusal at all --
+	// correct code has nothing to judge and says so by staying silent, while a
+	// guard that counted every result would call it unreadable.
+	onlyAccepted := Report{Results: []Result{
+		{Case: Case{Action: "create_user", Class: ClassMissing, Field: "name"}, Status: 201},
+		{Case: Case{Action: "create_event", Class: ClassEmpty, Field: "title"}, Status: 200},
+	}}
+	if len(onlyAccepted.SystemRefusals()) != 0 {
+		t.Fatal("this arm's premise is gone: the fixture now holds a system refusal, so it no " +
+			"longer separates the refusal set from the result set")
+	}
+	if why := onlyAccepted.Vacuous(); why != "" {
+		t.Errorf("a corpus the system accepted throughout was called unreadable, which is a claim "+
+			"about the oracle's channel and not about the corpus: %s", why)
+	}
+}
