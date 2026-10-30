@@ -64,8 +64,8 @@ func TestTheFuzzStageDrivesTheToyAndFindsNo5xx(t *testing.T) {
 	// D2: NO 5xx over the whole corpus. This is the clause, and the toy
 	// passing it is the finding's absence rather than the arm's vacuity --
 	// which the next assertion is for.
-	if len(rep.Findings) != 0 {
-		for _, f := range rep.Findings {
+	if found := rep.Findings(); len(found) != 0 {
+		for _, f := range found {
 			t.Errorf("finding: %s", f)
 		}
 	}
@@ -253,9 +253,9 @@ func TestTheFuzzStageRefusesToClearASystemThatNeverAnsweredIt(t *testing.T) {
 
 	// AND THE FINDINGS ARE NOT WHERE THIS LANDED, because a request the system
 	// never received is not a defect in the system.
-	if len(rep.Findings) != 0 {
+	if found := rep.Findings(); len(found) != 0 {
 		t.Errorf("a run that reached nothing produced %d finding(s) against the system: %v",
-			len(rep.Findings), rep.Findings)
+			len(found), found)
 	}
 
 	t.Logf("PROOF %d case(s) sent, %d reached, refused with: %v", len(rep.Results), rep.Reached(), rerr)

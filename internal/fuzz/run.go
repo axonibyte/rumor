@@ -49,9 +49,8 @@ type Result struct {
 // zero cases reads exactly like zero findings over forty-five, which is the
 // shape internal/examples' own Result exists to prevent.
 type Report struct {
-	Setup    []string
-	Results  []Result
-	Findings []string
+	Setup   []string
+	Results []Result
 }
 
 // Origin is which layer answered a case, because three of them can and only
@@ -246,54 +245,6 @@ func Run(ctx context.Context, b bindings.Bindings, sess *wire.Session, actor str
 		return rep, errors.New(why)
 	}
 
-	// D2: NO 5xx. The finding names the action, the class and the field,
-	// because "a 5xx happened" cannot be acted on and "delete_event refused a
-	// missing event with 500" can.
-	for _, r := range rep.Results {
-		if r.Status >= 500 {
-			rep.Findings = append(rep.Findings, fmt.Sprintf(
-				"%s answered %d: a hostile value for a declared field must be refused, not fail the server (%s)",
-				r.Case, r.Status, r.Error))
-		}
-	}
-
-	// D4: A MONOCULTURE FAILS. "Every refusal names a field or a rule" is
-	// satisfied by a system that answers every hostile value with ONE
-	// sentence, and such a system discriminates nothing -- the clause would
-	// pass over an oracle with no information in it. So the refusals the
-	// SYSTEM's own rules produced are counted by distinct message, and one
-	// message over many refusals is the finding.
-	//
-	// THE SYSTEM's OWN, which is what makes the count mean anything: a
-	// decoder's type error and an adapter's argument check are not the
-	// system discriminating, and including them would let a system with one
-	// rule inherit the decoder's variety.
-	sys := rep.SystemRefusals()
-	if len(sys) > 1 {
-		seen := map[string]bool{}
-		for _, r := range sys {
-			seen[r.Error] = true
-		}
-		if len(seen) == 1 {
-			for msg := range seen {
-				rep.Findings = append(rep.Findings, fmt.Sprintf(
-					"all %d refusal(s) the system's own rules gave answered %q: one sentence over "+
-						"every hostile value discriminates nothing, so a refusal naming a field "+
-						"proves nothing about this system", len(sys), msg))
-			}
-		}
-	}
-
-	// AND A REFUSAL THAT NAMES NOTHING OF THE REQUEST is the other half: the
-	// perturbed field, or a rule the system states. Checked only over the
-	// system's own refusals, for the reason above.
-	for _, r := range sys {
-		if r.Case.Field != "" && !strings.Contains(r.Error, r.Case.Field) && !namesARule(r.Error) {
-			rep.Findings = append(rep.Findings, fmt.Sprintf(
-				"%s was refused with %q, which names neither the field nor a rule: a reader cannot "+
-					"tell which of the request's parts the system objected to", r.Case, r.Error))
-		}
-	}
 	return rep, nil
 }
 
@@ -393,6 +344,105 @@ func caseArgs(a bindings.Action, c Case, actor string, ids map[string]string) (m
 		out[arg.Name] = v
 	}
 	return out, nil
+}
+
+// Findings is every defect the oracle clauses see in this report's results.
+//
+// IT IS COMPUTED AND NOT STORED, and that is the whole point. A stored slice
+// needs a writer to append to it at the right moment, and a writer that is
+// deleted leaves every consumer reading an empty list -- which reads as a clean
+// verdict. Measured: with the clauses inline in Run, both D4 branches could be
+// turned off (`if false && ...`) and internal/fuzz AND tests/run stayed green,
+// because the only arm over them asserted the TOY's spread and so never reached
+// the branches at all. Both findings D4 can emit were refusals nobody could
+// show failing (rook, rumor/1488). There is now no call site to omit: a
+// consumer that reads findings runs the clauses, and an arm over a fixture
+// report drives the same path a run does -- so a clause dropped from this
+// composition dies here too.
+func (r Report) Findings() []string {
+	var out []string
+	out = append(out, r.no5xx()...)
+	out = append(out, r.monoculture()...)
+	out = append(out, r.namesSomething()...)
+	return out
+}
+
+// no5xx is D2. The finding names the action, the class and the field, because
+// "a 5xx happened" cannot be acted on and "delete_event refused a missing event
+// with 500" can.
+func (r Report) no5xx() []string {
+	var out []string
+	for _, res := range r.Results {
+		if res.Status >= 500 {
+			out = append(out, fmt.Sprintf(
+				"%s answered %d: a hostile value for a declared field must be refused, not fail the server (%s)",
+				res.Case, res.Status, res.Error))
+		}
+	}
+	return out
+}
+
+// monoculture is D4's first half: ONE SENTENCE OVER EVERYTHING FAILS.
+//
+// "Every refusal names a field or a rule" is satisfied by a system that answers
+// every hostile value with one sentence, and such a system discriminates
+// nothing -- the clause would pass over an oracle with no information in it. So
+// the refusals the SYSTEM's own rules produced are counted by distinct message,
+// and one message over many refusals is the finding.
+//
+// THE SYSTEM's OWN, which is what makes the count mean anything: a decoder's
+// type error and an adapter's argument check are not the system
+// discriminating, and including them would let a system with one rule inherit
+// the decoder's variety.
+func (r Report) monoculture() []string {
+	sys := r.SystemRefusals()
+	if len(sys) < 2 {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, res := range sys {
+		seen[res.Error] = true
+	}
+	if len(seen) != 1 {
+		return nil
+	}
+	var out []string
+	for msg := range seen {
+		out = append(out, fmt.Sprintf(
+			"all %d refusal(s) the system's own rules gave answered %q: one sentence over "+
+				"every hostile value discriminates nothing, so a refusal naming a field "+
+				"proves nothing about this system", len(sys), msg))
+	}
+	return out
+}
+
+// namesSomething is D4's other half: A REFUSAL THAT NAMES NOTHING OF THE
+// REQUEST. The perturbed field, or a rule the system states. Checked only over
+// the system's own refusals, for the reason monoculture gives.
+//
+// THE `Field != ""` GUARD IS REDUNDANT TWICE OVER AND IS KEPT ANYWAY. No
+// mutant of it can die, and that was measured rather than assumed: deleting it
+// leaves every arm green. Both reasons are accidents rather than design.
+// First, `base` sets Field to the argument's own name for every case the
+// corpus generates (fuzz.go:141), so a fieldless case is unreachable from
+// Corpus. Second, even if one arrived, strings.Contains(msg, "") is TRUE for
+// any message, so the clause would already fall through without judging it.
+// The guard is therefore documentation of whose business this case is not --
+// and it becomes load-bearing the moment either accident ends: a class that
+// perturbs the body rather than one field would reach it (D3's shapes are
+// exactly that), and a field test stricter than Contains would stop absorbing
+// the empty string. Do not delete it as dead on the strength of a surviving
+// mutant; the survival is the point above, not a gap in the arms.
+func (r Report) namesSomething() []string {
+	var out []string
+	for _, res := range r.SystemRefusals() {
+		if res.Case.Field != "" && !strings.Contains(res.Error, res.Case.Field) && !namesARule(res.Error) {
+			out = append(out, fmt.Sprintf(
+				"%s was refused with %q, which names neither the field nor a rule: a reader cannot "+
+					"tell which of the request's parts the system objected to", res.Case, res.Error))
+		}
+	}
+	return out
 }
 
 // Vacuous is why this run cannot answer D2, or "" when it can.
