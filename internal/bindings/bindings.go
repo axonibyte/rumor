@@ -346,6 +346,26 @@ type Contended struct {
 	// contend against ITS copy, so a run could miss the real limit while both
 	// files looked right. The toy's capacity is a DRAW, so there is no single
 	// number to copy even in principle.
+	//
+	// THE TWO FORMS ARE NOT EQUIVALENT AND ONLY ONE IS HONEST, which rook
+	// measured at coop rumor/1526 against the ruling that admits both. An
+	// ARGUMENT of the creating action is drawn independently of the system, so
+	// the clause reads "the system holds more than its DECLARED limit allows".
+	// An OBSERVATION does not: Observed and Limit would then both come from
+	// the system, and the clause collapses into "the system disagrees with
+	// itself" -- which is D7 one level up, the single-oracle defect this
+	// stage's verdict was already corrected for once, and which
+	// examples/toy's own bindings name: "an oracle that read the same field
+	// could not disagree with it".
+	//
+	// SO THE ARGUMENT FORM IS THE ONE TO IMPLEMENT FIRST, and it needs
+	// something this package cannot give it: the drawn scalar is in no field
+	// of schedule.Step, whose Used carries HANDLES and whose AdvancedTo is the
+	// one recorded draw -- a field that exists because a mutant of
+	// chooseHandles "survived the entire suite until this field existed". A
+	// stage reading a drawn limit therefore waits on Step carrying the draw.
+	// Which form survives is not this type's to settle; that it matters is
+	// recorded here so a reader does not implement the cheaper one.
 	Limit string
 
 	// Held is the declared query that reads what the system HOLDS, which is
