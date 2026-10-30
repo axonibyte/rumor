@@ -475,6 +475,7 @@ func TestABareReservedTableIsPRESENTAndAnAbsentOneIsNIL(t *testing.T) {
 		"clock":    rep.Bindings.Clock,
 		"quiesce":  rep.Bindings.Quiesce,
 		"deadline": rep.Bindings.Deadline,
+		"refusal":  rep.Bindings.Refusal,
 		"seeding":  rep.Bindings.Seeding,
 	} {
 		if got != nil {
@@ -484,7 +485,7 @@ func TestABareReservedTableIsPRESENTAndAnAbsentOneIsNIL(t *testing.T) {
 	}
 
 	doc := wellFormed()
-	for _, k := range []string{"clock", "quiesce", "deadline", "seeding"} {
+	for _, k := range []string{"clock", "quiesce", "deadline", "refusal", "seeding"} {
 		doc[k] = map[string]any{}
 	}
 	rep = Parse(doc)
@@ -495,6 +496,7 @@ func TestABareReservedTableIsPRESENTAndAnAbsentOneIsNIL(t *testing.T) {
 		"clock":    rep.Bindings.Clock,
 		"quiesce":  rep.Bindings.Quiesce,
 		"deadline": rep.Bindings.Deadline,
+		"refusal":  rep.Bindings.Refusal,
 		"seeding":  rep.Bindings.Seeding,
 	} {
 		if got == nil {
@@ -805,5 +807,76 @@ timing = "immediate"
 	write(bare, minimum+"\n[clock]\n")
 	if !ClockControlledAt(bare, decl.TOML) {
 		t.Error("a bare [clock] reads as unclocked here, where cmd/rumor/run.go reads it as control")
+	}
+}
+
+// `[refusal].message` IS THE TYPED HALF, and these are the three answers a
+// parser owes about it: the path is carried as declared, a bare table declares
+// no path and is not a fault, and a non-string is refused at the key's own
+// path.
+//
+// WHAT IS NOT HERE, DELIBERATELY: whether the path RESOLVES against a live
+// answer. That is a fact about a system's reply and belongs to the reader that
+// has one -- internal/fuzz, which refuses by name when nothing was found at
+// the declared path. A parser that tried would be checking a declaration
+// against nothing.
+func TestTheRefusalMessagePathIsCarriedAndATypeFaultIsRefused(t *testing.T) {
+	doc := wellFormed()
+	doc["refusal"] = map[string]any{"message": "body.error"}
+	rep := Parse(doc)
+	if !rep.OK() {
+		t.Fatalf("a declared refusal path is refused: %v", rep.Refusals)
+	}
+	if rep.Bindings.RefusalMessage != "body.error" {
+		t.Errorf("the declared path did not survive the parse: %q", rep.Bindings.RefusalMessage)
+	}
+
+	// A BARE TABLE DECLARES NO PATH AND IS NOT A FAULT, which is the
+	// convention [quiesce] set and [clock] and [deadline] kept: a key a later
+	// phase reserves here must not be refused by this one.
+	doc = wellFormed()
+	doc["refusal"] = map[string]any{}
+	rep = Parse(doc)
+	if !rep.OK() {
+		t.Fatalf("a bare [refusal] is refused: %v", rep.Refusals)
+	}
+	if rep.Bindings.RefusalMessage != "" {
+		t.Errorf("a bare table yielded a path: %q", rep.Bindings.RefusalMessage)
+	}
+	if rep.Bindings.Refusal == nil {
+		t.Error("a bare [refusal] parsed to nil, so a consumer asking whether the project " +
+			"DECLARES the table would read no")
+	}
+
+	// AND THE SIBLING KEYS ARE CARRIED, so a project is not refused for a key
+	// a later phase reserves in this table.
+	doc = wellFormed()
+	doc["refusal"] = map[string]any{"message": "body.error", "code": "body.code"}
+	rep = Parse(doc)
+	if !rep.OK() {
+		t.Fatalf("a [refusal] with a sibling key is refused: %v", rep.Refusals)
+	}
+	if rep.Bindings.Refusal["code"] != "body.code" {
+		t.Errorf("the sibling key was dropped: %#v", rep.Bindings.Refusal)
+	}
+
+	// A NON-STRING IS REFUSED AT THE KEY'S OWN PATH. A path is a string; a
+	// table or a number there is this phase's own field spelled wrong, which
+	// issue 63's rule refuses rather than carries.
+	doc = wellFormed()
+	doc["refusal"] = map[string]any{"message": 7}
+	rep = Parse(doc)
+	if rep.OK() {
+		t.Fatal("a numeric refusal path parsed, so a project can declare a path that is not one")
+	}
+	var named bool
+	for _, ref := range rep.Refusals {
+		if strings.Contains(ref.Error(), "refusal.message") {
+			named = true
+		}
+	}
+	if !named {
+		t.Errorf("the refusal does not name refusal.message, so the author is sent looking: %v",
+			rep.Refusals)
 	}
 }

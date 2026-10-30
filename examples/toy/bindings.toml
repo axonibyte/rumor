@@ -494,3 +494,25 @@ form = "adapter"
 # zero in `[weights.default]`.
 [deadline]
 instants = ["invitation_expiry"]
+
+# WHERE A REFUSAL's TEXT LIVES, AS A PATH AND NOT A VALUE.
+#
+# cmd/toy answers `{"error": "<text>"}` on its refusal path and the adapter
+# wraps that as `{"status": <code>, "body": <the object>}`, so the text is at
+# `body.error` in the answer the wire carries. This table says that once for
+# the project, because the shape of a refusal is a property of the API and not
+# of any one call into it.
+#
+# A PATH, SO IT IS NOT AN EQUALITY TEST. `[[action]].response` is already a
+# per-action equality contract -- every key declared there must be present AND
+# equal, and anything else is the system refusing -- so an error key declared
+# there would make every ACCEPTED action read as a refusal. That was measured
+# before this table existed. A path names where to look and asserts nothing
+# about what is found, so the two declarations do not collide.
+#
+# WHAT ITS ABSENCE COSTS: the fuzz stage's D3 and D4 clauses are a could-not-run
+# naming this table, rather than findings grounded in a key nobody declared.
+# The walk does not read it at all, so a project that never runs that stage is
+# unaffected by its presence or absence.
+[refusal]
+message = "body.error"

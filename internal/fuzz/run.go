@@ -51,6 +51,13 @@ type Result struct {
 type Report struct {
 	Setup   []string
 	Results []Result
+
+	// RefusalPath is `[refusal].message` as the project declared it -- where
+	// in the system's answer the text of a refusal lives. It is carried on the
+	// report rather than looked up by the clauses so that the clauses stay pure
+	// functions of what a run observed, which is what lets a fixture drive
+	// every one of them without an adapter.
+	RefusalPath string
 }
 
 // Origin is which layer answered a case, because three of them can and only
@@ -163,6 +170,10 @@ func (r Report) Reached() int {
 // Run executes the setup and then the corpus.
 func Run(ctx context.Context, b bindings.Bindings, sess *wire.Session, actor string) (Report, error) {
 	var rep Report
+	// CARRIED BEFORE ANYTHING CAN FAIL, so a report returned alongside an error
+	// still says what the run was reading -- the same reason Walk fills
+	// Record.Stages at the top.
+	rep.RefusalPath = b.RefusalMessage
 	cases, err := Corpus(b)
 	if err != nil {
 		return rep, err
@@ -193,7 +204,11 @@ func Run(ctx context.Context, b bindings.Bindings, sess *wire.Session, actor str
 		if err != nil {
 			return rep, fmt.Errorf("setting up with %s: %w", a.Name, err)
 		}
-		status, _, _ := answer(resp)
+		// THE SETUP WANTS THE STATUS AND NOT THE TEXT, so it passes no path:
+		// a setup step's refusal is a could-not-run named by its own message
+		// below, and reading a refusal's text here would make the declaration
+		// load-bearing for a step that does not need it.
+		status, _, _ := answer(resp, "")
 		if status < 200 || status > 299 {
 			return rep, fmt.Errorf("the setup step %s answered %d, so no id for %v was obtained: "+
 				"a hostile case sent without one would be refused for the wrong reason",
@@ -233,7 +248,7 @@ func Run(ctx context.Context, b bindings.Bindings, sess *wire.Session, actor str
 			rep.Results = append(rep.Results, r)
 			continue
 		}
-		r.Status, r.Error, _ = answer(resp)
+		r.Status, r.Error, _ = answer(resp, b.RefusalMessage)
 		rep.Results = append(rep.Results, r)
 	}
 
@@ -254,7 +269,7 @@ func Run(ctx context.Context, b bindings.Bindings, sess *wire.Session, actor str
 // answered something else entirely would otherwise give a zero status, which
 // would read as a pass. A response this cannot read reports status 0 and says
 // so through `ok`, and the caller treats that as a fault rather than a 2xx.
-func answer(resp wire.ExecuteResponse) (status int, errText string, ok bool) {
+func answer(resp wire.ExecuteResponse, path string) (status int, errText string, ok bool) {
 	m, isMap := resp.Response.(map[string]any)
 	if !isMap {
 		return 0, fmt.Sprintf("the adapter answered %v, which is not a table", resp.Response), false
@@ -269,12 +284,47 @@ func answer(resp wire.ExecuteResponse) (status int, errText string, ok bool) {
 	default:
 		return 0, fmt.Sprintf("the adapter's answer carries no numeric status: %v", m), false
 	}
-	if body, isBody := m["body"].(map[string]any); isBody {
-		if e, has := body["error"]; has {
-			errText = fmt.Sprint(e)
-		}
+	return status, textAt(m, path), true
+}
+
+// textAt resolves a declared dotted path against the system's answer, which is
+// `[refusal].message` -- `body.error` for the toy.
+//
+// AN ABSENT PATH IS NOT AN ERROR HERE, and that is deliberate rather than
+// lax. A 2xx carries no refusal text by design, and a system may refuse in
+// silence; both land here as "". What separates those from a path that names
+// nothing at all is a question about the WHOLE RUN -- whether any refusal
+// anywhere carried text -- and Report.Vacuous asks it, because one answer
+// cannot tell them apart and a corpus can.
+//
+// SEGMENTS ALL THE WAY DOWN, AND THE LAST ONE IS A VALUE. A non-table in the
+// middle of the path ends the walk with "", for the reason above: a shape
+// mismatch is indistinguishable here from a missing message, and the run-level
+// clause is what reports it.
+func textAt(m map[string]any, path string) string {
+	if path == "" {
+		return ""
 	}
-	return status, errText, true
+	seg := strings.Split(path, ".")
+	var cur any = m
+	for _, name := range seg {
+		tbl, isTable := cur.(map[string]any)
+		if !isTable {
+			return ""
+		}
+		next, has := tbl[name]
+		if !has {
+			return ""
+		}
+		cur = next
+	}
+	if cur == nil {
+		return ""
+	}
+	if s, isStr := cur.(string); isStr {
+		return s
+	}
+	return fmt.Sprint(cur)
 }
 
 // honestArgs is every declared argument with a plausible value: a literal's
@@ -468,6 +518,20 @@ func (r Report) Vacuous() string {
 	if len(r.Results) == 0 {
 		return "the corpus sent no case at all, so \"no 5xx\" is a statement about nothing"
 	}
+	// NOTHING DECLARES WHERE A REFUSAL's TEXT LIVES, which is knowable before a
+	// single case is sent and is therefore reported before anything about what
+	// came back. fable ruled the table into 108 (coop rumor/1498) after rook
+	// and I measured that there was nowhere to declare it: `[[action]].response`
+	// is an equality contract, so an error key there would make every accepted
+	// action a refusal. With no `[refusal]` the D3 and D4 clauses have no
+	// subject, and this says so BY NAME rather than reporting findings grounded
+	// in a key nobody declared.
+	if r.RefusalPath == "" {
+		return "no refusal text declared: `[refusal].message` -- the D3 and D4 clauses read a " +
+			"refusal's text at the path a project declares there, and with none declared they " +
+			"would be grounded in a key nobody named"
+	}
+
 	if r.Reached() == 0 {
 		return fmt.Sprintf("none of the %d case(s) reached the system -- every one faulted at the "+
 			"adapter or went unanswered -- so \"no 5xx\" is a statement about nothing", len(r.Results))
@@ -504,8 +568,10 @@ func (r Report) Vacuous() string {
 		}
 		if !spoke {
 			return fmt.Sprintf("not one of the %d refusal(s) the system's own rules gave carried any "+
-				"message at `body.error`, so D4 cannot be told apart from an adapter that spells "+
-				"that key otherwise: the oracle's subject is missing, not uninformative", len(sys))
+				"message at %q, which is this project's `[refusal].message`: so D4 cannot be told "+
+				"apart from a system that puts its text somewhere else, and the likeliest cause is "+
+				"that declaration rather than a silent system. The oracle's subject is missing, not "+
+				"uninformative", len(sys), r.RefusalPath)
 		}
 	}
 	return ""

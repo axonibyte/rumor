@@ -158,6 +158,44 @@ type Bindings struct {
 	// the instants, the third table to take this split after [quiesce] and
 	// [clock]. DeadlineInstants is the typed half, which is what R7.4 adds.
 	Deadline map[string]any
+	// Refusal stays the RESERVED MAP for anything the table carries beyond the
+	// message path, the fourth table to take this split after [quiesce],
+	// [clock] and [deadline]. RefusalMessage is the typed half, which is what
+	// R8.1 adds.
+	//
+	// TWO MEANINGS OF ONE WORD, AND THIS IS THE OTHER ONE. `bindings.Refusal`
+	// is a TYPE in this package -- an alias for decl.Refusal, a fault in
+	// READING the declaration, which is what Report.Refusals carries. This
+	// field is about the system under test REFUSING AN ACTION, which is a fact
+	// about a live answer and not about this file being malformed. The name
+	// follows the TOML key, as Clock, Quiesce and Deadline do, because a field
+	// spelled differently from the table it reads is the drift those three
+	// avoid; the collision is in English and not in Go, and it is written down
+	// here so a reader does not resolve it the wrong way.
+	Refusal map[string]any
+	// RefusalMessage is WHERE in the system's answer the text of a refusal
+	// lives, as a PATH and not a value -- `body.error` for the toy.
+	//
+	// A PATH, BECAUSE A VALUE WOULD BE AN EQUALITY TEST. `[[action]].response`
+	// is already a per-action equality contract: "every key the project
+	// declares must be present in the answer and equal to the declared value.
+	// Anything else is the system REFUSING the action" (contract.md:136-143).
+	// An error key declared THERE would make every accepted action a refusal,
+	// which was measured before this table existed. A path names where to look
+	// and asserts nothing about what is found, so the two declarations do not
+	// collide and `[[action]].response` keeps the meaning that document gives
+	// it (fable, coop rumor/1498).
+	//
+	// DECLARED ONCE FOR THE PROJECT AND NOT PER ACTION: the shape of a refusal
+	// is a property of the system's API, not of one call into it, and a
+	// per-action spelling would let a project describe a system no server
+	// implements.
+	//
+	// OPTIONAL, AND ITS ABSENCE IS A COULD-NOT-RUN WHERE IT IS CONSUMED rather
+	// than a parse fault. The walk never reads it, so refusing a project that
+	// omits it would refuse every project that does not run the fuzz stage;
+	// the stage that needs it names the table when it is missing.
+	RefusalMessage string
 	// DeadlineInstants names the OBSERVATIONS whose value IS an instant, in
 	// nanoseconds from the run's epoch -- the fields of the system's own data
 	// that hold a deadline (fable r7/42 ruling 2). The walk extends `advance`'s
@@ -572,6 +610,7 @@ func Parse(doc map[string]any) Report {
 		{"clock", &b.Clock},
 		{"quiesce", &b.Quiesce},
 		{"deadline", &b.Deadline},
+		{"refusal", &b.Refusal},
 		{"seeding", &b.Seeding},
 	} {
 		if t, ok := r.Table(reserved.key, false); ok {
@@ -614,6 +653,16 @@ func Parse(doc map[string]any) Report {
 				// element at its own index, so `instants = "x"` and
 				// `instants = ["x", 3]` each refuse at the key's own path.
 				b.DeadlineInstants = t.Strings("instants", false)
+			}
+			if reserved.key == "refusal" {
+				// OPTIONAL AT THE PARSE, for the reason on the field: the walk
+				// does not read it, so a project that never runs the fuzz
+				// stage must not be refused for omitting it. `decl.Str` refuses
+				// a non-string at the key's own path, which is the one shape
+				// fault there is to find here -- whether the PATH resolves is a
+				// fact about a live answer and belongs to the reader that has
+				// one, not to this parser.
+				b.RefusalMessage = t.Str("message", false)
 			}
 			if reserved.key == "quiesce" {
 				for _, pr := range t.Tables("probe") {

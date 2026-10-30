@@ -20,6 +20,12 @@ import (
 // takes, so a clause dropped from that composition fails these too -- not only
 // a clause whose own condition was broken.
 
+// declaredPath is what `[refusal].message` holds for the toy, and every fixture
+// here sets it: the clauses are a could-not-run without a declaration at all,
+// so a fixture that left it empty would be testing THAT and not the clause it
+// names. The arm for an absent declaration sets it empty on purpose.
+const declaredPath = "body.error"
+
 // sys is a refusal from a rule the system wrote: 4xx, no fault, and an error
 // text that is not encoding/json's.
 func sys(action, field, msg string) Result {
@@ -45,7 +51,7 @@ func findingAbout(t *testing.T, rep Report, want string) string {
 }
 
 func TestOneSentenceOverEveryRefusalIsAFinding(t *testing.T) {
-	rep := Report{Results: []Result{
+	rep := Report{RefusalPath: declaredPath, Results: []Result{
 		sys("create_user", "name", "bad request"),
 		sys("create_event", "title", "bad request"),
 		sys("create_event", "capacity", "bad request"),
@@ -60,7 +66,7 @@ func TestOneSentenceOverEveryRefusalIsAFinding(t *testing.T) {
 	// THE CONTROL IS THE SAME SHAPE WITH THE MESSAGES SPREAD, because a clause
 	// that fired on any set of refusals would also "catch" a system that
 	// discriminates perfectly.
-	spread := Report{Results: []Result{
+	spread := Report{RefusalPath: declaredPath, Results: []Result{
 		sys("create_user", "name", "name is required"),
 		sys("create_event", "title", "title is required"),
 		sys("create_event", "capacity", "capacity must be at least 1"),
@@ -78,7 +84,7 @@ func TestASingleRefusalIsNotAMonoculture(t *testing.T) {
 	// is about the count alone. The first draft used "bad request" here and
 	// failed -- correctly, on namesSomething -- which is the arm asserting
 	// silence over a finding that was really there.
-	rep := Report{Results: []Result{sys("create_user", "name", "name is required")}}
+	rep := Report{RefusalPath: declaredPath, Results: []Result{sys("create_user", "name", "name is required")}}
 	if f := rep.Findings(); len(f) != 0 {
 		t.Errorf("one refusal was reported as a monoculture: %v", f)
 	}
@@ -96,7 +102,7 @@ func TestTheDecodersOwnUniformityIsNotTheSystems(t *testing.T) {
 			Error:  decoderRefusal + " number into Go struct field ." + field + " of type string",
 		}
 	}
-	honest := Report{Results: []Result{
+	honest := Report{RefusalPath: declaredPath, Results: []Result{
 		decoder("title"), decoder("name"), decoder("user"),
 		sys("create_user", "name", "name is required"),
 		sys("create_event", "capacity", "capacity must be at least 1"),
@@ -106,7 +112,7 @@ func TestTheDecodersOwnUniformityIsNotTheSystems(t *testing.T) {
 	}
 
 	// The decoder's variety cannot cover for the system.
-	covered := Report{Results: []Result{
+	covered := Report{RefusalPath: declaredPath, Results: []Result{
 		decoder("title"), decoder("name"), decoder("user"),
 		sys("create_user", "name", "bad request"),
 		sys("create_event", "capacity", "bad request"),
@@ -118,7 +124,7 @@ func TestTheDecodersOwnUniformityIsNotTheSystems(t *testing.T) {
 }
 
 func TestARefusalNamingNeitherTheFieldNorARuleIsAFinding(t *testing.T) {
-	rep := Report{Results: []Result{
+	rep := Report{RefusalPath: declaredPath, Results: []Result{
 		sys("create_event", "capacity", "error 400"),
 		sys("create_user", "name", "name is required"),
 	}}
@@ -135,7 +141,7 @@ func TestARefusalNamingNeitherTheFieldNorARuleIsAFinding(t *testing.T) {
 // that states its rule instead, and one that only accepted a rule word would
 // fault a system that names the field.
 func TestNamingTheFieldAndNamingARuleBothSatisfyTheClause(t *testing.T) {
-	byField := Report{Results: []Result{
+	byField := Report{RefusalPath: declaredPath, Results: []Result{
 		sys("create_user", "name", "name is required"),
 		sys("create_event", "title", "title is required"),
 	}}
@@ -144,7 +150,7 @@ func TestNamingTheFieldAndNamingARuleBothSatisfyTheClause(t *testing.T) {
 	}
 
 	// `capacity` is absent from this text; " must " is the rule word.
-	byRule := Report{Results: []Result{
+	byRule := Report{RefusalPath: declaredPath, Results: []Result{
 		sys("create_event", "capacity", "the number of seats must be at least 1"),
 		sys("create_user", "name", "name is required"),
 	}}
@@ -168,7 +174,7 @@ func TestNamingTheFieldAndNamingARuleBothSatisfyTheClause(t *testing.T) {
 // a class perturbing the body rather than one field, or a field test stricter
 // than Contains -- and it is NOT evidence that the guard does anything.
 func TestAFieldlessCaseYieldsNoNamingFinding(t *testing.T) {
-	rep := Report{Results: []Result{
+	rep := Report{RefusalPath: declaredPath, Results: []Result{
 		{Case: Case{Action: "join_event", Class: ClassMissing}, Status: 400, Error: "error 400"},
 		sys("create_user", "name", "name is required"),
 	}}
@@ -180,7 +186,7 @@ func TestAFieldlessCaseYieldsNoNamingFinding(t *testing.T) {
 // D2 IS ARMED THE SAME WAY, and it had the same gap: the only arm over it was
 // the toy answering no 5xx.
 func TestAFiveHundredIsAFindingAndNamesTheCase(t *testing.T) {
-	rep := Report{Results: []Result{
+	rep := Report{RefusalPath: declaredPath, Results: []Result{
 		{Case: Case{Action: "delete_event", Class: ClassUnknownID, Field: "event"}, Status: 500, Error: "boom"},
 		sys("create_user", "name", "name is required"),
 	}}
@@ -192,7 +198,7 @@ func TestAFiveHundredIsAFindingAndNamesTheCase(t *testing.T) {
 	}
 
 	// A 4xx IS NOT A 5xx, which is the boundary the clause turns on.
-	ok := Report{Results: []Result{sys("delete_event", "event", "no such event")}}
+	ok := Report{RefusalPath: declaredPath, Results: []Result{sys("delete_event", "event", "no such event")}}
 	if f := ok.Findings(); len(f) != 0 {
 		t.Errorf("a refusal was reported as a server failure: %v", f)
 	}
@@ -208,7 +214,7 @@ func TestAFiveHundredIsAFindingAndNamesTheCase(t *testing.T) {
 // that names each field. The ambiguity is real and the stage cannot resolve it
 // from a declaration, so it resolves it from the run.
 func TestARefusalTextTheStageNeverReadIsACouldNotRunAndNotAFinding(t *testing.T) {
-	blind := Report{Results: []Result{
+	blind := Report{RefusalPath: declaredPath, Results: []Result{
 		sys("create_user", "name", ""),
 		sys("create_event", "title", ""),
 		sys("create_event", "capacity", ""),
@@ -218,7 +224,7 @@ func TestARefusalTextTheStageNeverReadIsACouldNotRunAndNotAFinding(t *testing.T)
 		t.Fatalf("three refusals with no text read as judgeable, and the clauses then say: %v",
 			blind.Findings())
 	}
-	for _, want := range []string{"3 refusal(s)", "body.error", "subject is missing"} {
+	for _, want := range []string{"3 refusal(s)", "body.error", "[refusal].message", "subject is missing"} {
 		if !strings.Contains(why, want) {
 			t.Errorf("the refusal does not carry %q, so a reader cannot tell it from a real "+
 				"finding: %s", want, why)
@@ -232,7 +238,7 @@ func TestARefusalTextTheStageNeverReadIsACouldNotRunAndNotAFinding(t *testing.T)
 // with a message and others with nothing IS uninformative about the others, and
 // that is the system's choice rather than the stage's blindness.
 func TestOneRefusalThatSpokeProvesTheChannelAndTheSilentOnesAreJudged(t *testing.T) {
-	mixed := Report{Results: []Result{
+	mixed := Report{RefusalPath: declaredPath, Results: []Result{
 		sys("create_user", "name", "name is required"),
 		sys("create_event", "capacity", ""),
 	}}
@@ -247,7 +253,7 @@ func TestOneRefusalThatSpokeProvesTheChannelAndTheSilentOnesAreJudged(t *testing
 	// AND THE ACCEPTED CASE's EMPTY TEXT IS NOT A SILENT REFUSAL. A 2xx
 	// carries no error by design, so counting it as one would make every
 	// corpus with an accepted case look unreadable.
-	accepted := Report{Results: []Result{
+	accepted := Report{RefusalPath: declaredPath, Results: []Result{
 		{Case: Case{Action: "create_user", Class: ClassMissing, Field: "name"}, Status: 201},
 		sys("create_event", "capacity", "capacity must be at least 1"),
 	}}
@@ -261,7 +267,7 @@ func TestOneRefusalThatSpokeProvesTheChannelAndTheSilentOnesAreJudged(t *testing
 	// speaks. The separating case is a report with NO system refusal at all --
 	// correct code has nothing to judge and says so by staying silent, while a
 	// guard that counted every result would call it unreadable.
-	onlyAccepted := Report{Results: []Result{
+	onlyAccepted := Report{RefusalPath: declaredPath, Results: []Result{
 		{Case: Case{Action: "create_user", Class: ClassMissing, Field: "name"}, Status: 201},
 		{Case: Case{Action: "create_event", Class: ClassEmpty, Field: "title"}, Status: 200},
 	}}
@@ -272,5 +278,70 @@ func TestOneRefusalThatSpokeProvesTheChannelAndTheSilentOnesAreJudged(t *testing
 	if why := onlyAccepted.Vacuous(); why != "" {
 		t.Errorf("a corpus the system accepted throughout was called unreadable, which is a claim "+
 			"about the oracle's channel and not about the corpus: %s", why)
+	}
+}
+
+// NO DECLARATION AT ALL IS A COULD-NOT-RUN NAMED AFTER THE TABLE.
+//
+// fable ruled `[refusal]` into 108 (coop rumor/1498) after rook and I measured
+// that there was nowhere to declare the path: `[[action]].response` is an
+// equality contract, so an error key there would make every ACCEPTED action
+// read as a refusal. A project that declares no table has given the D3 and D4
+// clauses no subject, and that is knowable before a case is sent -- so it is
+// reported ahead of anything about what came back, and it names the table so
+// the author knows what to write rather than what went wrong.
+func TestNoDeclaredRefusalPathIsACouldNotRunNamingTheTable(t *testing.T) {
+	undeclared := Report{Results: []Result{
+		sys("create_user", "name", "name is required"),
+		sys("create_event", "capacity", "capacity must be at least 1"),
+	}}
+	why := undeclared.Vacuous()
+	if why == "" {
+		t.Fatalf("a run with no declared refusal path read as judgeable, and the clauses then "+
+			"say: %v", undeclared.Findings())
+	}
+	if !strings.Contains(why, "[refusal].message") {
+		t.Errorf("the refusal does not name the table the author has to write: %s", why)
+	}
+
+	// AND IT IS REPORTED AHEAD OF THE CHANNEL QUESTION, which cannot even be
+	// asked until a path is named. Both faults at once must read as the
+	// earlier one, or the author fixes the wrong thing first.
+	both := Report{Results: []Result{sys("create_user", "name", ""), sys("create_event", "title", "")}}
+	if w := both.Vacuous(); !strings.Contains(w, "[refusal].message") {
+		t.Errorf("a run with no declaration AND no text reported the channel instead of the "+
+			"missing declaration: %s", w)
+	}
+}
+
+// THE PATH IS RESOLVED, NOT ASSUMED, and these are the shapes a real answer
+// takes. `body.error` is the toy's; the others are what a different system
+// would hand the same reader.
+func TestTheDeclaredPathIsResolvedAgainstTheAnswer(t *testing.T) {
+	answerBody := map[string]any{
+		"status": float64(400),
+		"body":   map[string]any{"error": "name is required", "code": float64(7)},
+	}
+	for _, c := range []struct {
+		name, path, want string
+	}{
+		{"the toy's own path", "body.error", "name is required"},
+		{"a top-level key", "status", "400"},
+		{"a non-string value is rendered", "body.code", "7"},
+		{"a key the answer does not carry", "body.message", ""},
+		{"a path through a non-table", "body.error.deeper", ""},
+		{"a segment missing at the root", "envelope.error", ""},
+		{"an empty path declares nothing", "", ""},
+	} {
+		if got := textAt(answerBody, c.path); got != c.want {
+			t.Errorf("%s: textAt(%q) = %q, wanted %q", c.name, c.path, got, c.want)
+		}
+	}
+
+	// A DEEPER PATH THAN THE TOY's WORKS, because the declaration is a path and
+	// not a two-level assumption dressed up as one.
+	nested := map[string]any{"body": map[string]any{"problem": map[string]any{"detail": "nope"}}}
+	if got := textAt(nested, "body.problem.detail"); got != "nope" {
+		t.Errorf("a three-segment path did not resolve: %q", got)
 	}
 }
