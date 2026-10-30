@@ -1149,6 +1149,30 @@ settled by ratchet naming the flag at coop r6/4–/5. A partial match is worse
 evidence than none: a full mismatch would have been read as a method error at
 once, where two-of-three bought a confident wrong conclusion about the record.
 
+**R7's done-when carries its own invocation, and BOTH flags are load-bearing in
+opposite directions.** The row R7.4 was built to find — an invitation honored
+past its expiry — is found from the committed seed 3 under
+`[profiles.expiring]`, and the invocation is
+`rumor run examples/toy --seed 3 --steps 24 --profile expiring`, stdout only,
+`sha256` truncated to sixteen: **a2c20f20769767d5**, twice byte-identical, exit
+3, FOUND after step 23 and REDUCED 23 steps to 8 with the crossing advance at
+step 7. `toy` and `toy-adapter` must be on PATH beside `rumor`, since the toy's
+surface is those two binaries; without them the run exits 1 and stdout is a
+12-byte echo of the seed, which five such echoes will compare equal to each
+other and to nothing else.
+
+**Drop either flag and the output still looks like a reproduction.** Without
+`--profile expiring` the same seed at the same step count finds a DIFFERENT bug
+— `4cf91954cbb095eb`, still exit 3, still `rests_on_planted false`, but FOUND
+after step 13 and REDUCED 13 to 10 — so the reader gets a plausible find at the
+expected exit code and the wrong subject, with nothing in the output to say so.
+Without `--steps 24` the default step count ends at `919000a6d96fc090` and
+**exit 0**, no finding at all, which reads as the row having regressed. R6.2's
+hazard was a partial match on two digests of three; this one is worse, because
+the wrong invocation still exits non-zero and still reports a bug. That is why
+the flags are written here beside the figure and not left to the reader's
+defaults.
+
 **The re-check is keyed on the pair.** v1 re-checks a `pending` "at the actor's
 next observation of the same query and at every full reconciliation", so
 another query from the same actor does not clear it, and a re-check clears the
