@@ -1686,3 +1686,68 @@ clause reads, committed beside the always-rules it does not resemble: it
 disables nothing, it changes which fact answers the question. A drive proves
 the corpus discriminated once, on the tree it was run against; a committed
 mutant is what re-measures it.
+
+## R8
+
+The lessons from R8's children, one `###` per child in landing order.
+
+### A clause reachable only through a live system is armed by nothing
+
+108's oracle carries two judgements for D4 — a refusal that names neither the
+field nor a rule, and a monoculture of one sentence over every hostile value.
+Both were implemented, both had been driven by hand in a worktree against a
+mutated `cmd/toy`, and both drives were recorded in commit messages. rook then
+turned each branch off with `if false && ...`: the build was clean and
+`internal/fuzz` AND `tests/run` stayed GREEN. Every finding D4 could emit was a
+refusal nobody could show failing.
+
+**THE ONLY ARM OVER THEM ASSERTED THE SUBJECT's SPREAD, WHICH IS THE OTHER
+HALF.** It pinned the toy's own answers — 8 distinct messages over 21 system
+refusals, none naming nothing — so it proved that a specific well-behaved set
+PASSES. The branches that emit a finding were never reached by it. A positive
+arm and a negative arm are two different arms, and a suite holding only the
+first reads exactly like a suite holding both.
+
+**THE CURE WAS DELETING THE WRITER, NOT ADDING A FIXTURE.** `Findings` was a
+field that three statements in `Run` appended to, so reaching the clauses meant
+running the whole stage against a live adapter — and a deleted append left
+every consumer reading an empty list, which is indistinguishable from a clean
+verdict. It became a method composing three clause methods, each a pure
+function of the results. There is then no call site to omit: a fixture drives
+the same path a consumer takes, so a clause DROPPED FROM THE COMPOSITION dies
+in the arms as well as one whose condition broke. That second class had no
+cover at all before, and it is the class that cannot be fixed by writing more
+fixtures against the old shape.
+
+**A SURVIVING MUTANT USUALLY INDICTS THE FIXTURE, NOT THE CODE.** Twice in one
+day a mutant lived, and both times the arm was at fault because its fixture
+passed under either reading. Removing `Field != ""` killed nothing because
+`strings.Contains(msg, "")` is true for any message, so the guard is redundant
+and no arm can ever kill it — it is kept, and documented as unarmable, so the
+next reader does not delete it as dead. The channel guard's layer restriction
+survived because the fixture beside the accepted case held a SPEAKING refusal;
+the separating fixture is one with no system refusal at all. When a mutant
+lives, ask first whether the fixture distinguishes the two readings.
+
+**AND THE ORACLE's CHANNEL IS ITS OWN PRECONDITION.** D4 reads a refusal's
+text at `body.error`, which nothing declares — `[[action]].response` is an
+equality test for what acceptance IS, not a schema. Renaming the toy's tag to
+`json:"message"`, against a system that still names every field it refuses,
+made the stage emit 27 findings, every one false and all of them the loudest
+output it has. An empty message is ambiguous between a wrong key and a genuinely
+silent refusal, and only the second is a finding. The run supplies the control:
+text on ANY system refusal proves the channel readable, text on NONE is a
+could-not-run naming the key. A silent refusal beside a speaking one stays a
+finding, which is the half that stops the guard swallowing the defect next to
+it.
+
+**A GUARD NO ARM CAN REACH IS THE SAME MISTAKE ONE LEVEL UP.** `stage.Select`
+returns a list and `cmd/rumor/run.go` consumes one element of it, so the first
+stage to become runnable beside `api` would be selected and silently dropped.
+That cannot be driven today — only one stage is runnable, so the list cannot
+hold two — and a `len(stages) > 1` refusal would therefore be armed by nothing.
+The arm is a tripwire instead: it builds the strongest declaration a project
+can make, every known stage enabled, and fails in the SAME CHANGE that makes a
+second one runnable, naming which. Driven by flipping that flag: one failure
+over the whole tree, and its message says to extend the dispatch rather than
+widen the arm.
