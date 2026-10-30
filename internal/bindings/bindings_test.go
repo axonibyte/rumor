@@ -880,3 +880,80 @@ func TestTheRefusalMessagePathIsCarriedAndATypeFaultIsRefused(t *testing.T) {
 			rep.Refusals)
 	}
 }
+
+// `[[action]].contended` IS THE CONCURRENCY STAGE's SUBJECT, DECLARED BY NAME.
+//
+// fable ruled it into 109 at coop rumor/1525 after rook measured why the
+// tempting derivation is the dangerous one: `store_event_count` declares
+// `of = "event.joined"` and THREE actions emit that claim type, of which
+// accept_invitation holds its lock across the check and the insert. A stage
+// deriving its subject from the claim type can therefore select the CONTROL and
+// report no overfill -- which is exactly what a correct system reports.
+func TestWhatAnActionContendsOnIsCarried(t *testing.T) {
+	doc := wellFormed()
+	acts, ok := doc["action"].([]any)
+	if !ok || len(acts) == 0 {
+		t.Fatalf("the fixture has no actions to declare contention on: %T", doc["action"])
+	}
+	first, ok := acts[0].(map[string]any)
+	if !ok {
+		t.Fatalf("the fixture's first action is %T", acts[0])
+	}
+	first["contended"] = map[string]any{
+		"limit": "create_event.capacity", "held": "store_event_count",
+	}
+	rep := Parse(doc)
+	if !rep.OK() {
+		t.Fatalf("a declared contention is refused: %v", rep.Refusals)
+	}
+	got := rep.Bindings.Actions[0].Contended
+	if got.Limit != "create_event.capacity" || got.Held != "store_event_count" {
+		t.Errorf("contended %+v did not survive the parse", got)
+	}
+
+	// AN ACTION THAT DECLARES NONE CONTENDS ON NOTHING, which is every action
+	// in a project the concurrency stage has nothing to do with.
+	rep = Parse(wellFormed())
+	if !rep.OK() {
+		t.Fatalf("the well-formed bindings are refused: %v", rep.Refusals)
+	}
+	if c := rep.Bindings.Actions[0].Contended; c.Limit != "" || c.Held != "" {
+		t.Errorf("an action declaring no contention parsed to %+v, so a stage asking which "+
+			"actions contend would be given one that does not", c)
+	}
+}
+
+// HALF A SUBJECT IS REFUSED AT THE KEY's OWN PATH. An action saying it contends
+// without saying where its limit is read has declared something a stage cannot
+// judge: an overfill is a comparison against a limit, and a limit it cannot
+// read is not a limit.
+func TestAContentionMissingEitherHalfIsRefusedByName(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		table map[string]any
+		want  string
+	}{
+		{"no limit", map[string]any{"held": "store_event_count"}, "limit"},
+		{"no held", map[string]any{"limit": "create_event.capacity"}, "held"},
+		{"neither", map[string]any{}, "limit"},
+	} {
+		doc := wellFormed()
+		acts := doc["action"].([]any)
+		acts[0].(map[string]any)["contended"] = c.table
+		rep := Parse(doc)
+		if rep.OK() {
+			t.Errorf("%s: a half-declared contention parsed, so a stage would contend against a "+
+				"limit it cannot read", c.name)
+			continue
+		}
+		var named bool
+		for _, ref := range rep.Refusals {
+			if strings.Contains(ref.Error(), "contended."+c.want) {
+				named = true
+			}
+		}
+		if !named {
+			t.Errorf("%s: the refusal does not name contended.%s: %v", c.name, c.want, rep.Refusals)
+		}
+	}
+}

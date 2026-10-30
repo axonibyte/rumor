@@ -241,7 +241,13 @@ type Action struct {
 	Requires []string
 	Creates  []string
 	Response map[string]any
-	Flow     []Step
+
+	// Contended is what this action contends on, when it does: where its limit
+	// is read and where what the system HOLDS is read. Zero for an action that
+	// declares none, which is every action in a project the concurrency stage
+	// has nothing to do with.
+	Contended Contended
+	Flow      []Step
 
 	// Args are the arguments this action needs and where the walk gets each.
 	// Optional: an action the system takes with no arguments declares none,
@@ -310,6 +316,46 @@ type Arg struct {
 	// From is a `draw` argument's list, carried as decoded so a project can
 	// draw numbers, strings or lists of roles.
 	From []any
+}
+
+// Contended is an action's declaration that two callers can race it, and the
+// two facts a concurrency stage needs to judge the race.
+//
+// DECLARED BY NAME ON THE ACTION, AND NOT DERIVED, which is fable's ruling at
+// coop rumor/1525 on ibis r8/53 and rook r8/54. The tempting derivation is the
+// dangerous one: examples/toy's `store_event_count` declares
+// `of = "event.joined"`, and THREE actions emit that claim type -- join_event,
+// accept_invitation and join_event_ui -- of which accept_invitation is the one
+// that holds its lock across the check and the insert. So a stage deriving its
+// subject from the claim type can select the CONTROL and report no overfill,
+// which is exactly what a correct system reports. The claim type cannot stand
+// in for the action.
+//
+// NEITHER FACT WAS DECLARABLE BEFORE: `capacity` appeared in the toy's bindings
+// only as a draw argument's NAME and in comments, so a stage could not learn
+// which action contends or what its limit is, and hardcoding either would make
+// the stage toy-specific -- the same defect `[refusal].message` closed for a
+// refusal's text.
+type Contended struct {
+	// Limit is where the limit this action contends on is READ: the argument
+	// of the action that CREATED the thing, as `create_event.capacity`, or an
+	// observation that answers it.
+	//
+	// READ AND NOT DECLARED AS A NUMBER, for the reason R7 gives a deadline: a
+	// declared value would put one fact in two files and the stage would
+	// contend against ITS copy, so a run could miss the real limit while both
+	// files looked right. The toy's capacity is a DRAW, so there is no single
+	// number to copy even in principle.
+	Limit string
+
+	// Held is the declared query that reads what the system HOLDS, which is
+	// the quantity the race's signature is about.
+	//
+	// A DECLARED QUERY AND NOT A PATH, because this one already had a home:
+	// `store_event_count` is a `direct` observation whose own comment says why
+	// it is the right oracle -- "computed from the attendee list ... an oracle
+	// that read the same field could not disagree with it".
+	Held string
 }
 
 type Step struct {
@@ -480,6 +526,19 @@ func Parse(doc map[string]any) Report {
 			action.Response = map[string]any{}
 			for _, k := range t.Keys() {
 				action.Response[k] = t.Any(k)
+			}
+			t.Done()
+		}
+		// OPTIONAL, AND BOTH KEYS REQUIRED ONCE THE TABLE IS THERE. An action
+		// declaring it contends without saying where its limit is read, or
+		// without saying what reads the held quantity, has declared half a
+		// subject -- and a stage cannot judge an overfill against a limit it
+		// cannot read. `decl.Str` with required=true refuses each at the key's
+		// own path, which is where an author looks.
+		if t, ok := a.Table("contended", false); ok {
+			action.Contended = Contended{
+				Limit: t.Str("limit", true),
+				Held:  t.Str("held", true),
 			}
 			t.Done()
 		}

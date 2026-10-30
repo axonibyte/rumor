@@ -91,6 +91,17 @@ Three answers, and the third is not the first:
   could-not-run rather than as a verdict, the same separation `rumor validate`
   draws between a refusal and a run that never happened.
 
+**THE UNIT IS A PROBE AND NOT A CANDIDATE**, which is the sentence above read
+one level finer. A verdict that recurs only sometimes — a race, as against a
+statute evaluating rules over a sealed ledger — is probed up to *n* times and
+must recur *k* of them, so one candidate can take several replays. Each of them
+restores and verifies again: a probe run against the world the previous probe
+left would attribute its finding to both, which is exactly what this section
+exists to prevent, and it would do so *inside* a single candidate's judgment
+where no reader would think to look. The restores are therefore counted against
+the probes rather than against the candidates, and the stage's arms assert that
+count.
+
 **A verify that checks one thing can pass over a corpse.** The shipped provider
 asks two questions: the state file is byte-for-byte the checkpoint, *and* the
 server answers. The first alone is satisfied most perfectly when nothing is

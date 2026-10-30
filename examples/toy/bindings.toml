@@ -98,6 +98,25 @@ requires = ["may_join", "has_user"]
 touches = ["store"]
 response = { status = 200 }
 
+# THIS ACTION CONTENDS, AND IT IS SAID HERE RATHER THAN DERIVED.
+#
+# `store_event_count` declares `of = "event.joined"` and THREE actions emit
+# that claim type -- this one, accept_invitation and join_event_ui. Of those,
+# accept_invitation holds its lock across the check and the insert, so a stage
+# deriving its subject from the claim type could pick it and report no overfill
+# -- exactly what a correct system reports. The claim type cannot stand in for
+# the action, so the action says so itself (fable, coop rumor/1525).
+#
+# `limit` IS READ AND NOT COPIED. It names the argument of the action that
+# created the event, and that argument is a DRAW over [1, 2, 3] -- so there is
+# no single number to copy even in principle, and a declared value would put
+# one fact in two files the way a declared deadline would.
+#
+# `held` IS THE DECLARED QUERY for what the system holds: the `direct`
+# observation whose own comment says an oracle reading the same field could not
+# disagree with it.
+contended = { limit = "create_event.capacity", held = "store_event_count" }
+
   # THE HANDLE KIND, never a run's handle: the walk picks WHICH event this
   # actor knows of, and `event` is created by create_event above.
   [[action.args]]
