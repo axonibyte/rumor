@@ -183,8 +183,15 @@ func TestTheOverfillClauseFiresOnTheRacedActionAndNotOnTheLockedOne(t *testing.T
 		t.Fatalf("the two joins did not overlap, so this run exercised the sequential path: "+
 			"%v and %v", joins[0].InFlight(), joins[1].InFlight())
 	}
-	subject := concurrency.Contention{Action: "join_event", Room: 1,
-		Accepted: countAccepted(joins), Width: 2}
+	// THE WORLD, NOT THE ANSWERS (rook, coop r8/45). The verdict rests on what
+	// the system HOLDS, read back through the declared observation, and the
+	// acceptances are kept only so the two can be compared.
+	subject := concurrency.Contention{Action: "join_event", Limit: 1, Before: 0,
+		Accepted: countAccepted(joins), Observed: observeStoreCount(t, host.sess, raced), Width: 2}
+	if d := subject.Disagreement(); d != "" {
+		t.Fatalf("the subject's answers and the world disagree, which is a different defect and "+
+			"would make the overfill verdict unreadable: %s", d)
+	}
 	if why := subject.Vacuous(); why != "" {
 		t.Fatalf("the subject fan-out cannot answer the clause: %s", why)
 	}
@@ -234,8 +241,12 @@ func TestTheOverfillClauseFiresOnTheRacedActionAndNotOnTheLockedOne(t *testing.T
 			"sequential and not because the lock is held: %v and %v",
 			accepts[0].InFlight(), accepts[1].InFlight())
 	}
-	control := concurrency.Contention{Action: "accept_invitation", Room: 1,
-		Accepted: countAccepted(accepts), Width: 2}
+	control := concurrency.Contention{Action: "accept_invitation", Limit: 1, Before: 0,
+		Accepted: countAccepted(accepts), Observed: observeStoreCount(t, host.sess, locked),
+		Width: 2}
+	if d := control.Disagreement(); d != "" {
+		t.Fatalf("the control's answers and the world disagree: %s", d)
+	}
 	if why := control.Vacuous(); why != "" {
 		t.Fatalf("the control fan-out cannot answer the clause either, so it controls for "+
 			"nothing: %s", why)
@@ -244,8 +255,44 @@ func TestTheOverfillClauseFiresOnTheRacedActionAndNotOnTheLockedOne(t *testing.T
 		t.Errorf("accept_invitation holds the lock across its own check-then-act, so an overfill "+
 			"here is a SECOND defect and not this clause firing correctly: %s", f)
 	}
-	t.Logf("PROOF control: accept_invitation accepted %d of 2 into room for 1, no finding, %s",
-		control.Accepted, concurrency.OverlapMeasured(accepts))
+	t.Logf("PROOF control: accept_invitation accepted %d of 2, the world holds %d against a "+
+		"limit of 1, no finding, %s", control.Accepted, control.Observed,
+		concurrency.OverlapMeasured(accepts))
+}
+
+// observeStoreCount reads what the system HOLDS, through the observation
+// examples/toy declares for exactly this: store_event_count, source `direct`,
+// "computed from the attendee list ... an oracle that read the same field could
+// not disagree with it".
+//
+// THE QUERY IS THE NAME ALONE AND THE SUBJECT RIDES IN Args, which I got wrong
+// first by trusting a comment over the code. cmd/toy-adapter's header still
+// describes the older `name/subject` convention -- "`event_count` of a
+// particular event has nowhere to put the event but the query string" -- while
+// its dispatch reads `name := m.Query` and `m.Args["event"]` (main.go:542-545),
+// because ObserveRequest gained Args afterwards. The first attempt here sent
+// "store_event_count/e5" and was refused by name: "is not an observation this
+// adapter serves". A stale comment is a worse guide than the dispatch beside it.
+func observeStoreCount(t *testing.T, sess *wire.Session, eventID string) int {
+	t.Helper()
+	resp, err := sess.Observe(wire.ObserveRequest{
+		Query:  "store_event_count",
+		Source: wire.SourceDirect,
+		Args:   map[string]any{"event": eventID},
+	})
+	if err != nil {
+		t.Fatalf("observing store_event_count/%s: %v", eventID, err)
+	}
+	switch v := resp.Value.(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	case int64:
+		return int(v)
+	}
+	t.Fatalf("store_event_count answered %v (%T), which is not a count", resp.Value, resp.Value)
+	return 0
 }
 
 // assertPlanDispatched is rook's cure at coop r8/40, shared by every live

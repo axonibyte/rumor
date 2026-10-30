@@ -1428,3 +1428,23 @@ them. The mechanism arm sits in the second of those deliberately, running
 capacity 3 against two joins because nothing there is meant to rest on the
 race, which is exactly why the oracle refuses that shape rather than reading it
 as a clean run.
+
+**AND THE VERDICT READS THE WORLD, NOT THE ANSWERS.** Counting the acceptances
+a fan-out received makes the overfill clause a claim about RESPONSES: a system
+that answered 200 to two requests and persisted nothing would read as having
+overfilled, which is a defect about what an answer MEANS and not about the
+locking of a check-then-act. The race's signature is the system's own
+quantity — it HOLDS more than its limit allows — and the toy already declares
+the observation that reads it, `store_event_count`, whose own comment says why
+it is the right one: "computed from the attendee list ... an oracle that read
+the same field could not disagree with it". So the verdict rests on the
+read-back, the acceptances are kept only so the two can be compared, and a
+disagreement between them is its own finding rather than an overfill. Measured
+on the shipped toy: after the race at capacity 1 the declared observation reads
+2 against two acceptances, so the pair agrees and that clause is a guard rather
+than a live finding.
+
+**THE ROOM IS DERIVED FROM THE LIMIT AND WHAT WAS ALREADY TAKEN**, never passed
+in: those two are facts the setup holds, the room is arithmetic over them, and a
+caller computing it itself could get it wrong in the direction that hides a
+finding.
