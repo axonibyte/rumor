@@ -379,7 +379,7 @@ func TestTheFanOutReachesOneWorldThroughTwoAdapters(t *testing.T) {
 		t.Fatalf("join request for %s: %v", actors[1], rerr)
 	}
 	// THE PLAN IS SEEDED AND CLOCK-FREE, and it is what a replay reproduces.
-	plan, perr := concurrency.PlanFor(1, 2)
+	plan, perr := concurrency.PlanFor(0, 2)
 	if perr != nil {
 		t.Fatalf("PlanFor: %v", perr)
 	}
@@ -388,6 +388,8 @@ func TestTheFanOutReachesOneWorldThroughTwoAdapters(t *testing.T) {
 	if ferr != nil {
 		t.Fatalf("Fan: %v", ferr)
 	}
+
+	assertPlanDispatched(t, plan, attempts)
 
 	// ONE WORLD: the second adapter found the first's event. Against two toys
 	// this is a 404.

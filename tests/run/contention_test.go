@@ -158,7 +158,7 @@ func TestTheOverfillClauseFiresOnTheRacedActionAndNotOnTheLockedOne(t *testing.T
 	firstID := register(a, first)
 	secondID := register(b, second)
 
-	plan, perr := concurrency.PlanFor(4, 2)
+	plan, perr := concurrency.PlanFor(0, 2)
 	if perr != nil {
 		t.Fatalf("PlanFor: %v", perr)
 	}
@@ -178,6 +178,7 @@ func TestTheOverfillClauseFiresOnTheRacedActionAndNotOnTheLockedOne(t *testing.T
 	if ferr != nil {
 		t.Fatalf("Fan: %v", ferr)
 	}
+	assertPlanDispatched(t, plan, joins)
 	if !concurrency.Overlapped(joins) {
 		t.Fatalf("the two joins did not overlap, so this run exercised the sequential path: "+
 			"%v and %v", joins[0].InFlight(), joins[1].InFlight())
@@ -227,6 +228,7 @@ func TestTheOverfillClauseFiresOnTheRacedActionAndNotOnTheLockedOne(t *testing.T
 	// TOGETHERNESS IS HELD, and the arm asserts it rather than assuming it:
 	// without this the control could pass by having serialized, which is the
 	// one way it could be silent for a reason other than the held lock.
+	assertPlanDispatched(t, plan, accepts)
 	if !concurrency.Overlapped(accepts) {
 		t.Fatalf("the two accepts did not overlap, so the control is silent because it was "+
 			"sequential and not because the lock is held: %v and %v",
@@ -244,4 +246,43 @@ func TestTheOverfillClauseFiresOnTheRacedActionAndNotOnTheLockedOne(t *testing.T
 	}
 	t.Logf("PROOF control: accept_invitation accepted %d of 2 into room for 1, no finding, %s",
 		control.Accepted, concurrency.OverlapMeasured(accepts))
+}
+
+// assertPlanDispatched is rook's cure at coop r8/40, shared by every live
+// fan-out arm.
+//
+// THE MUTANT THAT SURVIVED: `sessions[sess]` -> `sessions[k]` together with
+// `Session: sess` -> `Session: k`. The width check does not see it -- a plan of
+// the right width is still a plan nothing OBEYS -- and both suites stayed
+// green, so the plan could have been decoration. The reason the arms could not
+// see it is that they pinned seeds whose plan was the IDENTITY: at width 2
+// there are two permutations and SIX OF TWELVE seeds draw [0 1], seeds 1 and 4
+// among them, which were the two I had used. A fixture whose plan is the
+// identity IS the no-plan case.
+//
+// SO IT CHECKS BOTH HALVES: that the fixture is a real permutation, and that
+// the recorded session is the one the plan chose.
+func assertPlanDispatched(t *testing.T, plan concurrency.Plan, attempts []concurrency.Attempt) {
+	t.Helper()
+	identity := true
+	for k, sess := range plan.Issue {
+		if sess != k {
+			identity = false
+			break
+		}
+	}
+	if identity {
+		t.Fatalf("the plan is the identity order %v, so this fixture cannot tell a dispatch that "+
+			"follows the plan from one that ignores it -- the mutant that survived at r8/40. "+
+			"Pick a seed whose plan is a real permutation.", plan.Issue)
+	}
+	if len(attempts) != plan.Width() {
+		t.Fatalf("%d attempt(s) for a plan %d wide", len(attempts), plan.Width())
+	}
+	for k, att := range attempts {
+		if att.Session != plan.Issue[k] {
+			t.Errorf("attempt %d was carried by session %d where the plan chose %d: the plan is "+
+				"decoration if the dispatch does not follow it", k, att.Session, plan.Issue[k])
+		}
+	}
 }
