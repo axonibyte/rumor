@@ -1449,6 +1449,40 @@ in: those two are facts the setup holds, the room is arithmetic over them, and a
 caller computing it itself could get it wrong in the direction that hides a
 finding.
 
+**A STAGE'S SETUP IS DERIVED FROM THE DECLARATIONS, AND TWO STAGES NOW DERIVE
+IT.** A `handle` argument's honest value is an id the system minted, so neither
+the hostile corpus nor a fan-out can send a request until something has created
+the thing it names; `creates` and an argument's `of` are already the
+declaration for that, so the order is a reachability question over two fields
+the project writes for other reasons. R8.1 derived it for the corpus. R8.2 asks
+the same question for its own reason — a fan-out cannot contend an event
+nothing created — so the resolver moved out of the fuzz stage rather than being
+copied into the concurrency one, and what stayed behind is the part that is not
+shared: which kinds a stage wants ids for at all is the stage's own question.
+
+**AND THE LIMIT MUST BE READ FROM A REQUEST THE SETUP SENT.**
+`contended.limit` names an argument of the action that created the contended
+thing, so a chain that never ran that action would leave the stage fanning out
+against a number it chose against a world somebody else built. The chain is
+derived and the limit is declared, so the two can disagree — a project naming
+its limit on a second creator of the same kind resolves to the first — and that
+is a refusal naming both rather than a contention at the wrong capacity.
+
+**THE BOOTSTRAP IS THE HALF THE HANDLE GRAPH CANNOT SEE.** R8.1 measured it:
+the toy's `create_event` failed until `create_user` ran, because a session
+belongs to a user that exists, and that dependency is declared in `requires` as
+a STATUTE RULE which no amount of reading `creates` can resolve. The fuzz stage
+got it for free — its corpus needs a `user` handle, so the bootstrap was
+already in the chain and only had to be hoisted first. A fan-out does not:
+`join_event` takes an `event` and nothing else. So the derivable condition is
+named rather than inferred from one project — context `none`, no handle
+argument, and an `actor`-sourced argument — and an action meeting it is run
+once FOR EVERY ACTOR that will act, because the actor argument is what makes
+its request say something different each time. Without the actor argument it
+would be N identical requests, and a creating action answers the second of
+those with a refusal, which would manufacture a setup failure instead of a
+world.
+
 ## A shrink's subject is the stage's own verdict
 
 **EVERY REDUCER TOOK `want engine.Finding`** — `Once`, `Bisect` and

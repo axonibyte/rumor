@@ -144,6 +144,18 @@ path = "internal/fuzz/*.go"
 docs = ["docs/design.md"]
 
 [[entry]]
+# THE SETUP ORDER, SHARED BY TWO STAGES (R8.2, issue 109). It was
+# internal/fuzz/setup.go through 108, where the hostile corpus was its only
+# caller; the concurrency stage needs the same order for its own reason -- a
+# fan-out cannot contend an event nothing created -- so it moved rather than
+# being copied. Mapped to design.md for the fuzz entry's reason one step on:
+# the fields it reads (`creates`, and an argument's `source` and `of`) are
+# contract.md's already, and what is new is the decision that a stage's setup
+# is DERIVED from them rather than written per project.
+path = "internal/setup/*.go"
+docs = ["docs/design.md"]
+
+[[entry]]
 # THE PROBER (R6.2, issue 90). It fills internal/schedule's `Prober` slot, which
 # was declared at R6.1 with nothing implementing it. Mapped to contract.md
 # because the probe's declaration and the `direct` observation it rides are that

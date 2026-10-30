@@ -1,22 +1,33 @@
-// The setup sequence a hostile case needs is DERIVED from `creates`, the same
-// way the corpus is derived from the arguments.
+// Package setup is the order a stage must run its world into existence in,
+// DERIVED from `creates` and the handle arguments rather than written by hand.
 //
-// WHY IT HAS TO BE DERIVED. Every class but `missing` sends a value, and a
-// `handle` argument's honest value is an id the system minted -- so the stage
-// cannot send one case until something has created an event, a user, an
-// invitation. Writing that sequence by hand would put the toy's own shape in
-// the stage, and the next project would need a second hand-written sequence;
-// worse, it would be a sequence nobody checks against the declarations, so an
-// action that stopped creating what it says it creates would leave the stage
-// sending ids it believed in.
+// WHY IT HAS TO BE DERIVED. A `handle` argument's honest value is an id the
+// system minted, so no stage can send one until something has created an
+// event, a user, an invitation. Writing that sequence by hand would put the
+// toy's own shape in the stage, and the next project would need a second
+// hand-written sequence; worse, it would be a sequence nobody checks against
+// the declarations, so an action that stopped creating what it says it creates
+// would leave the stage sending ids it believed in.
 //
 // `creates` IS ALREADY THE DECLARATION FOR IT. An action names the handle
 // KINDS it mints, and an argument names the kind it needs, so "what must run
-// before this case" is a reachability question over two fields the project
-// already writes for other reasons -- the rollback-coverage arm reads
-// `touches`, `rumor validate` reads `creates` against the handle table, and
-// the pairing here adds no schema.
-package fuzz
+// before this" is a reachability question over two fields the project already
+// writes for other reasons -- the rollback-coverage arm reads `touches`,
+// `rumor validate` reads `creates` against the handle table, and the pairing
+// here adds no schema.
+//
+// IT IS A PACKAGE BECAUSE THE SECOND STAGE ASKED THE SAME QUESTION. This was
+// internal/fuzz/setup.go through 108, where the hostile corpus was its only
+// caller; 109's concurrency stage needs the same order for a different reason
+// -- a fan-out cannot contend an event nothing created -- and the two
+// alternatives were worse than a move. A copy in internal/concurrency would be
+// sixty lines whose cycle refusal and bootstrap hoist could drift apart, with
+// nothing to notice; internal/concurrency importing internal/fuzz would make
+// one stage depend on another's package for a question neither stage owns.
+// WHAT STAYED BEHIND IS THE PART THAT IS NOT SHARED: fuzz's `Needs` reads the
+// CORPUS to decide which kinds are wanted at all, and a corpus is that stage's
+// own subject.
+package setup
 
 import (
 	"fmt"
@@ -43,41 +54,6 @@ func Providers(b bindings.Bindings) map[string]bindings.Action {
 			}
 		}
 	}
-	return out
-}
-
-// Needs are the handle kinds a corpus needs honest ids for, sorted.
-//
-// IT READS THE CORPUS AND NOT THE BINDINGS, because the corpus is what will
-// be sent: an action whose every case is `missing` on its only handle would
-// need no id at all, and a setup that ran anyway would be doing work no case
-// asked for.
-func Needs(b bindings.Bindings, cases []Case) []string {
-	byAction := map[string]bindings.Action{}
-	for _, a := range b.Actions {
-		byAction[a.Name] = a
-	}
-	set := map[string]bool{}
-	for _, c := range cases {
-		a := byAction[c.Action]
-		for _, arg := range a.Args {
-			if arg.Source != "handle" || arg.Of == "" {
-				continue
-			}
-			// THE PERTURBED FIELD STILL NEEDS ITS KIND unless the case omits
-			// it: `unknown-id` sends a derived id and needs none, but
-			// `wrong-type` on one handle leaves the OTHER handle honest.
-			if arg.Name == c.Field && (c.Class == ClassMissing || c.Class == ClassUnknownID) {
-				continue
-			}
-			set[arg.Of] = true
-		}
-	}
-	out := make([]string, 0, len(set))
-	for k := range set {
-		out = append(out, k)
-	}
-	sort.Strings(out)
 	return out
 }
 

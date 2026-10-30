@@ -31,6 +31,7 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
+	"forge.axonibyte.com/axonibyte/rumor/internal/setup"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
@@ -178,7 +179,7 @@ func Run(ctx context.Context, b bindings.Bindings, sess *wire.Session, actor str
 	if err != nil {
 		return rep, err
 	}
-	order, err := Order(b, Needs(b, cases))
+	order, err := setup.Order(b, Needs(b, cases))
 	if err != nil {
 		return rep, err
 	}

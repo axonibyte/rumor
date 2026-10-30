@@ -1,10 +1,9 @@
 package fuzz
 
 import (
-	"strings"
 	"testing"
 
-	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/setup"
 )
 
 // THE SETUP IS DERIVED FROM `creates`, over the shipped toy: an invitation
@@ -20,7 +19,7 @@ func TestTheSetupOrderIsDerivedAndTopological(t *testing.T) {
 	if len(need) == 0 {
 		t.Fatal("the toy's corpus needs no handle, which would make this arm vacuous")
 	}
-	order, err := Order(b, need)
+	order, err := setup.Order(b, need)
 	if err != nil {
 		t.Fatalf("Order(%v): %v", need, err)
 	}
@@ -71,42 +70,6 @@ func TestTheSetupOrderIsDerivedAndTopological(t *testing.T) {
 // A KIND NOTHING CREATES IS REFUSED BY NAME, not skipped: a short setup would
 // send ids it never obtained and the 404s would be reported as findings about
 // the system.
-func TestAnUnprovidedKindRefusesByName(t *testing.T) {
-	b := toyBindings(t)
-	_, err := Order(b, []string{"spaceship"})
-	if err == nil {
-		t.Fatal("a kind nothing creates returned an order")
-	}
-	if !strings.Contains(err.Error(), "spaceship") {
-		t.Errorf("the refusal does not name the kind: %v", err)
-	}
-	if !strings.Contains(err.Error(), "event") {
-		t.Errorf("the refusal does not list the kinds that ARE declared: %v", err)
-	}
-	t.Logf("PROOF %v", err)
-}
-
-// A CYCLE IS REFUSED WITH ITS PATH rather than recursed into. Built from two
-// actions that each need the other's handle, because the shipped toy has no
-// cycle and an arm that could not construct one would be asserting the
-// absence of a shape it never tried.
-func TestACycleRefusesWithItsPath(t *testing.T) {
-	var b bindings.Bindings
-	b.Actions = []bindings.Action{
-		{Name: "make_a", Emits: []string{"a.made"}, Creates: []string{"a"},
-			Args: []bindings.Arg{{Name: "b", Source: "handle", Of: "b"}}},
-		{Name: "make_b", Emits: []string{"b.made"}, Creates: []string{"b"},
-			Args: []bindings.Arg{{Name: "a", Source: "handle", Of: "a"}}},
-	}
-	_, err := Order(b, []string{"a"})
-	if err == nil {
-		t.Fatal("a cycle returned an order")
-	}
-	if !strings.Contains(err.Error(), "->") {
-		t.Errorf("the refusal carries no path: %v", err)
-	}
-	t.Logf("PROOF %v", err)
-}
 
 // NEEDS READS THE CORPUS AND NOT THE BINDINGS. A case that omits its only
 // handle needs no id, so a setup driven from the bindings alone would do work
@@ -147,15 +110,3 @@ func TestNeedsIsDrivenByTheCasesAndNotTheDeclarations(t *testing.T) {
 
 // THE PROVIDER CHOICE IS DECLARATION ORDER AND NOT A MAP's, so the sequence a
 // reader derives by hand from the file is the one the stage runs.
-func TestTheProviderIsTheFirstInDeclarationOrder(t *testing.T) {
-	var b bindings.Bindings
-	b.Actions = []bindings.Action{
-		{Name: "first_maker", Emits: []string{"x.made"}, Creates: []string{"x"}},
-		{Name: "second_maker", Emits: []string{"x.made"}, Creates: []string{"x"}},
-	}
-	for i := 0; i < 20; i++ {
-		if got := Providers(b)["x"].Name; got != "first_maker" {
-			t.Fatalf("provider for x is %q on pass %d, not the first declared", got, i)
-		}
-	}
-}
