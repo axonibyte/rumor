@@ -1,0 +1,42 @@
+{
+  "why": "D11b's FIRST CONTROL, and the shape the corpus lacked: an invitation accepted HONESTLY -- the join at t=0, well inside its 30000000000ns expiry -- and THEN the clock advanced past that expiry, to 30000000001, before the expiry was observed. `honored_past_expiry` reads the JOIN's own `c.t` and finds nothing, which is right: nothing was honored late. A rule reading `input.clock.now` instead would find a bug here, because at the seal the RUN is past the deadline even though the join was not. THAT IS THE WHOLE DIFFERENCE between the two readings, and rook measured at coop rumor/1426 that their control for D11b was INERT without it -- on seed 3 the clock moves BEFORE the accept, so `now` and `c.t` agree there and swapping one for the other changes no verdict. fable left this to me at /1422: \"nothing more on this unless the controls need a cell\". It needed one.",
+  "expect": {
+    "honored_past_expiry": false,
+    "expiry_sound": true,
+    "finding": "consistent",
+    "rests_on_planted": false,
+    "believed": 1,
+    "role_sees_subject": true,
+    "may_accept": false,
+    "may_invite": false,
+    "may_join": false,
+    "may_leave": true,
+    "has_user": true,
+    "may_create_user": false,
+    "may_create_event": true,
+    "may_delete": false
+  },
+  "input": {
+    "observation": {
+      "actor": "bob",
+      "of": "invitation.sent",
+      "query": "invitation_expiry",
+      "source": "api",
+      "value": 30000000000,
+      "role": "guest",
+      "position": 8
+    },
+    "known": [
+      "bob.user#1",
+      "alice.invitation#1",
+      "bob.accept#1"
+    ],
+    "claims": [
+      {"ref": "alice.user#1", "actor": "alice", "type": "user.created", "position": 2, "handles": ["alice.user#1"], "t": 0},
+      {"ref": "bob.user#1", "actor": "bob", "type": "user.created", "position": 3, "handles": ["bob.user#1"], "t": 0},
+      {"ref": "alice.event#1", "actor": "alice", "type": "event.created", "position": 4, "handles": ["alice.event#1"], "visible_to": ["admin", "member", "guest"], "t": 0},
+      {"ref": "alice.invitation#1", "actor": "alice", "type": "invitation.sent", "position": 5, "handles": ["alice.invitation#1", "alice.event#1"], "t": 0},
+      {"ref": "bob.accept#1", "actor": "bob", "type": "event.joined", "position": 7, "handles": ["bob.accept#1", "alice.invitation#1"], "t": 0}
+    ]
+  }
+}

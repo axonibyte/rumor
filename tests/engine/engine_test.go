@@ -58,7 +58,7 @@ const statutePackage = "data.rumor.statute"
 // before any verdict is reported. They match tests/statute's own declarations.
 const (
 	wantPackages = 5
-	wantCases    = 33
+	wantCases    = 34
 	wantMutants  = 37
 )
 

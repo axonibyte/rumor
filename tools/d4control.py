@@ -214,6 +214,7 @@ ADDED_BY = {
         "toy/invitation-expiry",
         "toy/invitation-honored-late",
         "toy/invitation-honored-at-the-expiry",
+        "toy/accepted-then-the-clock-moved",
     ],
 }
 

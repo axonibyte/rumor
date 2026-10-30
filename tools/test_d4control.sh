@@ -167,12 +167,12 @@ PYEOF
 
 # EVERY DECLARED ADDITION PRESENT: the only shape that passes. 103 plants TWO,
 # which is why ADDED_BY's values are lists.
-addcell add-all-declared ok toy/dropped-recount toy/invitation-expiry toy/invitation-honored-late toy/invitation-honored-at-the-expiry
+addcell add-all-declared ok toy/dropped-recount toy/invitation-expiry toy/invitation-honored-late toy/invitation-honored-at-the-expiry toy/accepted-then-the-clock-moved
 # ONE MISSING: a phase's row lost is a refusal, not a pass.
 addcell add-one-missing refused toy/dropped-recount toy/invitation-expiry
 # AN UNDECLARED ADDITION: a case that arrives without an ADDED_BY entry, which
 # is exactly rook's /1411 refusal.
-addcell add-undeclared refused toy/dropped-recount toy/invitation-expiry toy/invitation-honored-late toy/invitation-honored-at-the-expiry toy/nobody-declared-me
+addcell add-undeclared refused toy/dropped-recount toy/invitation-expiry toy/invitation-honored-late toy/invitation-honored-at-the-expiry toy/accepted-then-the-clock-moved toy/nobody-declared-me
 
 printf 'D4CONTROL ARMS: %s passed, %s failed\n' "$pass" "$fail"
 rm -rf "$WORK"
