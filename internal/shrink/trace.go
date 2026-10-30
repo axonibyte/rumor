@@ -30,6 +30,19 @@ type Trace struct {
 	// Finding is the verdict the shrunk trace still produces. Its Fired
 	// definitions are the "rules that fired" half of the shape.
 	Finding engine.Finding
+
+	// Stage is the verdict when a STAGE authored it rather than the statute,
+	// and it is rendered INSTEAD of the finding.
+	//
+	// A TRACE THAT PRINTED THE FINDING ANYWAY WOULD LIE TWICE: a stage
+	// candidate carries the zero engine.Finding, so `Says()` reads "no
+	// finding" over a trace that reproduced a real defect, and the rules-fired
+	// line reads "(none recorded)" as though the rules were unknown when there
+	// were never any rules. The shape docs/design.md fixes -- "the actions,
+	// their positions, their handles and the rules that fired" -- is the
+	// statute's shape; a stage verdict has an oracle and a sentence instead,
+	// and says so in those words.
+	Stage *StageVerdict
 }
 
 // Render writes the trace as the lines a reader and a diff both need.
@@ -62,6 +75,15 @@ func (t Trace) Render() string {
 			planted = " PLANTED"
 		}
 		fmt.Fprintf(&b, "trace: %3d %s %s%s %v\n", s.N, s.Actor, kind, planted, s.Handles)
+	}
+
+	// A STAGE'S VERDICT IS PRINTED IN THE ORACLE'S OWN WORDS, with the oracle
+	// named: there are no rules to have fired, so the two lines the statute's
+	// shape ends with are replaced by one that is true.
+	if t.Stage != nil {
+		fmt.Fprintf(&b, "trace: verdict %s by %s on %s\n",
+			t.Stage.Says, t.Stage.Rule, t.Stage.Subject)
+		return b.String()
 	}
 
 	// THE FINDING AND THE RULES THAT FIRED, which is the half of the shape a

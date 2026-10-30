@@ -1599,3 +1599,32 @@ one that causes it two times in five, and those are acted on differently; the
 verdict carries both counts so the distinction survives into the report. A
 threshold that is not one — k below one, or n below k — is refused by name
 rather than read as 1-of-1 or as never.
+
+**AND THE CANDIDATE CARRIES THE VERDICT TOO, which is the other half of the
+same widening.** Making `Want` an interface let a stage AUTHOR a verdict and
+left the candidate's verdict typed as the statute's `Finding` — so a stage want
+had to answer "does this candidate still give that verdict" out of a field its
+own oracle never wrote. What that costs is exact: two oracles both finding "an
+overfill" compare equal, because there is no field in which they differ. A
+stage verdict is therefore its own small type on the candidate, carrying the
+ORACLE'S IDENTITY, its SUBJECT, whether it found anything, and its own
+sentence; a want compares the first three and a report prints the last.
+
+**IT IS NOT A FIFTH FINDING AND NOT A NEW KIND, and `docs/vocabulary.md` is
+why.** `bug` is defined there as an OBSERVATION disagreeing with what its
+observer knows, with no account of untold claims and the claims honest; a
+contention is none of that — nothing observed, no observer, no ledger. That
+document also says the slot beside the four findings is SPENT, so a sixth needs
+it amended in its own Revisions row with a reason the shape needs one. A stage
+that wrote a new word into a finding's value would be amending the vocabulary by
+assignment. The four findings keep their meanings and a stage's verdict stands
+beside them.
+
+**SO THREE READERS STOP SPEAKING THE STATUTE'S WORDS OVER IT.** A trace prints
+the oracle's sentence and names the oracle, instead of "no finding" and "fired
+(none recorded)" — which is what a trace that reproduced a real race read
+before. The partial-reproduction line, which reports that `rests_on_planted`
+was not compared, is the statute's question and is absent for a verdict that has
+no such rule. And a promoted seed's comment is the oracle's sentence, because
+the lock is the one artifact of a shrink that gets checked in and a row saying
+nothing was found is a row nobody can act on.

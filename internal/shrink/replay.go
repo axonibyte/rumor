@@ -43,9 +43,62 @@ type Candidate struct {
 	Finding engine.Finding
 	Steps   []schedule.Step
 
+	// Stage is the verdict a STAGE authored, when the candidate's verdict is
+	// not the statute's. Nil for every walk candidate, which is every
+	// candidate before R8.2.
+	//
+	// IT IS THE OTHER HALF OF fable's WIDENING (coop rumor/1521). That ruling
+	// made `Want` an interface so a stage could AUTHOR a verdict, and left the
+	// candidate's verdict typed as `engine.Finding` -- the statute's. So a
+	// stage want had to answer Recurs out of a field its own oracle never
+	// wrote, and rook's condition at /1522 is what that costs: "two oracles
+	// both saying 'overfill' would compare equal". I said at /1523 that the
+	// substance bites HERE, on the candidate, rather than on the type, and
+	// this is it.
+	//
+	// AND IT IS NOT AN engine.Finding WITH A NEW VALUE, which was the obvious
+	// shape and is the one docs/vocabulary.md forbids: `bug` is defined as an
+	// OBSERVATION disagreeing with what its observer knows, a contention is
+	// not that, and "THE SLOT BESIDE THE FOUR IS SPENT" -- a sixth finding
+	// needs that document amended in its own Revisions row, which is not a
+	// thing a stage may do by writing a string. A stage verdict is therefore
+	// its own small type, and the vocabulary's four findings keep their
+	// meanings.
+	Stage *StageVerdict
+
 	// PendingOpen is how many findings the candidate's run still held open
 	// when it ended. Zero is the only value a judgment may rest on.
 	PendingOpen int
+}
+
+// StageVerdict is what a stage's own oracle found, carried so a shrink can keep
+// it as the thing to reproduce and a report can say it in the oracle's words.
+//
+// FOUR FIELDS, EACH FOR A READER THAT WOULD OTHERWISE GUESS:
+//
+// Rule IS THE ORACLE'S IDENTITY and it is what rook's condition asks for: two
+// stages that both found "an overfill" are two different verdicts, and without
+// this a Want comparing anything else would read one as the other. It is not a
+// rego path, because no rego produced it -- a statute's is `data.rumor.…`, so
+// the two cannot collide.
+//
+// Subject IS WHAT THE VERDICT IS ABOUT -- the contended action, for the
+// concurrency stage. A verdict identified by its oracle alone would compare
+// equal across two subjects the same oracle judged, which for a project
+// declaring two contended actions is a shrink reducing against the wrong one.
+//
+// Found IS THE VERDICT ITSELF, kept as a bool rather than inferred from Says
+// being non-empty: a reason is prose and a verdict is not, and a candidate that
+// found nothing still has something to say about why.
+//
+// Says IS THE ORACLE'S OWN SENTENCE, for the reason engine.Finding.Says exists:
+// the renderer must not compose a verdict's words, because only the author
+// knows what its numbers mean. A trace carrying a stage verdict prints this.
+type StageVerdict struct {
+	Rule    string
+	Subject string
+	Found   bool
+	Says    string
 }
 
 // Verdict is what the one replay establishes.
@@ -61,6 +114,12 @@ type Verdict struct {
 	// Why names, in one sentence, what separated Got from the original. Empty
 	// when they matched.
 	Why string
+
+	// GotStage is the stage verdict the last probe produced, when the
+	// candidate's verdict was a stage's. It is kept for Got's own reason: a
+	// reader of an unstable seed wants to see what it produced INSTEAD, and
+	// "did not reproduce" alone sends them to re-run it by hand.
+	GotStage *StageVerdict
 
 	// Attempts and Recurred are how many times the candidate was probed and
 	// how many of those gave the verdict.
@@ -238,6 +297,7 @@ func Once(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
 		// unstable candidate wants to see what it produced and the most recent
 		// is the one they can go and re-run.
 		v.Got = cand.Finding
+		v.GotStage = cand.Stage
 		v.PendingOpen = cand.PendingOpen
 		if sv, ok := want.(interface{ Compares(Candidate) bool }); ok {
 			v.AttributionCompared = sv.Compares(cand)

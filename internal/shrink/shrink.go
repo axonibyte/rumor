@@ -145,7 +145,14 @@ func (r Result) Render() string {
 	if len(r.Kinds.Removed) > 0 {
 		fmt.Fprintf(&b, "shrink: without %s\n", strings.Join(r.Kinds.Removed, ", "))
 	}
-	if !r.AttributionCompared {
+	// THE ATTRIBUTION LINE IS THE STATUTE'S QUESTION AND NOT EVERY VERDICT'S,
+	// which is Compares' own reasoning carried to the renderer: it reads "the
+	// rule, the value and the kind agreed; the attribution was NOT compared",
+	// and over a stage verdict all four of those are about a finding nobody
+	// authored. A stage's verdict has no `rests_on_planted` rule to compare,
+	// so the line would report a partial reproduction of something that was
+	// never four parts.
+	if !r.AttributionCompared && r.Trace.Stage == nil {
 		fmt.Fprintf(&b, "shrink: PARTIAL REPRODUCTION -- the rule, the value and the kind "+
 			"agreed; the attribution was NOT compared, neither finding carrying %s. "+
 			"\"The same finding\" is four parts and this one is established on three\n",
@@ -265,6 +272,7 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 				"replay though the reduction kept it: %s", fv.Why)
 	}
 	finding := fv.Got
+	stage := fv.GotStage
 	if err != nil {
 		return Result{Stable: true, Reduction: red, Kinds: kr, From: len(req.Steps), Probes: probes,
 				AttributionCompared: v.AttributionCompared},
@@ -274,7 +282,7 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 		Stable:    true,
 		Reduction: red,
 		Kinds:     kr,
-		Trace:     Trace{Seed: req.Seed, Steps: steps, Finding: finding},
+		Trace:     Trace{Seed: req.Seed, Steps: steps, Finding: finding, Stage: stage},
 		From:      len(req.Steps),
 		Probes:    probes,
 		// THE GATE'S, carried so Render can say whether "the same finding"
@@ -285,7 +293,17 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 	// 5. PROMOTION, last, because a seed is worth promoting only once the
 	// trace behind it has been established.
 	if req.SeedsFile != "" {
-		added, perr := Promote(req.SeedsFile, req.Seed, finding.Says())
+		// THE COMMENT BESIDE A PROMOTED SEED IS THE VERDICT'S OWN WORDS, so a
+		// stage verdict writes the oracle's sentence and not "no finding" --
+		// which is what `finding.Says()` reads for a candidate whose verdict
+		// the statute never authored. The lock is the one artifact of a shrink
+		// that gets checked in; a row whose comment says nothing was found is
+		// a row nobody can act on.
+		why := finding.Says()
+		if stage != nil {
+			why = stage.Says
+		}
+		added, perr := Promote(req.SeedsFile, req.Seed, why)
 		if perr != nil {
 			return out, fmt.Errorf("shrink: promoting the shrunk seed: %w", perr)
 		}
