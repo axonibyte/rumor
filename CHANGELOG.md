@@ -3,6 +3,105 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.42 — 2026-10-30
+
+**A deadline is a thing the system holds and the run can land on** — issue 103,
+R7.4, the last of R7's four children. It also carries two engine defects found
+on the way, which fable ruled into this child ahead of its own row.
+
+- **`[deadline].instants` is typed, and it names OBSERVATIONS.** Each is an
+  observation whose value IS an instant in nanoseconds from the run's epoch —
+  the field of the system's own data that holds a deadline. AN OBSERVATION AND
+  NOT A DURATION, deliberately: a declared lifetime would put one number in two
+  files, and the engine would then target an instant computed from ITS copy, so
+  a walk could miss the real deadline while both files looked right. The project
+  says where its deadline can be READ and the run asks, which is the choice
+  `describe`'s `capabilities` already makes — pair a declaration against a LIVE
+  answer, never against a second declaration. The key is OPTIONAL at the parse
+  because the name written there is an observation the same file declares, so
+  the pairing belongs to `rumor validate`, which holds both halves: it is cell 7
+  of arm 19 rather than a twenty-third arm, because that arm's own sentence is
+  "a name the project uses that the project does not declare" and these are such
+  names.
+- **The toy's clock lives in the toy, and a rollback restores it.** The world's
+  time is a field of `cmd/toy`'s state file, which is the rollback design rather
+  than a placement: a checkpoint is a copy of that file and a restore a copy
+  back, so a clock held in the adapter process would survive a restore and the
+  world after one would be the checkpoint plus however far time had been moved.
+  The adapter forwards `set` and `advance` and answers what came back, so an
+  `advance`'s relativity is the world's property. Moving the clock is a WRITE
+  and drains no queued work, so R6's lag and R7's deadline can be exercised
+  apart.
+- **A statute is handed the run's clock, and that channel was empty for three
+  phases.** `clock(position, t)` has been a ledger fact since R2.3, the
+  vocabulary has said "rules may read `clock` facts" since v1, and arm 8 has
+  refused a statute for reading `input.clock` since R4 — while the engine's
+  input was `{observation, known, claims}` and nothing more. `input.clock.now`
+  is the run's time at the position being judged, in BOTH inputs, read by the
+  same function the `pending` overlay uses so the two cannot disagree about what
+  time it is; absent and not zero where a project declares no control, because
+  zero is the epoch and a real instant. AND EACH CLAIM CARRIES `t`, the run's
+  time when it was made, which `now` cannot give: `now` says the run is past the
+  deadline and never that THIS join was late, and a clock that advanced after an
+  honest accept satisfies the first while the second is false.
+- **A refused action appends no claim.** The ledger records the world, and an
+  action the system declined did not happen in it; the walk appended on an
+  action's `emits` alone and never read the answer, so a refused step recorded a
+  claim the system never made and every finding downstream of it was the walk's
+  bookkeeping. Acceptance is now what the PROJECT says it is — every key of
+  `[[action]].response` present and equal — which gives that field its first
+  consumer since R4.2 and keeps HTTP out of the walk. A refused step is RECORDED,
+  carrying the action, the declared key and the answer, so a replay reproduces it
+  byte for byte and the trace names it. A palter of a refused action plants
+  nothing, and a step that appends nothing at all makes no observation, because
+  a seal of zero is unsealed.
+- **`advance` lands on a declared deadline.** The targets are the declared
+  instants the run has OBSERVED, beside the live pending bounds, offered as one
+  set — the pool's gate and the step's draw must quantify over one set. The run
+  remembers what it read, because an observation is the check's input and never a
+  ledger fact. A value that is not an instant refuses the run by name.
+- **THE R7 ROW: an invitation honored past its expiry.** `cmd/toy` gains
+  expiring invitations and the plant is an UNDECLARED GRACE — `acceptInvitation`
+  compares against `ExpiresAt` plus a whole extra lifetime while the expiry route
+  reports `ExpiresAt`, so the system reports one deadline and enforces another.
+  Found from the committed seed 3 under `profile=expiring`, shrunk from 23 steps
+  to 8 with the advance at step 7 and the accept at 8, twice byte-identical.
+  PROVED TO BE THE PLANT by the honest toy: the same seed walks all 24 steps at
+  exit 0 with no finding, its accepts refused by name.
+- **Three boundaries, all armed where their comparison lives.** The engine's
+  `now - claimTime > bound`, `cmd/toy`'s `Now > ExpiresAt` and the statute's
+  `c.t > value` are one reading of "past a deadline", and until this release
+  nothing asserted they AGREE at the instant itself. INSIDE and PAST read
+  identically under either operator; only the boundary tells them apart, and the
+  mechanism R7.3 built to REACH that instant is what made all three falsifiable
+  at once.
+
+The control does not move, and the invocation is beside the figures because a
+digest without one has more than one right answer. The subject is
+`examples/twin`, which declares no clock control, and its adapter is `rumor`
+ITSELF — so the binary is built from the tree under test and put on PATH, and a
+missing adapter reads as could-not-run rather than as a moved control: stdout is
+then a 12-byte echo of the seed and five such echoes compare equal. Seeds 1 2 3
+4 8, each walking 675–727 bytes of stdout; seed 5 is refused at step 1, since
+`publish_doc_ui` is not in the twin's surface, so it can never discriminate and
+is not one of the five. sha256 of stdout, truncated to 16:
+
+```
+rumor run examples/twin --seed N --steps 8
+seed 1  b259bbbc574b27b7
+seed 2  84c81fad2c899e6e
+seed 3  18d45bd85231f37a
+seed 4  7d8c65e4b6e3277a
+seed 8  c7cfebb25641e0f5
+```
+
+CALIBRATED, because a control that cannot fail is not evidence. Seeding the PCG
+with `seed+1` moves all five, so the instrument is live. Stamping each claim's
+`t` unconditionally — this release's own leak risk — moves NONE of them, so what
+these five prove is that an unclocked project's WALK is unchanged, and not that
+its statute input is; the clock channel's own arms in `internal/engine` carry
+that half.
+
 ## 0.1.41 — 2026-10-29
 
 **The walk can move the run's clock, and it lands where a bound expires** —
