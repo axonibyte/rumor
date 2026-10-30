@@ -11,8 +11,15 @@
 // WHAT THE ORACLE CAN SEE, measured before this was written: cmd/toy-adapter
 // answers `Response: {"status": code, "body": out}` on BOTH the refusal and
 // the success paths (main.go:499-516), so the status AND the body's `error`
-// text cross the wire. "No 5xx" and "a 4xx names a field or rule" are both
-// readable through the adapter without a new channel.
+// text cross the wire. "No 5xx" and D4 are both readable through the adapter
+// without a new channel.
+//
+// D4's WORDING IS THE AMENDED ONE: "a 4xx FROM THE SYSTEM's OWN RULES names a
+// field or a rule", over the 21 such refusals and not over all 26. The
+// unqualified form it replaced was satisfiable on the decoder's accident --
+// encoding/json names the struct field in its own error text -- so five of the
+// thirteen distinct messages a reader sees passed a clause about rules cmd/toy
+// never wrote (rook, rumor/1486, amending the gate after this was measured).
 package fuzz
 
 import (
