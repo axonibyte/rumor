@@ -1168,10 +1168,15 @@ after step 13 and REDUCED 13 to 10 — so the reader gets a plausible find at th
 expected exit code and the wrong subject, with nothing in the output to say so.
 Without `--steps 24` the default step count ends at `919000a6d96fc090` and
 **exit 0**, no finding at all, which reads as the row having regressed. R6.2's
-hazard was a partial match on two digests of three; this one is worse, because
-the wrong invocation still exits non-zero and still reports a bug. That is why
-the flags are written here beside the figure and not left to the reader's
-defaults.
+hazard was a PARTIAL match, two digests of three, which a careful reader
+notices and investigates. THIS ONE IS COMPLETE AND SELF-CONSISTENT: the wrong
+invocation exits non-zero, names a bug, reduces a trace and reports
+`rests_on_planted false`, so there is nothing in it for a careful reader to
+catch — it reads as confirmation of a different bug. On this row the flags are
+therefore not provenance but REQUIRED: a reader who supplies neither is not
+reproducing a weaker version of this measurement, they are measuring something
+else. That last reading is rook's, at coop rumor/1450, who reproduced all three
+digests on a clone built from the tag's own tree.
 
 **The re-check is keyed on the pair.** v1 re-checks a `pending` "at the actor's
 next observation of the same query and at every full reconciliation", so
