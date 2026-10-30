@@ -160,3 +160,57 @@ func TestTheOrderIsCanonicalAcrossPasses(t *testing.T) {
 		}
 	}
 }
+
+// EVERY SELECTABLE STAGE MUST HAVE A DISPATCHER THAT CONSUMES IT.
+//
+// Select returns a LIST and cmd/rumor/run.go reads exactly one element of it:
+// `Stage: stages[0]` at run.go:185, which is the Project's single stage for
+// `[weights.stage.<name>]`. Nothing reads stages[1:]. So the moment a second
+// name in Known becomes runnable, a project enabling both gets one stage run
+// and one stage SELECTED AND SILENTLY DROPPED -- no refusal, no skip reason,
+// and a record naming only the first. That is the shape the dispatch was built
+// to end (stages declared and never dispatched, my r8/6), reappearing one
+// level up.
+//
+// IT IS UNREACHABLE TODAY AND THAT IS WHY IT NEEDS A TRIPWIRE. Only `api` is
+// runnable, so the list cannot hold two and no behavior can be driven; a guard
+// in run.go would be a refusal no arm could reach, which is a refusal armed by
+// nothing. This arm instead fails in the SAME CHANGE that breaks the
+// invariant, which is the only moment the fix is cheap.
+//
+// WHEN THIS FAILS, the fix is not to loosen it: extend the dispatch to run
+// every selected stage, then widen this arm to the set it consumes.
+func TestEverySelectableStageHasADispatcherThatConsumesIt(t *testing.T) {
+	// The strongest declaration a project can make: every name this
+	// dispatcher knows, all enabled.
+	all := platform.Platform{Stages: map[string]platform.Stage{}}
+	for name := range Known {
+		all.Stages[name] = platform.Stage{Enabled: true}
+	}
+
+	var runnable []string
+	for _, name := range knownNames() {
+		if Known[name] {
+			runnable = append(runnable, name)
+		}
+	}
+
+	got, err := Select(all, "")
+	if err != nil {
+		t.Fatalf("a platform enabling every known stage was refused, so this arm cannot see what "+
+			"the dispatcher would consume: %v", err)
+	}
+	if len(got) != 1 || got[0] != API {
+		t.Fatalf("Select returned %v over every-stage-enabled, and cmd/rumor/run.go:185 consumes "+
+			"stages[0] alone -- so %d of them would be dropped without a refusal or a skip "+
+			"reason. Runnable set is now %s. Extend the dispatch to consume every selected "+
+			"stage in the same change that made one runnable, then widen this arm to match.",
+			got, len(got)-1, strings.Join(runnable, ", "))
+	}
+	if len(runnable) != 1 {
+		t.Fatalf("Known now marks %s as runnable, and the single-stage dispatch at "+
+			"cmd/rumor/run.go:185 can consume one. The selection above happens to be short, so "+
+			"the drop is not visible yet -- it will be for the first project that enables two.",
+			strings.Join(runnable, ", "))
+	}
+}
