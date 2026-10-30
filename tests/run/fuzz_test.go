@@ -115,7 +115,54 @@ func TestTheFuzzStageDrivesTheToyAndFindsNo5xx(t *testing.T) {
 		t.Errorf("%d reached but %d refused + %d accepted: a reached case went uncounted",
 			rep.Reached(), refused, accepted)
 	}
+	// THE FOUR LAYERS, PINNED. "No 5xx" and "every refusal names a field" are
+	// both satisfied by answers the SYSTEM never produced: 18 of these cases
+	// never left the adapter, and 5 more were refused by encoding/json inside
+	// the toy's own decodeBody before a handler ran -- and Go's unmarshal
+	// error carries the struct field, so those five "name the field" without
+	// the toy having a rule about them. Only the 21 are the system
+	// discriminating. Pinning all four is what keeps a clause from being
+	// credited to the wrong layer.
+	origins := map[fuzz.Origin]int{}
+	for _, r := range rep.Results {
+		origins[r.Origin()]++
+	}
+	for _, want := range []struct {
+		o fuzz.Origin
+		n int
+		s string
+	}{
+		{fuzz.OriginAdapter, 18, "refused by the adapter before the system saw them"},
+		{fuzz.OriginDecoder, 5, "refused by the decoder before a rule ran"},
+		{fuzz.OriginSystem, 21, "refused by a rule the system wrote"},
+		{fuzz.OriginAccepted, 1, "accepted"},
+		{fuzz.OriginUnread, 0, "unclassifiable"},
+	} {
+		if origins[want.o] != want.n {
+			t.Errorf("%d case(s) %s, expected %d: a clause credited to the wrong layer "+
+				"proves nothing about this system", origins[want.o], want.s, want.n)
+		}
+	}
+
+	// D4's OTHER HALF: the system's own refusals must be MORE THAN ONE
+	// sentence. A monoculture passes "names a field" and discriminates
+	// nothing; the count is the only thing that tells them apart.
+	msgs := map[string]bool{}
+	for _, r := range rep.SystemRefusals() {
+		msgs[r.Error] = true
+	}
+	if len(msgs) < 2 {
+		t.Errorf("the system's %d refusal(s) carry %d distinct message(s): a monoculture",
+			len(rep.SystemRefusals()), len(msgs))
+	}
+	if got, want := len(msgs), 8; got != want {
+		t.Errorf("%d distinct message(s) from the system's own rules, expected %d", got, want)
+	}
+
 	t.Logf("PROOF setup %v; %s", rep.Setup, rep.Summary())
+	t.Logf("PROOF by layer: %d adapter, %d decoder, %d system, %d accepted; %d distinct system message(s)",
+		origins[fuzz.OriginAdapter], origins[fuzz.OriginDecoder], origins[fuzz.OriginSystem],
+		origins[fuzz.OriginAccepted], len(msgs))
 	t.Logf("PROOF %d refused, %d accepted, %d faulted of %d sent",
 		refused, accepted, faulted, len(rep.Results))
 

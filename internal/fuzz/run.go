@@ -46,6 +46,89 @@ type Report struct {
 	Findings []string
 }
 
+// Origin is which layer answered a case, because three of them can and only
+// one of them is the system under test.
+//
+// MEASURED OVER examples/toy, 45 cases: EIGHTEEN never left the adapter, FIVE
+// reached the toy and were refused by `encoding/json` inside its own
+// decodeBody before a handler ran, TWENTY-ONE reached a rule the toy wrote,
+// and ONE was accepted. A clause reading "the refusal names a field" passes on
+// all twenty-six, because Go's unmarshal error happens to carry the struct
+// field -- "json: cannot unmarshal number into Go struct field .title of type
+// string" names `title` without the toy having a rule about it.
+//
+// SO "NAMES A FIELD OR A RULE" IS NOT ENOUGH ON ITS OWN. The question D4 asks
+// is whether the SYSTEM discriminates, and a decoder's type error is the same
+// non-evidence as the adapter's argument check one layer out.
+type Origin int
+
+const (
+	// OriginAdapter is a fault: the adapter refused before the system saw a
+	// request.
+	OriginAdapter Origin = iota
+	// OriginDecoder is the system's process refusing the SHAPE of the request
+	// before any rule of its own ran.
+	OriginDecoder
+	// OriginSystem is a rule the system's author wrote.
+	OriginSystem
+	// OriginAccepted is a request the system took.
+	OriginAccepted
+	// OriginUnread is an answer this stage could not classify, which is kept
+	// distinct from every other value so it cannot be counted as evidence.
+	OriginUnread
+)
+
+// namesARule is whether a refusal states a rule rather than a field. The toy's
+// "capacity must be at least 1" and "only the event's admin invites" are rules;
+// a bare "no such event" names an object. The test is deliberately WEAK -- any
+// of a few rule words -- because a strong one would be a grammar for English
+// error messages, and the clause it serves only needs to tell "this says
+// something about my request" from "this says nothing".
+func namesARule(msg string) bool {
+	for _, w := range []string{" must ", " cannot ", " only ", " is not ", " already ", " at capacity"} {
+		if strings.Contains(msg, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// decoderRefusal is how a Go service's own JSON decode failure reads. It is
+// matched on the prefix `encoding/json` itself produces, and the cost is
+// stated: a system that WRAPPED that error, or one not written in Go, would be
+// classified as OriginSystem and the clause would over-credit it. The test for
+// that is the figures below moving, which the arm pins.
+const decoderRefusal = "json: cannot unmarshal"
+
+// Origin classifies one result.
+func (r Result) Origin() Origin {
+	switch {
+	case r.Fault != "":
+		return OriginAdapter
+	case r.Status == 0:
+		return OriginUnread
+	case r.Status >= 400 && r.Status < 500:
+		if strings.Contains(r.Error, decoderRefusal) {
+			return OriginDecoder
+		}
+		return OriginSystem
+	case r.Status >= 200 && r.Status < 300:
+		return OriginAccepted
+	}
+	return OriginUnread
+}
+
+// SystemRefusals are the results a rule of the system's own refused.
+func (r Report) SystemRefusals() []Result {
+	var out []Result
+	for _, res := range r.Results {
+		if res.Origin() == OriginSystem {
+			out = append(out, res)
+		}
+	}
+	return out
+}
+
 // Reached is how many cases the SYSTEM answered, as against how many were
 // sent.
 //
@@ -155,6 +238,44 @@ func Run(ctx context.Context, b bindings.Bindings, sess *wire.Session, actor str
 			rep.Findings = append(rep.Findings, fmt.Sprintf(
 				"%s answered %d: a hostile value for a declared field must be refused, not fail the server (%s)",
 				r.Case, r.Status, r.Error))
+		}
+	}
+
+	// D4: A MONOCULTURE FAILS. "Every refusal names a field or a rule" is
+	// satisfied by a system that answers every hostile value with ONE
+	// sentence, and such a system discriminates nothing -- the clause would
+	// pass over an oracle with no information in it. So the refusals the
+	// SYSTEM's own rules produced are counted by distinct message, and one
+	// message over many refusals is the finding.
+	//
+	// THE SYSTEM's OWN, which is what makes the count mean anything: a
+	// decoder's type error and an adapter's argument check are not the
+	// system discriminating, and including them would let a system with one
+	// rule inherit the decoder's variety.
+	sys := rep.SystemRefusals()
+	if len(sys) > 1 {
+		seen := map[string]bool{}
+		for _, r := range sys {
+			seen[r.Error] = true
+		}
+		if len(seen) == 1 {
+			for msg := range seen {
+				rep.Findings = append(rep.Findings, fmt.Sprintf(
+					"all %d refusal(s) the system's own rules gave answered %q: one sentence over "+
+						"every hostile value discriminates nothing, so a refusal naming a field "+
+						"proves nothing about this system", len(sys), msg))
+			}
+		}
+	}
+
+	// AND A REFUSAL THAT NAMES NOTHING OF THE REQUEST is the other half: the
+	// perturbed field, or a rule the system states. Checked only over the
+	// system's own refusals, for the reason above.
+	for _, r := range sys {
+		if r.Case.Field != "" && !strings.Contains(r.Error, r.Case.Field) && !namesARule(r.Error) {
+			rep.Findings = append(rep.Findings, fmt.Sprintf(
+				"%s was refused with %q, which names neither the field nor a rule: a reader cannot "+
+					"tell which of the request's parts the system objected to", r.Case, r.Error))
 		}
 	}
 	return rep, nil
