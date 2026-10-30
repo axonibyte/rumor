@@ -14,6 +14,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/concurrency"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
+	"forge.axonibyte.com/axonibyte/rumor/internal/fuzz"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 	"forge.axonibyte.com/axonibyte/rumor/internal/quiesce"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
@@ -269,6 +270,9 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		},
 		stage.Concurrency: func() int {
 			return concurrencyStage(ctx, dir, prep, brep.Bindings, seed, stdout, stderr)
+		},
+		stage.Fuzz: func() int {
+			return fuzzStage(ctx, dir, prep, brep.Bindings, stdout, stderr)
 		},
 	}
 	if noRunner := missingRunners(stages, runners); len(noRunner) > 0 {
@@ -726,6 +730,78 @@ func parseRunArgs(args []string) (dir string, seed uint64, haveSeed bool, steps 
 // correct and simply do not reach a world this stage can use. The line prints
 // because a reader who enabled the stage needs to know why nothing contended --
 // an absence with no reason is the shape this project keeps finding.
+// fuzzStage drives 108's hostile corpus against the live system: every declared
+// write action, with inputs derived from the declarations, counting only what
+// reached the system.
+//
+// IT IS 110's FIRST ITEM AND NOT 110's OWN WORK. 108 built internal/fuzz and
+// shipped it with ZERO production callers -- `Known` read `"fuzz": false,
+// // runnable when it lands` after it had landed, and no project declared the
+// stage (quill, coop r8/75; fable ruled the wiring outstanding at rumor/1580).
+// A child named for a stage ships that stage runnable under `rumor run`
+// (rumor/1542), so this closes 108 before 110 adds anything of its own.
+//
+// THE SHAPE IS concurrencyStage's, deliberately: one session opened here
+// because the corpus asks the ADAPTER, the report's own renderers for the
+// output, and the three statuses this tree already means by 0, 2 and 3.
+//
+// A VACUOUS REPORT IS A COULD-NOT-RUN AND NOT A REFUSAL, which is ibis's own
+// reading of the same state (coop r8/29): with no `[refusal].message` the D3
+// and D4 clauses have no subject, so the stage says which key is missing rather
+// than reporting findings grounded in a key nobody declared. 2 is "what an
+// observation would have said is unknown", which is exactly that.
+func fuzzStage(ctx context.Context, dir string, prep platform.Report,
+	b bindings.Bindings, stdout, stderr io.Writer) int {
+
+	actors, err := schedule.Actors(prep.Platform.Venire)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "run: could not run: the venire this stage would drive: %v\n", err)
+		return 2
+	}
+	if len(actors) == 0 {
+		_, _ = fmt.Fprintf(stderr, "run: could not run: no actor to send the corpus as\n")
+		return 2
+	}
+
+	sess, err := wire.Open(ctx, wire.Spawn{
+		Command: prep.Platform.Adapter.Command,
+		Cwd:     dir,
+		Env:     prep.Platform.Adapter.Env,
+	}, 0)
+	if err != nil {
+		// COULD-NOT-RUN AND NEVER A REFUSAL: "the project is not wrong; its
+		// adapter is" (docs/contract.md:57), as walkStage reads it.
+		_, _ = fmt.Fprintf(stderr, "run: could not run: %v\n", err)
+		return 2
+	}
+	defer func() { _ = sess.Close() }()
+
+	rep, err := fuzz.Run(ctx, b, sess, actors[0])
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "run: could not run: driving the hostile corpus: %v\n", err)
+		return 2
+	}
+
+	// AND THERE IS NO VACUITY CHECK HERE, WHICH I WROTE FIRST AND REMOVED.
+	// fuzz.Run asks rep.Vacuous() itself before returning and hands it back as
+	// an ERROR -- both of its clauses, the absent `[refusal].message` and a
+	// corpus that sent nothing -- so a second reading on this side could never
+	// fire: Run returns no vacuous report with a nil error. The arm's failure
+	// is what showed it (the message arrived on stderr through the error path
+	// above, never on stdout), and a refusal no run can reach is a refusal
+	// armed by nothing (rook, coop r8/68).
+	_, _ = fmt.Fprintf(stdout, "fuzz: %s\n", rep.Summary())
+
+	findings := rep.Findings()
+	if len(findings) == 0 {
+		return 0
+	}
+	for _, f := range findings {
+		_, _ = fmt.Fprintf(stdout, "fuzz: FOUND %s\n", f)
+	}
+	return findingStatus
+}
+
 func concurrencyStage(ctx context.Context, dir string, prep platform.Report,
 	b bindings.Bindings, seed uint64, stdout, stderr io.Writer) int {
 
@@ -772,10 +848,31 @@ func concurrencyStage(ctx context.Context, dir string, prep platform.Report,
 	// THIS STAGE SPAWNS. It is the same arrangement the shrink makes per
 	// candidate; here nothing restores between the fan-outs, so the world keeps
 	// the address it bound and the sessions all reach it.
+	// CAPTURED BEFORE THE SET, because a LookupEnv after it reads back the
+	// value just written and "restores" the address of the dead world -- which
+	// is a defer that runs and does nothing, the worst of the three outcomes.
+	prior, hadPrior := os.LookupEnv(ae.AddrEnv())
 	if err := os.Setenv(ae.AddrEnv(), at.Addr()); err != nil {
 		_, _ = fmt.Fprintf(stderr, "run: could not run: naming the provider's world in %s: %v\n",
 			ae.AddrEnv(), err)
 		return 2
+	}
+	// AND IT IS RESTORED AT THE STAGE's BOUNDARY, WHICH THE COMMENT ABOVE DOES
+	// NOT COVER. "Nothing restores between the fan-outs" is deliberate and
+	// right; nothing restored when the STAGE ended either, and the world this
+	// address names is torn down by the defer above. So a stage running AFTER
+	// this one spawned an adapter that read a live-looking address for a dead
+	// world and answered "connection refused".
+	//
+	// IT WAS UNREACHABLE UNTIL 110: concurrency was the last runnable stage, so
+	// nothing followed it. 110's first item wires `fuzz`, which Select orders
+	// after it, and the fuzz stage's first session hit exactly this (quill,
+	// measured on examples/toy seed 2 before this fix). The leak is older than
+	// the stage that exposed it.
+	if hadPrior {
+		defer func() { _ = os.Setenv(ae.AddrEnv(), prior) }()
+	} else {
+		defer func() { _ = os.Unsetenv(ae.AddrEnv()) }()
 	}
 	open := func() (*wire.Session, error) {
 		return wire.Open(ctx, wire.Spawn{

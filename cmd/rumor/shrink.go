@@ -96,6 +96,32 @@ func shrinkFound(ctx context.Context, dir string, prep platform.Report, p schedu
 	}
 	defer func() { _ = prov.Discard(ctx, cp) }()
 
+	// AND IT IS RESTORED WHEN THE SHRINK RETURNS, which nothing did. The
+	// closure below names this world in the PROCESS environment -- `[adapter].env`
+	// passes the variable through by name -- and the `Discard` above tears that
+	// world down when the shrink ends, so the variable outlived what it named.
+	// A STAGE RUNNING AFTER THE WALK then spawned an adapter that read a
+	// live-looking address for a dead world: "connection refused".
+	//
+	// UNREACHABLE UNTIL 110, which is why it stood: the walk was the first
+	// stage and only `concurrency` followed it, and that stage names its own
+	// world before opening anything. 110's first item wires `fuzz`, which
+	// Select orders after both, and its first session hit this (quill, measured
+	// on examples/toy seed 2: api+fuzz refused, concurrency+fuzz clean, fuzz
+	// alone clean -- the three runs that place it here rather than in
+	// concurrencyStage, which carries the same leak and the same cure).
+	//
+	// CAPTURED BEFORE THE FIRST SET, because a LookupEnv inside the closure
+	// would read back the value it just wrote.
+	prior, hadPrior := os.LookupEnv(ae.AddrEnv())
+	defer func() {
+		if hadPrior {
+			_ = os.Setenv(ae.AddrEnv(), prior)
+			return
+		}
+		_ = os.Unsetenv(ae.AddrEnv())
+	}()
+
 	// THE ADDRESS IS RE-READ EVERY TIME, because a restore rebinds the port: a
 	// session opened once and reused would be talking to a world that no longer
 	// exists after the first candidate.

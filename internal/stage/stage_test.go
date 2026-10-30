@@ -222,8 +222,9 @@ func TestTheOrderIsCanonicalAcrossPasses(t *testing.T) {
 // here.
 func TestEverySelectableStageHasADispatcherThatConsumesIt(t *testing.T) {
 	// The cases in cmd/rumor/run.go's dispatch loop: `stage.API` runs
-	// walkStage, `stage.Concurrency` runs concurrencyStage.
-	consumed := []string{API, Concurrency}
+	// walkStage, `stage.Concurrency` runs concurrencyStage, `stage.Fuzz` runs
+	// fuzzStage.
+	consumed := []string{API, Concurrency, Fuzz}
 
 	// The strongest declaration a project can make: every name this
 	// dispatcher knows, all enabled.

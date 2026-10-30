@@ -38,6 +38,18 @@ const API = "api"
 // two places, which is the drift the tripwire below is about.
 const Concurrency = "concurrency"
 
+// Fuzz is 108's hostile-corpus stage: every declared write action driven with
+// inputs derived from the declarations, counting only what reached the system.
+//
+// IT WAS BUILT IN 108 AND WIRED HERE, which is the gap quill found (coop r8/75)
+// and fable ruled outstanding rather than deliberate (rumor/1580): 108 shipped
+// `internal/fuzz` with ZERO production callers, this map reading
+// `"fuzz": false, // runnable when it lands` after it had landed, and no
+// project declaring the stage. A child named for a stage ships that stage
+// runnable under `rumor run` (rumor/1542), so the wiring is 110's first item
+// and precedes anything of 110's own.
+const Fuzz = "fuzz"
+
 // Known is every stage name the dispatcher recognises, with whether it can
 // run one today.
 //
@@ -50,7 +62,7 @@ const Concurrency = "concurrency"
 var Known = map[string]bool{
 	API:         true,  // the main loop, runnable now
 	Concurrency: true,  // 109's fan-out, runnable now
-	"fuzz":      false, // 108's own stage, runnable when it lands
+	Fuzz:        true,  // 108's stage, wired by 110 -- see the comment above
 	"browser":   false, // R9
 }
 

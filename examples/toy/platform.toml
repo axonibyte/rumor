@@ -49,6 +49,27 @@ browser = { enabled = true }
 # unprofiled take the `walking` profile below, which narrows the stages and
 # nothing else.
 concurrency = { enabled = true }
+# AND 108's STAGE, WIRED BY 110 (quill, coop r8/75; fable's ruling at rumor/1580).
+# v0.1.43 shipped `fuzz` KNOWN, UNRUNNABLE and declared by nobody: internal/fuzz
+# had zero production callers, `Known` read `"fuzz": false, // runnable when it
+# lands` after it had landed, and no project selected it. A child named for a
+# stage ships that stage runnable (rumor/1542), so the wiring is 110's first
+# item and this declaration is the half that makes it reachable.
+#
+# WHAT IT COSTS, MEASURED AND NOT ASSUMED: one stdout line on every UNPROFILED
+# run, and nothing else. Driven on seeds 1 and 2 at 10 steps, v0.1.44's binary
+# and toy against this branch's: EXACTLY ONE LINE DIFFERS each time and rc is 3
+# both ways. The stage finds nothing on this toy -- `fuzz: 27 of 45 case(s)
+# reached the system; 0 x18, 201 x1, 400 x13, 404 x13`, rc 0 when it runs alone
+# -- so unlike `concurrency` above it does not change what a run EXITS, only
+# what it PRINTS.
+#
+# WHICH RECORDED FIGURES MOVE WITH IT: those taken from an unprofiled run's
+# stdout. The `walking` profile below narrows stages to api, so the two
+# seeds.lock rows carrying it are untouched, and rows 12, 3 and 66 narrow by
+# their own profiles. d4control's seed 1 has no seeds.lock row and is driven
+# unprofiled, which rook named at rumor/1554 and holds directly.
+fuzz = { enabled = true }
 
 [weights.default]
 # RETUNED IN R5.4 (fable, coop r5/99) BECAUSE THE WALK WAS ALL LIES. At the old
