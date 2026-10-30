@@ -1752,6 +1752,33 @@ second one runnable, naming which. Driven by flipping that flag: one failure
 over the whole tree, and its message says to extend the dispatch rather than
 widen the arm.
 
+**AND A GUARD THE LAYER BELOW ALREADY MAKES IS UNREACHABLE FOR A DIFFERENT
+REASON.** 110's first item wired `fuzz` into the dispatch, and `fuzzStage` read
+`rep.Vacuous()` before printing its summary — a vacuity reading before a
+verdict, which is the shape the four outcomes above ask for. It could never
+fire: `fuzz.Run` asks `rep.Vacuous()` itself and hands it back as an *error*,
+both of its clauses, so no vacuous report ever reaches a caller with a nil
+error. The arm's FAILURE is what surfaced it — the cell asserted the message on
+stdout and it arrived on stderr through the error path — and the branch came out
+rather than gaining a fixture, because a fixture for it would have to be a
+report the library cannot return. **Before writing a guard, read what the layer
+below promises**: a defensive check over a guarantee is dead code that looks
+like rigor, and the only arm that can reach it is one that lies about its
+subject.
+
+**A DEFECT CAN BE INVISIBLE BECAUSE NOTHING CAME AFTER IT.** The same item
+exposed a leak older than the stage that found it: three writes in two
+functions named a world's address in the PROCESS environment — `[adapter].env`
+passes the variable through by name — and nothing restored any of them at its
+function's boundary, while the worlds themselves were torn down in defers. No
+run could see it while `concurrency` was the LAST runnable stage. `Select`
+orders `fuzz` after both, and the stage's first session answered "connection
+refused" from a live-looking address for a dead world. **A guard, a cleanup or
+an invariant that only the NEXT caller can falsify has no arm until a next
+caller exists**, which is an argument for ordering a new consumer early rather
+than last.
+
+
 ### A fixture whose plan is the identity is the no-plan case
 
 109's fan-out carries a seeded plan: which session issues each request, in

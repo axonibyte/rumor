@@ -1289,6 +1289,17 @@ count. Nothing in `internal/schedule` or `internal/engine` read it, and none of
 execution. R8.1 is the first child that must RUN one, so it carries the
 dispatch for all of them.
 
+**IT CARRIED THE DISPATCH AND NOT ITS OWN STAGE's CASE, which is the half this
+paragraph claimed and R8.3 supplied.** v0.1.43 shipped `fuzz` KNOWN, UNRUNNABLE
+and declared by nobody: `internal/fuzz` had no production caller, `Known` read
+`"fuzz": false` with a comment saying "runnable when it lands" after it had
+landed, and no project selected it — so the stage the child was named for could
+not be run by `rumor run`. A child named for a stage ships that stage runnable
+or it has shipped a mechanism, which is the rule R8.2's edge was ruled on while
+R8.1 had already shipped without it. The wiring is R8.3's first item and
+precedes anything of its own; `fuzz` is the third runnable name and the toy
+declares it.
+
 **THE WALK IS `api`, AND `api-sim` WAS A STALE NAME FOR IT.** All thirty-six
 `platform.toml` in this repository declare `api`; not one declared `api-sim`,
 `fuzz` or `concurrency`, which appeared only in `docs/contract.md`'s example.

@@ -393,12 +393,27 @@ that printed number is exactly what `--seed` takes.
 | 3 | **a bug was found**, and the line above the verdict names it |
 
 **The run takes the stages the project enables, and every one it takes says
-what it did.** `[stages]` names them and this build runs two: `api`, which is
-the walk above, and `concurrency`, which puts limit-plus-one requests in flight
+what it did.** `[stages]` names them and this build runs three: `api`, which is
+the walk above; `concurrency`, which puts limit-plus-one requests in flight
 against every action declaring `contended` and judges each against the quantity
-the system itself holds. A declared stage this build cannot run is refused
-before anything runs, and a project that enables `concurrency` without `api`
-gets the fan-out and no walk — selecting a stage is what selects it.
+the system itself holds; and `fuzz`, which sends a hostile corpus derived from
+the project's own declared write actions and counts only what reached the
+system. A declared stage this build cannot run is refused before anything runs,
+and a project that enables `concurrency` without `api` gets the fan-out and no
+walk — selecting a stage is what selects it.
+
+The fuzz stage reports one line, the count being the whole of its evidence:
+
+```
+fuzz: 27 of 45 case(s) reached the system; 0 x18, 201 x1, 400 x13, 404 x13
+```
+
+**The cases it does not reach are credited to the layer that answered them**, so
+a count of 45 sent is never read as 45 asked of the system: `0` is the adapter
+refusing an argument before the wire, and a `400` from the decoder is not a rule
+the project wrote. A project that declares no `[refusal].message` is told so and
+the stage does not run, because the clauses that read a refusal's text would
+otherwise be grounded in a key nobody declared.
 
 ```
 concurrency: join_event -- setup create_user (per actor), create_event; fan-out of 2, issued 1 then 0
@@ -687,6 +702,26 @@ gotf=$(rumor run examples/toy --seed 7 --steps 10 | grep '^run: FOUND')
 if [ "$wantf" != "$gotf" ]; then
   echo 'the finding line in docs/cli.md is not what the tool prints:'
   printf 'documented: %s\ntool:       %s\n' "$wantf" "$gotf"
+  fail=1
+fi
+
+# THE FUZZ SAMPLE IS A THIRD RUN AND MUST BE UNPROFILED. `walking` narrows the
+# stages to api, so a profiled invocation prints no fuzz line at all and the
+# comparison would be against the empty string -- which is why the extraction
+# is asserted non-empty on both sides rather than only on the document's.
+wantz=$(awk '/^The fuzz stage reports one line/{f=1;next} f&&/^fuzz: /{print; exit}' docs/cli.md)
+[ -n "$wantz" ] || {
+  echo 'the fuzz sample is no longer where this block looks for it'
+  exit 1
+}
+gotz=$(rumor run examples/toy --seed 2 --steps 10 | grep '^fuzz: ')
+[ -n "$gotz" ] || {
+  echo 'the run printed no fuzz line, so the sample is being compared against nothing'
+  exit 1
+}
+if [ "$wantz" != "$gotz" ]; then
+  echo 'the fuzz line in docs/cli.md is not what the tool prints:'
+  printf 'documented: %s\ntool:       %s\n' "$wantz" "$gotz"
   fail=1
 fi
 
