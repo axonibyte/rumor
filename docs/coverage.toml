@@ -110,6 +110,18 @@ path = "internal/schedule/*.go"
 docs = ["docs/design.md"]
 
 [[entry]]
+# THE HOSTILE CORPUS (R8.1, issue 108). Mapped to design.md alone, and the
+# reason is that this package DECLARES NOTHING: it reads `[[action.args]]`'s
+# `source`, `from`, `of` and `value`, all of which contract.md already
+# specifies, and turns them into cases. What is new is a design decision --
+# the corpus is derived rather than written, and its classes are bounded by
+# what a refusal can NAME -- so design.md is where that prose belongs. No
+# cli.md entry: the stage's verb is 108's and lands with the dispatch, not
+# with the derivation.
+path = "internal/fuzz/*.go"
+docs = ["docs/design.md"]
+
+[[entry]]
 # THE PROBER (R6.2, issue 90). It fills internal/schedule's `Prober` slot, which
 # was declared at R6.1 with nothing implementing it. Mapped to contract.md
 # because the probe's declaration and the `direct` observation it rides are that

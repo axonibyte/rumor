@@ -1205,3 +1205,61 @@ which actors hold a planted claim is reported instead. Second, **the run is not
 an actor**: v1 gives a `clock` fact's actor as "the run", which controls time
 rather than holding beliefs, so clock facts contribute no one to reconcile
 against.
+
+## The hostile corpus is derived from the declarations
+
+**A corpus that is written by hand tests whatever its author remembered.** The
+fuzz stage's cases are a function of the project's own bindings: an action
+earns cases because it declares arguments, and the only way to add a case is
+to declare something. R8's D1 (rook, coop r8/2) is that drill, and its partner
+is the measurement — add a write action to the declarations and the corpus
+must grow without this package being edited, because a hand-written corpus
+would not have grown. Measured on `examples/toy`: nine write actions, 45
+cases, and one added action takes it to 49.
+
+**A WRITE IS AN ACTION THAT EMITS A CLAIM**, written as the predicate rather
+than as the count. All nine of the toy's declared actions emit one, so there
+is no read-only action to exclude there and an arm over the toy alone could
+not tell "all nine are writes" from "every action is fuzzed" — so the arm adds
+a claimless action and requires it to earn nothing.
+
+**THE CLASSES ARE BOUNDED BY WHAT A REFUSAL CAN NAME, and two obvious ones are
+deliberately absent.** `cmd/toy`'s request decoder sets
+`DisallowUnknownFields` and an `io.LimitReader` at 1MB, so an unknown field or
+an oversize body is a 400 from `encoding/json` BEFORE any handler sees the
+request. A 400 earned that way says nothing about the system under test, which
+is why D1's partner requires each class to produce a refusal naming a FIELD OR
+RULE OF THE SYSTEM (ibis, coop r8/1; rook r8/3). A class that cannot be
+refused by name is not evidence, so it is not generated.
+
+**AN ARGUMENT'S TYPE COMES FROM ITS DECLARATION, AND THE DECLARATION IS
+READ RATHER THAN GUESSED AT.** A `literal` carries its value, so its type is
+known. A `handle` names a kind and crosses the wire as an id, so a string. An
+`actor` is a name. A `draw` carries `from`, and its first element's type is
+the argument's type — which is the whole difference between a typed hostile
+value and a guess, and it was found by driving the class-coverage arm rather
+than by reading the code: `capacity` is a DRAW, not a literal, so restricting
+the non-positive class to literals left it DEAD against the shipped project
+while the arm still passed. The toy's own rule, "capacity must be at least 1",
+was the one rule the corpus could not reach.
+
+**ONE CLASS IS DERIVED FROM TWO DECLARATIONS AT ONCE.** Where a draw's domain
+is made entirely of names the project declares as roles, a string in neither
+is a value the system has a rule about, and the toy answers by naming the
+field: "visible_to names %q, which is not a role". The pairing is what makes
+it sound — the domain alone would not say the set is closed, and `[[role]]`
+alone would not say this argument draws from it. A domain holding anything the
+role list does not earns no such case, because then the system's rule about it
+is unknown from the declarations and the refusal could not be predicted.
+
+**THE PERTURBED FIELD IS PART OF THE CASE**, because D1's partner is a claim
+about the refusal naming a field, and a case that perturbs an argument without
+recording which one cannot check that claim. Every other declared argument is
+present and plausible, and an arm asserts it: a class that quietly dropped a
+second argument would be refused for the wrong reason while still naming a
+field.
+
+**AN EMPTY CORPUS IS A REFUSAL AND NOT A RESULT.** A project declaring no
+write action, or write actions with no arguments between them, is refused by
+name — because an empty corpus and a corpus nobody generated read identically
+in a report, which is the shape D1's partner exists to catch.
