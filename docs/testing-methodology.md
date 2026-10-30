@@ -1829,3 +1829,36 @@ reason and would have been counted. A mutant whose anchor equals its
 replacement changes nothing and silently joins the skips. So the four outcomes
 a harness owes its reader are: killed, survived, no-op, and malformed — and
 only the first two are evidence about the arms.
+
+### An oracle is only as sound as where its inputs come from
+
+109 found this three times, in three different places, and each time the clause
+itself was correctly written.
+
+**A VERDICT MAY REST ON THE ANSWERS INSTEAD OF THE WORLD.** The overfill clause
+counted the acceptances a fan-out received and never read what the system
+HELD — so it was a claim about responses wearing the words of a claim about
+state, and a system that answered 200 to two requests while persisting nothing
+read as having overfilled. The race's signature is the system's own quantity,
+and the fix was to read it back through a declared query. A clause whose
+subject is the system's state must take that state from the system, not infer
+it from what the system said about it.
+
+**AND TWO INPUTS DRAWN FROM ONE SOURCE CANNOT DISAGREE.** A limit read from an
+observation, beside a held count read from the same system, makes the clause
+"the system disagrees with itself" rather than "the system exceeded its
+DECLARED limit" — one reader, two readings, no independent fact between them.
+So the limit is the walk's own drawn number, independent of the system by
+construction, and the bindings already said why: "an oracle that read the same
+field could not disagree with it". Where a clause compares two quantities, ask
+of each where it came from, and if the answer is the same place, the comparison
+is a tautology waiting to pass.
+
+**AND A GUARD NO HONEST RUN CAN FIRE NEEDS ITS BROKEN INPUT MANUFACTURED.** The
+clause separating "the answers and the world disagree" from "the limit was
+exceeded" cannot fire on a correct system, by design — so it was driven by
+mutating the system under test to answer acceptance and persist nothing. A
+guard like that is otherwise armed by nothing while looking armed: the suite is
+green, the clause is reachable in principle, and no run has ever reached it.
+The input the guard exists to catch has to be built on purpose, and if it
+cannot be, the guard is a comment.
