@@ -129,5 +129,43 @@ func Order(b bindings.Bindings, need []string) ([]bindings.Action, error) {
 			return nil, err
 		}
 	}
-	return out, nil
+	return bootstrapFirst(out), nil
+}
+
+// bootstrapFirst hoists the actions that need NO SESSION and NO HANDLE ahead
+// of the rest, keeping the topological order within each group.
+//
+// THE HANDLE GRAPH IS NOT THE WHOLE DEPENDENCY GRAPH, and running the setup is
+// what showed it. `creates` and `of` express what an action MAKES and what one
+// NEEDS, so the order they give satisfies every handle -- and the toy's
+// create_event still failed, because a session for the actor is refused until
+// that actor exists as a user ("no user named %q: a session belongs to a user
+// that exists"). That dependency is declared, but in `requires`:
+// create_event requires `has_user`, which is a STATUTE RULE and not a handle,
+// so no amount of reading `creates` could see it.
+//
+// RESOLVING A RULE TO THE ACTION THAT SATISFIES IT WOULD MEAN EVALUATING THE
+// STATUTE, which is the walk's work and not a setup's. What is derivable from
+// the declaration alone is narrower and enough: an action whose context is
+// "none" needs no session, and one with no handle arguments needs nothing the
+// setup has not got yet, so it can always go first. BOTH CONDITIONS ARE
+// REQUIRED -- hoisting a no-session action that took a handle would move it
+// ahead of whatever makes that handle, which is the ordering this function
+// exists to keep.
+func bootstrapFirst(in []bindings.Action) []bindings.Action {
+	var first, rest []bindings.Action
+	for _, a := range in {
+		handles := false
+		for _, arg := range a.Args {
+			if arg.Source == "handle" {
+				handles = true
+			}
+		}
+		if a.Context == "none" && !handles {
+			first = append(first, a)
+			continue
+		}
+		rest = append(rest, a)
+	}
+	return append(first, rest...)
 }
