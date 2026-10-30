@@ -88,6 +88,15 @@ MUTATIONS = {
     "m14-honored-past-expiry-always": (
         "honored_past_expiry if {\n\texpiry_observation\n\tsome c in prefix_claims\n\tc.type == \"event.joined\"\n\tc.t > input.observation.value\n}",
         "honored_past_expiry if true"),
+    # R7.4's fourth, and the one that is a CONTROL rather than an always-rule:
+    # it does not disable the clause, it swaps WHICH TIME the clause reads. The
+    # corpus could not tell the two readings apart until
+    # accepted-then-the-clock-moved was authored for exactly this (rook
+    # rumor/1426, /1430; ratchet /1428 required the case to carry the clock on
+    # the case path as well as the claim's `t`, which it now does).
+    "m15-honored-past-expiry-reads-the-seal-clock": (
+        "\tc.t > input.observation.value",
+        "\tinput.clock.now > input.observation.value"),
     "m13-expiry-sound-always": (
         "expiry_sound if {\n\texpiry_observation\n\tinput.observation.value > 0\n\tsome c in prefix_claims\n\tc.type == \"invitation.sent\"\n}",
         "expiry_sound if true"),

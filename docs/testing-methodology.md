@@ -1645,3 +1645,44 @@ both: drive it through the product once.
 recorded reason survived cells that pinned that reason's exact text -- because
 those cells called the function that BUILDS it, and the mutation was at the
 CALL SITE. A cell has to sit where the value it pins is READ.
+
+### An input-fidelity arm is bounded by the vocabulary it was written against
+
+**The case corpus is checked against the engine's own input, field by field, by
+`TestTheEngineInputMatchesTheCaseInput` -- and that arm listed v1's vocabulary:
+the observation's six fields, `known` filtered to the bound, and each claim as
+`ref|type|planted|visible_to`.** R7 then added two fields to that input, the
+`clock` table and each claim's `t`, and extended neither side of the arm. So
+every case block in the corpus could omit both and the arm stayed green over
+the omission, which is exactly what happened: the three clocked cases carried
+`t` on their claims and no `clock` at all.
+
+**WHAT THAT COSTS IS NOT A MISSING ASSERTION, IT IS A KILL FOR THE WRONG
+REASON.** rook specified a control for the row -- swap the statute's `c.t` for
+`input.clock.now` and require the corpus to notice -- and measured it INERT
+(coop rumor/1426). The cure was a case where the two readings differ: a join
+honestly inside its expiry, then the clock advanced past that expiry before the
+expiry was observed. On the ledger path that case killed the control at once.
+On the case path the control died too, and ratchet measured WHY (/1428): the
+case block carried no `clock`, so `input.clock.now` was UNDEFINED and the rule
+went false. **The mutant died of absence, through a different case, and said
+nothing about the two readings differing.** A control that dies of absence
+reports the same colour as a control that discriminates.
+
+**THE TWO PATHS DISAGREEING ABOUT WHICH CASE KILLED WHAT IS THE SYMPTOM TO
+WATCH FOR**, because it is visible without knowing the defect: one corpus, two
+builders, and a mutant that each kills through a different case means one
+builder is feeding a rule something the other does not have.
+
+**THE RULE: WHEN A FIELD IS ADDED TO AN INPUT, THE ARM THAT PROVES THE INPUT
+FAITHFUL IS PART OF THE CHANGE.** Not a later sweep -- the same change, because
+until it is extended the arm's green is a statement about the old vocabulary
+and reads exactly like a statement about the new one. Presence is compared
+before value, since absent and zero are different answers where a project
+without clock control is MEANT to have no key.
+
+**AND THE CONTROL IS NOW A MUTANT RATHER THAN A DRIVE.** m15 swaps the time the
+clause reads, committed beside the always-rules it does not resemble: it
+disables nothing, it changes which fact answers the question. A drive proves
+the corpus discriminated once, on the tree it was run against; a committed
+mutant is what re-measures it.

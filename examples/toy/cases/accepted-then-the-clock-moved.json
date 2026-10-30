@@ -26,6 +26,7 @@
       "role": "guest",
       "position": 8
     },
+    "clock": {"now": 30000000001},
     "known": [
       "bob.user#1",
       "alice.invitation#1",

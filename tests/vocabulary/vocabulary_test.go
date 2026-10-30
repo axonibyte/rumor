@@ -227,7 +227,14 @@ const root = "../.."
 // carries two attributed quotes as this oracle counts them. One file times
 // two, the same arithmetic as the 49 -> 55 move and for the same reason -- not
 // a word of new prose, just another copy of prose already checked. 0 absent.
-const declaredQuotes = 58
+// 58 -> 60 AT 103's CONTROL: a FIFTEENTH mutant, and the same one-file-times-
+// two arithmetic as the 56 -> 58 move -- m15 reads the seal's clock where the
+// statute reads the join's own time, so it is a copy of the statute like every
+// other mutant and carries the same two quotes. Not a word of new prose. 0
+// absent. The mutant exists because rook measured the control for that row
+// INERT at coop rumor/1426: a distinction only a hand-driven mutant exercised
+// was a distinction nothing re-measured.
+const declaredQuotes = 60
 
 // knownChainGaps are the places where this file's warrant chain does NOT join,
 // each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which

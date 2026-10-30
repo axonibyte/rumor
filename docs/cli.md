@@ -181,7 +181,7 @@ demonstrated what it was cut to demonstrate.
 Plus four counting guards — no package, no case, no rule, no mutant — because
 every arm above is satisfied for free by an empty walk.
 
-**Seven kinds of line**, then a tally. Over `examples/` the run prints 92 of them;
+**Seven kinds of line**, then a tally. Over `examples/` the run prints 93 of them;
 one of each kind is shown here, and the counts in the tally are the whole run's:
 
 It was 84 until R7.4, and the block below is what said so: the figure is one
@@ -189,6 +189,13 @@ line per rule-and-mutant pairing the corpus holds, so 103's three cases and its
 fourteenth mutant moved it. The gate caught the drift on the run that added
 them -- `docs --check` stayed green throughout, because a path-coverage check
 cannot see a quoted figure.
+
+92 TO 93 IS m15 AND NOTHING ELSE. Measured both sides: the fourth case
+(accepted-then-the-clock-moved) left the figure at 92, because a case adds a
+line only where it reaches a kind no other case reaches, and a fifteenth mutant
+adds its pairing unconditionally. THE FIGURE EXCLUDES THE TALLY LINE, which is
+why `wc -l` over the run reads one higher than the number written here -- a
+reading that nearly cost a correct figure its correction.
 
 ```sh run
 # THIS BLOCK IS THE SAMPLE AND ITS OWN CHECK. `release-gate.py` executes every
@@ -252,7 +259,7 @@ planted-lie      m1-ignores-position        alive from the cases only (the seal 
 planted-lie      bug                        reached by stripped-tag
 planted-lie      with-planted               cleared by removing 1 planted claim(s)
 transitive-count charlie-own-lie            planted but not a control: the strip clause is not applied
-attaint: 5 package(s), 34 case(s), 30 rule(s), 37 mutant(s); 3 planted lie(s) corroborated of 6, 3 cleared by removal, 3 planted-not-control; 30 rule(s) killed, 0 unmutated; 0 refusal(s)
+attaint: 5 package(s), 34 case(s), 30 rule(s), 38 mutant(s); 3 planted lie(s) corroborated of 6, 3 cleared by removal, 3 planted-not-control; 30 rule(s) killed, 0 unmutated; 0 refusal(s)
 LINES
 
 # BOTH GUARDS BELOW ARE UNCONDITIONAL, which the first cut got wrong: the total

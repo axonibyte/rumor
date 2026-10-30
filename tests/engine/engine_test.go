@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -59,7 +60,7 @@ const statutePackage = "data.rumor.statute"
 const (
 	wantPackages = 5
 	wantCases    = 34
-	wantMutants  = 37
+	wantMutants  = 38
 )
 
 type observation struct {
@@ -633,8 +634,31 @@ func TestTheEngineInputMatchesTheCaseInput(t *testing.T) {
 				if got, want := claimKeys(in["claims"]), caseClaimKeys(c.caseInput["claims"], c.obs.Position); !reflect.DeepEqual(got, want) {
 					t.Errorf("claims inside the bound: engine %v, case %v", got, want)
 				}
-				t.Logf("PROOF observation, %d known ref(s) and %d claim(s) agree field for field",
-					len(wantKnown), len(claimKeys(in["claims"])))
+				// THE CLOCK, R7's OTHER ADDITION TO THIS INPUT, and the
+				// reason this arm is here twice over: it compared v1's
+				// vocabulary only, so the clock and the claims' `t` could be
+				// absent from every case block and this arm stayed green.
+				// rook measured the consequence at coop rumor/1426 and /1430
+				// -- D11b's control mutant, reading `input.clock.now` where
+				// the statute reads the join's own `c.t`, died on the case
+				// path BY ABSENCE: the key was not there to read, so the rule
+				// went undefined and the kill said nothing about the two
+				// readings differing. ratchet /1428 named the condition.
+				//
+				// PRESENCE IS COMPARED BEFORE VALUE because absent and zero
+				// are different answers here: a project with no clock control
+				// gets no key at all, and a case for one must carry none.
+				caseClock, inCase := c.caseInput["clock"]
+				engineClock, inEngine := in["clock"]
+				if inCase != inEngine {
+					t.Errorf("clock: present in the case %v, in the engine's input %v -- "+
+						"a case that omits it cannot tell a rule reading it from one that does not",
+						inCase, inEngine)
+				} else if inCase && !sameJSON(caseClock, engineClock) {
+					t.Errorf("clock: engine %s, case %s", renderClock(engineClock), renderClock(caseClock))
+				}
+				t.Logf("PROOF observation, %d known ref(s), %d claim(s) and the clock (%v) agree field for field",
+					len(wantKnown), len(claimKeys(in["claims"])), engineClock)
 			})
 		}
 	}
@@ -706,7 +730,72 @@ func claimKey(c map[string]any) string {
 		}
 	}
 	sort.Strings(vis)
-	return fmt.Sprintf("%v|%v|%v|%s", c["ref"], c["type"], planted, strings.Join(vis, "+"))
+	// `t` IS PART OF THE KEY, not a field compared separately, so a claim
+	// stamped with the wrong instant reads as a claim the other side does not
+	// have rather than as a matching claim with a difference this arm skips.
+	// Rendered through a normaliser because the engine carries an int64 out of
+	// the ledger and the case file an untyped JSON number; absent stays absent,
+	// which is what an unclocked project's claims are.
+	return fmt.Sprintf("%v|%v|%v|%s|%s", c["ref"], c["type"], planted, strings.Join(vis, "+"), instant(c["t"]))
+}
+
+// renderClock reports a clock table for a failure message. Through `instant`
+// for the same reason it exists: %v over the map prints the case's `now` as
+// 3.0000000002e+10, which is not a form anyone can compare to the engine's
+// 30000000001 by eye -- and a failure nobody can read is a failure nobody acts
+// on. A shape that is not the table reports itself, rather than being hidden
+// behind a formatted zero.
+func renderClock(v any) string {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return fmt.Sprintf("%v (not a clock table)", v)
+	}
+	now, present := m["now"]
+	if !present {
+		return fmt.Sprintf("%v (a clock table with no `now`)", v)
+	}
+	if len(m) != 1 {
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		return fmt.Sprintf("{now=%s} over key(s) %s", digits(now), strings.Join(keys, ","))
+	}
+	return "{now=" + digits(now) + "}"
+}
+
+// instant renders a claim's `t` for claimKey. An absent `t` renders empty, so
+// a clocked claim and an unclocked one can never key alike; a present one
+// renders in full precision, which %v over a float64 would not do for an
+// instant in nanoseconds.
+func instant(v any) string {
+	if v == nil {
+		return ""
+	}
+	return "t=" + digits(v)
+}
+
+// digits renders one instant in nanoseconds in full precision, whichever side
+// it came from: an int64 out of the ledger, an untyped JSON number out of a
+// case file, or a json.Number if a decoder is ever configured for one. A
+// fractional value SAYS SO rather than rounding to a neighbouring nanosecond,
+// because an instant that is not a whole nanosecond is a defect in whatever
+// produced it and silently truncating it here would hide that.
+func digits(v any) string {
+	switch n := v.(type) {
+	case int64:
+		return fmt.Sprintf("%d", n)
+	case float64:
+		if n != math.Trunc(n) {
+			return fmt.Sprintf("%v NOT A WHOLE NANOSECOND", n)
+		}
+		return fmt.Sprintf("%d", int64(n))
+	case json.Number:
+		return n.String()
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 // ADR 0001 AT THE ENGINE, over every committed statute AND every mutant,

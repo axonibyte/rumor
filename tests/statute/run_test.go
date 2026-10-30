@@ -225,8 +225,8 @@ func TestTheSuiteExaminesSomething(t *testing.T) {
 	// was moved to transitive-count (which carries it as m2) rather than left to
 	// survive. 6 + 7 + 6. A surviving mutant and a missing one look the same in
 	// a total, which is why the number is declared and the gap is named.
-	if totalMutants != 37 {
-		t.Errorf("expected 37 mutants across the five packages, counted %d", totalMutants)
+	if totalMutants != 38 {
+		t.Errorf("expected 38 mutants across the five packages, counted %d", totalMutants)
 	}
 	t.Logf("PROOF examined %d package(s), %d case(s), %d mutant(s)",
 		len(pkgs), totalCases, totalMutants)
@@ -514,8 +514,8 @@ func TestNoStatuteCallsPrint(t *testing.T) {
 
 	// COUNT WHAT WAS EXAMINED, not only what was refused: zero findings reads
 	// identically whether every module was clean or none was opened.
-	if modulesScanned != 42 {
-		t.Errorf("scanned %d modules, expected 42 (5 statutes + 37 mutants); a count that drifts means a file stopped being examined", modulesScanned)
+	if modulesScanned != 43 {
+		t.Errorf("scanned %d modules, expected 43 (5 statutes + 38 mutants); a count that drifts means a file stopped being examined", modulesScanned)
 	}
 	if evaluations != 34 {
 		t.Errorf("evaluated %d cases under the print hook, expected 34", evaluations)
