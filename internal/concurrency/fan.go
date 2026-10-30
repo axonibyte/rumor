@@ -59,7 +59,12 @@ func (a Attempt) InFlight() time.Duration { return a.Finished.Sub(a.Started) }
 //
 // A FAN-OUT OF ONE IS NOT A FAN-OUT and is refused by name. It would exercise
 // the sequential path and report every concurrency clause as satisfied.
-func Fan(sessions []*wire.Session, reqs []wire.ExecuteRequest) ([]Attempt, error) {
+func Fan(plan Plan, sessions []*wire.Session, reqs []wire.ExecuteRequest) ([]Attempt, error) {
+	if plan.Width() != len(sessions) {
+		return nil, fmt.Errorf("the plan is %d wide and %d session(s) were given: a plan nothing "+
+			"dispatches is the defect R8.1 closed one level up, so the width is checked here "+
+			"rather than trusted", plan.Width(), len(sessions))
+	}
 	if len(sessions) != len(reqs) {
 		return nil, fmt.Errorf("%d session(s) for %d request(s): a fan-out carries one request "+
 			"per session, and a mismatch would send fewer requests than the caller asked for",
@@ -78,34 +83,69 @@ func Fan(sessions []*wire.Session, reqs []wire.ExecuteRequest) ([]Attempt, error
 	// took. A sleep would make the stagger a function of the box's load.
 	release := make(chan struct{})
 	var wg sync.WaitGroup
-	for i := range sessions {
+	// ISSUED IN THE PLAN's ORDER, AND THE PLAN IS THE CONSUMER's SUBJECT. The
+	// k-th request goes to the session the plan chose, the goroutines are
+	// spawned in that order, and the attempts come back in it -- so the record
+	// a run hashes follows the seed rather than the goroutine scheduler. The
+	// release is still one event: what the plan fixes is WHICH session carries
+	// what and in what order the attempt is recorded, not who wins a race,
+	// because fixing that would remove the contention this stage exists for.
+	for k, sess := range plan.Issue {
 		wg.Add(1)
-		go func(i int) {
+		go func(k, sess int) {
 			defer wg.Done()
 			<-release
 			started := time.Now()
-			resp, err := sessions[i].Execute(reqs[i])
+			resp, err := sessions[sess].Execute(reqs[k])
 			finished := time.Now()
-			a := Attempt{Session: i, Started: started, Finished: finished, Response: resp}
+			a := Attempt{Session: sess, Started: started, Finished: finished, Response: resp}
 			if err != nil {
 				a.Fault = err.Error()
 			}
-			out[i] = a
-		}(i)
+			out[k] = a
+		}(k, sess)
 	}
 	close(release)
 	wg.Wait()
 	return out, nil
 }
 
-// Overlapped is whether any two attempts were in flight at the same moment, and
-// the longest such overlap.
+// Overlapped is whether any two attempts were in flight at the same moment:
+// the CLOCK-FREE half, safe where the control reads.
 //
 // THIS IS THE RUN's OWN PROOF THAT IT WAS CONCURRENT, and a concurrency stage
 // that reports "no race found" without it is making a claim it did not test:
 // two requests that serialized would answer exactly as a correct system does.
 // The caller treats a non-overlapping fan-out as a COULD-NOT-RUN, not a pass.
-func Overlapped(as []Attempt) (bool, time.Duration) {
+//
+// SPLIT FROM ITS DURATION ON PURPOSE, and the shape is Prober's rather than
+// mine: Hang() is "the clock-free half of its report and therefore safe where
+// the control reads; HangMeasured() is the half that must not come here"
+// (cmd/rumor/run.go:470), and HangMeasured goes to stderr because "stdout
+// would make D1 unreachable for every run that ends on a timeout" (:397). A
+// duration on the hashed stream moves a digest every run, so D6 would then be
+// satisfied by the very change that breaks D1 (rook, coop r8/36). Returning
+// the bool and the duration together invited printing them together, so they
+// are two methods and the one carrying a clock SAYS SO IN ITS NAME.
+func Overlapped(as []Attempt) bool {
+	ok, _ := overlap(as)
+	return ok
+}
+
+// OverlapMeasured is the longest overlap, rendered for the stream the
+// adapter's own timings already go to -- STDERR, never stdout. It is empty
+// when nothing overlapped, so a caller printing it unconditionally says
+// nothing rather than something false.
+func OverlapMeasured(as []Attempt) string {
+	ok, best := overlap(as)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("overlapped by %s", best)
+}
+
+// overlap is the arithmetic both halves read.
+func overlap(as []Attempt) (bool, time.Duration) {
 	var best time.Duration
 	found := false
 	for i := range as {

@@ -1368,3 +1368,36 @@ function of the box's load. The spans are taken client-side, around the
 exchange, so two requests count as in flight together whether the system
 interleaves them or serializes them under a held lock: that keeps the mechanism
 arm independent of the defect it exists to reach.
+
+**AND THE FAN-OUT NEEDS A SEEDED PLAN, OR BYTE-IDENTITY IS A FROZEN ORACLE.**
+D1's "two attempts of one seed are byte-identical" is not a claim that the
+system is deterministic; it is ENFORCED by keeping the hashed stream clock-free
+and sorted. A concurrency stage whose only contribution to that stream were a
+clock-free "did overlap" would put ONE BIT there — and one bit cannot differ
+between seed N and seed N+1, so byte-identity would hold for every seed and the
+determinism clause could never fail. The plan is what carries more than a bit:
+which session issues each request, in issue order, drawn from the run's own PCG
+generator so that one seed renders one plan and a different seed renders a
+different one. Measured at width 6: forty seeds give forty distinct plans, and
+all thirty-nine adjacent pairs differ.
+
+**THE VERDICT AND ITS DURATION ARE TWO METHODS, AND THE ONE CARRYING A CLOCK
+SAYS SO IN ITS NAME.** The shape is the quiesce prober's, not a new one:
+`Hang()` is the clock-free half "and therefore safe where the control reads;
+`HangMeasured()` is the half that must not come here", and the measured half
+goes to stderr because stdout "would make D1 unreachable for every run that
+ends on a timeout". A duration on the hashed stream moves a digest every run,
+so the concurrency clause would then be satisfied by the very change that
+breaks determinism. Returning the verdict and the figure together invited
+printing them together, so `Overlapped` answers a bool and `OverlapMeasured`
+renders the figure for stderr alone — and is empty when nothing overlapped, so
+a caller printing it unconditionally says nothing rather than something false.
+
+**THE PLAN IS DISPATCHED AND NOT MERELY DECLARED**, which is the same defect
+R8.1 closed one level up: `[stages]` was parsed, cross-checked and never
+dispatched. The fan-out issues the k-th request to the session the plan chose,
+spawns in that order and records in it, so the attempts a run hashes follow the
+seed rather than the goroutine scheduler. A width disagreement between the plan
+and the sessions is refused rather than trusted. What the plan fixes is which
+session carries what and in what order the attempt is recorded — never who wins
+the race, because fixing that would remove the contention the stage exists for.

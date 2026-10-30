@@ -378,7 +378,12 @@ func TestTheFanOutReachesOneWorldThroughTwoAdapters(t *testing.T) {
 	if rerr != nil {
 		t.Fatalf("join request for %s: %v", actors[1], rerr)
 	}
-	attempts, ferr := concurrency.Fan([]*wire.Session{sessA, sessB},
+	// THE PLAN IS SEEDED AND CLOCK-FREE, and it is what a replay reproduces.
+	plan, perr := concurrency.PlanFor(1, 2)
+	if perr != nil {
+		t.Fatalf("PlanFor: %v", perr)
+	}
+	attempts, ferr := concurrency.Fan(plan, []*wire.Session{sessA, sessB},
 		[]wire.ExecuteRequest{reqA, reqB})
 	if ferr != nil {
 		t.Fatalf("Fan: %v", ferr)
@@ -405,14 +410,13 @@ func TestTheFanOutReachesOneWorldThroughTwoAdapters(t *testing.T) {
 
 	// AND THEY WERE IN FLIGHT TOGETHER. A serialized fan-out exercises the
 	// sequential path and would report a race as absent.
-	overlapped, by := concurrency.Overlapped(attempts)
-	if !overlapped {
+	if !concurrency.Overlapped(attempts) {
 		t.Fatalf("the two requests did not overlap (%v and %v), so this run exercised the "+
 			"sequential path and could not have reached a check-then-act defect",
 			attempts[0].InFlight(), attempts[1].InFlight())
 	}
-	t.Logf("PROOF one world through two adapters, both joins accepted; overlapped by %v "+
-		"(in flight %v and %v)", by, attempts[0].InFlight(), attempts[1].InFlight())
+	t.Logf("PROOF one world through two adapters, both joins accepted; %s (in flight %v and %v)",
+		concurrency.OverlapMeasured(attempts), attempts[0].InFlight(), attempts[1].InFlight())
 }
 
 // joinReq builds one honest join_event request for an actor's api session.
