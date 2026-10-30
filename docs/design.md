@@ -1521,6 +1521,23 @@ this sweep cannot build, and it says so by reporting every try's vacuity rather
 than by passing quietly. The limit is not swept: the width is derived from it,
 and the sessions are opened before the sweep begins.
 
+**EVERY HANDLE THE SUBJECT TAKES MUST BE THE CONTENDED THING, and where it is
+not the stage refuses rather than answers.** A fan-out sends ONE set of
+arguments to every contender, which is right for the thing being contended —
+the point is that they all name the same event — and wrong for anything
+belonging to one caller. `accept_invitation` is the shape: its handle is an
+`invitation`, its limit would be the event's capacity, and one invitation sent
+to two contenders has the second answered "already accepted". Accepted would be
+1 of 2 into room for 1, which is neither a finding nor VACUOUS by any of the
+four conditions — so the stage would report no overfill over a world in which
+only one request could ever have succeeded. A control that is the case it
+controls for, arriving through a door the vacuity clause does not watch. The
+condition is derivable, which is why it is a refusal and not a comment: the
+contended thing is what the limit's action CREATES, so a handle of any other
+kind is per-caller by construction. Sending per-contender arguments is not built
+instead, because nothing in the tree declares such a subject and a mechanism
+with no project behind it is the void this phase exists to close.
+
 **A FINDING STOPS THE SWEEP AND AN ABSENCE DOES NOT.** The two claims are not
 symmetric. A found overfill needs ONE witness — the system held more than its
 own limit allows, once, and no further sampling makes that less true — so the

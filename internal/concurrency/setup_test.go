@@ -216,3 +216,60 @@ func names(as []bindings.Action) []string {
 	}
 	return out
 }
+
+// A HANDLE THAT IS NOT THE CONTENDED THING IS REFUSED, because the fan-out
+// sends ONE set of arguments to every contender.
+//
+// THE HAZARD IS A FALSE CLEAN AND NOT A CRASH, which is why it is worth a
+// refusal. `accept_invitation` is the shape: its handle is an `invitation`, its
+// limit would be the event's capacity, and one invitation sent to two
+// contenders has the second answered "already accepted" -- so accepted is 1 of
+// 2 into room for 1, which is neither a finding nor vacuous by any of
+// Contention's four conditions. The stage would report `no overfill` over a
+// world in which only one request could ever have succeeded: a control that is
+// the case it controls for, arriving through a door the vacuity clause does not
+// watch.
+//
+// BOTH SIDES ARE DRIVEN, because a refusal that fired on the shipped toy would
+// take the stage's only subject with it.
+func TestAHandleThatIsNotTheContendedThingIsRefused(t *testing.T) {
+	// THE SHIPPED TOY PASSES: join_event takes an `event` and create_event --
+	// the action its limit is read from -- creates one.
+	b := toyBindings(t)
+	subs, err := Subjects(b)
+	if err != nil {
+		t.Fatalf("Subjects: %v", err)
+	}
+	if _, err := SetupFor(b, subs[0]); err != nil {
+		t.Fatalf("the toy's own subject was refused by this check: %v", err)
+	}
+
+	// AND THE PER-CONTENDER SHAPE IS REFUSED, naming the kind and what the
+	// limit's action does create.
+	two := bindings.Bindings{Actions: []bindings.Action{
+		{Name: "open_room", Creates: []string{"room"}, Args: []bindings.Arg{
+			{Name: "seats", Source: bindings.ArgDraw, From: []any{1, 2}}}},
+		{Name: "issue_pass", Creates: []string{"pass"}, Args: []bindings.Arg{
+			{Name: "room", Source: bindings.ArgHandle, Of: "room"}}},
+		{Name: "take_seat", Contended: bindings.Contended{
+			Limit: "open_room.seats", Held: "room_count"},
+			Args: []bindings.Arg{
+				{Name: "room", Source: bindings.ArgHandle, Of: "room"},
+				{Name: "pass", Source: bindings.ArgHandle, Of: "pass"}}},
+	}}
+	tsubs, err := Subjects(two)
+	if err != nil {
+		t.Fatalf("Subjects: %v", err)
+	}
+	_, err = SetupFor(two, tsubs[0])
+	if err == nil {
+		t.Fatal("a subject taking a per-contender handle returned a chain, so the stage would " +
+			"send one pass to every contender and read the refusals as a clean limit")
+	}
+	for _, want := range []string{"take_seat", `"pass"`, "open_room", "[room]"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %q: %v", want, err)
+		}
+	}
+	t.Logf("PROOF %v", err)
+}

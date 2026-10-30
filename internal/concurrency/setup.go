@@ -66,6 +66,48 @@ func SetupFor(b bindings.Bindings, s Subject) (Chain, error) {
 			"the seed chooses", s.Action.Name, s.LimitAction, s.LimitArg, arg.Source)
 	}
 
+	// EVERY HANDLE THE SUBJECT TAKES MUST BE THE CONTENDED THING, and this
+	// refusal is a bound on the stage rather than a defect in a project.
+	//
+	// THE FAN-OUT SENDS ONE SET OF ARGUMENTS TO N CONTENDERS. That is right for
+	// the thing being contended -- the point is that they all name the SAME
+	// event -- and wrong for anything that belongs to one caller. Take
+	// `accept_invitation`: its handle is an `invitation`, the limit is the
+	// event's capacity, and one invitation sent to two contenders has the
+	// second answered "already accepted". Accepted would be 1 of 2 into room
+	// for 1, which is neither a finding nor VACUOUS by any of Contention's four
+	// conditions -- so the stage would report `no overfill` over a world in
+	// which only one request could ever have succeeded. A control that is the
+	// case it controls for, arriving through a door the vacuity clause does not
+	// watch.
+	//
+	// THE CONDITION IS DERIVABLE AND THAT IS WHY IT IS A REFUSAL AND NOT A
+	// COMMENT: the contended thing is what the limit's action CREATES, so a
+	// handle argument of any other kind is per-caller by construction. The
+	// shipped toy passes it -- `join_event` takes an `event` and `create_event`
+	// makes one -- and nothing in the tree trips it, which is also why sending
+	// per-contender arguments is not built here: it would be a mechanism with
+	// no project behind it. The refusal says what the stage cannot do instead
+	// of answering a clause it could not have answered.
+	limited := map[string]bool{}
+	for _, kind := range limit.Creates {
+		limited[kind] = true
+	}
+	for _, arg := range s.Action.Args {
+		if arg.Source != bindings.ArgHandle || limited[arg.Of] {
+			continue
+		}
+		// THE WIDTH IS NOT IN THIS SENTENCE, because it is not known here: the
+		// limit is read later, from the argument the setup sends. A figure put
+		// in by hand would be a count of contenders this run may not have.
+		return Chain{}, fmt.Errorf("action %q takes a handle of kind %q, and %s -- the action its "+
+			"limit is read from -- creates %v: a fan-out sends ONE set of arguments to EVERY "+
+			"contender, so a thing belonging to one of them would have the others refused for a "+
+			"reason that is not the limit, and the clause would be answered on a world where only "+
+			"one request could succeed",
+			s.Action.Name, arg.Of, s.LimitAction, limit.Creates)
+	}
+
 	order, err := setup.Order(b, needs(s.Action))
 	if err != nil {
 		return Chain{}, fmt.Errorf("the setup for %q: %w", s.Action.Name, err)
