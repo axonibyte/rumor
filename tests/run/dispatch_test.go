@@ -11,15 +11,21 @@ import (
 // concurrency stage gets its fan-out, one that enables it alone gets no walk,
 // and one that enables it with no world to contend in is told why.
 //
-// IT COPIES examples/toy AND EDITS ONE LINE, which is this package's own
-// established fixture shape -- the hang-report arm drives "a copy of
-// examples/toy whose `worker_idle` can never read quiet" the same way. The copy
-// is what keeps the SHIPPED toy's meaning fixed: every row of its seeds.lock is
-// replayed by the promotion arm and read for the WALK's outcome, and a stage
-// that finds the toy's capacity race on every run would make those rows exit 3
-// whatever their walk did. Whether the shipped example should enable this stage
-// is a question about what a promotion witnesses, and it is not mine to settle
-// inside the commit that makes the stage runnable.
+// IT COPIES examples/toy, which is this package's own established fixture
+// shape -- the hang-report arm drives "a copy of examples/toy whose
+// `worker_idle` can never read quiet" the same way. The copy is still the
+// subject for the two cells that need declarations the shipped toy does not
+// have: `api` disabled, and no `[[rollback]]` provider.
+//
+// THE STAGE IS NO LONGER ADDED BY THE FIXTURE, AND THAT IS THE RULING. fable
+// settled at coop rumor/1553 that examples/toy enables `concurrency` itself --
+// a project declaring a contended action and not running the stage that
+// contends it is the mechanism-not-stage void one tier down -- with the two
+// unprofiled seeds.lock rows taking a stages-only profile so the promotion arm
+// keeps reading the status. So the first cell edits NOTHING, and the fixture
+// ASSERTS the declaration instead of writing it: an edit that added a key the
+// toy already declares is a duplicate TOML key and a refusal, and an edit that
+// silently added nothing would leave this arm reading a world it did not build.
 func TestTheDispatchRunsTheConcurrencyStage(t *testing.T) {
 	for _, c := range []struct {
 		what     string
@@ -30,8 +36,9 @@ func TestTheDispatchRunsTheConcurrencyStage(t *testing.T) {
 		code     int
 	}{
 		{
+			// NO EDIT AT ALL: the shipped toy enables both.
 			what:     "both stages",
-			edit:     enableConcurrency,
+			edit:     requireConcurrency,
 			walks:    true,
 			contends: true,
 			code:     3, // the stage finds the toy's capacity race; so does the walk, often
@@ -42,7 +49,7 @@ func TestTheDispatchRunsTheConcurrencyStage(t *testing.T) {
 			// have walked anyway and read as a run of something nobody asked
 			// for.
 			what:     "the concurrency stage alone",
-			edit:     func(s string) string { return apiOff(enableConcurrency(s)) },
+			edit:     func(s string) string { return apiOff(requireConcurrency(s)) },
 			walks:    false,
 			contends: true,
 			code:     3,
@@ -54,7 +61,7 @@ func TestTheDispatchRunsTheConcurrencyStage(t *testing.T) {
 			// absence. D13's skip reasons are 111's to report; this is the line
 			// that keeps the absence from being silent in the meantime.
 			what:    "the concurrency stage with no rollback provider",
-			edit:    func(s string) string { return noProvider(apiOff(enableConcurrency(s))) },
+			edit:    func(s string) string { return noProvider(apiOff(requireConcurrency(s))) },
 			walks:   false,
 			skipped: true,
 			code:    0,
@@ -123,10 +130,22 @@ func TestTheDispatchRunsTheConcurrencyStage(t *testing.T) {
 	}
 }
 
-// The three edits, each one line of intent over the toy's own platform.
-func enableConcurrency(s string) string {
-	return strings.Replace(s, "[stages]\napi = { enabled = true }",
-		"[stages]\napi = { enabled = true }\nconcurrency = { enabled = true }", 1)
+// The edits, each one line of intent over the toy's own platform.
+
+// requireConcurrency changes nothing and asserts the shipped toy enables the
+// stage, which is what every cell below rests on.
+//
+// IT IS A CHECK AND NOT AN EDIT because fable's ruling put the declaration in
+// the project: adding it here would be a duplicate TOML key -- measured, the
+// run refuses with "Key 'stages.concurrency.enabled' has already been
+// defined" -- and an edit that found nothing to change would leave these cells
+// driving a project with no stage to run while still reading as a dispatch arm.
+func requireConcurrency(s string) string {
+	if !strings.Contains(s, "concurrency = { enabled = true }") {
+		panic("examples/toy no longer enables the concurrency stage, so these cells would drive " +
+			"a project with no stage to contend with: fable ruled it in at coop rumor/1553")
+	}
+	return s
 }
 
 func apiOff(s string) string {

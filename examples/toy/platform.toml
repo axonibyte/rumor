@@ -35,6 +35,20 @@ count = 1
 [stages]
 api = { enabled = true }
 browser = { enabled = true }
+# AND THE STAGE THAT CONTENDS WHAT THIS PROJECT DECLARES AS CONTENDED (R8.2,
+# 109; fable's ruling at coop rumor/1553). `join_event` carries
+# `contended = { limit = ..., held = ... }` and a toy that declared it without
+# running the stage that reads it would be the mechanism-not-stage void one tier
+# down -- the same shape as `[stages]` being declared and never dispatched, which
+# 108 closed. So this is enabled here, and 110 and 111 inherit a toy whose
+# stages all run.
+#
+# WHAT IT COSTS, NAMED: every UNPROFILED `rumor run examples/toy` now contends
+# join_event, and the stage finds this toy's capacity race every time -- so such
+# a run exits 3 whatever its walk did. The two seeds.lock rows that are
+# unprofiled take the `walking` profile below, which narrows the stages and
+# nothing else.
+concurrency = { enabled = true }
 
 [weights.default]
 # RETUNED IN R5.4 (fable, coop r5/99) BECAUSE THE WALK WAS ALL LIES. At the old
@@ -137,6 +151,31 @@ accept_invitation = 0
 # fields are unmoved -- the pool does not consume the generator's stream for a
 # candidate it cannot draw.
 recount_event = 0
+
+# THE `walking` PROFILE: THE WALK ALONE, AND NOTHING ELSE NARROWED.
+#
+# WHY IT EXISTS (fable, coop rumor/1553, on rook's third option at /1550).
+# Enabling `concurrency` above makes every unprofiled run of this project
+# contend, and the stage finds the capacity race every time -- so a seeds.lock
+# row that is promoted for what its WALK found would exit 3 whatever the walk
+# did, which is an arm that cannot fail. The rows take this profile and keep
+# reading the status, so nothing about what a row reads changes.
+#
+# AND IT CARRIES NO WEIGHTS BLOCK, DELIBERATELY. A `[weights.profile.walking]`
+# table is what would move the mix those rows exist to test: precedence is
+# profile, then stage, then default (platform.go:104-118), so with no table of
+# its own every kind falls through to `[weights.default]` and the draw is the
+# one the rows were promoted under. Measured rather than reasoned: seeds 2 and
+# 40 print byte-identical walks with and without this profile.
+#
+# SEEDS AND BUDGET ARE THE SCHEMA'S, NOT A TUNING. `[profiles.<name>]` requires
+# all three keys (platform.go:240-246), and this profile is about the STAGE
+# LIST alone -- so the two numbers are the toy's own, matching `settling` and
+# `expiring`, and a reader should not read a seed count into them.
+[profiles.walking]
+stages = ["api"]
+seeds = 1
+budget = "1m"
 
 # THE `settling` PROFILE ITSELF, which the weights table below is FOR: a
 # weights profile naming no declared profile is refused by name, and the refusal

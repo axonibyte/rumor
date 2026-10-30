@@ -38,8 +38,21 @@
 # 2 reaches the same row in four. Keeping both would carry the longer seed for
 # a row already covered, and a regression suite is not improved by a second
 # witness to one defect.
-2
-40
+# AND THESE TWO NOW NAME A PROFILE THAT NARROWS STAGES AND NOTHING ELSE
+# (fable, coop rumor/1553, taking rook's third option at /1550). 109 enables the
+# `concurrency` stage in this project's platform, and that stage finds this
+# toy's capacity race on EVERY run -- so an unprofiled replay of either row
+# would exit 3 whatever its walk did, and the arm that replays these rows would
+# stop being able to see a lost walk defect. `profile=walking` selects the api
+# stage alone and carries no weights block, so the DEFAULT MIX these two rows
+# exist to test is the one they still run under; measured before the token was
+# written, both print byte-identical walks with and without it.
+#
+# THE ROWS STILL READ THE STATUS, which is the half that matters and rook's
+# point at /1550: nothing about what a row means changes, and the cost is one
+# declaration and two tokens rather than a new oracle for every row.
+2 profile=walking
+40 profile=walking
 
 # 12 -- R6'S ROW, AND THE FIRST LINE HERE TO NAME A PROFILE. `profile=settling`
 # says which weights a replay must use; a line without the token means the

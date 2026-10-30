@@ -25,26 +25,52 @@ func toyPlatform(t *testing.T) platform.Platform {
 	return rep.Platform
 }
 
-// RAN, NOT DECLARED -- rook's partner at coop r8/14. The toy declares `api`
-// AND `browser`, both ENABLED, and only `api` is one this build runs. A
-// selection that named every declared stage would return both, which is the
-// defect the drill is about, so the arm asserts the declaration it must NOT
-// follow.
+// RAN, NOT DECLARED -- rook's partner at coop r8/14. The toy declares `api`,
+// `concurrency` and `browser`, all ENABLED, and `browser` is one this build
+// cannot run. A selection that named every declared stage would return all
+// three, which is the defect the drill is about, so the arm asserts the
+// declaration it must NOT follow.
+//
+// THE EXPECTATION IS THE RUNNABLE SET AND NOT A LITERAL, which is what 109
+// moving the toy's declarations taught: this arm read `just [api]` and failed
+// the moment `concurrency` became runnable and the toy enabled it -- correctly,
+// and for a reason that was not its subject. The discriminator was never the
+// COUNT; it is that an enabled stage nobody can run is absent. So the set is
+// computed from Known and `browser` is asserted present-and-enabled-and-absent
+// by name: the arm now fails when a stage that cannot run is selected, or when
+// one that can is dropped, and not when the toy declares one more.
 func TestSelectReturnsWhatRunsAndNotWhatIsDeclared(t *testing.T) {
 	p := toyPlatform(t)
 	if st, ok := p.Stages["browser"]; !ok || !st.Enabled {
 		t.Fatal("the toy no longer declares browser as enabled, so this arm cannot tell ran from declared")
 	}
-	if st, ok := p.Stages["api"]; !ok || !st.Enabled {
-		t.Fatal("the toy no longer declares api as enabled")
+	if Known["browser"] {
+		t.Fatal("this build now runs browser, so the toy's declarations no longer hold a stage " +
+			"that is enabled and unrunnable -- which is the only thing this arm can read")
+	}
+	var want []string
+	for _, name := range knownNames() {
+		st, declared := p.Stages[name]
+		if Known[name] && declared && st.Enabled {
+			want = append(want, name)
+		}
+	}
+	if len(want) == 0 {
+		t.Fatal("the toy enables no stage this build runs, so a selection would be a refusal")
 	}
 	got, err := Select(p, "")
 	if err != nil {
 		t.Fatalf("Select: %v", err)
 	}
-	if len(got) != 1 || got[0] != API {
-		t.Errorf("Select returned %v, expected just [%s]: browser is declared and enabled and "+
-			"this build cannot run it, so it did not run", got, API)
+	if !slices.Equal(got, want) {
+		t.Errorf("Select returned %v and the toy enables %v of the stages this build runs: "+
+			"browser is declared and enabled and this build cannot run it, so it must not appear",
+			got, want)
+	}
+	for _, name := range got {
+		if name == "browser" {
+			t.Errorf("browser was selected and no build can run it: %v", got)
+		}
 	}
 	t.Logf("PROOF declared %d stage(s), ran %v", len(p.Stages), got)
 }
@@ -89,7 +115,16 @@ func TestAnUnknownDeclaredStageIsRefusedByName(t *testing.T) {
 func TestAnEmptySelectionRefusesWithTheReason(t *testing.T) {
 	t.Run("disabled", func(t *testing.T) {
 		p := toyPlatform(t)
-		p.Stages[API] = platform.Stage{Enabled: false}
+		// EVERY RUNNABLE STAGE THE PROJECT ENABLES, and not `api` alone: this
+		// cell disabled the one name and stopped emptying the selection the
+		// moment a second stage became runnable and the toy enabled it. A cell
+		// that no longer reaches the state it is named for passes on the
+		// refusal it was not testing.
+		for name := range Known {
+			if _, declared := p.Stages[name]; declared && Known[name] {
+				p.Stages[name] = platform.Stage{Enabled: false}
+			}
+		}
 		_, err := Select(p, "")
 		if err == nil {
 			t.Fatal("a platform with its only runnable stage disabled returned a selection")

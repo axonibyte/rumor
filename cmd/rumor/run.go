@@ -279,24 +279,44 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 	}
 
 	// THE STATUSES ACROSS STAGES, RANKED, and the ranking is shrinkFound's
-	// reasoning one level up. A REFUSAL (1) stops the run where it is found:
-	// the project's own documents are wrong and the stages after it would be
-	// run against the same wrong declaration. A FINDING (3) is the run's
-	// product and a later stage's could-not-run does not unfind it -- "a gate
-	// reading the refusal's 1 would lose a finding it exists to catch" -- so a
-	// finding outranks a 2 and the 2 still prints its reason. A COULD-NOT-RUN
-	// (2) otherwise wins over 0, because what an observation would have said is
-	// unknown.
-	found, couldNotRun := false, false
+	// reasoning one tier up -- with the order I got WRONG first, caught by two
+	// arms that were already in the tree.
+	//
+	// A FINDING OUTRANKS EVERYTHING, including a later stage's refusal. My
+	// first cut returned 1 the moment any stage refused, which took the walk's
+	// finding away: TestTwoDeclaredRollbackProvidersRefuseTheShrink and
+	// TestASurfaceRefusalReachesStdoutAndKeepsTheFindingsStatus both failed
+	// with "exit 1, want 3: a shrink refusal does not overturn the finding",
+	// over a run whose walk had printed `run: FOUND bug after step 4` and whose
+	// concurrency stage then refused the same bad [[rollback]] declarations the
+	// shrink had. Those arms were written for the SHRINK's refusal and their
+	// words held one tier up the moment a second stage could refuse: a gate
+	// reading the 1 would lose a finding the tool exists to catch. The project
+	// being wrong does not unfind a bug.
+	//
+	// A REFUSAL STILL STOPS THE STAGES AFTER IT, because they would be run
+	// against the same wrong declaration -- it just no longer decides the
+	// status on its own. It prints either way, so the reader is told.
+	//
+	// AND A REFUSAL OUTRANKS A COULD-NOT-RUN when there is no finding: the
+	// project's own documents being wrong is a specific, actionable statement
+	// the stage made, where a could-not-run is the machine. Both print.
+	found, refused, couldNotRun := false, false, false
 	for _, name := range stages {
 		switch runners[name]() {
 		case 1:
-			return 1
+			refused = true
 		case findingStatus:
 			found = true
 		case 2:
 			couldNotRun = true
 		}
+		if refused {
+			break
+		}
+	}
+	if refused && !found {
+		return 1
 	}
 	if found {
 		return findingStatus
