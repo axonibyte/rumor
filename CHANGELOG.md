@@ -3,6 +3,50 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.43 — 2026-10-30
+
+**A hostile corpus derived from the project's own declarations, and an oracle
+that refuses rather than guesses** — issue 108, R8.1, the first of R8's four
+children. It also carries the stage dispatch all four need, because a stage
+nobody can run is the void the gate list was written against.
+
+- **THE CORPUS IS DERIVED, NOT WRITTEN.** Six classes over every action that
+  emits, each case perturbing ONE declared argument and leaving the others
+  plausible, with the perturbed field recorded as part of the case. A draw's
+  type decides which classes it earns, which is how `capacity` — a draw and not
+  a literal — got the non-positive case that reaches the toy's one rule about
+  it. A project declaring no write action, or none with arguments, is REFUSED
+  by name: an empty corpus and a corpus nobody generated read alike.
+- **THE SETUP IS DERIVED FROM `creates`**, topologically ordered, refusing a
+  cycle with its path and an unprovided kind by naming the declared kinds. A
+  setup step the system refuses is a COULD-NOT-RUN and not a finding: what the
+  hostile case would have answered is unknown, and blaming the corpus for a
+  world it never got is the false finding this stage exists to avoid.
+- **AN ANSWER IS CREDITED TO THE LAYER THAT GAVE IT.** Of 45 cases against the
+  toy, 18 never leave the adapter, 5 are the decoder's, 21 are a rule the
+  system wrote, 1 is accepted. Of the 13 distinct messages a reader sees, 5 are
+  `encoding/json`'s — they name a field only because Go formats the struct
+  field — so D4's clauses run over the system's own 21 and not over all 26.
+- **`[refusal].message` DECLARES WHERE A REFUSAL's TEXT LIVES**, as a path and
+  not a value. `[[action]].response` could not carry it: that table is an
+  equality contract for what acceptance IS, so an error key there would make
+  every ACCEPTED action read as a refusal. Measured before the table existed:
+  with the key read from an undeclared `body.error` and the toy's tag renamed
+  to `json:"message"`, the stage emitted 27 findings against a system that
+  still named every field it refused — every one false. The table is new, the
+  contract version stays `"2"`, and the walk does not read it.
+- **THE DECLARED STAGES ARE DISPATCHED AND THE RECORD SAYS WHICH RAN.**
+  `[stages]` was parsed, cross-checked and never dispatched, and `Project.Stage`
+  was read for `[weights.stage.*]` with nothing setting it — so every such
+  override in every project was dead. A declared stage this build cannot run is
+  refused BEFORE the run, by name, listing the known set.
+- **THREE COULD-NOT-RUNS, ALL FOUND BY ASKING WHAT THE REPORT SAYS WHEN THE
+  WORLD IS WRONG.** A corpus of which nothing reached the system is not a clean
+  "no 5xx"; a run in which no refusal's text was read cannot answer D4, because
+  an undeclared message key is indistinguishable from a system that refused in
+  silence; and a project declaring no `[refusal]` at all is told so by name.
+  Each reports the reason instead of a verdict.
+
 ## 0.1.42 — 2026-10-30
 
 **A deadline is a thing the system holds and the run can land on** — issue 103,
