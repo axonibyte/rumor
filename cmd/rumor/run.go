@@ -244,9 +244,38 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 	// is what selecting a stage means; before this, such a project would have
 	// walked anyway and read as a run of something it had not asked for.
 	ctx := context.Background()
-	selected := map[string]bool{}
-	for _, name := range stages {
-		selected[name] = true
+
+	// EVERY SELECTED STAGE HAS A RUNNER, AND THAT IS CHECKED BEFORE THE FIRST
+	// ONE RUNS. rook's finding at coop r8/67, taken: my first cut put the
+	// no-case branch inside the loop, so a project declaring [api,
+	// concurrency] against a build missing the concurrency case would have run
+	// the whole walk and THEN reported a could-not-run. internal/stage's own
+	// rule is the one that crosses -- "THE REFUSAL COMES BEFORE THE RUN ...
+	// discovering it after a walk would mean reporting a run whose stage list
+	// was already wrong" -- and the walk is the expensive half of exactly that
+	// mistake. A pass over the selection first costs nothing and names EVERY
+	// missing case rather than the first one reached.
+	//
+	// IT IS A COULD-NOT-RUN AND NOT A REFUSAL, which is the one place I did not
+	// follow rook's wording. A stage marked runnable with no dispatch is THIS
+	// BUILD being inconsistent with itself; docs/cli.md's 1 is "the project's
+	// own documents are wrong", and a project that declared a stage this build
+	// advertises as runnable has done nothing wrong. 2 is "what an observation
+	// would have said is unknown", which is exactly the state.
+	runners := map[string]func() int{
+		stage.API: func() int {
+			return walkStage(ctx, dir, prep, brep.Bindings.Probes, p, seed, steps, stdout, stderr)
+		},
+		stage.Concurrency: func() int {
+			return concurrencyStage(ctx, dir, prep, brep.Bindings, seed, stdout, stderr)
+		},
+	}
+	if noRunner := missingRunners(stages, runners); len(noRunner) > 0 {
+		_, _ = fmt.Fprintf(stderr, "run: could not run: the stage(s) %s are marked runnable and "+
+			"this dispatch has no case for them, so the selection %s could not be taken: nothing "+
+			"ran, rather than a walk whose stage list was already wrong\n",
+			strings.Join(noRunner, ", "), strings.Join(stages, ", "))
+		return 2
 	}
 
 	// THE STATUSES ACROSS STAGES, RANKED, and the ranking is shrinkFound's
@@ -260,22 +289,7 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 	// unknown.
 	found, couldNotRun := false, false
 	for _, name := range stages {
-		var st int
-		switch name {
-		case stage.API:
-			st = walkStage(ctx, dir, prep, brep.Bindings.Probes, p, seed, steps, stdout, stderr)
-		case stage.Concurrency:
-			st = concurrencyStage(ctx, dir, prep, brep.Bindings, seed, stdout, stderr)
-		default:
-			// Select has already refused every name this build cannot run, and
-			// Known marks the runnable ones; a name that reached here with no
-			// case is a stage made runnable without its dispatch, which is the
-			// tripwire's subject. It says so rather than running nothing.
-			_, _ = fmt.Fprintf(stderr, "run: could not run: the stage %q is marked runnable and "+
-				"this dispatch has no case for it\n", name)
-			st = 2
-		}
-		switch st {
+		switch runners[name]() {
 		case 1:
 			return 1
 		case findingStatus:
@@ -291,6 +305,26 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		return 2
 	}
 	return 0
+}
+
+// missingRunners is the selected stages this dispatch has no case for, in the
+// selection's order.
+//
+// IT IS A FUNCTION SO THE PASS HAS AN ARM. No build can reach the branch that
+// reads it -- internal/stage's tripwire fails the moment a stage is marked
+// runnable without a case here, which is the whole point of that arm -- so the
+// refusal itself is armed by nothing and says so. What IS armable is the
+// selection: that it names EVERY missing stage rather than the first one
+// reached, and that it names none when every stage has a runner. A map lookup
+// written inline would have left even that unexercised.
+func missingRunners(stages []string, runners map[string]func() int) []string {
+	var out []string
+	for _, name := range stages {
+		if _, ok := runners[name]; !ok {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // walkStage is the `api` stage: the walk `rumor run` has always taken, with its

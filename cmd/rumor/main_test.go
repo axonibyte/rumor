@@ -293,3 +293,26 @@ func TestFakeAdapterUsageIsInTheUsageLine(t *testing.T) {
 		}
 	}
 }
+
+// THE DISPATCH'S PASS OVER ITS SELECTION NAMES EVERY STAGE IT CANNOT RUN.
+//
+// rook's finding at coop r8/67 moved this check ahead of the first stage, so a
+// build inconsistency costs nothing instead of a whole walk. The refusal it
+// guards cannot be reached by any build -- internal/stage's tripwire fails in
+// the same change that would create one -- so what is armed here is the
+// selection and not the message: every missing name, in the selection's order,
+// and none when every stage has a runner.
+//
+// A FIRST-ONE-WINS PASS WOULD PASS A ONE-STAGE CELL, which is why the subject
+// has two missing stages around one that is present.
+func TestTheDispatchNamesEveryStageItCannotRun(t *testing.T) {
+	runners := map[string]func() int{"api": func() int { return 0 }}
+	got := missingRunners([]string{"fuzz", "api", "browser"}, runners)
+	if len(got) != 2 || got[0] != "fuzz" || got[1] != "browser" {
+		t.Errorf("the pass named %v; it must name every selected stage with no case, in the "+
+			"selection's order", got)
+	}
+	if got := missingRunners([]string{"api"}, runners); len(got) != 0 {
+		t.Errorf("the pass named %v over a selection every runner covers", got)
+	}
+}
