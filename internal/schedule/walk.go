@@ -142,6 +142,13 @@ type Prober interface {
 // the whole of issue 72's "the sequence is over handles, not ids": two attempts
 // from one seed produce the same Steps while every id behind the handles
 // differs.
+// Draw is one scalar an action drew, named so a reader of the record does not
+// need the bindings in hand to know what was chosen.
+type Draw struct {
+	Arg   string
+	Value any
+}
+
 type Step struct {
 	N     int
 	Actor string
@@ -168,6 +175,31 @@ type Step struct {
 	// answers that (fable, coop r7/51): the pair says whether the adapter put
 	// the clock where the walk asked.
 	AdvancedTo int64
+
+	// Drew is the scalars this step's action DREW, in the order the action
+	// declares its arguments.
+	//
+	// IT IS HERE SO A LIMIT CAN BE READ FROM THE WALK's OWN NUMBER, which is
+	// fable's ruling at coop rumor/1530: `[[action]].contended.limit` names the
+	// creating action's drawn argument, and that scalar was in no field of this
+	// struct -- Used carries HANDLES and AdvancedTo is the one recorded draw.
+	// Without it a replay could not read the same limit the walk handed the
+	// system, and a concurrency verdict would compare an overfill against a
+	// number nothing recorded.
+	//
+	// A SLICE IN DECLARED ORDER AND NOT A MAP, which is rook's shape note at
+	// coop r8/57 and the reason is precise: a map would print byte-identically
+	// today because fmt sorts map keys, which rests D1's byte-identity on
+	// fmt's behaviour rather than on a declared order that something in this
+	// tree claims. Used's own convention -- "in the order the action declares
+	// them" -- already answers it.
+	//
+	// AND IT IS NOT ON THE HASHED LINE, for AdvancedTo's reason: that field is
+	// carried here and printed nowhere, so the control's per-step line is
+	// N, Actor, kind, mark, minted, used and nothing else. Adding a draw to it
+	// would move every recorded digest in the tree, which is a change to every
+	// control rather than a new field.
+	Drew []Draw
 
 	// Handles are the run-local handles this step minted, in creation order.
 	Handles []string
@@ -1842,6 +1874,14 @@ func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
 		return out, err
 	}
 	out.Args = args
+	// THE RECORD CARRIES WHAT THE SEED CHOSE, set from the arguments actually
+	// SENT rather than drawn a second time: two draws from one seed would be
+	// the same fact carried twice, and the two could then disagree.
+	//
+	// AFTER THE ERROR CHECK, which is where I first put it wrong: a step whose
+	// arguments could not be built sent nothing, so recording a draw for it
+	// would put a number in the record that never reached the system.
+	step.Drew = Drawn(a, args)
 	// RECORDED IN DECLARATION ORDER, read off the declaration rather than off
 	// the map: a map's order is its own, and a record whose order moved between
 	// two attempts would fail the comparison for a reason that is not a

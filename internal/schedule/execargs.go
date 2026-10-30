@@ -40,6 +40,34 @@ import (
 // the project's declaration, so it belongs at load with the rest of them
 // (internal/bindings, `arg`), and catching it again at walk time would be a
 // second backstop with the same exit code rather than a check.
+// Drawn is the scalars an action drew, in the order the action declares its
+// arguments, read back out of the arguments ExecuteArgs built.
+//
+// DERIVED RATHER THAN RETURNED, so ExecuteArgs keeps its signature and its six
+// arms keep theirs: the drawn value IS the value under the argument's own name
+// in that map, so reading it back is reading the same number the walk handed
+// the system -- which is the property fable's ruling asks for and not a second
+// draw. A second return value would have been the same fact carried twice, and
+// the two could then disagree.
+//
+// ONLY `draw` ARGUMENTS, because a literal is in the declaration where anyone
+// can read it, a handle is already in Used, and an actor is the step's own.
+// What the record was missing is the one the SEED chose.
+func Drawn(a bindings.Action, args map[string]any) []Draw {
+	var out []Draw
+	for _, arg := range a.Args {
+		if arg.Source != bindings.ArgDraw {
+			continue
+		}
+		v, ok := args[arg.Name]
+		if !ok {
+			continue
+		}
+		out = append(out, Draw{Arg: arg.Name, Value: v})
+	}
+	return out
+}
+
 func ExecuteArgs(a bindings.Action, actor string, chosen map[string]string,
 	src *Source, t *handle.Table) (map[string]any, error) {
 

@@ -358,14 +358,19 @@ type Contended struct {
 	// examples/toy's own bindings name: "an oracle that read the same field
 	// could not disagree with it".
 	//
-	// SO THE ARGUMENT FORM IS THE ONE TO IMPLEMENT FIRST, and it needs
-	// something this package cannot give it: the drawn scalar is in no field
-	// of schedule.Step, whose Used carries HANDLES and whose AdvancedTo is the
-	// one recorded draw -- a field that exists because a mutant of
-	// chooseHandles "survived the entire suite until this field existed". A
-	// stage reading a drawn limit therefore waits on Step carrying the draw.
-	// Which form survives is not this type's to settle; that it matters is
-	// recorded here so a reader does not implement the cheaper one.
+	// SO THE OBSERVATION FORM IS REFUSED AND NOT MERELY WORSE: fable withdrew
+	// it at coop rumor/1530, and the argument form is the ruled one. A reader
+	// reaching for the cheaper half is implementing something the room has
+	// already ruled out, which is a stronger thing to be told than that it is
+	// a hazard.
+	//
+	// AND THE ARGUMENT FORM NEEDED SOMETHING THIS PACKAGE CANNOT GIVE IT: the
+	// drawn scalar was in no field of schedule.Step, whose Used carries
+	// HANDLES and whose AdvancedTo is the one recorded draw -- a field that
+	// exists because a mutant of chooseHandles "survived the entire suite
+	// until this field existed". Step gains the drawn scalars in R8.2 for
+	// exactly this, so a replay reads the same limit the walk handed the
+	// system.
 	Limit string
 
 	// Held is the declared query that reads what the system HOLDS, which is
