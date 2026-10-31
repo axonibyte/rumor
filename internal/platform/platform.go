@@ -66,6 +66,20 @@ type Member struct {
 // browser-stage arms read it, and an absent value would make them vacuous.
 type Stage struct {
 	Enabled bool
+
+	// ReconcileEvery is `[stages.<name>].reconcile_every`: how many steps
+	// apart the walk re-checks what it is holding, instead of only after the
+	// last step.
+	//
+	// A STAGE DECLARING NONE READS 0 AND IS WALKED EXACTLY AS BEFORE, which
+	// is what keeps every R5-R7 measurement's meaning.
+	//
+	// IT IS A COUNT OF STEPS AND NOT A DURATION, deliberately. A period in
+	// time would make one seeded walk replay differently on a slower box,
+	// which is precisely what R5's ruling that NOTHING IS DRAWN exists to
+	// prevent -- so the period is declared, counted in steps, and the
+	// evidence it leaves is a count and an order rather than an elapsed time.
+	ReconcileEvery int
 }
 
 // Weights are the walk's weights: a complete default table and sparse
@@ -197,7 +211,18 @@ func Parse(doc map[string]any) Report {
 		enabled := 0
 		for _, name := range stages.Keys() {
 			s, _ := stages.Table(name, true)
-			st := Stage{Enabled: s.Bool("enabled", true)}
+			st := Stage{
+				Enabled:        s.Bool("enabled", true),
+				ReconcileEvery: s.Int("reconcile_every", false),
+			}
+			// A NEGATIVE PERIOD IS REFUSED BY NAME rather than clamped: `n %
+			// period` with a negative period never equals 0, so the stage
+			// would silently reconcile only at the end while its declaration
+			// said otherwise -- a knob that reads as set and does nothing.
+			if st.ReconcileEvery < 0 {
+				s.Refuse("reconcile_every", fmt.Sprintf(
+					"%d: a period is a count of steps and cannot be negative", st.ReconcileEvery))
+			}
 			if st.Enabled {
 				enabled++
 			}

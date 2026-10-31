@@ -64,6 +64,28 @@ type Project struct {
 	// returns exactly what Evaluate did.
 	Eventual []engine.Eventual
 
+	// ReconcileEvery is how many steps apart the walk re-checks what it is
+	// holding, from `[stages.<name>].reconcile_every`.
+	//
+	// R5/152 ruled the walk's OBSERVATION cadence -- after every step -- and
+	// deferred "a selective WHEN (settling, periodic reconciliation)" to R8's
+	// api-sim BY NAME. This is that WHEN and nothing else: the observations
+	// after every step are untouched.
+	//
+	// A PROJECT DECLARING NONE (0) RECONCILES ONLY AFTER THE LAST STEP, which
+	// is exactly what every run did before this existed.
+	//
+	// THE PERIOD IS DECLARED AND NEVER DRAWN, which is the clause R5's ruling
+	// turns on: a drawn period would move the handle and kind sequences and
+	// break D1 for every seeded walk. One seed with one period is one walk.
+	//
+	// AND RECONCILING MID-WALK CHANGES THE WALK, which is the point rather
+	// than a hazard: clearing a pending at step 10 instead of after step 50
+	// means later steps see a register that settled. So D1 holds PER
+	// (seed, period) and not across periods -- two periods are two declared
+	// worlds, not one flaky one.
+	ReconcileEvery int
+
 	// Prober answers whether the system under test has settled, which is what
 	// a `quiesce` bound is judged against.
 	//
@@ -358,6 +380,21 @@ type Record struct {
 	// pending it re-asked, each as engine.Finding.Says renders it and sorted so
 	// two attempts of a seed cannot differ by map order.
 	Reconciled []string
+
+	// Settled is one entry per verdict a PERIODIC reconciliation reached,
+	// stamped `step N: <verdict>` and in step order.
+	//
+	// IT IS DELIBERATELY NOT `Reconciled`, which is documented just above as
+	// what the END-OF-RUN reconciliation judged and is what cmd/rumor prints
+	// under that name. Folding periodic verdicts into it would change what
+	// every existing reader of that field means by it, and no suite that
+	// asserts on it asked for the new meaning.
+	//
+	// THE EVIDENCE IS A COUNT AND AN ORDER -- len(), and the sequence -- and
+	// never an elapsed time. Two runs of one seed and one period must be
+	// comparable on this field, and a duration is the one thing about them
+	// that differs by box.
+	Settled []string
 
 	// Quiesce records WHETHER THE QUESTION WAS ASKED and what it answered, so
 	// a reader can tell "did not run" from "ran, found nothing".
@@ -805,6 +842,21 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	// returning and the end-of-run work below still runs.
 	stopped := false
 
+	// reAsked IS DECLARED BEFORE THE LOOP because it now has TWO producers:
+	// the periodic reconciliation inside the loop and the end-of-run one
+	// after it. It holds exactly the keys that got a re-check sentence from
+	// EITHER pass -- "re-checked at step n" or "re-checked after the last
+	// step" -- so stillOpen's "never re-checked" names a disjoint set by
+	// construction rather than by a reader trusting that one implies the
+	// other.
+	//
+	// IT WAS DECLARED AFTER THE LOOP until the periodic pass existed, and its
+	// comment there said "exactly the keys that got a 're-checked after the
+	// last step' sentence". That sentence was true of one producer and is the
+	// kind of claim a second producer silently falsifies, so it is corrected
+	// here rather than moved.
+	reAsked := map[string]bool{}
+
 	for n := 1; n <= steps; n++ {
 		// SEAL EVERYTHING SO FAR. The seal is the prefix a precondition is
 		// evaluated against, so it moves to the end of what has happened
@@ -943,6 +995,53 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 				break
 			}
 		}
+		// THE PERIODIC RECONCILIATION, which is all of R8's "selective WHEN"
+		// that R5/152 deferred here by name. Everything about the re-check
+		// itself is the end-of-run pass's, unchanged; only the WHEN is new.
+		//
+		// GUARDED ON !stopped BECAUSE THE END-OF-RUN PASS IS ABOUT TO RUN: a
+		// walk that just found its finding breaks out of this loop and reaches
+		// that pass immediately, so reconciling here as well would re-ask the
+		// same pendings twice in a row and record both.
+		//
+		// AND IT ASKS THE PROBER FRESH, for the reason the end-of-run pass
+		// states: the probes having JUST been asked is what makes a surviving
+		// disagreement a pending past its bound rather than a pending that
+		// simply has not been looked at again.
+		if !stopped && p.ReconcileEvery > 0 && n%p.ReconcileEvery == 0 && p.Prober != nil {
+			st, qerr := p.Prober.Quiesce(ctx)
+			if qerr != nil {
+				return rec, fmt.Errorf("schedule: step %d: asking whether the system settled "+
+					"for the periodic reconciliation: %w", n, qerr)
+			}
+			// A MID-RUN TIMEOUT IS NOT A FINDING, and this is the one place
+			// the periodic pass must NOT copy the end-of-run pass. There,
+			// `QuiesceTimedOut` means the run ENDED without settling, which
+			// R2.3 forbids. Here it means the system has not settled YET at
+			// step n, which is the ordinary state of a system mid-walk and is
+			// exactly what an eventual bound exists to tolerate. Treating it
+			// as a finding would make every run with a period and a slow
+			// subject report a bug it does not have.
+			//
+			// `QuiesceAsked` and `QuiesceQuiet` are likewise left alone: both
+			// are documented as the end-of-run answer, the end-of-run block
+			// always runs and so always has the last word, and writing a
+			// mid-run answer into a field named for the end would be a lie a
+			// reader could not see.
+			had := rec.Finding != nil
+			if err := reconcileHeld(ctx, p, sess, sessions, table, l, reg, st, held, reAsked,
+				&rec, fmt.Sprintf("reconciling at step %d", n),
+				fmt.Sprintf("at step %d", n), fmt.Sprintf("step %d: ", n), &rec.Settled); err != nil {
+				return rec, err
+			}
+			// A FINDING FROM THE RECONCILIATION ENDS THE WALK LIKE ANY OTHER,
+			// by the loop's own rule above: the first finding that stops a
+			// walk ends it, and the step that produced it is already recorded.
+			if !had && rec.Finding != nil {
+				stopped = true
+			}
+		}
+
 		if stopped {
 			break
 		}
@@ -969,12 +1068,6 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	// answering is could-not-run, where a probe that ran and stopped is a thing
 	// the run FOUND.
 	//
-	// reAsked IS DECLARED OUT HERE because stillOpen below needs it and the
-	// reconciliation that fills it is two blocks in. It holds exactly the keys
-	// that got a "re-checked after the last step" sentence, so the two
-	// producers of a pending's life describe disjoint sets by construction
-	// rather than by a reader trusting that one implies the other.
-	reAsked := map[string]bool{}
 	if p.Prober != nil {
 		state, qerr := p.Prober.Quiesce(ctx)
 		if qerr != nil {
@@ -1041,57 +1134,12 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		// past its bound -- `stale`, decided by engine.Judge where the
 		// re-check is in hand (fable, coop r6/87) -- and one that has resolved
 		// reads `consistent` and clears.
-		if len(held) > 0 && reg.Len() > 0 {
-			open := reg.Open()
-			for actor, queries := range open {
-				for _, query := range queries {
-					a, ok := held[askKey(actor, query)]
-					if !ok {
-						// A PENDING NOTHING REMEMBERED, NAMED RATHER THAN
-						// SKIPPED: it would otherwise sit open to the end of
-						// the run and be reported as clean, which is the
-						// outcome this whole arm exists to prevent.
-						return rec, fmt.Errorf("schedule: a %q pending is open for %s and the "+
-							"walk did not record what produced it, so it cannot be re-checked",
-							query, actor)
-					}
-					f, _, made, oerr := observeOne(ctx, p.Statute, sess, sessions, table, a.decl,
-						a.chosen, a.actor, l, engine.Bindings{Eventual: p.Eventual}, reg, state,
-						"reconciling after the last step")
-					if oerr != nil {
-						return rec, oerr
-					}
-					if !made {
-						continue
-					}
-					rec.Reconciled = append(rec.Reconciled, f.Says())
-					// AND THE PENDING'S OWN SENTENCE, pairing the clearing
-					// with the thing it cleared. Reconciled says only what
-					// the re-check decided; this says which pending, where it
-					// began, and that it was re-checked here.
-					rec.Pendings = append(rec.Pendings, fmt.Sprintf(
-						"%s/%s held at step %d, re-checked after the last step: %s",
-						actor, query, a.at, f.Says()))
-					// MARKED HERE AND NOT AT THE TOP OF THE LOOP, which is the
-					// whole distinction: a re-ask that could not be MADE
-					// returned above through `if !made { continue }`, and that
-					// pending genuinely was never re-checked. Only a re-ask
-					// that produced a verdict claims the key.
-					reAsked[askKey(actor, query)] = true
-					// A FINDING THE RECONCILIATION PRODUCES ENDS THE RUN LIKE
-					// ANY OTHER, and it does not overwrite one the walk
-					// already has: the earlier finding is what a shrink
-					// reduces, and the trace that reaches it is recorded.
-					if stopsTheWalk(f.Value) && rec.Finding == nil {
-						found := f
-						rec.Finding = &found
-						rec.FoundAt = len(rec.Steps)
-						rec.Sessions = sessions.Acquired()
-						rec.Facts = l.Facts()
-					}
-				}
-			}
-			sort.Strings(rec.Reconciled)
+		// RE-CHECKED AFTER THE LAST STEP: the end-of-run pass, which is the
+		// one every suite since R6.3 is written against. It and the periodic
+		// pass are one function; see reconcileHeld.
+		if err := reconcileHeld(ctx, p, sess, sessions, table, l, reg, state, held, reAsked,
+			&rec, "reconciling after the last step", "after the last step", "", &rec.Reconciled); err != nil {
+			return rec, err
 		}
 	}
 
@@ -1117,7 +1165,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	// key open, so passing `reg.Open()` alone made the same (actor, query)
 	// take both sentences -- "re-checked after the last step: pending" from
 	// the reconciliation and "never re-checked" from here (rook, coop
-	// rumor/1264). The set names which keys the loop spoke for.
+	// rumor/1264). The set names which keys EITHER pass spoke for.
 	//
 	// NAMED AS UNEXAMINED RATHER THAN AS CLEAN. "still open at the end" and
 	// "re-checked and cleared" are the two outcomes R2.3 distinguishes, and a
@@ -2714,4 +2762,95 @@ func EventualOf(b bindings.Bindings) []engine.Eventual {
 	// runs of one seed must not differ by it.
 	sort.Slice(out, func(i, j int) bool { return out[i].Of < out[j].Of })
 	return out
+}
+
+// reconcileHeld re-issues the observation behind every pending still open and
+// returns nothing but the verdicts it placed: one sentence per re-check into
+// `into`, a paired sentence into rec.Pendings, and the first finding that stops
+// a walk into rec.Finding.
+//
+// ONE COPY, TWO CALLERS, and the difference between them is three arguments
+// and nothing else: WHEN it runs, the `reason` observeOne records, and which
+// record field collects the verdicts. The end-of-run pass and the periodic
+// pass asking the same question two different ways is the drift this shape
+// exists to prevent -- the end-of-run pass is the one with the suites behind
+// it, so the periodic pass is the one that had to fit.
+//
+// IT DOES NOT ASK THE PROBER. The caller does, and passes the answer in,
+// because the fresh quiesce answer is what makes the re-check a VERDICT rather
+// than a repeat -- and a caller that has just asked must not ask twice.
+func reconcileHeld(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions,
+	table *handle.Table, l *ledger.Ledger, reg *engine.Register, state engine.QuiesceState,
+	held map[string]ask, reAsked map[string]bool, rec *Record,
+	reason, where, prefix string, into *[]string) error {
+	// NOTHING HELD OR NOTHING OPEN IS NOT AN ERROR, it is the ordinary case:
+	// the end-of-run caller guarded on exactly this before the extraction and
+	// the periodic caller needs the same answer every period it fires.
+	if len(held) == 0 || reg.Len() == 0 {
+		return nil
+	}
+	start := len(*into)
+	open := reg.Open()
+	for actor, queries := range open {
+		for _, query := range queries {
+			a, ok := held[askKey(actor, query)]
+			if !ok {
+				// A PENDING NOTHING REMEMBERED, NAMED RATHER THAN
+				// SKIPPED: it would otherwise sit open to the end of
+				// the run and be reported as clean, which is the
+				// outcome this whole arm exists to prevent.
+				return fmt.Errorf("schedule: a %q pending is open for %s and the "+
+					"walk did not record what produced it, so it cannot be re-checked",
+					query, actor)
+			}
+			f, _, made, oerr := observeOne(ctx, p.Statute, sess, sessions, table, a.decl,
+				a.chosen, a.actor, l, engine.Bindings{Eventual: p.Eventual}, reg, state,
+				reason)
+			if oerr != nil {
+				return oerr
+			}
+			if !made {
+				continue
+			}
+			// PREFIXED BY THE CALLER, so this field can be read without
+			// cross-referencing another one. The end-of-run pass passes "" --
+			// `Reconciled` is a bare verdict per re-check and every suite
+			// since R6.3 asserts on it that way -- while the periodic pass
+			// stamps the step, because a count of verdicts with no positions
+			// is exactly the "says a run is wrong without saying WHEN" that
+			// R5/152 named as the whole reason to observe at all.
+			*into = append(*into, prefix+f.Says())
+			// AND THE PENDING'S OWN SENTENCE, pairing the clearing
+			// with the thing it cleared. Reconciled says only what
+			// the re-check decided; this says which pending, where it
+			// began, and that it was re-checked here.
+			rec.Pendings = append(rec.Pendings, fmt.Sprintf(
+				"%s/%s held at step %d, re-checked %s: %s",
+				actor, query, a.at, where, f.Says()))
+			// MARKED HERE AND NOT AT THE TOP OF THE LOOP, which is the
+			// whole distinction: a re-ask that could not be MADE
+			// returned above through `if !made { continue }`, and that
+			// pending genuinely was never re-checked. Only a re-ask
+			// that produced a verdict claims the key.
+			reAsked[askKey(actor, query)] = true
+			// A FINDING THE RECONCILIATION PRODUCES ENDS THE RUN LIKE
+			// ANY OTHER, and it does not overwrite one the walk
+			// already has: the earlier finding is what a shrink
+			// reduces, and the trace that reaches it is recorded.
+			if stopsTheWalk(f.Value) && rec.Finding == nil {
+				found := f
+				rec.Finding = &found
+				rec.FoundAt = len(rec.Steps)
+				rec.Sessions = sessions.Acquired()
+				rec.Facts = l.Facts()
+			}
+		}
+	}
+	// SORTED WITHIN THIS PASS ONLY, never across passes. reg.Open() is a map,
+	// so the order of re-checks inside one reconciliation is not stable and
+	// has to be fixed -- but the order OF the passes is the step order, and
+	// the step order is the evidence this field exists to carry. Sorting the
+	// whole slice would destroy the one thing a reader wants from it.
+	sort.Strings((*into)[start:])
+	return nil
 }

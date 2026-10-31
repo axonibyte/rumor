@@ -264,8 +264,13 @@ func render(rec schedule.Record) string {
 // statute's `believed` moves with the ledger -- so a disagreement opens when an
 // actor joins and closes when it leaves, with nothing timing-dependent.
 type scriptedProber struct {
-	// end is what Quiesce answers after the last step; State always answers
-	// busy, which is what holds a disagreement open.
+	// end is what Quiesce answers at EVERY ask; State always answers busy,
+	// which is what holds a disagreement open.
+	//
+	// IT IS NAMED `end` BECAUSE THE END WAS THE ONLY ASKER until the periodic
+	// reconciliation existed (R8/110). The field was always answered
+	// unconditionally; only the number of callers changed, so the name is
+	// kept and the claim corrected rather than the other way round.
 	end engine.QuiesceState
 }
 

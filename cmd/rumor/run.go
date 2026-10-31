@@ -154,6 +154,19 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		// not a truncation here -- which is the arrangement the old sentence
 		// said it was avoiding.
 		Eventual: schedule.EventualOf(brep.Bindings),
+		// AND HOW OFTEN THE WALK RE-CHECKS WHAT IT HOLDS (R8/110): the
+		// "selective WHEN (settling, periodic reconciliation)" that R5/152
+		// deferred to the api-sim by name.
+		//
+		// READ FROM THE api STAGE'S OWN TABLE AND FROM NO OTHER, because the
+		// walk IS the api stage. A project declaring `reconcile_every` under
+		// [stages.concurrency] is declaring a period for a stage that does
+		// not walk, and this line deliberately does not carry it there.
+		//
+		// A PROJECT WITHOUT THE KEY READS 0 -- a missing map entry is the zero
+		// Stage -- and reconciles only after the last step, exactly as every
+		// run did before this existed.
+		ReconcileEvery: prep.Platform.Stages[stage.API].ReconcileEvery,
 		// AND WHERE THIS PROJECT'S DEADLINES ARE READ (R7.4). `advance` lands
 		// on these beside the live pending bounds; a project declaring none is
 		// walked exactly as R7.3 left it.

@@ -185,6 +185,7 @@ func TestAWrongTypeIsRefusedWithTheTypeItWanted(t *testing.T) {
 	}{
 		{"contract", "wanted a string", int64(1)},
 		{"stages.api-sim.enabled", "wanted true or false", "yes"},
+		{"stages.api-sim.reconcile_every", "wanted an integer", "soon"},
 		{"venire[0].count", "wanted an integer", 2.5},
 		{"adapter.command", "wanted an array of strings", "rumor"},
 		{"profiles.nightly.budget", "wanted a duration", "fortnight"},
@@ -205,6 +206,55 @@ func TestAWrongTypeIsRefusedWithTheTypeItWanted(t *testing.T) {
 		}
 		if !names(rep.Refusals, tc.path, tc.want) {
 			t.Errorf("%s = %v: refusals are %v", tc.path, tc.value, rep.Refusals)
+		}
+	}
+}
+
+// TestAPeriodIsRefusedONLYWhenNegative is both directions of the
+// `reconcile_every` guard (R8/110).
+//
+// A NEGATIVE PERIOD IS REFUSED BY NAME RATHER THAN CLAMPED because `n % period`
+// never equals 0 for a negative period: the stage would reconcile only at the
+// end while its declaration said otherwise, which is a knob that reads as set
+// and does nothing.
+//
+// AND THE OTHER DIRECTION IS WHAT MAKES THE ARM WORTH HAVING: a guard that
+// refused every period would satisfy the first half alone, so 0 (the default,
+// meaning end-of-run only) and a positive period must both be ACCEPTED, and the
+// positive one must survive parsing with its value intact.
+func TestAPeriodIsRefusedONLYWhenNegative(t *testing.T) {
+	for _, tc := range []struct {
+		value   int64
+		refused bool
+	}{
+		{-1, true},
+		{-8, true},
+		{0, false},
+		{1, false},
+		{7, false},
+	} {
+		doc := wellFormed()
+		doc["stages"].(map[string]any)["api-sim"].(map[string]any)["reconcile_every"] = tc.value
+		rep := Parse(doc)
+		if tc.refused {
+			if rep.OK() {
+				t.Errorf("reconcile_every = %d: accepted", tc.value)
+				continue
+			}
+			if !names(rep.Refusals, "stages.api-sim.reconcile_every", "cannot be negative") {
+				t.Errorf("reconcile_every = %d: refused for the wrong reason: %v",
+					tc.value, rep.Refusals)
+			}
+			continue
+		}
+		if !rep.OK() {
+			t.Errorf("reconcile_every = %d: refused: %v", tc.value, rep.Refusals)
+			continue
+		}
+		// THE VALUE SURVIVES, not just the parse. A reader that accepted the
+		// key and dropped it would pass every arm above.
+		if got := Parse(doc).Platform.Stages["api-sim"].ReconcileEvery; got != int(tc.value) {
+			t.Errorf("reconcile_every = %d parsed as %d", tc.value, got)
 		}
 	}
 }

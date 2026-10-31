@@ -620,6 +620,8 @@ count = 3
 
 [stages.api]
 enabled = true
+reconcile_every = 4                 # steps between re-checks of what the walk
+                                    # holds; absent or 0 is end-of-run only
 
 [stages.fuzz]
 enabled = false
@@ -719,6 +721,7 @@ run that silently skipped it would replay less than it reported.
 | `[stages.<name>].enabled` | yes, at least one enabled | stage selection and skip reasons in the report (R8); `stages.browser.enabled` is what the two browser-stage arms read, and both are vacuous without it. **THE NAMES ARE `api`, `fuzz`, `concurrency` AND `browser`**, and a declared name outside that set is refused by the dispatcher BEFORE the run rather than recorded as having run or been skipped: `[stages]` is parsed as a map keyed by whatever the file says, so nothing else in the stack objects to a misspelling (rook, coop r8/16). `api` is THE MAIN LOOP -- the walk `rumor run` has always taken, which R8's api-sim child gives its settling, its time and its periodic full reconciliation. It was called `api-sim` in this example until R8.1 and that was a stale name for the one loop rather than a second stage beside it: every `platform.toml` in this repository declared `api` and none declared `api-sim` (ibis, coop r8/15; ruled fable rumor/1477) |
 | `[weights.default]` | yes | the walk draws from the applicable set by weight (`docs/design.md`, "the engine owns the seed") |
 | `[weights.stage.<stage>]`, `[weights.profile.<profile>]` | no | the same, per stage and per profile, which is the shape design.md already relies on |
+| `[stages.<name>].reconcile_every` | no | R8/110's periodic reconciliation: how many STEPS apart the `api` stage's walk re-checks what it is holding, instead of only after the last step. Absent or `0` reconciles at the end alone, which is what every run did before R8 and is why no existing measurement moves. **IT IS A COUNT OF STEPS AND NEVER A DURATION**, and it is DECLARED rather than drawn: R5/152's ruling that nothing is drawn is what makes a seeded walk replay identically, and a period in time would replay differently on a slower box. A NEGATIVE VALUE IS REFUSED BY NAME rather than clamped, because `n % period` never reaches 0 for one -- the stage would reconcile only at the end while its declaration said otherwise, a knob that reads as set and does nothing. Read from the `api` stage's own table and from no other, because the walk IS that stage; a period under `[stages.concurrency]` is declared for a stage that does not walk. Determinism is per (seed, period): clearing a pending at step 10 rather than after step 50 changes the live bounds and so the draws, which makes two periods two declared worlds and not one flaky one. The record carries the verdicts as `step N: <verdict>` -- a COUNT and an ORDER, never an elapsed time -- because R5/152's reason for observing at all is that a walk observing only at the end can say a run is wrong without saying WHEN |
 | `[profiles.<name>]` | no | R22's profiles: `stages`, `seeds` (a count), `budget` (a duration) |
 
 **Weight resolution order, stated because an unstated precedence is where a
