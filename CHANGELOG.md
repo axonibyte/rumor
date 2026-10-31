@@ -3,6 +3,71 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.45 — 2026-10-31
+
+**A stage that was known and unrunnable, a reconciliation with a declared
+period, and a race read three ways** — issue 110, R8.3, the third of R8's four
+children.
+
+- **`fuzz` SHIPPED KNOWN, UNRUNNABLE AND DECLARED BY NOBODY**, and this closes
+  it. v0.1.43 carried `internal/fuzz` with zero production callers, a `Known`
+  map reading `"fuzz": false, // runnable when it lands` after it had landed,
+  and no project selecting it. A child named for a stage ships that stage
+  runnable, so the wiring came first and the toy declares it. Measured cost: one
+  stdout line on an unprofiled run and nothing else — exactly one line differs
+  against v0.1.44's binary on seeds 1 and 2, rc 3 both ways.
+- **AND WIRING IT EXPOSED TWO PROCESS-GLOBAL ENV LEAKS**, which is what a stage
+  ordered after the others is for. `[adapter].env` passes variable NAMES
+  through, so the engine's own environment reaches every adapter it spawns;
+  `shrinkFound` and `concurrencyStage` each set the world's address and tore the
+  world down without restoring it. Nothing ran after them until `fuzz` did, and
+  then api+fuzz answered "connection refused" from an adapter reading a
+  live-looking address for a dead world while concurrency+fuzz and fuzz alone
+  were clean. Those three runs are what placed it in the walk rather than the
+  fan-out.
+- **THE api STAGE RECONCILES AT A DECLARED PERIOD**, which is the "selective
+  WHEN (settling, periodic reconciliation)" R5/152 deferred to this child by
+  name. `[stages.<name>].reconcile_every` counts STEPS and never time: a period
+  in time replays differently on a slower box, and a period DRAWN from the
+  generator would move the handle and kind sequences and break D1 for every
+  seeded walk. Absent or `0` reconciles after the last step alone, so no
+  existing measurement moves.
+- **AND A MID-RUN QUIESCE TIMEOUT IS NOT A FINDING**, the one place the periodic
+  pass must not copy the end-of-run one. At the end the bare state means the run
+  FINISHED unsettled, which R2.3 forbids; mid-walk it means the system has not
+  settled YET, which is what an eventual bound exists to tolerate. A re-check
+  VERDICT of `quiesce_timeout` is a different thing and does end the run.
+  Verdicts are recorded as `step N: <verdict>` — a count and an order, never an
+  elapsed time, so two runs of one seed stay comparable.
+- **D10's PARTNER IS DRIVEN ON BOTH AXES, AND THE STATE IS MANUFACTURED RATHER
+  THAN PERMITTED.** The default mix reached it never: 503 steps over twelve
+  seeds drew `join_event` thirty times with ZERO at-capacity refusals, because
+  joins spread — the handle draw is scoped to what an actor knows, so each actor
+  joins the event it made. Two profiles differing in the stage list alone, and a
+  seed search, put one event genuinely full. **Hold the world, vary the stage:**
+  the walk reaches a full event fourteen times and is SILENT — rc 0, no finding,
+  0 overfills in 14 at-capacity attempts — while the fan-out on the same world
+  finds the overfill. **Vary the world, hold the stage:** the verdict is
+  distinguishable three ways — FOUND where the limit is exceeded, NOT CONTENDED
+  where the contenders cannot all see the event, and **could-not-run where the
+  venire cannot supply limit+1**, the stage refusing to measure rather than
+  reporting a world too small to contend as clean.
+- **D11's NO-CLOCK CONTROL, re-measured at this child's base.** Seed 3 under
+  `expiring` against a copy with the `[clock]` table removed: with the clock a
+  bug after step 23, shrunk to 8; without it no finding at all. The first 24
+  output lines are identical and diverge exactly at the finding, so the clock's
+  absence does not shift the output — it LOSES R7.4's expiry row. `advance` is
+  still drawn and inert, which is what "live iff there is an instant to land on"
+  predicts.
+- **TWO GATE DEFECTS FOUND BY CLEARING THIS CHILD, AND NEITHER IS FIXED HERE**
+  because the tool is not this child's. `changelog-date-wrong` refuses a content
+  head for a date it cannot have, and `doc-run-block-failed` reports one line of
+  the wrong stream — `(stderr or stdout)` picks stderr, which the doc block's
+  own `rumor run` writes to, so three distinct failures all quote the same
+  microsecond timing. Both trace to one fallback reading a content head as the
+  bump; the second's remedy already exists at line 925 of the gate's own file,
+  which concatenates both streams.
+
 ## 0.1.44 — 2026-10-30
 
 **Two requests in flight against one world, a verdict that reads the world, and
