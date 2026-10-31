@@ -129,8 +129,16 @@ func TestAnEmptySelectionRefusesWithTheReason(t *testing.T) {
 		if err == nil {
 			t.Fatal("a platform with its only runnable stage disabled returned a selection")
 		}
-		if !strings.Contains(err.Error(), "enabled = false") {
-			t.Errorf("the refusal does not say the stage is disabled: %v", err)
+		// THE WHOLE CLAUSE AND NOT THE FRAGMENT, which is ibis's residue at
+		// coop r8/103: these two arms asserted "enabled = false" and "cannot
+		// run it yet" alone, so the refusal's WRAPPER could be reworded while
+		// both passed -- and the report in cmd/rumor is pinned to its whole
+		// line, leaving the two readers of one shared taxonomy armed
+		// asymmetrically. The clause is where the sharing is observable: the
+		// reason is `skipReason`'s and the `%s is %s` around it is this
+		// caller's.
+		if !strings.Contains(err.Error(), "api is declared with enabled = false") {
+			t.Errorf("the refusal does not name the stage beside its reason: %v", err)
 		}
 		t.Logf("PROOF %v", err)
 	})
@@ -143,8 +151,9 @@ func TestAnEmptySelectionRefusesWithTheReason(t *testing.T) {
 		if err == nil {
 			t.Fatal("a profile selecting only an unrunnable stage returned a selection")
 		}
-		if !strings.Contains(err.Error(), "cannot run it yet") {
-			t.Errorf("the refusal does not say the stage is not built yet: %v", err)
+		// THE WHOLE CLAUSE, for the arm above's reason.
+		if !strings.Contains(err.Error(), "browser is enabled and this build cannot run it yet") {
+			t.Errorf("the refusal does not name the stage beside its reason: %v", err)
 		}
 		t.Logf("PROOF %v", err)
 	})
