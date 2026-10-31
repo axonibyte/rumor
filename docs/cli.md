@@ -402,6 +402,23 @@ system. A declared stage this build cannot run is refused before anything runs,
 and a project that enables `concurrency` without `api` gets the fan-out and no
 walk — selecting a stage is what selects it.
 
+**And which stages were selected, with every skip's reason, is reported by name
+on stderr:**
+
+```
+run: stages selected -- api, concurrency, fuzz
+run: stages skipped -- browser (enabled and this build cannot run it yet)
+```
+
+Where the `run:` diagnostics live, and never on stdout: two attempts of one seed
+must print the same bytes there, so a stage line on the hashed stream would move
+five frozen digests, `seeds.lock` and figures quoted in these documents, for no
+finding. **Both lines always print, `none` included.** A skip list omitted when
+there is nothing to say cannot be told from a build that never learned to report
+one — which is the shape that let `fuzz` ship known, unrunnable and declared by
+nobody. And the reasons are the same taxonomy the empty-selection refusal reads,
+so one state reads one way whether or not any stage ran.
+
 The fuzz stage reports one line, the count being the whole of its evidence:
 
 ```
@@ -724,6 +741,36 @@ if [ "$wantz" != "$gotz" ]; then
   printf 'documented: %s\ntool:       %s\n' "$wantz" "$gotz"
   fail=1
 fi
+
+# THE REPORT SAMPLE IS CHECKED ON BOTH THE CONTENT AND THE STREAM, because the
+# stream is the ruling (rumor/1472 item 1): a correct report on stdout would
+# pass every content check while moving five frozen digests. So stderr is
+# captured separately and stdout is asserted CLEAN of it.
+wantr=$(awk '/^\*\*And which stages were selected/{f=1;next} f&&/^```$/{g=!g; if(!g) exit; next} g' docs/cli.md)
+[ -n "$wantr" ] || {
+  echo 'the stage-report sample is no longer where this block looks for it'
+  exit 1
+}
+rout=$(mktemp) || exit 1
+rerr=$(mktemp) || exit 1
+rumor run examples/toy --seed 2 --steps 10 > "$rout" 2> "$rerr"
+gotr=$(grep '^run: stages ' "$rerr")
+[ -n "$gotr" ] || {
+  echo 'the run printed no stage report on stderr, so the sample compares against nothing'
+  rm -f "$rout" "$rerr"
+  exit 1
+}
+if [ "$wantr" != "$gotr" ]; then
+  echo 'the stage report in docs/cli.md is not what the tool prints:'
+  printf 'documented:\n%s\ntool:\n%s\n' "$wantr" "$gotr"
+  fail=1
+fi
+if grep -q '^run: stages ' "$rout"; then
+  echo 'the stage report reached STDOUT, which every recorded digest is taken from:'
+  grep '^run: stages ' "$rout"
+  fail=1
+fi
+rm -f "$rout" "$rerr"
 
 exit $fail
 ```

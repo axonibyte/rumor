@@ -1326,6 +1326,24 @@ difference is the drill's point: a record naming every declared stage
 unconditionally satisfies "the record names the stages that ran" and is the
 hand-written corpus wearing a different hat (rook, coop r8/14).
 
+**AND THAT DIFFERENCE IS NOW REPORTED RATHER THAN INFERRED** (R8.4, issue 111).
+"Absent from the stages that ran" was a fact a reader had to derive by holding
+`[stages]` beside a run's output; the report names the selection and every skip
+with its reason, so `browser` reads as DECLARED-BUT-UNRUNNABLE rather than as a
+stage that quietly did not appear — which is the distinction rook's D13 partner
+turns on, and the one a reader cannot make from an absence.
+
+**IT IS ON STDERR AND ITS REASONS ARE THE REFUSAL's OWN.** stdout is the
+subject of every recorded digest and of R7's measurement row, so a stage line
+there moves five frozen digests, `seeds.lock` and figures quoted in these
+documents for no finding (fable, coop rumor/1472). And the taxonomy is shared
+with the empty-selection refusal below rather than copied: two readers deriving
+"why not" separately would let one state read two ways depending on whether any
+stage happened to run. **Both lines print always, `none` included** — a skip
+list silent when it has nothing to say cannot be told from a build that never
+learned to report one, which is exactly how `fuzz` reached 108's gate known,
+unrunnable and declared by nobody.
+
 **AN EMPTY SELECTION IS A REFUSAL, NOT A RUN THAT DID NOTHING**, and it names
 the reason per stage. The first version of that message listed the sets and not
 the cause: with a profile named it read "selects api, and this build runs api"

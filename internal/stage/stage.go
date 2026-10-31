@@ -78,7 +78,32 @@ var Known = map[string]bool{
 // ORDER IS Known's CANONICAL ORDER AND NOT THE DECLARATION's: two projects
 // declaring the same stages in different orders run them alike, and a record
 // whose order followed the file could not be compared between projects.
+// Select is Plan's run list alone, kept because one production caller and seven
+// arms read it that way and a report is not a reason to move them.
 func Select(p platform.Platform, profile string) ([]string, error) {
+	run, _, err := Plan(p, profile)
+	return run, err
+}
+
+// Plan is the stages a run will take AND every stage the project asked for that
+// it will not, each with its reason by name.
+//
+// IT EXISTS BECAUSE THE SKIPS WERE COMPUTED AND THEN DROPPED. The taxonomy
+// below already lived inside the EMPTY-selection refusal, so a run that took
+// some stage said nothing about the ones it did not take -- and that report is
+// 111's to carry (fable, coop rumor/1472: "the stages that ran are reported in
+// full by 111's report, which is what the report child is for").
+//
+// ONE COPY OF THE TAXONOMY, read by that refusal and by the report both. Two
+// readers deriving "why not" separately is how they drift, and the refusal is
+// the one with the suites behind it -- so the report fits it rather than the
+// other way round.
+//
+// WHEN A STAGE IS BOTH DISABLED AND UNRUNNABLE the switch reports
+// `enabled = false`, which is deliberate: that is the half the project's author
+// controls, and "this build cannot run it yet" would send them to wait on a
+// phase when a line of their own file is the answer.
+func Plan(p platform.Platform, profile string) ([]string, map[string]string, error) {
 	declared := make([]string, 0, len(p.Stages))
 	for name := range p.Stages {
 		declared = append(declared, name)
@@ -86,7 +111,7 @@ func Select(p platform.Platform, profile string) ([]string, error) {
 	sort.Strings(declared)
 	for _, name := range declared {
 		if _, ok := Known[name]; !ok {
-			return nil, fmt.Errorf("the platform declares a stage %q, which this build cannot run: "+
+			return nil, nil, fmt.Errorf("the platform declares a stage %q, which this build cannot run: "+
 				"known stages are %s. A stage nobody can run is a declaration error, and it is "+
 				"refused here rather than after a walk whose stage list was already wrong",
 				name, strings.Join(knownNames(), ", "))
@@ -105,7 +130,7 @@ func Select(p platform.Platform, profile string) ([]string, error) {
 	} else {
 		prof, ok := p.Profiles[profile]
 		if !ok {
-			return nil, fmt.Errorf("no profile %q is declared, so the stages it would select are unknown", profile)
+			return nil, nil, fmt.Errorf("no profile %q is declared, so the stages it would select are unknown", profile)
 		}
 		for _, name := range prof.Stages {
 			want[name] = p.Stages[name].Enabled
@@ -146,18 +171,59 @@ func Select(p platform.Platform, profile string) ([]string, error) {
 		// sends its reader back to guess which of them is wrong.
 		var why []string
 		for _, name := range asked {
-			switch {
-			case !Known[name] && p.Stages[name].Enabled:
-				why = append(why, fmt.Sprintf("%s is enabled and this build cannot run it yet", name))
-			case !p.Stages[name].Enabled:
-				why = append(why, fmt.Sprintf("%s is declared with enabled = false", name))
+			if r := skipReason(p, name); r != "" {
+				why = append(why, fmt.Sprintf("%s is %s", name, r))
 			}
 		}
-		return nil, fmt.Errorf("no stage this build can run: %s %s -- %s. This build runs %s, and a "+
+		return nil, nil, fmt.Errorf("no stage this build can run: %s %s -- %s. This build runs %s, and a "+
 			"run that took no stage at all would exit reporting nothing tested",
 			where, declaredList(asked), strings.Join(why, "; "), runnableList())
 	}
-	return out, nil
+
+	// AND THE SKIPS, DERIVED FROM THE SAME SETS rather than listed: every stage
+	// the project asked for that `out` does not hold, with the reason the same
+	// switch gives the refusal above.
+	skipped := map[string]string{}
+	for _, name := range askedOf(p, profile, declared) {
+		if want[name] && Known[name] {
+			continue
+		}
+		if r := skipReason(p, name); r != "" {
+			skipped[name] = r
+		}
+	}
+	return out, skipped, nil
+}
+
+// askedOf is what the run was ASKED for: the platform's declarations, or the
+// profile's list where one is named. It is the refusal's own `asked` under a
+// name, so the report and the refusal cannot disagree about what was requested
+// -- the distinction that bit the refusal once already, where it printed the
+// platform's declarations wearing the profile's name.
+func askedOf(p platform.Platform, profile string, declared []string) []string {
+	if profile == "" {
+		return declared
+	}
+	prof, ok := p.Profiles[profile]
+	if !ok {
+		return nil
+	}
+	asked := append([]string(nil), prof.Stages...)
+	sort.Strings(asked)
+	return asked
+}
+
+// skipReason is the one taxonomy, and its two clauses are the refusal's
+// verbatim: a wording that drifted between the two readers would make the same
+// state read differently depending on whether any stage ran.
+func skipReason(p platform.Platform, name string) string {
+	switch {
+	case !Known[name] && p.Stages[name].Enabled:
+		return "enabled and this build cannot run it yet"
+	case !p.Stages[name].Enabled:
+		return "declared with enabled = false"
+	}
+	return ""
 }
 
 // declaredList and runnableList render the two sets a refusal has to name: what

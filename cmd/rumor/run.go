@@ -111,11 +111,26 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 	// after a walk would mean reporting a run whose stage list was already
 	// wrong. It is a REFUSAL and not a could-not-run: the project is wrong,
 	// which is exit 1's meaning here.
-	stages, serr := stage.Select(prep.Platform, profile)
+	stages, skipped, serr := stage.Plan(prep.Platform, profile)
 	if serr != nil {
 		_, _ = fmt.Fprintf(stdout, "run: REFUSED %v\n", serr)
 		return 1
 	}
+	// 111's REPORT: THE SELECTION AND EVERY SKIP, BY NAME, ON STDERR.
+	//
+	// STDERR AND NEVER STDOUT, which fable ruled at coop rumor/1472 item 1: the
+	// walk's stdout is the subject of every recorded digest and of R7's
+	// measurement row, so a stage line there "moves thirty-five figures in five
+	// files for no finding". `run:` diagnostics already live on stderr, and the
+	// digests are unmoved by this existing.
+	//
+	// BOTH LINES ALWAYS PRINT, `none` included. An omitted skip line is an
+	// absence a reader cannot tell from a build that never learned to report
+	// one, and this phase is about absences carrying their denominator -- a
+	// report that is silent when it has nothing to say is the shape that let
+	// `fuzz` ship known, unrunnable and declared by nobody through 108's gate.
+	_, _ = fmt.Fprintf(stderr, "run: stages selected -- %s\n", nameList(stages))
+	_, _ = fmt.Fprintf(stderr, "run: stages skipped -- %s\n", skipList(skipped))
 
 	brep, err := bindings.Load(filepath.Join(dir, "bindings.toml"), decl.TOML)
 	if err != nil {
@@ -1062,4 +1077,32 @@ func subjectNamed(b bindings.Bindings, action string) (concurrency.Subject, erro
 	}
 	return concurrency.Subject{}, fmt.Errorf("the stage contended %q and the project declares no "+
 		"such contended action, so its trace cannot be replayed", action)
+}
+
+// nameList renders a stage list for the report, naming the empty case rather
+// than printing an empty tail.
+func nameList(names []string) string {
+	if len(names) == 0 {
+		return "none"
+	}
+	return strings.Join(names, ", ")
+}
+
+// skipList renders the skips in the SAME canonical order the selection uses, so
+// two runs of one project read alike and a reader comparing them is comparing
+// stages rather than map iteration.
+func skipList(skipped map[string]string) string {
+	if len(skipped) == 0 {
+		return "none"
+	}
+	names := make([]string, 0, len(skipped))
+	for name := range skipped {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		out = append(out, fmt.Sprintf("%s (%s)", name, skipped[name]))
+	}
+	return strings.Join(out, "; ")
 }
