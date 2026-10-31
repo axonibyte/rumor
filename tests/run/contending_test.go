@@ -2,8 +2,13 @@
 package run_test
 
 import (
+	"os"
+	"reflect"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
+	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 )
 
 // contention_test.go's TestTheOverfillClauseFiresOnTheRacedActionAndNotOnTheLockedOne
@@ -28,10 +33,25 @@ import (
 // own `[stages]` note says so -- but it runs four stages under the DEFAULT
 // weights, varying the mix and the stage list at once.
 //
-// WHY 37 STEPS, STATED RATHER THAN QUIET: at step 38 this seed finds an
-// unrelated `create_event` bug (`rests_on_planted false`). A 200-step run reaches
-// capacity the same thirteen times and then finds that other row, so the bound is
-// a declared input of the measurement and not a suppression of a finding.
+// WHY 37 STEPS, RE-MEASURED ON THE FOUR-LINE MIX. The bound excludes a finding
+// this seed reaches later, and the numbers are the committed tree's:
+//
+//	37 steps   rc 0, 14 at-capacity, no finding
+//	38 steps   rc 0, 15 at-capacity, no finding
+//	47 steps   rc 3, 15 at-capacity, `FOUND bug after step 47 ... rests_on_planted true`
+//	200 steps  rc 3, 15 at-capacity, the same step-47 finding
+//
+// SO THE BOUND IS A DECLARED INPUT AND NOT A SUPPRESSION: 37 < 47 excludes that
+// row, and 38 would too. The number is kept at 37 because it is what the arm
+// below was driven at.
+//
+// AND THE REASON PRINTED HERE FIRST WAS WRONG, found by ibis clearing this
+// commit (coop r8/92): it said the finding was at step 38, `rests_on_planted
+// false`, with 13 at-capacity at 200 steps. Every one of those was measured on
+// the EIGHT-override mix, before the ablation cut it to four -- a figure true of
+// a tree the commit then changed, which is the same error as quoting a parent's
+// path count. A figure in a comment or a message is re-read on the tree being
+// committed, not inherited from the version it was measured on.
 func TestTheWalkReachesCapacityAndIsSilentWhileTheFanOutFindsIt(t *testing.T) {
 	const toy = "../../examples/toy"
 
@@ -96,5 +116,54 @@ func TestTheWalkReachesCapacityAndIsSilentWhileTheFanOutFindsIt(t *testing.T) {
 	if strings.Contains(rout, "run:   1 ") {
 		t.Errorf("the `racing` profile walked, so the two sides differ in more than the "+
 			"stage:\n%s", rout)
+	}
+}
+
+// TestTheTwoProfilesWEIGHTIdentically is the arm the comment in examples/toy was
+// standing in for, and it exists because ibis changed `tell` in `racing` alone
+// and this package stayed green (coop r8/92).
+//
+// THE PREMISE WAS PROSE. `racing`'s comment says its weights are `contending`'s
+// "LINE FOR LINE ... if one is edited the other must be", which is the whole
+// basis for reading the two runs as a comparison about the STAGE -- and nothing
+// enforced it. A profile that drifts in one weight turns axis 1 into a
+// comparison of two different worlds that still passes every assertion above,
+// because neither run is wrong on its own.
+//
+// IT COMPARES THE PARSED TABLES AND NOT THE TEXT, because the invariant is about
+// what the engine resolves, not how the file is written: a reordered or
+// re-spaced block is the same mix and must not fail, while `tell = 11` against
+// `tell = 12` is a different mix and must.
+func TestTheTwoProfilesWEIGHTIdentically(t *testing.T) {
+	raw, err := os.ReadFile("../../examples/toy/platform.toml")
+	if err != nil {
+		t.Fatalf("the toy's platform: %v", err)
+	}
+	doc, err := decl.TOML(raw)
+	if err != nil {
+		t.Fatalf("the toy's platform is not TOML: %v", err)
+	}
+	rep := platform.Parse(doc)
+	if !rep.OK() {
+		t.Fatalf("the toy's platform does not parse: %v", rep.Refusals)
+	}
+
+	a, ok := rep.Platform.Weights.Profile["contending"]
+	if !ok {
+		t.Fatalf("no `contending` weights profile, so this arm compares nothing")
+	}
+	b, ok := rep.Platform.Weights.Profile["racing"]
+	if !ok {
+		t.Fatalf("no `racing` weights profile, so this arm compares nothing")
+	}
+	// BOTH PRESENT AND NON-EMPTY FIRST: two absent tables compare equal, which
+	// is the vacuous pass this arm would otherwise report after someone deleted
+	// both.
+	if len(a) == 0 {
+		t.Fatalf("`contending` overrides no weight, so equality here proves nothing")
+	}
+	if !reflect.DeepEqual(a, b) {
+		t.Errorf("the two profiles weight differently, so axis 1 compares two worlds "+
+			"rather than two stages:\n contending: %v\n racing:     %v", a, b)
 	}
 }
