@@ -3,7 +3,6 @@ package run_test
 
 import (
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -119,22 +118,33 @@ func TestTheWalkReachesCapacityAndIsSilentWhileTheFanOutFindsIt(t *testing.T) {
 	}
 }
 
-// TestTheTwoProfilesWEIGHTIdentically is the arm the comment in examples/toy was
-// standing in for, and it exists because ibis changed `tell` in `racing` alone
-// and this package stayed green (coop r8/92).
+// TestTheApiSidesEffectiveMixIsTheMeasuredOne replaces an arm that guarded the
+// wrong invariant, and the replacement is ibis's measurement at coop r8/94.
 //
-// THE PREMISE WAS PROSE. `racing`'s comment says its weights are `contending`'s
-// "LINE FOR LINE ... if one is edited the other must be", which is the whole
-// basis for reading the two runs as a comparison about the STAGE -- and nothing
-// enforced it. A profile that drifts in one weight turns axis 1 into a
-// comparison of two different worlds that still passes every assertion above,
-// because neither run is wrong on its own.
+// THE ARM BEFORE THIS ONE compared `contending`'s weights table to `racing`'s,
+// because `racing`'s comment claimed they had to match for the two runs to be a
+// comparison about the STAGE. ibis measured that claim from both sides:
 //
-// IT COMPARES THE PARSED TABLES AND NOT THE TEXT, because the invariant is about
-// what the engine resolves, not how the file is written: a reordered or
-// re-spaced block is the same mix and must not fail, while `tell = 11` against
-// `tell = 12` is a different mix and must.
-func TestTheTwoProfilesWEIGHTIdentically(t *testing.T) {
+//	NOT NECESSARY -- `internal/concurrency` holds ZERO references to the weights
+//	table, so the fan-out never draws. racing's four weights set to 1/99/7/5
+//	leaves stdout byte-identical and rc 3 either way.
+//	NOT SUFFICIENT -- `[weights.stage.api] create_event = 8` moves the api
+//	side's EFFECTIVE mix while both profile tables stay equal, and the old arm
+//	passed.
+//
+// An invariant that is neither necessary nor sufficient is noise, so racing's
+// weights table is gone (it was inert) and this pins the thing the measurement
+// actually rests on: what the API side RESOLVES, through
+// Weights.Weight(stage, profile, kind) and its profile-then-stage-then-default
+// precedence.
+//
+// create_event IS PINNED AT ITS DEFAULT ON PURPOSE. The ablation that chose this
+// mix found `create_event = 8` COSTS at-capacity reaches, so the profile
+// deliberately does not override it and 15 arrives by fall-through -- which
+// means a stage-level override is exactly how it could move without any profile
+// being edited. A kind the profile leaves alone is still part of the measured
+// mix.
+func TestTheApiSidesEffectiveMixIsTheMeasuredOne(t *testing.T) {
 	raw, err := os.ReadFile("../../examples/toy/platform.toml")
 	if err != nil {
 		t.Fatalf("the toy's platform: %v", err)
@@ -148,22 +158,36 @@ func TestTheTwoProfilesWEIGHTIdentically(t *testing.T) {
 		t.Fatalf("the toy's platform does not parse: %v", rep.Refusals)
 	}
 
-	a, ok := rep.Platform.Weights.Profile["contending"]
-	if !ok {
-		t.Fatalf("no `contending` weights profile, so this arm compares nothing")
+	for _, w := range []struct {
+		kind string
+		want int
+		how  string
+	}{
+		{"join_event", 40, "the profile"},
+		{"tell", 12, "the profile"},
+		{"leave_event", 0, "the profile"},
+		{"delete_event", 0, "the profile"},
+		{"create_event", 15, "FALL-THROUGH to [weights.default]"},
+	} {
+		got, ok := rep.Platform.Weights.Weight("api", "contending", w.kind)
+		if !ok {
+			t.Errorf("%s resolves to no weight at all under (api, contending), so the mix "+
+				"the arm above was driven under is not the one declared", w.kind)
+			continue
+		}
+		if got != w.want {
+			t.Errorf("%s resolves to %d under (api, contending), want %d by %s: the api "+
+				"side's effective mix has moved, so the at-capacity reaches above are "+
+				"being measured under a different world", w.kind, got, w.want, w.how)
+		}
 	}
-	b, ok := rep.Platform.Weights.Profile["racing"]
-	if !ok {
-		t.Fatalf("no `racing` weights profile, so this arm compares nothing")
-	}
-	// BOTH PRESENT AND NON-EMPTY FIRST: two absent tables compare equal, which
-	// is the vacuous pass this arm would otherwise report after someone deleted
-	// both.
-	if len(a) == 0 {
-		t.Fatalf("`contending` overrides no weight, so equality here proves nothing")
-	}
-	if !reflect.DeepEqual(a, b) {
-		t.Errorf("the two profiles weight differently, so axis 1 compares two worlds "+
-			"rather than two stages:\n contending: %v\n racing:     %v", a, b)
+
+	// AND racing DECLARES NO WEIGHTS, which is what makes its side of the
+	// comparison unambiguous rather than merely equal. If a table reappears
+	// there, the premise in its comment has drifted back.
+	if t2, ok := rep.Platform.Weights.Profile["racing"]; ok && len(t2) > 0 {
+		t.Errorf("`racing` declares %d weight(s) again: the fan-out does not draw, so a mix "+
+			"there is inert and its presence misleads a reader into the premise ibis "+
+			"disproved: %v", len(t2), t2)
 	}
 }

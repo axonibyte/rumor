@@ -372,12 +372,18 @@ delete_event = 0
 # runs four stages under the DEFAULT weights, so it varies the mix and the stage
 # list at once and answers neither question.
 #
-# SO THE WEIGHTS BLOCK BELOW IS `contending`'s, LINE FOR LINE, deliberately
-# duplicated rather than shared: there is no weights inheritance between
-# profiles (precedence is profile, then stage, then default), so the only way to
-# hold the mix fixed across the two runs is to state it twice. If one is edited
-# the other must be, and that is the cost of the comparison being honest --
-# and the probe above is what justifies the three lines in both.
+# AND IT CARRIES NO WEIGHTS BLOCK, which is `walking`'s shape above and for a
+# measured reason: `internal/concurrency` holds ZERO references to the weights
+# table, so the fan-out never draws and a mix declared here cannot reach it.
+#
+# IT DID CARRY ONE, duplicating `contending`'s "LINE FOR LINE" with a comment
+# saying the two must be edited together -- and ibis measured both halves of
+# that at coop r8/94: racing's four weights set to 1/99/7/5 leaves stdout
+# BYTE-IDENTICAL and rc 3 either way (so the equality was never NECESSARY),
+# while a `[weights.stage.api]` override moves the api side's EFFECTIVE mix with
+# both tables still equal (so it was never SUFFICIENT). An invariant that is
+# neither is noise, and the arm that guarded it is replaced in
+# tests/run/contending_test.go by one that pins what the api side RESOLVES.
 #
 # THE WALK IS NOT IN THIS LIST, which is the point: `concurrency` reads
 # `join_event`'s `contended = { limit = "create_event.capacity", held =
@@ -387,12 +393,6 @@ delete_event = 0
 stages = ["concurrency"]
 seeds = 1
 budget = "1m"
-
-[weights.profile.racing]
-join_event = 40
-tell = 12
-leave_event = 0
-delete_event = 0
 
 [[rollback]]
 # THE PROCESS-RESTART PROVIDER, which C3 implements and R5.3 consumes. It covers
