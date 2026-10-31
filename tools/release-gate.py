@@ -417,9 +417,39 @@ def run_doc_blocks(repo: Path, ref: str) -> list[str]:
                 failures.append(f"{name}: a `run` block could not be started: {exc}")
                 continue
             if done.returncode != 0:
+                # BOTH STREAMS, EACH NAMED -- and this is the SIBLING of a defect
+                # this file already fixed once, at the docs-stale arm below: "`go
+                # run` appends its own 'exit status 1' after the binary's output,
+                # so tail[-1] named go run's status and nothing about the tree".
+                # The cure there was to report the line that ANSWERED rather than
+                # the last line. The lesson did not travel the 500 lines to here.
+                #
+                # WHAT THIS ONE COST, measured by ibis (rumor/1589): `(done.stderr
+                # or done.stdout)` takes stderr WHOLE whenever stderr is non-empty.
+                # A doc block echoes its own diagnostic to STDOUT while the `rumor
+                # run` inside it writes to STDERR -- so stderr is never empty, wins,
+                # and three DISTINCT failures of cli.md's block (a drifted figure, a
+                # reworded anchor, a run printing no fuzz line) all refused with one
+                # identical line: a microsecond overlap timing, in a refusal about a
+                # documentation sample.
+                #
+                # CONCATENATING IS NOT THE FIX, though the in-file form at the
+                # docs arm starts that way: `(stdout + stderr)[-1]` is still
+                # stderr's last line. For an ARBITRARY shell block there is no
+                # verdict predicate to pick the answering line with -- which is
+                # the docs arm's device and it does not generalise. So report the
+                # tail of each stream and SAY which is which; the block's own
+                # sentence then survives beside the noise instead of under it.
+                so = (done.stdout or "").strip().splitlines()
+                se = (done.stderr or "").strip().splitlines()
+                shown = []
+                if so:
+                    shown.append(f"stdout: {so[-1]}")
+                if se:
+                    shown.append(f"stderr: {se[-1]}")
                 failures.append(
                     f"{name}: a `run` block exited {done.returncode}: "
-                    f"{(done.stderr or done.stdout).strip().splitlines()[-1] if (done.stderr or done.stdout).strip() else 'no output'}"
+                    + ("; ".join(shown) if shown else "no output")
                 )
     return failures
 
@@ -561,7 +591,33 @@ def evaluate(repo: Path, base: str, head: str, today: str | None = None) -> list
             )
 
     # --- arms 5, 6, 7: the changelog section ------------------------------
-    if head_version is not None:
+    # THESE ARMS PRESUPPOSE A NEW VERSION, exactly as arm 4 above does, and for
+    # the same reason the file already gives there: "when the version did not
+    # change there IS no new version, so arm 4 has no subject and does not
+    # apply". The section these arms ask about is the section FOR THIS RUN's
+    # version. On a content head there is no bump commit, `bump_rev` falls back
+    # to the run's head, and `head_version` reads the LAST RELEASE's version --
+    # so the arms went looking for that release's section and found it, correct
+    # and frozen.
+    #
+    # WHAT THAT COST, measured (quill main/524, ibis rumor/1588, driven by me on
+    # 110's heads): `changelog-date-wrong` refuses EVERY content head from the
+    # day after a release onward, because 0.1.44's section is dated 2026-10-30
+    # and "today" is later. CHANGELOG.md's own header says a section "is written
+    # in the bump commit for its tag and is never edited once that tag exists",
+    # and v0.1.44 IS tagged -- so the only way to satisfy the arm was to violate
+    # the document. It is invisible on the release day itself (the dates match)
+    # and appears at the UTC rollover, which is why it shipped.
+    #
+    # THIS NARROWS NOTHING A BUMP IS CHECKED FOR. A content head is ALREADY
+    # refused by arms 1 and 2 -- version-unchanged and subject-mismatch -- which
+    # is the gate correctly saying "this is not a release run"; ibis measured
+    # exactly those two surviving at a real bump's clear. A run that changes the
+    # version still meets all three changelog arms, which the self-test's own
+    # changelog fixtures (VERSION 0.2.1 over a 0.1.0 base) drive. And a release
+    # run whose bump went UNDETECTED cannot slip through here either, because
+    # that run fails arm 2 on its subject.
+    if version_changed:
         section = changelog_section(show(repo, bump_rev, "CHANGELOG.md"), head_version)
         if section is None:
             add(
