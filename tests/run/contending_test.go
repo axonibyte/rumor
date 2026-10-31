@@ -3,6 +3,7 @@ package run_test
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -213,3 +214,102 @@ func TestTheApiSidesEffectiveMixIsTheMeasuredOne(t *testing.T) {
 			"disproved: %v", len(t2), t2)
 	}
 }
+
+// AXIS 2 OF D10's PARTNER: VARY THE WORLD, HOLD THE STAGE (fable, coop
+// rumor/1592).
+//
+// Axis 1 above holds the world and varies the stage. This is its complement and
+// the third distinct control on the same claim -- rook's r8/37 control in
+// contention_test.go holds TOGETHERNESS and varies the DEFECT, which is a
+// different pair again.
+//
+// THE VERDICT TRACKS THE WORLD IN THREE DISTINGUISHABLE WAYS, which is what
+// makes the FOUND attributable to the world rather than to the stage having run:
+//
+//	the limit is exercised and exceeded   -> FOUND, naming the overfill
+//	the contenders cannot all SEE it      -> NOT CONTENDED, naming why
+//	the venire cannot SUPPLY limit+1      -> could-not-run, refusing to measure
+//
+// THE THIRD IS THE ONE WORTH A FIXTURE. A stage that reported "clean" from a
+// world too small to contend would be the vacuous pass this whole phase is
+// about; instead it refuses with the arithmetic in the message. The shipped toy
+// cannot reach that state, which is why it takes an edited copy to drive it.
+//
+// AND THE SHIPPED TOY IS SEED-STABLE BY CONSTRUCTION, asserted below rather than
+// assumed: `capacity` draws `from = [1, 2, 3]` and internal/concurrency resolves
+// a drawn limit to the MINIMUM (run.go's limitValue), deliberately -- its own
+// comment says a width that moved with the seed "would move how many actors the
+// stage needs, and a project whose venire holds enough for one draw and not
+// another would contend on some seeds and refuse on others". So the 4-actor
+// venire always contends at limit 1 and no seed can make it refuse. I expected a
+// latent fragility here and the code had already closed it.
+func TestTheFanOutsVerdictTracksTheWorldAndRefusesTooSmallAOne(t *testing.T) {
+	const toy = "../../examples/toy"
+
+	// THE SHIPPED WORLD: limit 1 from the minimum of [1, 2, 3], four actors, so
+	// the fan-out of two is suppliable and the sweep over `visible_to` gives
+	// both of the first two readings in one run.
+	out, errb, code := run(t, "run", toy, "--seed", "34", "--steps", "37", "--profile", "racing")
+	if code != 3 {
+		t.Fatalf("the shipped world exited %d, want 3: without the overfill there is no "+
+			"FOUND to attribute\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	}
+	if !strings.Contains(out, "FOUND join_event left the system holding") {
+		t.Errorf("no overfill named in the world that can exercise the limit:\n%s", out)
+	}
+	// AND THE WORLDS THAT COULD NOT EXERCISE IT SAID SO rather than reading
+	// clean. Two of the three `visible_to` subsets exclude a contender, and the
+	// stage names the reason per try.
+	if n := strings.Count(out, "NOT CONTENDED"); n == 0 {
+		t.Errorf("no try reported NOT CONTENDED, so every world here exercised the limit "+
+			"and the comparison has only one reading in it:\n%s", out)
+	}
+
+	// A WORLD TOO SMALL TO CONTEND, which the shipped toy cannot express: limit 3
+	// needs a host and four contenders against a venire of four.
+	dir := t.TempDir()
+	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego", "seeds.lock"} {
+		b, err := os.ReadFile(f2(toy, f))
+		if err != nil {
+			t.Fatalf("reading the toy's %s: %v", f, err)
+		}
+		body := string(b)
+		if f == "bindings.toml" {
+			const from = "  from = [1, 2, 3]"
+			if !strings.Contains(body, from) {
+				t.Fatalf("the toy no longer declares `capacity` as %q, so this cell would "+
+					"drive a world it did not build", from)
+			}
+			body = strings.Replace(body, from, "  from = [3]", 1)
+		}
+		if err := os.WriteFile(f2(dir, f), []byte(body), 0o644); err != nil {
+			t.Fatalf("writing %s: %v", f, err)
+		}
+	}
+
+	sout, serr, scode := run(t, "run", dir, "--seed", "34", "--steps", "37", "--profile", "racing")
+	// COULD-NOT-RUN AND NOT A FINDING: status 2 is "the world is wrong", which
+	// is exactly what an under-populated venire is. A 3 here would mean the
+	// stage had invented a verdict from a world it could not contend.
+	if scode != 2 {
+		t.Errorf("a world needing more contenders than its venire declares exited %d, want 2 "+
+			"(could-not-run)\nstdout:\n%s\nstderr:\n%s", scode, sout, serr)
+	}
+	// AND IT NAMES THE ARITHMETIC, so a reader is told which number to change
+	// rather than that something was wrong.
+	all := sout + serr
+	for _, want := range []string{"needs a host and 4 contender(s)", "its limit is 3", "declares 4 actor(s)"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("the refusal does not name %q, so it does not say which number to "+
+				"change:\n%s", want, all)
+		}
+	}
+	if strings.Contains(sout, "FOUND join_event") {
+		t.Errorf("the stage produced an overfill verdict from a world it could not "+
+			"contend:\n%s", sout)
+	}
+}
+
+// f2 is filepath.Join under a shorter name, kept local so the cells above read
+// as the comparison they are rather than as path assembly.
+func f2(dir, name string) string { return filepath.Join(dir, name) }
