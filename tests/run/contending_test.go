@@ -182,6 +182,28 @@ func TestTheApiSidesEffectiveMixIsTheMeasuredOne(t *testing.T) {
 		}
 	}
 
+	// AND NO STAGE-LEVEL TABLE FOR api EXISTS AT ALL, which closes the CLASS
+	// rather than enumerating its members. ibis's residue at coop r8/97: the
+	// loop above pins FIVE kinds where `[weights.default]` carries thirteen, so
+	// `[weights.stage.api] create_user = 1` resolves past it. Pinning all
+	// thirteen would be brittle and STILL incomplete -- a kind added to the
+	// default table tomorrow is unpinned the moment it lands.
+	//
+	// THE MEASUREMENT'S REAL PRECONDITION IS THAT NOTHING OVERRIDES api AT THE
+	// STAGE LEVEL, because precedence is profile, then STAGE, then default: a
+	// stage table silently outranks every fall-through the ablation chose. So
+	// the absence is the invariant, and it is one assertion instead of thirteen.
+	//
+	// IF A LATER CHANGE WANTS `[weights.stage.api]`, THIS ARM SHOULD FAIL. It is
+	// not in the way of that change; it is the notice that the at-capacity
+	// figures above were taken under a different mix and have to be retaken.
+	if t2, ok := rep.Platform.Weights.Stage["api"]; ok && len(t2) > 0 {
+		t.Errorf("`[weights.stage.api]` declares %d weight(s), which outrank every kind the "+
+			"`contending` profile leaves at its default: the api side's effective mix is no "+
+			"longer the one the at-capacity figures were measured under, and they must be "+
+			"retaken rather than this arm relaxed: %v", len(t2), t2)
+	}
+
 	// AND racing DECLARES NO WEIGHTS, which is what makes its side of the
 	// comparison unambiguous rather than merely equal. If a table reappears
 	// there, the premise in its comment has drifted back.
