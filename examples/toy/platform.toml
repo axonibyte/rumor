@@ -282,6 +282,118 @@ delete_event = 0
 join_event = 0
 recount_event = 0
 
+# THE `contending` PROFILE, WHICH 110's D10 PARTNER NEEDS: AN EVENT ACTUALLY AT
+# CAPACITY, REACHED BY THE SEQUENTIAL WALK.
+#
+# WHY IT EXISTS. D10's partner claim is that the api stage REACHES the capacity
+# action at capacity and reports nothing, while `concurrency` finds the race --
+# and that is only a measurement if the event was FULL when the walk looked.
+# ibis drove the default mix at coop r8/33: 503 steps over seeds 1-12, join_event
+# drawn THIRTY times, ZERO at-capacity refusals. A permission is not an
+# occurrence (r8/34, my own correction), so the state is manufactured here and
+# measured, not argued from the declarations.
+#
+# STAGES = ["api"] IS LOAD-BEARING, not tidiness. With `concurrency` enabled
+# above, an unprofiled run contends `join_event` and the stage finds the capacity
+# race every time -- so the api side of a two-run comparison would be reading a
+# verdict the OTHER stage produced. The partner needs the walk alone.
+#
+# THE MIX IS FOUR LINES, AND AN ABLATION CHOSE THEM -- WITH ONE CORRECTION THAT
+# IS THE MOST USEFUL THING IN THIS COMMENT.
+#
+# My first cut had EIGHT overrides, each with a mechanism I could argue. I
+# removed them one at a time on seed 34 at 37 steps and read the result as
+# licensing the removal of all five that looked harmless:
+#
+#   without delete_event = 0          ->  0 at-capacity, 1 finding
+#   without leave_event = 0           ->  4 at-capacity, 1 finding
+#   without join_event = 40           -> 10 at-capacity, 1 finding
+#   without create_event = 8          -> 14 at-capacity, 0 findings
+#   without tell = 12                 -> 14 at-capacity, 0 findings
+#   without canard/palter/suborn = 0  -> 13 at-capacity, 0 findings
+#
+# THAT READING WAS WRONG, AND THE SHAPE OF THE ERROR IS WORTH MORE THAN THE
+# TUNING: a ONE-AT-A-TIME ablation licenses removing ONE line, never a SET.
+# Each of those five was individually harmless because removing it left the
+# others in place. Removing all five together drops seed 34 to 3 at-capacity and
+# a planted bug at step 18 -- the profile stops manufacturing the state it
+# exists for, and the measurement that found it is the one I had just run.
+#
+# MEASURED AS COMBINATIONS, which is what the choice actually needed:
+#
+#   join/leave/delete + tell                  -> 14 at-capacity, 0 findings
+#   join/leave/delete + create_event          ->  7 at-capacity, 1 finding
+#   join/leave/delete + tell + create_event   -> 11 at-capacity, 1 finding
+#   join/leave/delete + tell + nemesis zeros  -> 14 at-capacity, 0 findings
+#   all eight (the first cut)                 -> 13 at-capacity, 0 findings
+#
+# SO FOUR LINES BEATS EIGHT, and `create_event = 8` was the whole problem: it
+# COSTS at-capacity reaches and INTRODUCES a finding, which the three nemesis
+# zeros were silently suppressing. Drop it and neither is needed. I had imported
+# `settling`'s "few events puts two actors on one" mechanism, true of ITS row,
+# and never measured it for this one -- and a 60-seed search confirms the
+# direction: the DEFAULT 15 reaches at-capacity on 5 seeds with 19 refusals,
+# against 3 seeds under my 8.
+#
+# WHAT THE FOUR ARE FOR:
+#   join_event 40   filling one event needs capacity+1 joins on the SAME event,
+#                   and capacity is drawn from [1, 2, 3]
+#   tell 12         `may_join` requires `knows_of_subject`, so a second actor
+#                   can only join an event it was TOLD about. Without it the
+#                   joins are self-joins -- seed 12 under `walking` drew four,
+#                   every one `guest_1 join_event <- guest_1.event#1`, because
+#                   the handle draw is scoped to what an actor KNOWS.
+#   leave_event 0   a leave frees the very slot this profile exists to fill, so
+#                   the walk undoes its own progress: 14 reaches drop to 4
+#   delete_event 0  seed 12 drew a delete of ANOTHER actor's event, the system
+#                   answered 403, and the walk stopped on that bug at step 15.
+#                   Removing it takes at-capacity to ZERO -- the walk dies first.
+#
+# EVERYTHING ELSE FALLS THROUGH TO `[weights.default]`, the four nemesis kinds
+# and `advance` included, so arm 19 is satisfied here exactly as it is in the
+# three profiles above.
+[profiles.contending]
+stages = ["api"]
+seeds = 1
+budget = "1m"
+
+[weights.profile.contending]
+join_event = 40
+tell = 12
+leave_event = 0
+delete_event = 0
+
+# THE `racing` PROFILE: `contending`'s PAIR, AND THE ONLY THING THAT DIFFERS IS
+# THE STAGE LIST.
+#
+# WHY IT EXISTS. D10's partner is a two-run comparison, and a comparison is only
+# about the stage if the stage is the only thing that moved. An UNPROFILED run
+# would also find the race -- the note on `[stages]` above says so -- but it
+# runs four stages under the DEFAULT weights, so it varies the mix and the stage
+# list at once and answers neither question.
+#
+# SO THE WEIGHTS BLOCK BELOW IS `contending`'s, LINE FOR LINE, deliberately
+# duplicated rather than shared: there is no weights inheritance between
+# profiles (precedence is profile, then stage, then default), so the only way to
+# hold the mix fixed across the two runs is to state it twice. If one is edited
+# the other must be, and that is the cost of the comparison being honest --
+# and the probe above is what justifies the three lines in both.
+#
+# THE WALK IS NOT IN THIS LIST, which is the point: `concurrency` reads
+# `join_event`'s `contended = { limit = "create_event.capacity", held =
+# "store_event_count" }` and fans out requests against one world. Whatever it
+# finds, it found without a walk -- so a verdict here cannot be the walk's.
+[profiles.racing]
+stages = ["concurrency"]
+seeds = 1
+budget = "1m"
+
+[weights.profile.racing]
+join_event = 40
+tell = 12
+leave_event = 0
+delete_event = 0
+
 [[rollback]]
 # THE PROCESS-RESTART PROVIDER, which C3 implements and R5.3 consumes. It covers
 # `store` -- the component the bindings name on the `direct` observation, and
