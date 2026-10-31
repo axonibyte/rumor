@@ -189,8 +189,8 @@ a bare id could not say which was which.
 | field | type | consumer |
 |---|---|---|
 | `query` | string | the named observation. When `source` is `direct` its verb shape is an **epic Open item**; the decoder checks that `query` is present and leaves its shape alone until R8 fixes it |
-| `source` | string | one of `api`, `ui`, `direct` (`docs/vocabulary.md`, Observation sources) |
-| `token` | string | present **exactly when** `source` is not `direct`: `api` and `ui` are an actor's observations through its session, and `direct` is the engine's, never an actor's (R9) |
+| `source` | string | one of `api`, `browser`, `direct` (`docs/vocabulary.md`, Observation sources) |
+| `token` | string | present **exactly when** `source` is not `direct`: `api` and `browser` are an actor's observations through its session, and `direct` is the engine's, never an actor's (R9) |
 | `args` | object | the observation's **declared arguments**, present **exactly when** the observation declares any in `bindings.toml`. Values are the system's **own ids, never run-local handles**: the engine owns the handle table and resolves a handle before the message is written, exactly as it does for an execute's `args`. The decoder cannot check the "exactly when" half -- whether an observation declares arguments is in the project's bindings, and the decoder reads one message without them -- so it accepts `args` as optional and `rumor validate`, which holds both halves, pairs the declaration against the request |
 
 **Response, beyond the envelope:**
@@ -209,7 +209,7 @@ that supplied positions would own append-only ordering, which the ledger owns.
 the only place a source is chosen. An adapter that cannot observe through the
 channel it was handed answers the error envelope with `kind: "source"`, which
 is could-not-run. It must not answer through another channel, because a
-substituted source would record a `ui` rule's run against an `api` read and the
+substituted source would record a `browser` rule's run against an `api` read and the
 report would name a stage that never ran.
 
 ### `session`
@@ -240,7 +240,7 @@ sessions are keyed by user name, a session for `member_1` can exist only once
 some action has created a user called `member_1`, so acquiring every session up
 front would ask for all of them before anybody existed. The token is then held
 **per actor per context** for the rest of the attempt, because the context is
-what the token is for: reusing an actor's `api` token for its `ui` actions would
+what the token is for: reusing an actor's `api` token for its `browser` actions would
 send a token the adapter issued for something else. A new attempt acquires its
 own, since a second attempt is a second world. An empty `token` in the response
 is a could-not-run rather than a held session: an omitted token and an empty one

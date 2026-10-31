@@ -137,7 +137,7 @@ func TestValidateRefusalsAndTheirPermittedTwins(t *testing.T) {
 		{"claim may be planted", false, func() Fact { f := claim("a", "a.user#1"); f.Planted = true; return f }(), ""},
 
 		{"observed api ok", false, obs("a", 1), ""},
-		{"observed ui ok", false, Fact{Kind: KindObserved, Actor: "a", Query: "q", Source: SourceUI, Value: 1}, ""},
+		{"observed browser ok", false, Fact{Kind: KindObserved, Actor: "a", Query: "q", Source: SourceBrowser, Value: 1}, ""},
 		{"observed direct ok", false, Fact{Kind: KindObserved, Actor: "a", Query: "q", Source: SourceDirect, Value: 1}, ""},
 		{"observed without source", false, Fact{Kind: KindObserved, Actor: "a", Query: "q", Value: 1}, "no source"},
 		{"observed bad source", false, Fact{Kind: KindObserved, Actor: "a", Query: "q", Source: "guess", Value: 1}, "not one of"},

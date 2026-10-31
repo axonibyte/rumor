@@ -199,7 +199,7 @@ func TestWhatCannotBeReadAsBindingsIsRefused(t *testing.T) {
 		{"an observation with no of", "observation[0].of", "missing key", func(doc map[string]any) {
 			delete(doc["observation"].([]any)[0].(map[string]any), "of")
 		}},
-		{"a fourth observation source", "observation[0].source", "not one of api, ui, direct", func(doc map[string]any) {
+		{"a fourth observation source", "observation[0].source", "not one of api, browser, direct", func(doc map[string]any) {
 			doc["observation"].([]any)[0].(map[string]any)["source"] = "db"
 		}},
 		{"a direct observation naming no component", "observation[0].component", "missing key", func(doc map[string]any) {

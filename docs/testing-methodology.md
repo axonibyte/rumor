@@ -1936,3 +1936,40 @@ count of samples the declarations supply, and printing it turns a verdict into a
 measurement: `no overfill in 1 answerable fan-out(s)` and `in 4` are different
 claims, and the reader decides what the first is worth. A silent absence makes
 that judgment for them, wrongly.
+
+### A rename's radius ends where a conversion hides, and the compiler cannot say so
+
+**TWO STRING TYPES JOINED BY A CAST MUST AGREE BY VALUE, AND NOTHING CHECKS
+THAT.** R8.4 renamed the page observation's source from `ui` to `browser`, and
+the word was declared twice — once in `internal/wire` and once in
+`internal/ledger` — with `walk.go` converting between them as
+`ledger.Source(decl.Source)`. A bare cast. Renaming only the wire constant
+compiles, passes every test that spells the identifier rather than the value,
+and is REFUSED AT THE LEDGER on the first observation that uses it, because the
+ledger validates against its own three. The failure is late, it is at runtime,
+and it names a source the author believes they renamed.
+
+**SO GREP FOR THE TYPE'S CONSTRUCTOR, NOT ONLY FOR THE IDENTIFIER.** The
+identifier is what a reader searches and what the compiler protects; the
+conversion is where a second declaration of the same word hides. Any
+`T(x)` between two named string types is a place two vocabularies are asserted
+equal with no arm behind the assertion.
+
+**AND THE IDENTIFIER AND THE VALUE ARE TWO RENAMES, NOT ONE.** `SourceUI =
+"browser"` builds, passes, and leaves the stale name in every switch that reads
+it — which is the defect the rename was for, one layer in. A value rename
+without its identifier is invisible to every test that uses the constant, since
+those tests spell the name and never the string.
+
+**THE RADIUS TOOK THREE PASSES AND EACH FOUND WHAT THE LAST HAD NOT**: two
+constants and three messages; then the cast reaching the persisted artifact, so
+both constants move together or neither does; then a third validating package
+neither reader had named, a fourth message, and an expectation pinned in a test
+asserting the old list as refusal text. A rename is bounded by a count nobody
+has until someone looks a third time, so the first bound should be stated as a
+floor rather than a radius.
+
+**AND A LINE NUMBER IS NOT A CITATION WHEN TWO FILES SHARE A BASENAME.** The
+pinned expectation above was cited as `tests/contract/bindings_test.go:202` and
+lives in `internal/bindings/bindings_test.go:202` — same line, different file.
+The number agreed, which is what made the citation look checked.

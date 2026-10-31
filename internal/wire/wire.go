@@ -60,9 +60,9 @@ const (
 type Source string
 
 const (
-	SourceAPI    Source = "api"
-	SourceUI     Source = "ui"
-	SourceDirect Source = "direct"
+	SourceAPI     Source = "api"
+	SourceBrowser Source = "browser"
+	SourceDirect  Source = "direct"
 )
 
 // ClockOp is what a clock request asks for, and the SHAPE is `observe`'s
@@ -564,7 +564,7 @@ func semantics(msg Message) error {
 	switch m := msg.(type) {
 	case ObserveRequest:
 		switch m.Source {
-		case SourceAPI, SourceUI:
+		case SourceAPI, SourceBrowser:
 			if m.Token == "" {
 				return Refusal{Kind: KindObserve, Field: "token",
 					Reason: fmt.Sprintf("missing field for source %q, which is an actor's observation through its session", m.Source)}
@@ -576,15 +576,15 @@ func semantics(msg Message) error {
 			}
 		default:
 			return Refusal{Kind: KindObserve, Field: "source",
-				Reason: fmt.Sprintf("not one of api, ui, direct: %q", m.Source)}
+				Reason: fmt.Sprintf("not one of api, browser, direct: %q", m.Source)}
 		}
 	case DescribeResponse:
 		for _, o := range m.Observations {
 			switch o.Source {
-			case SourceAPI, SourceUI, SourceDirect:
+			case SourceAPI, SourceBrowser, SourceDirect:
 			default:
 				return Refusal{Kind: KindDescribe, Field: "observations",
-					Reason: fmt.Sprintf("observation %q declares a source that is not one of api, ui, direct: %q", o.Name, o.Source)}
+					Reason: fmt.Sprintf("observation %q declares a source that is not one of api, browser, direct: %q", o.Name, o.Source)}
 			}
 		}
 	case ErrorResponse:

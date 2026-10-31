@@ -592,7 +592,7 @@ func Parse(doc map[string]any) Report {
 			Args: o.Strings("args", false),
 		}
 		switch obs.Source {
-		case wire.SourceAPI, wire.SourceUI:
+		case wire.SourceAPI, wire.SourceBrowser:
 			if o.Has("component") {
 				o.Refuse("component", fmt.Sprintf(
 					"a %s observation reads what an actor can see, so it names no component of the project's own store", obs.Source))
@@ -607,7 +607,7 @@ func Parse(doc map[string]any) Report {
 			// about a named component no provider covers.
 			obs.Component = o.Str("component", true)
 		default:
-			o.Refuse("source", fmt.Sprintf("%q: not one of api, ui, direct", obs.Source))
+			o.Refuse("source", fmt.Sprintf("%q: not one of api, browser, direct", obs.Source))
 		}
 		o.Done()
 		b.Observations = append(b.Observations, obs)

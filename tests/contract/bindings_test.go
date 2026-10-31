@@ -123,7 +123,7 @@ func TestEveryExampleCarriesBindingsThatAgreeWithItsCases(t *testing.T) {
 		for _, o := range b.Observations {
 			key := [3]string{o.Name, string(o.Source), o.Of}
 			declaredObs[key] = true
-			if o.Source != wire.SourceAPI && o.Source != wire.SourceUI && o.Source != wire.SourceDirect {
+			if o.Source != wire.SourceAPI && o.Source != wire.SourceBrowser && o.Source != wire.SourceDirect {
 				t.Errorf("%s: source %q is not one of the vocabulary's three", name, o.Source)
 			}
 		}

@@ -34,9 +34,9 @@ const (
 type Source string
 
 const (
-	SourceAPI    Source = "api"
-	SourceUI     Source = "ui"
-	SourceDirect Source = "direct"
+	SourceAPI     Source = "api"
+	SourceBrowser Source = "browser"
+	SourceDirect  Source = "direct"
 )
 
 // Fact is one ledger entry.
@@ -193,11 +193,11 @@ func (l *Ledger) Validate(f Fact) error {
 			return fmt.Errorf("ledger: observation at position %d has no query", f.Position)
 		}
 		switch f.Source {
-		case SourceAPI, SourceUI, SourceDirect:
+		case SourceAPI, SourceBrowser, SourceDirect:
 		case "":
 			return fmt.Errorf("ledger: observation at position %d has no source (R4)", f.Position)
 		default:
-			return fmt.Errorf("ledger: observation at position %d has source %q, not one of api, ui, direct", f.Position, f.Source)
+			return fmt.Errorf("ledger: observation at position %d has source %q, not one of api, browser, direct", f.Position, f.Source)
 		}
 		if f.Planted {
 			return fmt.Errorf("ledger: observation at position %d carries `planted`, which is a tag on a claim alone", f.Position)

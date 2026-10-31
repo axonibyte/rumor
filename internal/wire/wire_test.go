@@ -199,10 +199,10 @@ func TestObserveTokenFollowsTheSource(t *testing.T) {
 		refused bool
 	}{
 		{"api", "t", false},
-		{"ui", "t", false},
+		{"browser", "t", false},
 		{"direct", "", false},
 		{"api", "", true},
-		{"ui", "", true},
+		{"browser", "", true},
 		{"direct", "t", true},
 	} {
 		fixture := wellFormed("request", KindObserve)

@@ -248,7 +248,11 @@ response = { status = 200 }
 # plain HTML with no script -- R9 drives it with a real browser.
 #
 # THE CONTEXT IS LITERALLY "browser" because internal/validate's isBrowser tests
-# for that string; "ui" would make both arms skip while looking correct.
+# for that string, and a second spelling would make both arms skip while looking
+# correct. AS OF vocabulary v4 THERE IS NO SECOND SPELLING: the source this page
+# is observed through was called `ui` until R8.4 renamed it `browser`, so the
+# stage, the context and the source are now one word and this hazard is history
+# rather than a live trap (fable, coop rumor/1602).
 [[action]]
 name = "join_event_ui"
 context = "browser"

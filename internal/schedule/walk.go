@@ -1580,7 +1580,7 @@ func observeOne(ctx context.Context, statute string, sess *wire.Session, session
 	// `api` observation goes through the acting actor's own session, and a
 	// `direct` one is the engine's own and carries none.
 	var token string
-	if decl.Source == wire.SourceAPI || decl.Source == wire.SourceUI {
+	if decl.Source == wire.SourceAPI || decl.Source == wire.SourceBrowser {
 		t, terr := sessions.Token(actor, string(decl.Source))
 		if terr != nil {
 			// THE ACTOR CANNOT MAKE IT, which is "every declared

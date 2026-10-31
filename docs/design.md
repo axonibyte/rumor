@@ -474,7 +474,7 @@ session for `member_1` can exist only once some action has made a user called
 `member_1`, so acquiring every session before the first step would ask for all
 of them before the walk had created anybody. One per actor per CONTEXT and not
 one per actor: the context is what the token is for, and reusing an actor's
-`api` token for its `ui` actions would send a token the adapter issued for
+`api` token for its `browser` actions would send a token the adapter issued for
 something else. An empty token is refused rather than held, because an omitted
 token and an empty one are the same bytes, so the execute would be
 indistinguishable from one taken outside a session.
