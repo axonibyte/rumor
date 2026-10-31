@@ -402,22 +402,11 @@ system. A declared stage this build cannot run is refused before anything runs,
 and a project that enables `concurrency` without `api` gets the fan-out and no
 walk — selecting a stage is what selects it.
 
-**And which stages were selected, with every skip's reason, is reported by name
-on stderr:**
-
-```
-run: stages selected -- api, concurrency, fuzz
-run: stages skipped -- browser (enabled and this build cannot run it yet)
-```
-
-Where the `run:` diagnostics live, and never on stdout: two attempts of one seed
-must print the same bytes there, so a stage line on the hashed stream would move
-five frozen digests, `seeds.lock` and figures quoted in these documents, for no
-finding. **Both lines always print, `none` included.** A skip list omitted when
-there is nothing to say cannot be told from a build that never learned to report
-one — which is the shape that let `fuzz` ship known, unrunnable and declared by
-nobody. And the reasons are the same taxonomy the empty-selection refusal reads,
-so one state reads one way whether or not any stage ran.
+**Which stages were selected, and why each skipped one was, is a fact of the
+record rather than a line a run prints.** `rumor run` says nothing about them on
+either stream: stdout is the subject of every recorded digest and of R7's
+measurement row, and stderr's EMPTINESS is what lets a control read a build
+failure as a build failure. A reader asks instead, with `rumor report` below.
 
 The fuzz stage reports one line, the count being the whole of its evidence:
 
@@ -742,35 +731,42 @@ if [ "$wantz" != "$gotz" ]; then
   fail=1
 fi
 
-# THE REPORT SAMPLE IS CHECKED ON BOTH THE CONTENT AND THE STREAM, because the
-# stream is the ruling (rumor/1472 item 1): a correct report on stdout would
-# pass every content check while moving five frozen digests. So stderr is
-# captured separately and stdout is asserted CLEAN of it.
-wantr=$(awk '/^\*\*And which stages were selected/{f=1;next} f&&/^```$/{g=!g; if(!g) exit; next} g' docs/cli.md)
+# THE REPORT SAMPLE, AND THE SILENCE BESIDE IT. Two halves, because a content
+# check alone would pass a build that printed the facts correctly AND on a
+# stream fable's ruling (rumor/1597) keeps clear: stdout carries every recorded
+# digest and stderr's emptiness is what lets a control read a build failure as
+# a build failure.
+wantr=$(sed -n '/^\$ rumor report examples\/toy$/,/^```$/p' docs/cli.md | sed '1d;$d')
 [ -n "$wantr" ] || {
-  echo 'the stage-report sample is no longer where this block looks for it'
+  echo 'the report sample is no longer where this block looks for it'
   exit 1
 }
-rout=$(mktemp) || exit 1
-rerr=$(mktemp) || exit 1
-rumor run examples/toy --seed 2 --steps 10 > "$rout" 2> "$rerr"
-gotr=$(grep '^run: stages ' "$rerr")
-[ -n "$gotr" ] || {
-  echo 'the run printed no stage report on stderr, so the sample compares against nothing'
-  rm -f "$rout" "$rerr"
+gotr=$(rumor report examples/toy) || {
+  echo 'rumor report did not exit 0 on the toy, which this sample documents'
   exit 1
 }
 if [ "$wantr" != "$gotr" ]; then
-  echo 'the stage report in docs/cli.md is not what the tool prints:'
+  echo 'the report in docs/cli.md is not what the tool prints:'
   printf 'documented:\n%s\ntool:\n%s\n' "$wantr" "$gotr"
   fail=1
 fi
-if grep -q '^run: stages ' "$rout"; then
-  echo 'the stage report reached STDOUT, which every recorded digest is taken from:'
-  grep '^run: stages ' "$rout"
+
+# AND AN UNASKED RUN SAYS NOTHING ABOUT STAGES ON EITHER STREAM.
+ro=$(mktemp) || exit 1
+re=$(mktemp) || exit 1
+rumor run examples/toy --seed 2 --steps 10 > "$ro" 2> "$re"
+if grep -q 'stages' "$ro"; then
+  echo 'an unasked run names stages on STDOUT, which every recorded digest is taken from:'
+  grep 'stages' "$ro"
   fail=1
 fi
-rm -f "$rout" "$rerr"
+if grep -q 'stages' "$re"; then
+  echo 'an unasked run names stages on STDERR, retiring the reading that tells a build'
+  echo 'failure from noise:'
+  grep 'stages' "$re"
+  fail=1
+fi
+rm -f "$ro" "$re"
 
 exit $fail
 ```
@@ -848,6 +844,37 @@ project. The block above is held to the binary's own output by an arm in
 `tests/` from this page -- coupling the docs to a test fixture's layout. The arm
 comparing this console block to the binary is the stronger check, and it lives
 where the fixture does.
+
+## `rumor report`
+
+```
+$ rumor report examples/toy
+report: stages selected -- api, concurrency, fuzz
+report: stages skipped -- browser (enabled and this build cannot run it yet)
+```
+
+**It prints the run's stage facts and nothing else.** The selection is decided
+before any stage starts, from `[stages]` and the profile alone, so reporting it
+needs no walk — and a report that ran the stages in order to describe them would
+hand you two sets of findings to tell apart. `--profile NAME` narrows exactly as
+it does on `run`.
+
+**Both lines always print, `none` included.** A skip list omitted when there is
+nothing to say cannot be told from a build that never learned to report one,
+which is the shape that let `fuzz` ship known, unrunnable and declared by
+nobody; under a profile selecting one runnable stage it reads
+`report: stages skipped -- none`.
+
+**A skip names the state and not just the absence.** `browser` is known to this
+build and cannot run until R9, so it reads *enabled and this build cannot run it
+yet*; a stage its project declares with `enabled = false` reads so instead. The
+reasons are the same taxonomy the empty-selection refusal uses, so one state
+reads one way whether or not any stage ran.
+
+**`--seed` and `--steps` are refused by name.** This verb makes no walk, so a
+seed it accepted silently would promise a determinism it never exercised. A
+profile nobody declares is a refusal and exits 1; a flag it does not know is a
+usage error and exits 2.
 
 ## `rumor fake-adapter`
 

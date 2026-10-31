@@ -1333,16 +1333,24 @@ with its reason, so `browser` reads as DECLARED-BUT-UNRUNNABLE rather than as a
 stage that quietly did not appear — which is the distinction rook's D13 partner
 turns on, and the one a reader cannot make from an absence.
 
-**IT IS ON STDERR AND ITS REASONS ARE THE REFUSAL's OWN.** stdout is the
-subject of every recorded digest and of R7's measurement row, so a stage line
-there moves five frozen digests, `seeds.lock` and figures quoted in these
-documents for no finding (fable, coop rumor/1472). And the taxonomy is shared
-with the empty-selection refusal below rather than copied: two readers deriving
-"why not" separately would let one state read two ways depending on whether any
-stage happened to run. **Both lines print always, `none` included** — a skip
-list silent when it has nothing to say cannot be told from a build that never
-learned to report one, which is exactly how `fuzz` reached 108's gate known,
-unrunnable and declared by nobody.
+**A READER ASKS FOR IT, AND NEITHER STREAM IS FREE.** The first attempt printed
+the selection and the skips on stderr unconditionally, reasoning that stdout was
+the constraint; that is half the rule. stdout is the subject of every recorded
+digest and of R7's measurement row, and **stderr's EMPTINESS is what lets a
+control read a build failure as a build failure** — rook measured it as part of
+D7, and a run printing two lines there on every invocation retires that reading
+(fable, coop rumor/1597). The reason was already written on
+`schedule.Record.Stages` before this child began. So the facts are the record's,
+and `rumor report` is where a reader sees them: it prints them and nothing else,
+runs no stage, and leaves both of `rumor run`'s streams as v0.1.45 left them
+byte for byte.
+
+**AND THE TAXONOMY IS SHARED WITH THE EMPTY-SELECTION REFUSAL BELOW** rather
+than copied: two readers deriving "why not" separately would let one state read
+two ways depending on whether any stage happened to run. **Both lines print
+always, `none` included** — a skip list silent when it has nothing to say cannot
+be told from a build that never learned to report one, which is exactly how
+`fuzz` reached 108's gate known, unrunnable and declared by nobody.
 
 **AN EMPTY SELECTION IS A REFUSAL, NOT A RUN THAT DID NOTHING**, and it names
 the reason per stage. The first version of that message listed the sets and not

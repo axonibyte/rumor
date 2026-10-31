@@ -30,7 +30,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
-const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor validate PROJECT\n       rumor attaint [--examples DIR]\n       rumor run PROJECT [--seed N] [--steps N] [--profile NAME]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S]"
+const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor validate PROJECT\n       rumor attaint [--examples DIR]\n       rumor run PROJECT [--seed N] [--steps N] [--profile NAME]\n       rumor report PROJECT [--profile NAME]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S]"
 
 // coverageCheck is a seam, not indirection for its own sake: it lets a test
 // drive the WRITE handling below -- including the failed-write path -- without
@@ -106,6 +106,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return 2
 		}
 		return runProject(dir, seed, haveSeed, steps, profile, stdout, stderr)
+	}
+
+	if len(args) >= 1 && args[0] == "report" {
+		dir, profile, bad := parseReportArgs(args[1:])
+		if bad != "" {
+			_, _ = fmt.Fprintf(stderr, "report: %s\n", bad)
+			_, _ = fmt.Fprintln(stderr, usage)
+			return 2
+		}
+		return reportProject(dir, profile, stdout, stderr)
 	}
 
 	if len(args) >= 1 && args[0] == "validate" {

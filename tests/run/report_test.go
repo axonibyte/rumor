@@ -1,108 +1,112 @@
-// 111's REPORT: THE STAGE SELECTION AND EVERY SKIP, BY NAME.
+// 111's REPORT, AS RULED: A VERB THAT ASKS, NOT A STREAM THAT TELLS.
 package run_test
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// THE REPORT IS ON STDERR AND THE DIGESTS DO NOT MOVE, which is the whole of
-// fable's ruling at coop rumor/1472 item 1: the walk's stdout is the subject of
-// every recorded digest and of R7's measurement row, so a stage line there
-// "moves thirty-five figures in five files for no finding".
+// `rumor report` IS WHERE A READER SEES THE STAGE FACTS, and this file replaces
+// arms that measured the wrong channel.
 //
-// THE STDOUT HALF IS THE LOAD-BEARING ONE. A report that is correct and on the
-// wrong stream is worse than none: it would pass every arm about its CONTENT
-// while silently invalidating five frozen digests, seeds.lock and the docs'
-// figures. So this asserts the absence as well as the presence.
+// THE FIRST HEAD PRINTED TWO UNCONDITIONAL STDERR LINES. It was right that
+// stdout is the subject of every recorded digest, and wrong that stderr was
+// therefore free: STDERR's EMPTINESS is itself load-bearing -- it is what lets a
+// control read a build failure as a build failure, and rook measured it as part
+// of D7 (coop rumor/1480). fable reversed the shape at rumor/1597, and the
+// reason was already written on schedule.Record.Stages before this child began.
 //
-// BOTH LINES ALWAYS PRINT, `none` INCLUDED. An omitted skip line cannot be told
-// from a build that never learned to report one -- which is the shape that let
-// `fuzz` ship known, unrunnable and declared by nobody straight through 108's
-// gate, and the reason this child exists.
-func TestTheRunReportsItsStageSelectionAndSkipsOnStderr(t *testing.T) {
-	const toy = "../../examples/toy"
-
-	out, errb, code := run(t, "run", toy, "--seed", "2", "--steps", "10")
+// SO THE ARM THAT MATTERS IS AN ABSENCE: a run nobody asked prints nothing about
+// stages on EITHER stream. Everything else here is about the verb.
+func TestRunSaysNothingAboutStagesOnEitherStreamUnlessAsked(t *testing.T) {
+	out, errb, code := run(t, "run", "../../examples/toy", "--seed", "2", "--steps", "10")
 	if code != 3 {
-		t.Fatalf("the shipped toy exited %d, want 3 (its planted defects): a run that did "+
-			"something else is not the subject\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+		t.Fatalf("the toy exited %d, want 3 (its planted defects): a run that did something "+
+			"else is not the subject\nstdout:\n%s\nstderr:\n%s", code, out, errb)
 	}
-
-	// PRESENT, ON STDERR, BOTH LINES.
-	for _, want := range []string{
-		"run: stages selected -- api, concurrency, fuzz",
-		"run: stages skipped -- browser (enabled and this build cannot run it yet)",
-	} {
-		if !strings.Contains(errb, want) {
-			t.Errorf("stderr does not carry %q:\n%s", want, errb)
-		}
+	// BOTH STREAMS, and by the bare word rather than a whole line, so a
+	// reworded report cannot reach either of them unnoticed.
+	if strings.Contains(out, "stages") {
+		t.Errorf("stdout carries a stage report, which is the subject of every recorded "+
+			"digest: five frozen digests, seeds.lock and the docs' figures all move\n%s", out)
 	}
-
-	// AND ABSENT FROM STDOUT. Checked by the PREFIX rather than the whole line,
-	// so a reworded report still cannot leak onto the hashed stream.
-	if strings.Contains(out, "run: stages") {
-		t.Errorf("the report reached STDOUT, which is the subject of every recorded digest: "+
-			"five frozen digests, seeds.lock and the docs' figures all move\nstdout:\n%s", out)
-	}
-
-	// THE SKIP NAMES THE STATE rook's D13 PARTNER DISTINGUISHES: `browser` is
-	// false in Known AND declared, so it is DECLARED-BUT-UNRUNNABLE and is
-	// reported as a skip with its reason -- not as a stage nobody declared,
-	// which is a different reading and 111's phase gate's to name.
-	if strings.Contains(errb, "run: stages skipped -- none") {
-		t.Errorf("the toy declares `browser`, which this build cannot run, so the skip list "+
-			"must not be empty:\n%s", errb)
+	if strings.Contains(errb, "stages") {
+		t.Errorf("stderr carries a stage report on an unasked run, which retires the reading "+
+			"that lets a control tell a build failure from noise (rook, D7)\n%s", errb)
 	}
 }
 
-// A PROJECT THAT SKIPS NOTHING SAYS SO, which is the other direction and the one
-// that keeps the line above from being a fixed string that happens to be true.
-func TestAProjectWithNothingSkippedReportsNoneRatherThanNothing(t *testing.T) {
-	dir := t.TempDir()
-	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego", "seeds.lock"} {
-		b, err := os.ReadFile(filepath.Join("../../examples/toy", f))
-		if err != nil {
-			t.Fatalf("reading the toy's %s: %v", f, err)
-		}
-		body := string(b)
-		if f == "platform.toml" {
-			// ONLY `browser` IS DROPPED, and the reason is measured rather
-			// than tidy: it is the one stage this build cannot run, so its
-			// absence is what empties the skip list. Dropping `concurrency` or
-			// `fuzz` as well is REFUSED before the report ever prints --
-			// platform cross-checks that a profile names only declared stages,
-			// and 110's `racing` profile names `concurrency`, so the run exits
-			// 1 on "profiles.racing.stages: names stage concurrency, which is
-			// not declared". That refusal is a different subject.
-			//
-			// AND NO PROFILE NAMES `browser`, which is what makes this edit
-			// safe: walking, settling and expiring select api, racing selects
-			// concurrency.
-			const drop = `browser = { enabled = true }`
-			if !strings.Contains(body, drop) {
-				t.Fatalf("the toy no longer declares %q, so this cell would build a world it "+
-					"did not mean to", drop)
-			}
-			body = strings.Replace(body, drop, "", 1)
-		}
-		if err := os.WriteFile(filepath.Join(dir, f), []byte(body), 0o644); err != nil {
-			t.Fatalf("writing %s: %v", f, err)
+// AND THE VERB PRINTS THEM, with the skip named beside its reason.
+func TestTheReportVerbNamesTheSelectionAndEverySkip(t *testing.T) {
+	out, errb, code := run(t, "report", "../../examples/toy")
+	if code != 0 {
+		t.Fatalf("report exited %d, want 0\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	}
+	for _, want := range []string{
+		"report: stages selected -- api, concurrency, fuzz",
+		"report: stages skipped -- browser (enabled and this build cannot run it yet)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the report does not carry %q:\n%s", want, out)
 		}
 	}
+	// NOTHING ELSE, which is the ruling's own word: a verb that also walked
+	// would hand a reader two sets of findings to tell apart.
+	for _, unwanted := range []string{"run: seed", "fuzz:", "concurrency:", "FOUND"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("the report printed %q, so it is doing more than reporting:\n%s",
+				unwanted, out)
+		}
+	}
+	// AND ITS STDERR IS EMPTY, for the same reason the unasked run's must be.
+	if errb != "" {
+		t.Errorf("report wrote %d byte(s) to stderr:\n%s", len(errb), errb)
+	}
+}
 
-	out, errb, code := run(t, "run", dir, "--seed", "2", "--steps", "10")
-	if !strings.Contains(errb, "run: stages selected -- api") {
-		t.Errorf("exit %d: the api-only project did not report api selected\nstderr:\n%s", code, errb)
+// `none` IS SAID RATHER THAN OMITTED, and the shipped toy reaches it under a
+// profile -- no fixture needed, because `walking` selects api alone and asks for
+// nothing it cannot run.
+//
+// THE EMPTY CASE IS THE ONE THAT MATTERS: a skip list omitted when there is
+// nothing to say cannot be told from a build that never learned to report one,
+// which is the shape that let `fuzz` ship known, unrunnable and declared by
+// nobody through 108's gate.
+func TestTheReportSaysNoneRatherThanNothing(t *testing.T) {
+	out, errb, code := run(t, "report", "../../examples/toy", "--profile", "walking")
+	if code != 0 {
+		t.Fatalf("report --profile walking exited %d\nstdout:\n%s\nstderr:\n%s", code, out, errb)
 	}
-	if !strings.Contains(errb, "run: stages skipped -- none") {
-		t.Errorf("a project asking for nothing it cannot run reported its skips as something "+
-			"other than `none`, so the empty case is indistinguishable from an unimplemented "+
-			"one\nstderr:\n%s", errb)
+	if !strings.Contains(out, "report: stages selected -- api") {
+		t.Errorf("the walking profile selects api alone and the report does not say so:\n%s", out)
 	}
-	if strings.Contains(out, "run: stages") {
-		t.Errorf("the report reached STDOUT:\n%s", out)
+	if !strings.Contains(out, "report: stages skipped -- none") {
+		t.Errorf("a profile asking for nothing it cannot run reported its skips as something "+
+			"other than `none`:\n%s", out)
+	}
+}
+
+// THE TWO FLAGS A READER WILL TRY ARE REFUSED BY NAME, because this verb makes
+// no walk: a seed it accepted silently would promise a determinism it never
+// exercised.
+func TestTheReportRefusesWalkFlagsByName(t *testing.T) {
+	for _, flag := range []string{"--seed", "--steps"} {
+		out, errb, code := run(t, "report", "../../examples/toy", flag, "3")
+		if code != 2 {
+			t.Errorf("%s exited %d, want 2 (a usage error)\nstdout:\n%s\nstderr:\n%s",
+				flag, code, out, errb)
+			continue
+		}
+		if !strings.Contains(errb, "is not a report flag") {
+			t.Errorf("%s was refused without saying why:\n%s", flag, errb)
+		}
+	}
+	// AND A PROFILE NOBODY DECLARES IS A REFUSAL AND NOT A USAGE ERROR: the
+	// project is wrong, which is exit 1 here, and the distinction is the one
+	// docs/vocabulary.md draws between refused and could-not-run.
+	out, errb, code := run(t, "report", "../../examples/toy", "--profile", "nonesuch")
+	if code != 1 {
+		t.Errorf("an undeclared profile exited %d, want 1\nstdout:\n%s\nstderr:\n%s",
+			code, out, errb)
 	}
 }
