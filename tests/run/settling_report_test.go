@@ -156,6 +156,18 @@ func TestADuePassThatDidNotRunIsCountedSeparately(t *testing.T) {
 		t.Fatalf("this seed was chosen because a due pass does not run; due %d, ran %d: %q\n"+
 			"the arm is vacuous on a world where every due pass ran", due, ran, line)
 	}
+	// AND THE SENTENCE THIS WORLD ACTUALLY REACHES IS PINNED HERE, because I
+	// mislabeled it in public: r8/126's table offered this world as "due and
+	// did not run", and ibis measured it at r8/132 as `no pass held work to
+	// re-ask` -- the clause above it in the switch. The counts DO show the
+	// shortfall, which is what this arm is about and what it still asserts;
+	// they do not select the sentence. Pinning it on the arm whose world I got
+	// wrong is what keeps the correction, since the table is a post and a post
+	// enforces nothing.
+	if !strings.Contains(line, "no pass held work to re-ask") {
+		t.Errorf("this world's sentence moved; r8/132 measured it as the held-nothing "+
+			"clause and the shortfall is in the counts alone: %q", line)
+	}
 	// THE LINE SAYS WHY THERE IS A SHORTFALL rather than leaving the reader to
 	// subtract two numbers and guess.
 	if !strings.Contains(out, "FOUND") {
@@ -269,4 +281,125 @@ func toyWithPeriodOn(t *testing.T, onStage string, every int) string {
 		}
 	}
 	return dir
+}
+
+// THE TWO SENTENCES NO ARM REACHED, found by ibis clearing ad8b227 (coop
+// r8/132) against the world table I posted at r8/126.
+//
+// MY TABLE'S THIRD ROW WAS WRONG AND THE ARM BUILT ON IT WAS NOT. I offered
+// seed 1234 at period 2 as "due and did not run", and it prints `due at 3, ran
+// 2: no pass held work to re-ask` -- the SAME clause as the row above it. The
+// counts do show a shortfall, which is what
+// TestADuePassThatDidNotRunIsCountedSeparately asserts and still correctly
+// asserts; what they do not do is select the sentence. `every pass was skipped`
+// needs due > 0 AND ran == 0, and no world I had named reached it.
+//
+// SO FIVE SENTENCES HAD THREE ARMS. The gap is the shape of this child's own
+// defect one level up: I counted the STATES I had enumerated rather than the
+// branches the code can take, which is a denominator taken from my notes
+// instead of from the subject.
+func TestEverySettlingSentenceHasAWorld(t *testing.T) {
+	// NEVER CAME DUE: a period longer than the walk. due 0 and ran 0, which is
+	// the one state whose two zeros are not a shortfall.
+	out, _, code := run(t, "run", toyWithPeriod(t, 99), "--seed", "42",
+		"--steps", "20", "--profile", "settling")
+	if code != 0 && code != 3 {
+		t.Fatalf("the never-due world exited %d, want 0 or a finding:\n%s", code, out)
+	}
+	line := settlingLine(t, out)
+	if !strings.Contains(line, "the period never came due in this walk") {
+		t.Errorf("a period of 99 over 20 steps does not reach the never-due sentence: %q", line)
+	}
+	if !strings.Contains(line, "due at 0, ran 0") {
+		t.Errorf("the never-due sentence does not carry its two zeros: %q", line)
+	}
+
+	// EVERY PASS SKIPPED, CAUSE ONE: a stopped walk. ibis's world -- the walk
+	// finds its bug ON the step the only due pass sat at.
+	sout, _, scode := run(t, "run", toyWithPeriod(t, 6), "--seed", "1234",
+		"--steps", "40", "--profile", "settling")
+	if scode != 0 && scode != 3 {
+		t.Fatalf("the stopped-walk world exited %d, want 0 or a finding:\n%s", scode, sout)
+	}
+	sline := settlingLine(t, sout)
+	if !strings.Contains(sline, "every pass was skipped") {
+		t.Errorf("a walk stopping on its only due step does not reach the skipped sentence: %q",
+			sline)
+	}
+	if !strings.Contains(sline, "due at 1, ran 0") {
+		t.Errorf("the skipped sentence does not carry the shortfall it is about: %q", sline)
+	}
+	// AND THE DISJUNCTION IS RESOLVABLE BY THE READER, which is the reason the
+	// line itself does not resolve it: the finding is reported above.
+	if !strings.Contains(sout, "FOUND") {
+		t.Errorf("the skipped sentence names a stopped walk or a missing probe and the run "+
+			"shows neither, so a reader cannot tell which:\n%s", sout)
+	}
+}
+
+// EVERY PASS SKIPPED, CAUSE TWO: a project with NO PROBE, which is the other
+// half of the sentence's disjunction and a different world entirely.
+//
+// IT IS THE walkable FIXTURE AND NOT THE TOY, because the toy declares two
+// probes and cannot be made to have none without removing the thing the other
+// arms need. walkable declares no `[[quiesce.probe]]` at all -- run_test.go's
+// control arm says so in those words -- so the walk's periodic guard never
+// passes, however many steps come due.
+//
+// WITHOUT THIS ARM the sentence would be covered only by the stopped-walk
+// cause, and a build that skipped passes for the WRONG reason would read as
+// correct: the words would be right and the world they describe would not be
+// the one that produced them.
+func TestAProjectWithNoProbeSkipsEveryDuePass(t *testing.T) {
+	out, errb, code := fixtureWithPeriod(t, 2)
+	if code != 0 {
+		t.Fatalf("walkable with a period exited %d, want 0\nstdout:\n%s\nstderr:\n%s",
+			code, out, errb)
+	}
+	line := settlingLine(t, out)
+	if !strings.Contains(line, "every pass was skipped") {
+		t.Errorf("a project with no probe does not reach the skipped sentence: %q", line)
+	}
+	// THE PERIOD CAME DUE, which is what makes this the skipped sentence rather
+	// than the never-due one -- five steps at a period of 2.
+	if !strings.Contains(line, "ran 0") {
+		t.Errorf("a project with no probe ran a pass: %q", line)
+	}
+	if strings.Contains(line, "due at 0") {
+		t.Errorf("no step came due, so this world is the never-due case and not this one: %q",
+			line)
+	}
+	// AND NO FINDING, which separates the two causes: the stopped-walk arm
+	// above requires one, and this world must reach the same sentence without.
+	if strings.Contains(out, "FOUND") {
+		t.Errorf("walkable found a bug, so this world no longer isolates the missing probe "+
+			"as the cause:\n%s", out)
+	}
+}
+
+// fixtureWithPeriod copies fixtures/walkable with a period on its api stage and
+// runs it, returning what the run printed.
+func fixtureWithPeriod(t *testing.T, every int) (string, string, int) {
+	t.Helper()
+	dir := t.TempDir()
+	const anchor = "api = { enabled = true }"
+	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego"} {
+		b, err := os.ReadFile(filepath.Join(fixture, f))
+		if err != nil {
+			t.Fatalf("reading %s: %v", f, err)
+		}
+		s := string(b)
+		if f == "platform.toml" {
+			if strings.Count(s, anchor) != 1 {
+				t.Fatalf("the walkable fixture does not declare %q exactly once, so this copy "+
+					"would carry no period and the arm would pass vacuously", anchor)
+			}
+			s = strings.Replace(s, anchor,
+				"api = { enabled = true, reconcile_every = "+strconv.Itoa(every)+" }", 1)
+		}
+		if err := os.WriteFile(filepath.Join(dir, f), []byte(s), 0o644); err != nil {
+			t.Fatalf("writing %s: %v", f, err)
+		}
+	}
+	return run(t, "run", dir, "--seed", "42", "--steps", "5")
 }
