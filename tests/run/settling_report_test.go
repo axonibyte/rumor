@@ -215,8 +215,16 @@ func settlingLine(t *testing.T, out string) string {
 // and read the agreement as a result.
 func toyWithPeriod(t *testing.T, every int) string {
 	t.Helper()
+	return toyWithPeriodOn(t, "api", every)
+}
+
+// toyWithPeriodOn is the same copy with the period on a NAMED stage, which is
+// what lets report_test.go build the one case the walk cannot have: a period
+// declared where nothing reads it.
+func toyWithPeriodOn(t *testing.T, onStage string, every int) string {
+	t.Helper()
 	dir := t.TempDir()
-	const anchor = "api = { enabled = true }"
+	anchor := onStage + " = { enabled = true }"
 	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego", "seeds.lock"} {
 		b, err := os.ReadFile(filepath.Join("../../examples/toy", f))
 		if err != nil {
@@ -229,7 +237,7 @@ func toyWithPeriod(t *testing.T, every int) string {
 					"carry no period and every arm would pass vacuously", anchor)
 			}
 			s = strings.Replace(s, anchor,
-				"api = { enabled = true, reconcile_every = "+strconv.Itoa(every)+" }", 1)
+				onStage+" = { enabled = true, reconcile_every = "+strconv.Itoa(every)+" }", 1)
 			if !strings.Contains(s, "reconcile_every = "+strconv.Itoa(every)) {
 				t.Fatal("the period did not land in the copy")
 			}

@@ -110,3 +110,100 @@ func TestTheReportRefusesWalkFlagsByName(t *testing.T) {
 			code, out, errb)
 	}
 }
+
+// AND EACH SELECTED STAGE'S DECLARED FACTS, which is fable's third clause at
+// coop rumor/1614 -- the answer to r8/121's question about where a settling
+// declaration belongs when the verb makes no run.
+//
+// THE SET OF FACT LINES IS THE SELECTION EXACTLY, asserted both ways. A line
+// for a stage that was SKIPPED would be the report describing something no run
+// will do, and a selected stage with no line would be the omission the skip
+// list's own `none` rule exists to refuse.
+func TestTheReportNamesEachSelectedStagesDeclaredFacts(t *testing.T) {
+	out, errb, code := run(t, "report", "../../examples/toy")
+	if code != 0 {
+		t.Fatalf("report exited %d, want 0\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	}
+	for _, want := range []string{
+		"report: stage api --",
+		"report: stage concurrency --",
+		"report: stage fuzz --",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the report carries no facts line for %q:\n%s", want, out)
+		}
+	}
+	// browser IS SKIPPED ON THIS BUILD, and the skip line above already says
+	// so -- so a facts line for it would describe a stage that will not run.
+	if strings.Contains(out, "report: stage browser --") {
+		t.Errorf("the report describes a SKIPPED stage's facts:\n%s", out)
+	}
+	// AND THE COUNT MATCHES, so a fourth line nobody named cannot slip in
+	// behind three that were asserted present.
+	if n := strings.Count(out, "report: stage "); n != 3 {
+		t.Errorf("want one facts line per selected stage, 3 selected, got %d:\n%s", n, out)
+	}
+	// THE api STAGE'S FACT IS ITS PERIOD, and the committed toy declares none.
+	if !strings.Contains(out, "report: stage api -- reconciles only after the last step") {
+		t.Errorf("the toy declares no period and the api line does not say so:\n%s", out)
+	}
+	if errb != "" {
+		t.Errorf("report wrote %d byte(s) to stderr:\n%s", len(errb), errb)
+	}
+}
+
+// THE DECLARED PERIOD IS READ FROM platform.toml AND PRINTED, which is the half
+// of R8/111's defect that no test could have caught before: `reconcile_every`
+// was declared by NO project in the tree, so the path from the file to any
+// reader had never run once.
+func TestTheReportPrintsTheDeclaredPeriod(t *testing.T) {
+	out, errb, code := run(t, "report", toyWithPeriod(t, 4))
+	if code != 0 {
+		t.Fatalf("report exited %d, want 0\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	}
+	if !strings.Contains(out, "report: stage api -- reconciles every 4 step(s)") {
+		t.Errorf("the declared period does not reach the report:\n%s", out)
+	}
+	// AND THE UNDECLARED SENTENCE IS GONE, so the two states are two sentences
+	// rather than one that happens to mention a number.
+	if strings.Contains(out, "reconciles only after the last step") {
+		t.Errorf("a declared period still reads as undeclared:\n%s", out)
+	}
+}
+
+// A PERIOD ON A STAGE THAT DOES NOT WALK IS NAMED AS INERT, and this is the arm
+// the line exists for.
+//
+// `[stages.concurrency].reconcile_every` PARSES, is accepted by the platform,
+// passes every validate arm, and changes nothing about any run -- the walk reads
+// the period from the api stage's table and no other (cmd/rumor/run.go says so
+// where it reads it). A report that printed it the same way for every stage
+// would be the thing that CONFIRMED the mistake to whoever made it, which is
+// why the wording is asserted and not merely the number.
+func TestTheReportNamesAPeriodOnANonWalkingStageAsInert(t *testing.T) {
+	out, errb, code := run(t, "report", toyWithPeriodOn(t, "concurrency", 4))
+	if code != 0 {
+		t.Fatalf("report exited %d, want 0\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	}
+	line := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, "report: stage concurrency --") {
+			line = l
+		}
+	}
+	if line == "" {
+		t.Fatalf("no facts line for concurrency:\n%s", out)
+	}
+	if !strings.Contains(line, "only the api stage reads") {
+		t.Errorf("the report does not say the period is unread where it is declared: %q", line)
+	}
+	if !strings.Contains(line, "no run reconciles on it") {
+		t.Errorf("the report names the period without saying it does nothing: %q", line)
+	}
+	// AND THE api STAGE IS UNAFFECTED: this project declares no period where
+	// the walk reads one, so the api line must still say so. Without this the
+	// arm could pass on a build that read the period from any stage's table.
+	if !strings.Contains(out, "report: stage api -- reconciles only after the last step") {
+		t.Errorf("a period on concurrency changed what the api stage reports:\n%s", out)
+	}
+}

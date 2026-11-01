@@ -23,9 +23,17 @@ import (
 // asked now prints neither, and both streams are as v0.1.45 left them byte for
 // byte.
 //
-// SO A READER ASKS. `rumor report PROJECT` prints the selection and every skip
-// and nothing else, which is what makes it safe to print on stdout: the digests
-// are taken from `rumor run`, and this is a different invocation.
+// SO A READER ASKS. `rumor report PROJECT` prints the selection, every skip, and
+// each selected stage's DECLARED FACTS -- and nothing else, which is what makes
+// it safe to print on stdout: the digests are taken from `rumor run`, and this
+// is a different invocation.
+//
+// THE THIRD CLAUSE ARRIVED AT R8/111 and the sentence said "and nothing else"
+// without it for one head. fable ruled it at coop rumor/1614 on my question at
+// r8/121: a stage's DECLARATION is decided by the platform and the profile
+// alone, which is the same property that makes the first two clauses printable
+// without a walk, so it belongs here -- while the settling VERDICT belongs to
+// `rumor run`, which is the invocation that has a record.
 //
 // IT RUNS NOTHING, which is not a shortcut but the subject's own shape: the
 // stages are chosen BEFORE anything runs (Select's comment and fable's ruling at
@@ -59,6 +67,26 @@ func reportProject(dir, profile string, stdout, stderr io.Writer) int {
 	// nobody through 108's gate, and the reason this child exists.
 	_, _ = fmt.Fprintf(stdout, "report: stages selected -- %s\n", nameList(selected))
 	_, _ = fmt.Fprintf(stdout, "report: stages skipped -- %s\n", skipList(skipped))
+	// AND EACH SELECTED STAGE'S DECLARED FACTS, which is fable's ruling at coop
+	// rumor/1614 on the question at r8/121: the settling VERDICT belongs to
+	// `rumor run`, which has a record, and the DECLARATION belongs here,
+	// because a declaration is decided by the platform and the profile alone --
+	// the same thing that makes the two lines above safe to print without a
+	// walk.
+	//
+	// IT ANSWERS THE OTHER HALF OF THE DEFECT THIS CHILD FOUND. `rec.Settled`
+	// had no reader and `reconcile_every` had no DECLARATION anywhere in the
+	// tree, and the second was invisible because nothing ever printed what a
+	// stage declares. A reader who runs this on a project that means to
+	// reconcile periodically now sees at once whether it does.
+	//
+	// ONE LINE PER SELECTED STAGE, `nothing` INCLUDED, for the reason the skip
+	// list gives above: a stage omitted when it has nothing to say cannot be
+	// told from a build that never learned to report that stage at all.
+	for _, name := range selected {
+		_, _ = fmt.Fprintf(stdout, "report: stage %s -- %s\n", name,
+			stageFacts(name, prep.Platform.Stages[name]))
+	}
 	return 0
 }
 
@@ -99,4 +127,34 @@ func parseReportArgs(args []string) (dir, profile, bad string) {
 		return "", "", "report wants a PROJECT"
 	}
 	return dir, profile, ""
+}
+
+// stageFacts is what one selected stage DECLARES, in its own words.
+//
+// THE PERIOD IS THE api STAGE'S AND NO OTHER'S, which is not a formatting
+// choice but the subject's shape: cmd/rumor/run.go reads
+// `Stages[stage.API].ReconcileEvery` and says why -- the walk IS the api stage,
+// so a period under another stage's table is a period for a stage that does not
+// walk.
+//
+// SO A PERIOD DECLARED ELSEWHERE IS NAMED AS INERT RATHER THAN PRINTED AS IF IT
+// WORKED. That is the one reading this line can give that no other output can:
+// the value parses, the platform accepts it, every arm passes, and it changes
+// nothing about any run -- a knob that reads as set and does nothing, which is
+// the exact shape `reconcile_every`'s own negative guard was added to refuse.
+// Printing it the same way for every stage would make this report the thing
+// that CONFIRMS the mistake.
+func stageFacts(name string, st platform.Stage) string {
+	if name != stage.API {
+		if st.ReconcileEvery > 0 {
+			return fmt.Sprintf("declares reconcile_every = %d, which only the %s stage reads, "+
+				"so no run reconciles on it", st.ReconcileEvery, stage.API)
+		}
+		return "enabled, and declares nothing a run reads beyond that"
+	}
+	if st.ReconcileEvery > 0 {
+		return fmt.Sprintf("reconciles every %d step(s) while the walk runs, and after the "+
+			"last step", st.ReconcileEvery)
+	}
+	return "reconciles only after the last step, which is every run before R8/110"
 }

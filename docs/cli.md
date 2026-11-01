@@ -883,7 +883,29 @@ where the fixture does.
 $ rumor report examples/toy
 report: stages selected -- api, concurrency, fuzz
 report: stages skipped -- browser (enabled and this build cannot run it yet)
+report: stage api -- reconciles only after the last step, which is every run before R8/110
+report: stage concurrency -- enabled, and declares nothing a run reads beyond that
+report: stage fuzz -- enabled, and declares nothing a run reads beyond that
 ```
+
+**One line per SELECTED stage carries what that stage DECLARES**, and the
+`api` stage's declaration is its reconciliation period
+(`[stages.api].reconcile_every`). A stage with nothing further to declare says
+so rather than being omitted, for the same reason the skip list prints `none`:
+a stage left out when it has nothing to say cannot be told from a build that
+never learned to report that stage.
+
+**A period declared on any other stage is named as INERT**, not printed as
+though it worked — `declares reconcile_every = 4, which only the api stage
+reads, so no run reconciles on it`. The walk IS the api stage, so a period
+under `[stages.concurrency]` parses, is accepted by the platform, passes every
+arm, and changes nothing about any run. This is the one place that says so.
+
+**The declaration is here and the VERDICT is on `rumor run`**, which is the
+invocation that has a record (`run:   settling -- ...`). A declaration is
+decided by the platform and the profile alone, which is the same property that
+makes the selection and the skips printable without a walk; what the periodic
+passes actually judged is not.
 
 **It prints the run's stage facts and nothing else.** The selection is decided
 before any stage starts, from `[stages]` and the profile alone, so reporting it
