@@ -167,12 +167,22 @@ jobs:
           # a value only execution produces: the binary's own usage line, which
           # it writes to stderr and exits 2 for. `|| true` because exit 2 is the
           # correct answer here and would otherwise fail the step.
+          # `sed -n 1p` AND NOT `head -1`, AND IT IS NOT A STYLE CHOICE. This step
+          # runs under `set -o pipefail`, and `head -1` EXITS after its line -- so a
+          # writer still flushing meets a closed pipe, the pipeline reports 141, and
+          # the step dies having printed nothing at all. Run 628 died exactly here:
+          # rc 141 after `PROOF toolchain` and before `PROOF compiled by`, which is
+          # the only pipefail-exposed pipeline between them. `sed -n 1p` reads the
+          # whole stream, so there is no close to race. FOUR SIBLINGS had the same
+          # shape and are changed with it (validate's two PROOF lines, the lint
+          # version, the licences PROOF); the ones carrying `|| true` or `|| echo`
+          # are deliberately masked and are left as they are.
           # THE PROOF IS THE BINARY'S OWN RECORDED TOOLCHAIN, not the version
           # of whatever I invoked. `go version -m` reads what actually compiled
           # it, which is the only form of this line that GOTOOLCHAIN cannot make
           # lie -- and with `local` above it cannot diverge in the first place,
           # so the two together are the claim and its cross-check.
-          built_with="$(timeout 30 "$GO" version -m ../rumor-bin 2>&1 | head -1)"
+          built_with="$(timeout 30 "$GO" version -m ../rumor-bin 2>&1 | sed -n 1p)"
           echo "PROOF compiled by: $built_with"
           echo "PROOF built binary says: $(timeout 30 ../rumor-bin 2>&1 | head -1 || true)"
           invoked="$(timeout 30 "$GO" env GOVERSION)"
@@ -415,7 +425,7 @@ jobs:
             || { echo "the twin was refused, and the permitted twin is the one project that must pass"; exit 1; }
           grep -q 'skipped' ../validate.log \
             && { echo "an arm skipped on the twin: D9 requires every arm evaluated and none skipped"; exit 1; }
-          echo "PROOF $(grep -oE '[0-9]+ of [0-9]+ arm\(s\) evaluated' ../validate.log | head -1)"
+          echo "PROOF $(grep -oE '[0-9]+ of [0-9]+ arm\(s\) evaluated' ../validate.log | sed -n 1p)"
           # AND THE TOY, WHICH IS A PROJECT WITH A REAL PROCESS BEHIND IT (R5.2,
           # issue 73). examples/toy's [adapter].command is ["toy-adapter"], and
           # that adapter starts cmd/toy itself, so this is the only arm that
@@ -440,7 +450,7 @@ jobs:
             || { echo "the toy was refused, and issue 73 requires it to validate"; exit 1; }
           grep -q 'skipped' ../validate-toy.log \
             && { echo "an arm skipped on the toy: it declares a browser stage and a direct observation so that none has to"; exit 1; }
-          echo "PROOF the toy $(grep -oE '[0-9]+ of [0-9]+ arm\(s\) evaluated' ../validate-toy.log | head -1), adapter and application both spawned"
+          echo "PROOF the toy $(grep -oE '[0-9]+ of [0-9]+ arm\(s\) evaluated' ../validate-toy.log | sed -n 1p), adapter and application both spawned"
 
       - name: go.mod is ACCURATE, not merely present
         run: |
@@ -522,7 +532,7 @@ jobs:
           # ASSERT the version, do not merely print it. The literal is duplicated
           # from the install line ON PURPOSE: reading it out of a shared variable
           # would make this agree with itself whatever got installed.
-          v="$(timeout 60 "$BIN" --version 2>&1 | head -1)"
+          v="$(timeout 60 "$BIN" --version 2>&1 | sed -n 1p)"
           echo "$v"
           case "$v" in
             *2.14.0*) : ;;
@@ -703,7 +713,7 @@ jobs:
           # a count only the gate itself computes
           grep -qE 'PROOF [0-9]+ of [0-9]+ built module\(s\) carry a licence inside' ../lic.log \
             || { echo "no licence count: the gate did not reach a verdict over the surface"; exit 1; }
-          echo "PROOF $(grep -oE '[0-9]+ of [0-9]+ built module\(s\) carry a licence inside[^"]*' ../lic.log | head -1)"
+          echo "PROOF $(grep -oE '[0-9]+ of [0-9]+ built module\(s\) carry a licence inside[^"]*' ../lic.log | sed -n 1p)"
           # THE ALLOWLIST PAIR IS ASSERTED, NOT MERELY PRINTED (ratchet,
           # thread:go-port/54). The -v above makes a SKIP visible in this log,
           # and visible is not asserted: the only assertion here was the count,
