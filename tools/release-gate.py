@@ -1304,15 +1304,36 @@ def _changelog_date_battery() -> tuple[int, int]:
     with tempfile.TemporaryDirectory() as raw:
         repo = _world(Path(raw), today)
 
+        def ids_of(head: str, day: str, cell: str) -> set[str] | None:
+            """The findings' ids, or None having reported a CannotRun as a FAIL.
+
+            BARE evaluate() WAS A DEFECT HERE (ratchet rumor/1629). Every other
+            runner in this file wraps it, so a CannotRun raised under a mutant
+            left THIS battery dying with an uncaught traceback and no counts
+            line printed at all. rc was 1 either way, so nothing ever passed
+            falsely -- what was lost is the DIAGNOSIS, and under mutation the
+            reader is always one of us. Wrapped per CELL rather than round the
+            whole battery, so one unrunnable cell does not silently take the
+            other two with it while the declared count still claims three ran.
+            """
+            try:
+                return {found[0] for found in evaluate(repo, "main", head, today=day)}
+            except CannotRun as exc:
+                print(f"\n  FAIL changelog-date ({cell}): the gate could not "
+                      f"run: {exc}")
+                return None
+
         # 1. A CONTENT HEAD, judged on a day that is NOT the changelog's. It
         #    moves no version, so no changelog arm has anything to say about it.
         git(repo, "checkout", "-q", "-b", "content")
         _mk(repo, "src/one.rs", "// a content change that bumps nothing\n")
         _mk(repo, "docs/design.md", "design, and its mapped doc moves with it\n")
         _commit(repo, "fix: a content head")
-        ids = {found[0] for found in evaluate(repo, "main", "content", today=other)}
-        stray = sorted(arm for arm in ids if arm.startswith("changelog-"))
-        if stray:
+        ids = ids_of("content", other, "content head")
+        stray = sorted(arm for arm in ids if arm.startswith("changelog-")) if ids is not None else []
+        if ids is None:
+            failures += 1
+        elif stray:
             print(f"\n  FAIL changelog-date: {stray} fired on a head that changes "
                   f"no version, so the gate judged a release this run is not "
                   f"making. all findings: {sorted(ids)}")
@@ -1323,8 +1344,10 @@ def _changelog_date_battery() -> tuple[int, int]:
         git(repo, "checkout", "-q", "main")
         git(repo, "checkout", "-q", "-b", "bump")
         _clean_run(repo, today)
-        ids = {found[0] for found in evaluate(repo, "main", "bump", today=today)}
-        if ids:
+        ids = ids_of("bump", today, "clean bump on its own day")
+        if ids is None:
+            failures += 1
+        elif ids:
             print(f"\n  FAIL changelog-date: a clean bump on its own day was "
                   f"refused: {sorted(ids)}")
             failures += 1
@@ -1334,8 +1357,10 @@ def _changelog_date_battery() -> tuple[int, int]:
         #    shown to remove the arm where there is no new version and NOWHERE
         #    else, which is what "the reason covers exactly what it narrows"
         #    means when it is measured rather than argued.
-        ids = {found[0] for found in evaluate(repo, "main", "bump", today=other)}
-        if ids != {"changelog-date-wrong"}:
+        ids = ids_of("bump", other, "bump dated for another day")
+        if ids is None:
+            failures += 1
+        elif ids != {"changelog-date-wrong"}:
             print(f"\n  FAIL changelog-date: a bump dated for another day gave "
                   f"{sorted(ids)}, wanted changelog-date-wrong ALONE")
             failures += 1
@@ -1384,11 +1409,21 @@ def _stream_battery() -> tuple[int, int]:
     today = "2026-01-01"
     for label, script, musts, must_nots in STREAM_CASES:
         with tempfile.TemporaryDirectory() as raw:
-            repo = _world(Path(raw), today)
-            git(repo, "checkout", "-q", "-b", "run")
-            _mk(repo, "docs/sample.md", "# sample\n\n```sh run\n" + script + "\n```\n")
-            _commit(repo, "docs: a run block that fails")
-            got = run_doc_blocks(repo, "run")
+            # WRAPPED FOR THE REASON ids_of ABOVE IS (ratchet rumor/1629): every
+            # other runner in this file turns a CannotRun into a named FAIL, and
+            # these two batteries called straight through. Here the whole case is
+            # the unit -- unlike battery A there is no second reading of one tree
+            # to protect, since each case builds and drives its own.
+            try:
+                repo = _world(Path(raw), today)
+                git(repo, "checkout", "-q", "-b", "run")
+                _mk(repo, "docs/sample.md", "# sample\n\n```sh run\n" + script + "\n```\n")
+                _commit(repo, "docs: a run block that fails")
+                got = run_doc_blocks(repo, "run")
+            except CannotRun as exc:
+                print(f"\n  FAIL stream ({label}): the gate could not run: {exc}")
+                failures += 1
+                continue
             if len(got) != 1:
                 print(f"\n  FAIL stream ({label}): {len(got)} failure(s) reported, "
                       f"wanted exactly 1 -- the fixture has stopped reaching the "
