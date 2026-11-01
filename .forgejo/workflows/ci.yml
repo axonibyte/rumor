@@ -262,7 +262,17 @@ jobs:
             # running when the budget expired.
             echo "--- completed, with each package's own elapsed:"
             grep -aE '^(ok|FAIL)[[:space:]]+forge\.axonibyte\.com/' ../test.log || echo "(none completed)"
-            echo "--- $(grep -acE '^ok[[:space:]]+forge\.axonibyte\.com/' ../test.log) of $(timeout 60 "$GO" list ./... | wc -l | tr -d ' ') package(s) reported; the rest were still running, and the hang is in that difference"
+            # THE COUNT MATCHES THE LIST, and it did not for one commit: the
+            # list is `^(ok|FAIL)` and the count was `^ok`, so a FAILED package
+            # was printed as completed and left out of the figure -- making
+            # "the rest were still running" name a package that had finished.
+            # Reachable on exactly this path (ratchet, coop r8/162): `go test
+            # ./...` reports each package as it finishes, so a FAIL lands while
+            # others run and the budget expires after it. rc 124 with a FAIL in
+            # the log is the ordinary shape of a slow suite with one broken
+            # package, which is the case the diagnostic most needs to be right
+            # about. A package that FAILED is still a package that REPORTED.
+            echo "--- $(grep -acE '^(ok|FAIL)[[:space:]]+forge\.axonibyte\.com/' ../test.log) of $(timeout 60 "$GO" list ./... | wc -l | tr -d ' ') package(s) reported; the rest were still running, and the hang is in that difference"
             exit 124
           }
           test "$rc" -eq 0 || { echo "go test exited $rc"; exit "$rc"; }
