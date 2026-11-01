@@ -462,6 +462,38 @@ def evaluate(repo: Path, base: str, head: str, today: str | None = None) -> list
         assert arm in ARMS, f"unknown arm {arm}"
         findings.append((arm, detail))
 
+    # THE WORKTREE MUST BE ON THE REF BEING GATED, and this is a CANNOT RUN
+    # rather than a finding: the gate cannot say anything true about a tree it is
+    # not looking at, so it must not spend a verdict either way.
+    #
+    # WHY, MEASURED THREE TIMES IN ONE DAY (rook coop rumor/1612, ruled at /1614).
+    # The doc `run` block arm reads each block's TEXT from the gated ref --
+    # `show(repo, ref, name)` -- while the block EXECUTES with cwd = the WORKTREE
+    # and whatever is on PATH. So gating a ref you have not checked out runs one
+    # tree's blocks against another tree's files, and invents findings that belong
+    # to neither. It cost me three: a `doc-run-block-failed` I localised to 110's
+    # 1719e76 and reported as 110's when it was my own checkout (ibis r8/88 had
+    # read it right), then two more on the gate's own re-cut.
+    #
+    # IN CI THE REF AND THE WORKTREE ALWAYS AGREE, which is exactly why this was
+    # invisible there and only ever bit a local run -- the runs a human reads.
+    # fable's ruling: a refusal, not a convention, because "convention is what
+    # just cost three false findings".
+    #
+    # THE RESIDUAL, NAMED RATHER THAN COVERED: a worktree ON the ref but DIRTY
+    # reads modified files into the same arms. That is the same hazard and it is
+    # NOT refused here, because the ruling names ref identity and widening a
+    # refusal past its ruling is not mine to do. It wants its own decision.
+    worktree_sha = git(repo, "rev-parse", "HEAD^{commit}").strip()
+    gated_sha = git(repo, "rev-parse", f"{head}^{{commit}}").strip()
+    if worktree_sha != gated_sha:
+        raise CannotRun(
+            f"the worktree is on {worktree_sha[:12]} and the run's head {head} is "
+            f"{gated_sha[:12]}. A doc `run` block's text comes from the ref and "
+            f"its commands execute against the worktree, so gating a ref that is "
+            f"not checked out invents findings. Check out {head}, then gate it"
+        )
+
     # PEEL BOTH REFS TO COMMITS. `rev-parse v0.1.1` on an ANNOTATED tag returns
     # the tag OBJECT's sha, not the commit's, so comparing it to a merge-base
     # made `not-rebased` fire on a perfectly rebased run -- which is how I found
@@ -1134,6 +1166,54 @@ EXPECT_DOCS_VERDICT_CHECKS = 7
 EXPECT_CASES = 20
 EXPECT_TRAILER_CHECKS = 15
 
+# 2, and it moves only with _worktree_battery: the refusal firing, and the
+# pairing that proves it is not firing always.
+EXPECT_WORKTREE_CHECKS = 2
+
+
+def _worktree_battery() -> tuple[int, int]:
+    """Drive the worktree-is-on-the-ref refusal, both ways. (failures, ran)
+
+    IT CANNOT BE A `cases` ENTRY. That runner gates `HEAD` literally and treats a
+    CannotRun as a FAIL, so a check whose expected outcome IS CannotRun has no way
+    to pass there -- the same reason the trailer and docs-verdict checks have their
+    own batteries.
+
+    BOTH SIDES, because a refusal that fires unconditionally would pass the first
+    cell alone and make every other gate run impossible.
+    """
+    failures = 0
+    today = "2026-01-01"
+    with tempfile.TemporaryDirectory() as raw:
+        repo = _world(Path(raw), today)
+        git(repo, "checkout", "-q", "-b", "run")
+        _mk(repo, "src/one.rs", "// a second commit so HEAD~1 exists\n")
+        _commit(repo, "docs: a commit to step back from")
+        tip = git(repo, "rev-parse", "HEAD").strip()
+
+        # 1. THE WORKTREE STEPS OFF THE REF and the gate must refuse to gate it.
+        git(repo, "checkout", "-q", "HEAD~1")
+        try:
+            evaluate(repo, "main", tip, today=today)
+            print("\n  FAIL worktree: the gate gated a ref the worktree was not "
+                  "on, which is how a doc block reads one tree and runs in another")
+            failures += 1
+        except CannotRun as exc:
+            if tip[:12] not in str(exc):
+                print(f"\n  FAIL worktree: refused without naming the gated head "
+                      f"{tip[:12]}: {exc}")
+                failures += 1
+
+        # 2. THE PAIRING: back on the ref, the gate must RUN. Any findings are
+        #    beside the point; what is asserted is that it reached a verdict.
+        git(repo, "checkout", "-q", "run")
+        try:
+            evaluate(repo, "main", "run", today=today)
+        except CannotRun as exc:
+            print(f"\n  FAIL worktree: refused a ref the worktree IS on: {exc}")
+            failures += 1
+    return failures, EXPECT_WORKTREE_CHECKS
+
 
 def _trailer_battery() -> tuple[int, int]:
     """Drive docs_unchanged() over every shape a trailer arrives in.
@@ -1542,6 +1622,7 @@ def self_test() -> int:
 
     battery_failures, trailer_checks = _trailer_battery()
     docs_failures, docs_checks = _docs_verdict_battery()
+    worktree_failures, worktree_checks = _worktree_battery()
     failures = 0
     ran = 0
     for arm, label, build in cases:
@@ -1589,7 +1670,9 @@ def self_test() -> int:
     for label, got, want in (("case", ran, EXPECT_CASES),
                              ("trailer check", trailer_checks, EXPECT_TRAILER_CHECKS),
                              ("docs-verdict check", docs_checks,
-                              EXPECT_DOCS_VERDICT_CHECKS)):
+                              EXPECT_DOCS_VERDICT_CHECKS),
+                             ("worktree check", worktree_checks,
+                              EXPECT_WORKTREE_CHECKS)):
         if got == want:
             continue
         how = "FEWER than" if got < want else "MORE than"
@@ -1606,11 +1689,14 @@ def self_test() -> int:
     # the case counter made a failed shape check report "13 of 14 cases ok" when
     # all 14 cases passed -- a count that says something untrue, which is the
     # defect this whole round is about.
-    total = failures + battery_failures + docs_failures + size_failures
+    total = (failures + battery_failures + docs_failures + worktree_failures
+             + size_failures)
     print(f"\n  {ran - failures} of {ran} cases ok, "
           f"{trailer_checks - battery_failures} of {trailer_checks} trailer "
           f"checks ok, {docs_checks - docs_failures} of {docs_checks} "
-          f"docs-verdict checks ok, {total} failed")
+          f"docs-verdict checks ok, "
+          f"{worktree_checks - worktree_failures} of {worktree_checks} "
+          f"worktree checks ok, {total} failed")
     return RC_FINDINGS if total else RC_CLEAN
 
 
