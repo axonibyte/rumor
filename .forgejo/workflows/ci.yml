@@ -234,7 +234,37 @@ jobs:
           # CONTENTION IS NOT THE CAUSE, measured rather than assumed: nothing
           # overlapped 622's window on the runner, while 995 -- which PASSED -- was
           # overlapped for four minutes.
-          timeout 1800 "$GO" test -count=1 -v ./... > ../test.log 2>&1 || rc=$?
+          # AND THE INNER WATCHDOG MOVES WITH THE OUTER BUDGET, which is the
+          # half that did not when fable raised 900 -> 1800 at coop rumor/1665.
+          # `go test` has its OWN per-binary timeout and its default is 10m, so
+          # from that moment this suite carried two budgets for one run with the
+          # smaller one undeclared and invisible -- and the smaller one is the
+          # one that fires.
+          #
+          # MEASURED ACROSS THE CROSSING, in this jail, on tests/run:
+          #     task 995   598.000s   ok
+          #     task 1011  607.591s   FAIL
+          #     task 1012  607.258s   FAIL
+          # 598 under the default and 607 over it, each red being roughly 600s
+          # plus the goroutine-stack dump the panic prints. The suite did not
+          # break between those runs; it grew past a bound nobody had declared.
+          #
+          # WHY RAISING IT IS NOT WEAKENING A CHECK. The watchdog exists to turn
+          # a HUNG test into stacks instead of silence, and it still does: 20m
+          # is strictly inside the outer 1800s, so a package that truly hangs
+          # panics with its stacks and the step still reports them, where the
+          # outer `timeout` kills the whole run and prints nothing about where
+          # it was. What changes is that a package taking 607s on a slow runner
+          # is no longer treated as hung -- the thing the measurement above
+          # shows it is not.
+          #
+          # AND THE WATCHDOG PANIC IS WHY A HUNG RUN LOOKED LIKE A CLEAN ONE: a
+          # binary killed by it never runs its cleanup, so the toy descendants
+          # it started outlive it, hold the stdout they inherited, and `go test`
+          # waits on a pipe that cannot reach EOF -- every package reported, and
+          # the process does not exit. That is the shape the rc-124 diagnostic
+          # below reports as "the work finished and the run did not exit".
+          timeout 1800 "$GO" test -count=1 -timeout 20m -v ./... > ../test.log 2>&1 || rc=$?
           # THE FAILURE VIEW IS MINED AND NOT ONLY TAILED, because -v moved what
           # the last 20 lines contain: under -v a tail is the verbose output of
           # whichever package finished last, so a FAIL twenty packages earlier

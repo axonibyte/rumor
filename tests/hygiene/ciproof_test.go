@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // THE SUITE'S OWN EVIDENCE HAS TO REACH A READER, AND FOR 111 SITES IT DID NOT.
@@ -62,11 +63,21 @@ func TestCiMinesTheSuitesProofLines(t *testing.T) {
 	// exist at all. Keyed on the whole invocation rather than on " -v "
 	// anywhere in the step, because a -v in a comment or in another command
 	// would satisfy the looser pattern and prove nothing.
-	invocation := regexp.MustCompile(`test\s+-count=1\s+-v\s+\./\.\.\.`)
+	//
+	// IT GAINED `-timeout` AT R8/111 and the flag's VALUE is deliberately not
+	// pinned here. The per-binary watchdog's number is held against the step's
+	// outer budget by TestTheTwoTestBudgetsAgree, which reads both out of this
+	// same file; repeating it here would make one number live in two places and
+	// a budget change touch two files. What this arm still pins is the flag SET
+	// and its ORDER, so a dropped -v, a reordering, or a watchdog quietly
+	// removed all fail -- which is the whole-invocation keying the comment above
+	// asks for.
+	invocation := regexp.MustCompile(`test\s+-count=1\s+-timeout\s+\S+\s+-v\s+\./\.\.\.`)
 	if !invocation.MatchString(test) {
-		t.Errorf("%s's test step does not run `test -count=1 -v ./...`: without -v the "+
-			"harness discards every passing arm's PROOF line, so the mining step below "+
-			"greps an empty subject and the whole gate reports nothing", path)
+		t.Errorf("%s's test step does not run `test -count=1 -timeout <d> -v ./...`: without -v "+
+			"the harness discards every passing arm's PROOF line, so the mining step below "+
+			"greps an empty subject and the whole gate reports nothing; without -timeout the "+
+			"per-binary watchdog is the toolchain's silent default", path)
 	}
 	if !strings.Contains(test, "test.log") {
 		t.Errorf("%s's test step does not write test.log, which is the file the mining "+
@@ -379,4 +390,95 @@ func TestTheFailureViewActuallySearchesTheLog(t *testing.T) {
 	}
 	t.Logf("PROOF the step's own pattern %q ran and matched %d of %d failure shapes",
 		pattern, len(got), wantMatches)
+}
+
+// floorSeconds is the per-package watchdog's lower bound, and it is a number
+// read off runs rather than chosen.
+//
+// MEASURED ON tests/run, THE SUITE'S CRITICAL PATH, in the ci jail:
+//
+//	task 995   598.000s   ok
+//	task 1011  607.591s   FAIL
+//	task 1012  607.258s   FAIL
+//
+// 598 under `go test`'s 10m default and 607 over it. So a watchdog at or near
+// 600s is known to fire on a package that is not hung, and this floor is that
+// figure with room for the growth that crossed it in the first place -- half
+// again, not a round number for its own sake.
+const floorSeconds = 900
+
+// TestTheTwoTestBudgetsAgree holds the test step's two timeouts against each
+// other, because for the whole life of the 1800s budget they disagreed.
+//
+// THERE ARE TWO AND ONLY ONE WAS DECLARED. The step wraps `go test` in
+// `timeout 1800`, which fable raised from 900 at coop rumor/1665; `go test` also
+// has its own per-binary watchdog, whose default is 10m and which nothing in
+// this file mentioned. The smaller bound is the one that fires, so raising the
+// outer one moved the cap a reader could see and left the cap that was actually
+// in force where it was.
+//
+// THE ORDER IS THE POINT, not either number: floor < inner < outer. Below the
+// floor the watchdog kills a package that merely runs long, which is the
+// measurement above. Above the outer budget it can never fire at all, and a
+// hung package then dies by `timeout` with no stacks and nothing naming where
+// it stopped -- the diagnostic can say every package reported, and not which
+// one is holding the process open.
+//
+// AND IT IS AN ARM BECAUSE THE DEFAULT IS SILENT. A missing `-timeout` is not a
+// visible value to review; it is 10m arriving from the toolchain, which is how
+// this survived a budget change made specifically to stop the suite reading as
+// broken.
+func TestTheTwoTestBudgetsAgree(t *testing.T) {
+	path := filepath.Join("..", "..", ".forgejo", "workflows", "ci.yml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	test, ok := splitSteps(string(raw))["test"]
+	if !ok {
+		t.Fatalf("%s has no step named `test`", path)
+	}
+
+	outerRx := regexp.MustCompile(`timeout ([0-9]+) "\$GO" test`)
+	om := outerRx.FindAllStringSubmatch(test, -1)
+	if len(om) != 1 {
+		t.Fatalf("%s wraps `go test` in %d `timeout N` call(s), want exactly one", path, len(om))
+	}
+	outer, err := strconv.Atoi(om[0][1])
+	if err != nil {
+		t.Fatalf("the outer budget %q is not a number of seconds: %v", om[0][1], err)
+	}
+
+	// THE INNER ONE MUST BE SPELLED. A regexp that tolerated its absence would
+	// pass on exactly the configuration this arm exists to refuse.
+	innerRx := regexp.MustCompile(`-timeout ([0-9][0-9a-z]*)`)
+	im := innerRx.FindAllStringSubmatch(test, -1)
+	if len(im) != 1 {
+		t.Fatalf("%s passes %d `-timeout` flag(s) to `go test`, want exactly one: with none, the "+
+			"per-binary watchdog is the toolchain's silent 10m default, which is smaller than "+
+			"the %ds this step budgets and is therefore the bound in force", path, len(im), outer)
+	}
+	spelled := im[0][1]
+	if _, err := strconv.Atoi(spelled); err == nil {
+		t.Fatalf("`-timeout %s` has no unit: `go test` reads a bare number as NANOSECONDS, so "+
+			"this would kill every package immediately", spelled)
+	}
+	d, err := time.ParseDuration(spelled)
+	if err != nil {
+		t.Fatalf("`-timeout %s` is not a duration `go test` accepts: %v", spelled, err)
+	}
+	inner := int(d.Seconds())
+
+	if inner >= outer {
+		t.Errorf("the per-package watchdog is %ds and the step's whole budget is %ds: a watchdog "+
+			"that cannot fire before the outer kill never prints a stack, so a hung package "+
+			"ends the run with nothing naming it", inner, outer)
+	}
+	if inner <= floorSeconds {
+		t.Errorf("the per-package watchdog is %ds, at or below the %ds floor: tests/run has "+
+			"already reported 607.591s and 607.258s in the ci jail, so a bound this low kills a "+
+			"package that is running and not hung", inner, floorSeconds)
+	}
+	t.Logf("PROOF floor %ds < watchdog %ds < budget %ds, all three read out of %s",
+		floorSeconds, inner, outer, filepath.Base(path))
 }
