@@ -902,3 +902,60 @@ func TestTheCountPatternDISCRIMINATES(t *testing.T) {
 		})
 	}
 }
+
+// TestAToyThatStartsAndNeverPrintsIsRefusedNotWaitedFor holds the bound on the
+// readiness read, and the cell's INPUT is the thing the bound exists to refuse:
+// a child that STARTS successfully and then never prints a line.
+//
+// WITHOUT THE BOUND THIS TEST DOES NOT FAIL -- IT HANGS, which is the whole
+// shape of the defect. A bare ReadString waits for as long as the child
+// declines to speak, and `open` runs before any request exists, so the engine's
+// per-request budget never applies. The hang would be the adapter's, held by a
+// toy that is alive and silent.
+//
+// A START THAT FAILS IS A DIFFERENT CELL and already exists above: that one
+// returns from `cmd.Start()`. This one needs the start to SUCCEED, which is why
+// the stub child sleeps rather than exiting -- an exiting child closes the pipe
+// and ReadString returns an error, so an exit tests the error path and says
+// nothing about the wait.
+func TestAToyThatStartsAndNeverPrintsIsRefusedNotWaitedFor(t *testing.T) {
+	dir := t.TempDir()
+	silent := filepath.Join(dir, "silent-toy")
+	// IT MUST OUTLIVE THE BOUND, so the sleep is far longer than the shortened
+	// timeout below; the process is stopped by `open`'s own deferred cleanup.
+	// `exec` AND NOT A BARE `sleep`, measured the hard way: without it the
+	// shell is the child and the sleep is its GRANDCHILD, so close()'s
+	// Process.Kill() reaches the shell alone. The orphaned sleep then holds the
+	// stderr it inherited from this test binary, and `go test` waits for that
+	// pipe -- the package took 30.007s with a passing test and a 209ms refusal
+	// inside it. Kill does not reach descendants; `exec` removes the
+	// descendant.
+	script := "#!/bin/sh\nexec sleep 30\n"
+	if err := os.WriteFile(silent, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	restore := startTimeout
+	startTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { startTimeout = restore })
+
+	start := time.Now()
+	a, err := open(silent, filepath.Join(dir, "state.json"))
+	elapsed := time.Since(start)
+	if a != nil {
+		t.Error("an adapter was returned for a toy that printed no address")
+	}
+	if err == nil {
+		t.Fatal("a silent toy was accepted")
+	}
+	if !strings.Contains(err.Error(), "printed no address") {
+		t.Errorf("the error does not name the expiry: %v", err)
+	}
+	// AND IT RETURNED ON THE BOUND RATHER THAN ON THE CHILD, which is the half
+	// that distinguishes a timeout from a lucky exit: the script sleeps 30s and
+	// this must come back in a fraction of that.
+	if elapsed > 5*time.Second {
+		t.Errorf("open took %s, so it waited for the child rather than for the bound", elapsed)
+	}
+	t.Logf("PROOF a toy that starts and stays silent is refused in %s, not waited for", elapsed)
+}

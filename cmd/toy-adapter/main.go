@@ -172,6 +172,15 @@ func main() {
 // called close() on a nil adapter and panicked -- caught by the failing-open
 // cell in the test beside this, which is the cell that exists for this path.
 // A local flag reads nothing the returns have touched.
+// startTimeout bounds how long the toy may take to print its address.
+//
+// A VAR AND NOT A CONST so the cell beside this can drive the expiry without
+// spending twenty seconds of suite time on it. The value matches
+// internal/rollback/toyrestart's own startTimeout deliberately: the two drive
+// the same binary through the same first line, and two different budgets for
+// one readiness would be two different answers to "is the toy slow or stuck".
+var startTimeout = 20 * time.Second
+
 func open(toyBin, state string) (*adapter, error) {
 	a := &adapter{budget: requestBudget, client: &http.Client{Timeout: requestBudget}}
 	opened := false
@@ -205,9 +214,43 @@ func open(toyBin, state string) (*adapter, error) {
 	a.child = cmd
 	// THE ADDRESS IS READ, NOT GUESSED. The toy binds :0 and prints what it
 	// got, so two runs on one box cannot collide over a port.
-	line, err := bufio.NewReader(out).ReadString('\n')
-	if err != nil {
-		return nil, fmt.Errorf("reading the address %s printed: %w", toyBin, err)
+	//
+	// AND THE READ IS BOUNDED, WHICH IT WAS NOT UNTIL R8.4. A bare ReadString
+	// blocks for as long as the child declines to print: a toy that STARTS and
+	// then stalls before its first line holds this open with no deadline at
+	// all. The engine's per-request budget cannot help here, and that is the
+	// part worth knowing -- this runs while the adapter is being OPENED, before
+	// any request exists to time out.
+	//
+	// THE SIBLING HAD IT ALL ALONG. internal/rollback/toyrestart drives the
+	// same binary for the same reason, with the same constant and an explicit
+	// kill, and its comment says "bounded" in those words. So this is the
+	// driver that did not get the timeout, which is fable's standing rule at
+	// coop rumor/1673 read onto the one place it was missing.
+	//
+	// NO EXPLICIT KILL, unlike the sibling, and the reason is above this
+	// function: the deferred cleanup runs close() on every path that does not
+	// set `opened`, and close() stops the child this adapter started. The
+	// sibling kills by hand because it has no such defer.
+	type started struct {
+		line string
+		err  error
+	}
+	ch := make(chan started, 1)
+	go func() {
+		l, rerr := bufio.NewReader(out).ReadString('\n')
+		ch <- started{l, rerr}
+	}()
+	var line string
+	select {
+	case r := <-ch:
+		if r.err != nil {
+			return nil, fmt.Errorf("reading the address %s printed: %w", toyBin, r.err)
+		}
+		line = r.line
+	case <-time.After(startTimeout):
+		return nil, fmt.Errorf("%s printed no address in %s, so the world never opened",
+			toyBin, startTimeout)
 	}
 	addr := addressOf(line)
 	if addr == "" {
