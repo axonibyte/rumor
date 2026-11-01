@@ -86,8 +86,18 @@ type event struct {
 	//
 	// THE DEFECT IS ONE WRITE WIDE: every path that changes the count sets this
 	// too EXCEPT leaveEvent, so the API's count drops on a leave and the page
-	// keeps the number it last rendered. A reader is served a count the API has
-	// already updated, and only a reader can see it.
+	// keeps the number it last rendered.
+	//
+	// AND THE CLAIM IS ABOUT CONSUMERS, NOT VISIBILITY, which is ratchet's
+	// finding at coop r8/176 against the sentence that stood here: "only a
+	// reader can see it" was wider than the code. A leave answers with the
+	// event entire, so its body carries `count=1 rendered=2` and the stale
+	// number is in the API's own bytes. Nothing READS it there -- `tally`
+	// serialises the same way and is read only through its own path -- and the
+	// one consumer of a rendered count anywhere in this tree is
+	// cmd/toy-adapter's pageCount, which parses the PAGE. So the defect is
+	// reachable through a reader because nothing else consumes the number, not
+	// because the number is hidden.
 	Rendered int `json:"rendered"`
 	// Tally is THE WORKER'S OWN NUMBER and nothing else reads or writes it.
 	// Count above is maintained by the write that changes it, which is what

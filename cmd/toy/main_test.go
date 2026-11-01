@@ -1335,8 +1335,13 @@ func TestAStateFileWhoseMapsAreNullReloadsAndStillWrites(t *testing.T) {
 //
 // THE TWO READINGS ARE TAKEN OF ONE WORLD AT ONE MOMENT, which is what makes
 // this a UI-only bug rather than a timing one: no settle, no clock, no second
-// write between them. The API answers the number it holds and the page answers
-// the number it last rendered, and only the second is wrong.
+// write between them. The API's READ answers the number it holds and the page
+// answers the number it last rendered, and only the second is wrong.
+//
+// "ONLY A READER CAN SEE IT" WAS TOO WIDE, and ratchet drove it at coop r8/176:
+// a leave's own response body echoes the event entire, `rendered` included, so
+// the stale number is in the API's bytes. The cell below asserts that too, so
+// the comment and the arm now say the same thing.
 //
 // LEAVING IS THE WRITE THAT EXPOSES IT: a join raises both numbers, so the
 // honest control (examples/toy/cases/viewer-reads-the-page.json) is a world
@@ -1448,4 +1453,96 @@ func TestTheAttendeeListIsTheAdminsInTheAPIAndEveryonesOnThePage(t *testing.T) {
 	}
 	t.Logf("PROOF the API answers a guest %d for the attendee list and serves the admin one "+
 		"entry, while the page renders that entry to the guest", http.StatusForbidden)
+}
+
+// TestTheRenderedCountIsMaintainedByTheAcceptPathToo is ratchet's cell from coop
+// r8/176, and it exists because a mutant SURVIVED the whole 42-package suite:
+// dropping acceptInvitation's `ev.Rendered = ev.Count` changed nothing any arm
+// could see.
+//
+// WHY NOTHING CAUGHT IT: both page-reading cells reach the page by a JOIN, so
+// the second way into an event -- an accepted invitation -- had its write argued
+// for by name in main.go and held by nothing. A rule in a comment is not an arm,
+// and this file's own plant discipline says a second write that left `Rendered`
+// behind would plant the SAME defect twice, in two places, where a shrink could
+// not say which write it had found. That is the claim; this is the check.
+//
+// THE READING IS 1 AND NOT 0, which is the whole of it: the accept puts one
+// attendee in, so an honest page says `1 of N`. With the write dropped the page
+// still says `0 of N` while the API says 1 -- the planted divergence appearing
+// on a path that is not the planted one.
+func TestTheRenderedCountIsMaintainedByTheAcceptPathToo(t *testing.T) {
+	h := start(t)
+	alice := h.actor("alice")
+	guest, guestID := h.actorWithID("guest")
+	id := h.createEvent(alice, "by invitation", 3, []string{roleAdmin, roleMember, roleGuest})
+
+	inv, _ := h.invite(alice, id, guestID)
+	if code, body := h.do(http.MethodPost, "/invitations/"+inv+"/accept", guest, nil); code != http.StatusOK {
+		t.Fatalf("accepting: status %d (%v)", code, body)
+	}
+	if got := h.count(id, alice); got != 1 {
+		t.Fatalf("after the accept the API count is %d, want 1", got)
+	}
+
+	code, body := h.do(http.MethodGet, "/ui/events/"+id, alice, nil)
+	if code != http.StatusOK {
+		t.Fatalf("the page: status %d (%v)", code, body)
+	}
+	page, _ := body["raw"].(string)
+	if !strings.Contains(page, "1 of 3") {
+		t.Errorf("after an ACCEPT the page reads something other than `1 of 3`, so the accept "+
+			"path no longer maintains the page's number and the plant has a SECOND home: a "+
+			"shrink could then not say which write it had found:\n%s", page)
+	}
+	t.Logf("PROOF an accepted invitation moves the page's number as a join does, so leaveEvent " +
+		"is the only write that leaves it behind")
+}
+
+// TestTheStaleNumberIsInTheApisOwnBytesAndNothingReadsItThere pins the claim
+// ratchet corrected at coop r8/176: "only a reader can see it" was wider than
+// the code.
+//
+// A LEAVE ANSWERS WITH THE EVENT ENTIRE, so its body carries both numbers and
+// the stale one is in the API's own bytes. What makes the defect a reader's is
+// that nothing CONSUMES it there -- `tally` serialises the same way and is read
+// only through its own path, and the single consumer of a rendered count in this
+// tree is cmd/toy-adapter's pageCount, which parses the page.
+//
+// SO THE ARM ASSERTS BOTH HALVES: the body does carry the divergence (the honest
+// version of the sentence), and every declared READ path answers the correct
+// number (which is what leaves the page as the only way to read the wrong one).
+func TestTheStaleNumberIsInTheApisOwnBytesAndNothingReadsItThere(t *testing.T) {
+	h := start(t)
+	alice := h.actor("alice")
+	bob := h.actor("bob")
+	id := h.createEvent(alice, "two numbers", 3, []string{roleAdmin, roleMember, roleGuest})
+	for _, who := range []string{alice, bob} {
+		if code, body := h.do(http.MethodPost, "/events/"+id+"/join", who, nil); code != http.StatusOK {
+			t.Fatalf("joining: status %d (%v)", code, body)
+		}
+	}
+
+	code, body := h.do(http.MethodDelete, "/events/"+id+"/join", bob, nil)
+	if code != http.StatusOK {
+		t.Fatalf("leaving: status %d (%v)", code, body)
+	}
+	gotCount, _ := body["count"].(float64)
+	gotRendered, _ := body["rendered"].(float64)
+	if gotCount != 1 || gotRendered != 2 {
+		t.Errorf("the leave's own body reads count=%v rendered=%v, want 1 and 2: the stale "+
+			"number IS in the API's bytes, and a comment saying only a reader can see it is "+
+			"wider than the code", gotCount, gotRendered)
+	}
+
+	// AND EVERY DECLARED READ PATH IS CORRECT, which is what makes the page the
+	// only way to read the wrong number.
+	if got := h.count(id, alice); got != 1 {
+		t.Errorf("the count path reads %d, want 1", got)
+	}
+	if got := h.storeCount(id); got != 1 {
+		t.Errorf("the store path reads %d, want 1", got)
+	}
+	t.Logf("PROOF the leave body carries count=1 rendered=2 while both declared read paths " +
+		"answer 1, so the defect is unread rather than unseen")
 }
