@@ -56,10 +56,10 @@ func TestHoldsContext(t *testing.T) {
 		t.Fatalf("an unheld context must be an answer, not a refusal: %v", err)
 	}
 	if held {
-		t.Error("a role declaring only api held ui")
+		t.Error("a role declaring only api held browser")
 	}
 	if held, err := HoldsContext(both, "join_event_ui", "member_1", "browser"); err != nil || !held {
-		t.Errorf("a role declaring api and ui must hold ui: %v %v", held, err)
+		t.Errorf("a role declaring api and browser must hold browser: %v %v", held, err)
 	}
 
 	// THE NARROWING, DRIVEN SO IT IS A STATED BEHAVIOR AND NOT AN ACCIDENT: a

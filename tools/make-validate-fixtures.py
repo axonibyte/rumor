@@ -400,6 +400,58 @@ source = "api"
 of = "doc.published"
 ''')
 
+    # `contended`'s TWO REFERENCES, ONE CELL EACH, generated here since R8 and
+    # hand-written before it. They were the only two fixtures in the corpus
+    # this script did not build, and the listing it prints at the end reads the
+    # directory rather than what it built, so they read as generated for as
+    # long as the twin did not change. The twin changing is what found them.
+    def contended_head(defect):
+        # THE HEADER THESE TWO CARRIED DESCRIBED A DIFFERENT FIXTURE -- "[deadline]
+        # names an instant no [[observation]] declares" -- which is the instants
+        # cell's defect and not either of these. It came along with the copy, and
+        # the port is where it stops being reproduced.
+        return ("# FIXTURE for arm 19, a `contended` cell: the twin with one change --\n"
+                "# %s\n"
+                "#\n"
+                "# THE [clock] AND [deadline] TABLES BELOW ARE CARRIED AND NOT REQUIRED. This\n"
+                "# cell was written by hand as a copy of 19/deadline-instant-unknown-observation\n"
+                "# with that fixture's planted instant repaired to a name that resolves, and the\n"
+                "# contended cell is gated on neither table: internal/validate/arms_names.go\n"
+                "# reads the action's own two references and nothing else. They trip no arm --\n"
+                "# `instants` resolves and [clock] is what keeps arm 20 quiet -- so the material\n"
+                "# is left as rook wrote it (coop rumor/1528) and only the header is corrected.\n" % defect)
+    contended_tail = ('\n[clock]\nform = "faked"\n\n'
+                      '[deadline]\ninstants = ["doc.count"]\n')
+    obs_comment = '# source = "direct" is what makes'
+
+    d = fresh("19/contended-limit-unknown-argument")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    assert s.count(obs_comment) == 1, "the twin's first observation comment moved"
+    s = s.replace(obs_comment,
+                  "# THE PLANTED DEFECT: `limit` names an argument no action declares. `held`\n"
+                  "# resolves, so this fixture trips the limit cell and nothing else.\n"
+                  'contended = { limit = "no_such_action.size", held = "doc.count" }\n\n'
+                  + obs_comment, 1)
+    open(p, "w").write(contended_head("`limit` names an argument no action declares.")
+                       + s + contended_tail)
+
+    d = fresh("19/contended-held-unknown-observation")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    assert s.count(obs_comment) == 1, "the twin's first observation comment moved"
+    s = s.replace(obs_comment,
+                  "# THE PLANTED DEFECT: `held` names no declared observation. `limit` resolves to\n"
+                  "# the argument below, so this fixture trips the held cell and nothing else.\n"
+                  'contended = { limit = "publish_doc.size", held = "no_such_query" }\n'
+                  "\n"
+                  "  [[action.args]]\n"
+                  '  name = "size"\n'
+                  '  source = "literal"\n'
+                  "  value = 5\n"
+                  "\n"
+                  + obs_comment, 1)
+    open(p, "w").write(contended_head("`held` names no declared observation.")
+                       + s + contended_tail)
+
     # THE MISMATCH IS DERIVED FROM THE ENGINE'S OWN VERSION, not typed. This
     # wrote `contract = "2"` as "a version nobody declares", and the 2026-10-19
     # bump to contract 2 turned the fixture into an AGREEMENT -- arm 13 then

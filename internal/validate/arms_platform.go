@@ -306,7 +306,7 @@ func arm8(rep *Report, dir string, b bindings.Bindings) {
 // THIS ARM READS THE BINDINGS ALONE and evaluates
 // wherever they can be read -- no statute, no adapter, no platform file. That is
 // why it moves all three of the documented figures by one rather than only the
-// first (docs/testing-methodology.md's twenty-three / twenty-one / nineteen),
+// first (docs/testing-methodology.md's twenty-four / twenty-two / nineteen),
 // the way R6.2's three arms did and arm 19 did not.
 //
 // fable ruled the id at coop r7/48: a fresh number, because a cited identifier

@@ -12,7 +12,8 @@
     }
   ],
   "contexts": [
-    "api"
+    "api",
+    "browser"
   ],
   "components": [
     {

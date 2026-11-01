@@ -96,7 +96,7 @@ read identically to a real project missing its `bindings.toml`.
 | field | type | consumer |
 |---|---|---|
 | `actions` | array of `{name, context}` | validate's arm on an action with no UI flow needs the action set; the arm on a browser-stage actor reaching an API action needs each action's `context`, because "could reach" is exactly "its context is one that actor holds a session in" |
-| `observations` | array of `{name, source}` | **arm 19's observations cell**: a bindings observation the adapter does not declare is refused before any actor moves, rather than mid-run. This row said "the engine's pre-run check" in the present tense from v0.1.19 until 2026-10-19, and nothing implemented it -- every use of the bindings' observations was arm 6, a count, the wire's own validation or the fake's echo (ibis, coop r4/105). It is one of R4.3's twenty-three arms now, and could-not-run when no adapter answers |
+| `observations` | array of `{name, source}` | **arm 19's observations cell**: a bindings observation the adapter does not declare is refused before any actor moves, rather than mid-run. This row said "the engine's pre-run check" in the present tense from v0.1.19 until 2026-10-19, and nothing implemented it -- every use of the bindings' observations was arm 6, a count, the wire's own validation or the fake's echo (ibis, coop r4/105). It is one of R4.3's twenty-four arms now, and could-not-run when no adapter answers |
 | `contexts` | array of strings | `session`'s `context` must name one of these, and the reachability arm above is computed over them |
 | `components` | array of `{name, stateful}` | the arm on a stateful component no rollback provider covers compares these against `[[rollback]].covers` in `platform.toml`. Without `components` that arm has nothing to compare and would pass vacuously |
 | `capabilities` | object: `{faults, volume, upgrade}`, three arrays of names | the arm on a declared fault, volume target or upgrade with no capability or path behind it. Each array may be empty, and an empty array is the answer that makes the arm fire rather than an omission that makes it vacuous |
@@ -717,7 +717,7 @@ run that silently skipped it would replay less than it reported.
 | `seeds_file` | no, defaults to `seeds.lock` | validate's arm on a missing seeds file or promoted seed; R5 writes promotions into it. Named `seeds_file` and not `seeds` because a profile's `seeds` is a **count** -- one word for a path and a count in one file is a misreading waiting to happen |
 | `[adapter].command` | yes | the engine spawns it. Nothing else in the project says how to reach the system under test |
 | `[adapter].cwd`, `[adapter].env` | no | the spawn; `env` is a list of variable **names** passed through, so a platform's secrets stay out of this file |
-| `[[venire]]` | yes, at least one | the walk draws its actors from these roles and counts. An empty venire can run nothing, which is a parse refusal rather than one of validate's twenty-three |
+| `[[venire]]` | yes, at least one | the walk draws its actors from these roles and counts. An empty venire can run nothing, which is a parse refusal rather than one of validate's twenty-four |
 | `[stages.<name>].enabled` | yes, at least one enabled | stage selection and skip reasons in the report (R8); `stages.browser.enabled` is what the two browser-stage arms read, and both are vacuous without it. **THE NAMES ARE `api`, `fuzz`, `concurrency` AND `browser`**, and a declared name outside that set is refused by the dispatcher BEFORE the run rather than recorded as having run or been skipped: `[stages]` is parsed as a map keyed by whatever the file says, so nothing else in the stack objects to a misspelling (rook, coop r8/16). `api` is THE MAIN LOOP -- the walk `rumor run` has always taken, which R8's api-sim child gives its settling, its time and its periodic full reconciliation. It was called `api-sim` in this example until R8.1 and that was a stale name for the one loop rather than a second stage beside it: every `platform.toml` in this repository declared `api` and none declared `api-sim` (ibis, coop r8/15; ruled fable rumor/1477) |
 | `[weights.default]` | yes | the walk draws from the applicable set by weight (`docs/design.md`, "the engine owns the seed") |
 | `[weights.stage.<stage>]`, `[weights.profile.<profile>]` | no | the same, per stage and per profile, which is the shape design.md already relies on |
@@ -739,7 +739,7 @@ would make the file say something it does not.
 
 **None of this file's refusals are `rumor validate`'s arms.** A document that
 cannot be read as a platform at all is **could-not-run**, and it arrives before
-any of the twenty-three arms evaluates. Validate's refusals are about a project
+any of the twenty-four arms evaluates. Validate's refusals are about a project
 whose statute, bindings and platform disagree.
 
 ### Reserved for the phase that owns them

@@ -462,7 +462,7 @@ func TestAnEmptyTokenIsRefused(t *testing.T) {
 // TWO CONTEXTS, ONE ACTOR, TWO SESSIONS. Without this arm the per-CONTEXT half
 // of "one per actor per context" is unmeasured: every other arm here uses a
 // project with a single context, so a holder keyed on the actor alone would
-// pass all of them. An actor's api token reused for its ui actions would be a
+// pass all of them. An actor's api token reused for its browser actions would be a
 // token the adapter issued for something else, and the two contexts would be
 // indistinguishable from the engine's side.
 func TestOneActorInTwoContextsHoldsTwoSessions(t *testing.T) {
@@ -814,15 +814,15 @@ func TestAnActionInAnUnheldContextIsNeverDrawn(t *testing.T) {
 
 	held, api := drew([]bindings.Role{{Name: "member", Contexts: []string{"api", "browser"}}})
 	if !held {
-		t.Fatalf("the control never drew the ui action even with ui held, so this arm cannot tell "+
+		t.Fatalf("the control never drew the browser action even with browser held, so this arm cannot tell "+
 			"a gate from an absence (api drawn: %v)", api)
 	}
 	gated, apiStillDrawn := drew([]bindings.Role{{Name: "member", Contexts: []string{"api"}}})
 	if gated {
-		t.Error("an action needing ui was drawn by a role holding only api")
+		t.Error("an action needing browser was drawn by a role holding only api")
 	}
 	if !apiStillDrawn {
-		t.Error("gating ui also stopped the api action being drawn, so the gate is not gating on " +
+		t.Error("gating browser also stopped the api action being drawn, so the gate is not gating on " +
 			"the context")
 	}
 }

@@ -1,7 +1,13 @@
-# FIXTURE for arm 19 cell 7: the twin with one change -- [deadline]
-# names an instant no [[observation]] declares. The [clock] table
-# beside it is the precondition that keeps arm 20 quiet, not a
-# second defect.
+# FIXTURE for arm 19, a `contended` cell: the twin with one change --
+# `limit` names an argument no action declares.
+#
+# THE [clock] AND [deadline] TABLES BELOW ARE CARRIED AND NOT REQUIRED. This
+# cell was written by hand as a copy of 19/deadline-instant-unknown-observation
+# with that fixture's planted instant repaired to a name that resolves, and the
+# contended cell is gated on neither table: internal/validate/arms_names.go
+# reads the action's own two references and nothing else. They trip no arm --
+# `instants` resolves and [clock] is what keeps arm 20 quiet -- so the material
+# is left as rook wrote it (coop rumor/1528) and only the header is corrected.
 # Bindings for the permitted twin (R4.3, issue 64).
 #
 # THIS IS THE FILE arm 3 EXISTS FOR. `requires` names a statute RULE, and this

@@ -90,7 +90,7 @@ func armOf(dir string) string {
 // whether a `rumor` exists to spawn. The same `go build -o` ci.yml runs answers
 // it.
 //
-// A FAILED BUILD FAILS THE SUITE rather than skipping it: the four live arms
+// A FAILED BUILD FAILS THE SUITE rather than skipping it: the five live arms
 // would otherwise report could-not-run and every test here would pass over
 // them, which is the vacuity this project refuses everywhere else.
 func TestMain(m *testing.M) {
@@ -362,7 +362,7 @@ const wantArmCountClaims = 2
 // lines apart. The number had been right when written -- C2 shipped thirteen
 // arms and C3 brought the count to eighteen -- and prose does not recompute.
 //
-// IT MATCHES THE POSSESSIVE ONLY, deliberately: "four arms ask the adapter" and
+// IT MATCHES THE POSSESSIVE ONLY, deliberately: "five arms ask the adapter" and
 // "the two browser-stage arms" are true statements about SUBSETS, and an oracle
 // that refused every number beside the word "arm" would be refusing correct
 // prose. What cannot be a subset is a count attributed to the command itself.
@@ -372,7 +372,7 @@ const wantArmCountClaims = 2
 // of it in the alternation this oracle reads a correct document as saying
 // "twenty" and errors against it. Measured at the 19 -> 21 bump (R6.2).
 var armCountClaim = regexp.MustCompile(`(?i)(validate's|validate has|R4\.3's)\s+(?:own\s+)?` +
-	`(twenty-one|twenty-two|twenty-three|one|two|three|four|five|six|seven|eight|nine|ten|` +
+	`(twenty-one|twenty-two|twenty-three|twenty-four|one|two|three|four|five|six|seven|eight|nine|ten|` +
 	`eleven|twelve|` +
 	`thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b`)
 
@@ -382,6 +382,47 @@ var spelled = map[int]string{
 	13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen",
 	17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
 	21: "twenty-one", 22: "twenty-two", 23: "twenty-three",
+	24: "twenty-four",
+}
+
+// wantArmTotalClaims is how many times the documents state the count as a PAIR,
+// and it is 1: docs/cli.md's "Twenty-four of twenty-four is what a complete
+// small project looks like". A zero here would mean the oracle below agrees
+// with every number, which is the failure its sibling above already names.
+const wantArmTotalClaims = 1
+
+// armTotalClaim is THE OTHER SHAPE A DOCUMENT STATES THIS COUNT IN, and the
+// possessive oracle above is blind to it by design -- "matches the possessive
+// only" is what keeps it from refusing true prose about subsets. So cli.md's
+// pair was pinned by nothing: it read "Twenty-three of twenty-three" while
+// TotalArms was 23, and it had to be moved BY HAND at this bump, found by
+// grepping rather than by a failing test. That is the gap this closes.
+//
+// IT FLAGS ONLY AN EQUAL PAIR, and the reason covers exactly that narrowing:
+// "nineteen of twenty-four" is a TRUE sentence about a project whose adapter
+// cannot be reached, and this document writes it. A pair stating the same
+// number twice can only be a claim about the total.
+//
+// THE VOCABULARY IS BUILT FROM `spelled` RATHER THAN TYPED, longest word first.
+// The oracle above carries its alternation as a literal and needed a control
+// test to keep "twenty" from matching inside "twenty-four" (Go's regexp is
+// leftmost-FIRST); constructing it sorted cannot have that defect, and cannot
+// drift from the table either.
+var armTotalClaim = regexp.MustCompile(`(?i)\b(` + spelledAlternation() + `)\s+of\s+(` +
+	spelledAlternation() + `)\b`)
+
+func spelledAlternation() string {
+	words := make([]string, 0, len(spelled))
+	for _, w := range spelled {
+		words = append(words, w)
+	}
+	sort.Slice(words, func(i, j int) bool {
+		if len(words[i]) != len(words[j]) {
+			return len(words[i]) > len(words[j])
+		}
+		return words[i] < words[j]
+	})
+	return strings.Join(words, "|")
 }
 
 // TestTheArmCountOracleReadsAHyphenatedNumberWhole is the control over the
@@ -404,6 +445,7 @@ func TestTheArmCountOracleReadsAHyphenatedNumberWhole(t *testing.T) {
 	for _, c := range []struct{ in, want string }{
 		{"one of validate's twenty-one", "twenty-one"},
 		{"one of validate's twenty-two", "twenty-two"},
+		{"one of validate's twenty-four", "twenty-four"},
 		{"one of validate's twenty", "twenty"},
 		{"one of validate's nineteen", "nineteen"},
 	} {
@@ -429,6 +471,36 @@ func TestTheArmCountOracleReadsAHyphenatedNumberWhole(t *testing.T) {
 	}
 }
 
+// TestTheTotalClaimOracleSeesOnlyAnEqualPair is armTotalClaim's control, and
+// the three cases ARE the narrowing: the pair it must flag, the unequal pair it
+// must leave alone because the sentence is true, and a hyphenated word read
+// whole rather than as "twenty".
+func TestTheTotalClaimOracleSeesOnlyAnEqualPair(t *testing.T) {
+	for _, c := range []struct {
+		in    string
+		equal bool
+		word  string
+	}{
+		{"Twenty-four of twenty-four is what a complete small project looks like", true, "twenty-four"},
+		{"a project whose adapter cannot be reached reports nineteen of twenty-four", false, ""},
+		{"honestly reports twenty-two of twenty-two", true, "twenty-two"},
+	} {
+		m := armTotalClaim.FindStringSubmatch(c.in)
+		if m == nil {
+			t.Errorf("%q matched nothing: the oracle cannot check a claim it does not see", c.in)
+			continue
+		}
+		if got := strings.EqualFold(m[1], m[2]); got != c.equal {
+			t.Errorf("%q read as an equal pair = %v, want %v (groups %q and %q)",
+				c.in, got, c.equal, m[1], m[2])
+		}
+		if c.equal && !strings.EqualFold(m[1], c.word) {
+			t.Errorf("%q read its count as %q, want %q: a hyphenated number read as its "+
+				"first word makes this oracle error against a correct document", c.in, m[1], c.word)
+		}
+	}
+}
+
 func TestTheDocumentedArmCountIsTotalArms(t *testing.T) {
 	want, ok := spelled[validate.TotalArms]
 	if !ok {
@@ -441,7 +513,7 @@ func TestTheDocumentedArmCountIsTotalArms(t *testing.T) {
 	}
 	sort.Strings(docs)
 
-	found := 0
+	found, pairs := 0, 0
 	for _, d := range docs {
 		raw, rerr := os.ReadFile(d)
 		if rerr != nil {
@@ -454,6 +526,20 @@ func TestTheDocumentedArmCountIsTotalArms(t *testing.T) {
 					filepath.Base(d), m[0], validate.TotalArms, want)
 			}
 		}
+		for _, m := range armTotalClaim.FindAllStringSubmatch(string(raw), -1) {
+			if !strings.EqualFold(m[1], m[2]) {
+				continue // a subset reading against the total, and true prose
+			}
+			pairs++
+			if !strings.EqualFold(m[1], want) {
+				t.Errorf("%s says %q, and validate.TotalArms is %d (%s)",
+					filepath.Base(d), m[0], validate.TotalArms, want)
+			}
+		}
+	}
+	if pairs != wantArmTotalClaims {
+		t.Errorf("the documents state the count as an equal pair %d time(s), want %d: "+
+			"a scan that finds nothing agrees with every number", pairs, wantArmTotalClaims)
 	}
 	if found != wantArmCountClaims {
 		t.Errorf("the documents attribute a count to this command %d time(s), want %d: "+
@@ -933,29 +1019,37 @@ func TestEveryFixtureIsTheTwinPlusItsOwnChange(t *testing.T) {
 	}
 }
 
-// allArms is the eighteen, named. fable ruled the count at coop breakout-r4/6
-// and it moves only with a count posted in r4 first.
+// allArms is every arm, named. fable ruled the count at coop breakout-r4/6 and
+// it moves only with a count posted in the live phase thread first: 23 -> 24
+// went to coop breakout-r4/8 before this line or TotalArms moved.
 var allArms = []string{
 	"1", "2", "3", "4", "5", "6", "7a", "7b", "7c", "7d", "7e", "8",
 	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13", "19", "20",
+	"21",
 }
 
-// TestEveryArmAccountsForItself is the "18 of 18" invariant, and it is an
-// accounting one rather than a single project's number.
+// TestEveryArmAccountsForItself is the every-arm-accounted invariant, and it is
+// an accounting one rather than a single project's number.
+//
+// IT WAS NAMED "18 of 18" HERE UNTIL R8.4, and the numbers below were 18 twice
+// more: three statements of a count that has to track TotalArms, inside the
+// comment about a comment that outlived its measurement. They are the property
+// now, which is what the assertions were always about.
 //
 // WHY NOT SIMPLY THE TWIN, which is the question this comment got wrong for
 // three releases: it said the twin reports SIXTEEN of eighteen because arms 4
 // and 5 are vacuous without `stages.browser.enabled` and "the twin cannot
 // enable them". The twin has enabled them since 0120352 -- it declares a
-// browser action and its flow to satisfy fable's D9 drill -- and reports 18 of
-// 18 when a `rumor` is on PATH for its `fake-adapter` to spawn. The comment
+// browser action and its flow to satisfy fable's D9 drill -- and reports EVERY
+// arm evaluated when a `rumor` is on PATH for its `fake-adapter` to spawn. The
+// comment
 // outlived its measurement (quill, coop r4/91).
 //
 // The answer that does not rot: a NUMBER about one project is a claim about
-// that project's declarations and its environment -- four arms need a spawnable
+// that project's declarations and its environment -- five arms need a spawnable
 // adapter -- so what this test pins is the ACCOUNTING, that every arm is
 // evaluated SOMEWHERE across the twin and the fixtures and that no run ever
-// both evaluates and skips one. The twin passing all eighteen is asserted where
+// both evaluates and skips one. The twin passing all of them is asserted where
 // it belongs, against the documented output in
 // TestTheDocumentedOutputIsTheBinarysOutput.
 func TestEveryArmAccountsForItself(t *testing.T) {
@@ -1031,7 +1125,7 @@ func TestTheDocumentedOutputIsTheBinarysOutput(t *testing.T) {
 	}
 
 	// THE TWO ENVIRONMENTS ARE THE POINT of the two blocks: whether a `rumor`
-	// exists to spawn decides four arms, and the documented figure depends on
+	// exists to spawn decides five arms, and the documented figure depends on
 	// it. The second uses an empty temp dir rather than an empty PATH so the
 	// difference is "no rumor here" and not "no PATH at all".
 	cases := []struct {

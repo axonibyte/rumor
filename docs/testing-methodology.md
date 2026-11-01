@@ -129,7 +129,7 @@ file, and emptying the recorded knowledge each turn the suite red.
 ## Self-test the oracle
 
 An oracle is checked before it is trusted, in the same run that trusts it.
-`rumor validate` declares **twenty-three** arms, and the count is pinned in FIVE
+`rumor validate` declares **twenty-four** arms, and the count is pinned in FIVE
 places that move together -- `internal/validate.TotalArms`, that package's own
 `allArmIDs` (which `unreached` walks), `tests/validate`'s `allArms`, `ci.yml`'s
 literal and this sentence -- the way the release gate's own case count is. It
@@ -137,13 +137,17 @@ was three until R6.2 found the other two the hard way: `allArmIDs` is
 unexported, so no external suite could read it and nothing did, and `ci.yml`'s
 is a grep in YAML that no Go test could see. Both have oracles now
 (`TestAllArmIDsIsTotalArms`, in-package, and `TestTheWorkflowsArmCountIsTotalArms`),
-because a copy with no oracle is found by whoever bumps next. The invariant
+because a copy with no oracle is found by whoever bumps next. The PROSE copies
+are a separate family with two oracles of their own: a count attributed to the
+command possessively, and a count stated as a pair of identical numbers --
+`docs/cli.md` carries one of those, and it was pinned by nothing until R8.4 and
+moved by hand at every bump before it. The invariant
 is an ACCOUNTING one rather than a per-project number (fable, coop r4/77): every
-run accounts for all twenty-three as evaluated or skipped-with-its-reason, never
+run accounts for all twenty-four as evaluated or skipped-with-its-reason, never
 silently and never twice, and across `tests/validate/fixtures/` every arm is
-evaluated at least once. The permitted twin evaluates all twenty-three, which
+evaluated at least once. The permitted twin evaluates all twenty-four, which
 is what fable's D9 drill requires of it; a project declaring no browser stage
-honestly reports **twenty-one**, and one whose adapter cannot be reached
+honestly reports **twenty-two**, and one whose adapter cannot be reached
 reports **nineteen** -- the skips named, and could-not-run rather than refused.
 Each of those three figures is measured here rather than computed, at R7.2 as at
 R6.2 as at R4.3: arm 19 evaluates on an unreachable adapter because eight of its
@@ -152,8 +156,8 @@ the three arms R6.2 added read the bindings alone, so they evaluate in all three
 conditions and every figure moved by exactly three; and R7.2's arm 20 reads the
 bindings alone for the same reason -- both `[deadline]` and `[clock]` are
 presence in the same file -- so every figure moved by exactly one again,
-measured at each count rather than carried forward: 23 of 23 on the twin and on
-the toy, 21 of 23 with the browser stage off, 19 of 23 with no adapter on
+measured at each count rather than carried forward: 24 of 24 on the twin and on
+the toy, 22 of 24 with the browser stage off, 19 of 24 with no adapter on
 PATH.
 
 `tools/release-gate.py --self-test` drives twenty cases, fifteen trailer checks

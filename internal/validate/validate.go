@@ -45,7 +45,12 @@ import (
 // and found nothing -- the same reason every count in this project is declared
 // (fable ruled the number at coop breakout-r4/6, and it moves only with a count
 // posted there first).
-const TotalArms = 23
+//
+// 24 SINCE R8/111's READERS WORK: arm21 pairs a role or action context against
+// the adapter's describe, and the count for it is coop breakout-r4/8 -- posted
+// BEFORE this line moved, which is the rule above read as an order and not a
+// decoration.
+const TotalArms = 24
 
 // Refusal is one arm firing, named by the arm so a fixture can assert that it
 // tripped ITS arm and no other -- the invariant fable set over the eighteen.
@@ -188,6 +193,7 @@ func (r *Report) unreached(f string, a ...any) {
 var allArmIDs = []string{
 	"1", "2", "3", "4", "5", "6", "7a", "7b", "7c", "7d", "7e", "8",
 	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13", "19", "20",
+	"21",
 }
 
 func (r *Report) refuse(arm, f string, a ...any) {
@@ -367,6 +373,7 @@ func Run(dir string) Report {
 		arm9(&rep, b, d)
 		arm13(&rep, plat, d)
 		arm19Observations(&rep, b, d)
+		arm21(&rep, b, d)
 	} else {
 		// ARM 19 EVALUATED ITS DOCUMENT CELLS and cannot answer its one
 		// adapter cell, which is could-not-run for that cell rather than a

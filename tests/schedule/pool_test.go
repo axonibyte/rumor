@@ -565,15 +565,15 @@ func TestAnActionInAnUnheldContextIsInapplicable(t *testing.T) {
 			"nothing", moved, kinds(before))
 	}
 
-	// AND THE SAME CALL WITH ui NOT HELD: the moved action is gone and the
+	// AND THE SAME CALL WITH browser NOT HELD: the moved action is gone and the
 	// others are untouched.
 	apiOnly := []bindings.Role{{Name: "member", Contexts: []string{"api"}}}
 	after, err := schedule.Pool(ctx, statute(t), acts, l, actor, w, "", "", tbl(t), apiOnly, knownFor(t, l, actor), toyActors(t), nil)
 	if err != nil {
-		t.Fatalf("Pool with ui unheld: %v", err)
+		t.Fatalf("Pool with browser unheld: %v", err)
 	}
 	if strings.Contains(strings.Join(kinds(after), ","), moved) {
-		t.Errorf("%s needs context ui and the role holds only api, so it must be inapplicable; "+
+		t.Errorf("%s needs context browser and the role holds only api, so it must be inapplicable; "+
 			"the pool is %v", moved, kinds(after))
 	}
 	// NOTHING ELSE GOES -- OVER THE PROJECT'S ACTIONS, AND THAT BOUND IS THE
@@ -592,7 +592,7 @@ func TestAnActionInAnUnheldContextIsInapplicable(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(strings.Join(kinds(after), ","), k) {
-			t.Errorf("gating ui also removed %q, which needs no ui: before %v, after %v",
+			t.Errorf("gating browser also removed %q, which needs no browser: before %v, after %v",
 				k, kinds(before), kinds(after))
 		}
 	}
