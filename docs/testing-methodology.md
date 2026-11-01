@@ -160,13 +160,13 @@ measured at each count rather than carried forward: 24 of 24 on the twin and on
 the toy, 22 of 24 with the browser stage off, 19 of 24 with no adapter on
 PATH.
 
-`tools/release-gate.py --self-test` drives twenty cases, fifteen trailer checks
-and seven docs-verdict checks, and asserts that **each arm fires alone**. Each
-count is declared as a constant and asserted in both directions, because a case
-that silently stops running is invisible in a self-consistent total. The
-release-gate workflow runs that self-test before the gate judges a pull request,
-because a gate whose arms have stopped discriminating would otherwise refuse or
-admit a run with nobody the wiser.
+`tools/release-gate.py --self-test` drives twenty cases, fifteen trailer checks,
+seven docs-verdict checks and four worktree checks, and asserts that **each arm
+fires alone**. Each count is declared as a constant and asserted in both
+directions, because a case that silently stops running is invisible in a
+self-consistent total. The release-gate workflow runs that self-test before the
+gate judges a pull request, because a gate whose arms have stopped
+discriminating would otherwise refuse or admit a run with nobody the wiser.
 
 **It is not one case per arm, and the gap is where a broken arm hid.** This
 section used to say "twelve cases — one per refusal arm plus a clean run", and

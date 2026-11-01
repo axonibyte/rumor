@@ -494,6 +494,40 @@ def evaluate(repo: Path, base: str, head: str, today: str | None = None) -> list
             f"not checked out invents findings. Check out {head}, then gate it"
         )
 
+    # AND ON THE REF BUT DIRTY IS THE SAME HAZARD (fable rumor/1619.2, ruled into
+    # this fix rather than its own decision after I named it as a residual at
+    # /1615). A block's text still comes from the ref while its commands read
+    # whatever is on disk, so an uncommitted edit is gated as though it were
+    # committed -- the identical defect, one step smaller.
+    #
+    # THE SCOPE IS THE WHOLE WORKTREE AND NOT `docs/`, which is the narrowing I
+    # nearly made. The ruling says "the paths the arms read", and a doc `run`
+    # block is an arbitrary shell snippet: it can read any path, so the readable
+    # set is unbounded and cannot be enumerated. Closing the class is the only
+    # honest scope -- quill's lesson from the stage-override residue, where
+    # thirteen pins would have been brittle and still incomplete.
+    #
+    # IT NAMES THE FILES, up to four and then a count, because "the tree is
+    # dirty" sends a reader to `git status` while the gate already knows.
+    # TRACKED CHANGES ONLY, and the narrowing's reason covers exactly what it
+    # narrows: a modified tracked file means THE REF'S OWN CONTENT differs on
+    # disk, which is the "gated as though committed" defect itself. An UNTRACKED
+    # file is not the ref's content at all -- a block referencing one fails
+    # honestly rather than silently agreeing -- and refusing on untracked would
+    # stop the gate on any stray build artifact, which is a usability cost with
+    # no defect behind it. Untracked is therefore NOT covered, said here rather
+    # than discovered later.
+    dirty = [ln[3:] for ln in git(repo, "status", "--porcelain").splitlines()
+             if ln.strip() and not ln.startswith("??")]
+    if dirty:
+        shown = ", ".join(dirty[:4])
+        more = f" and {len(dirty) - 4} more" if len(dirty) > 4 else ""
+        raise CannotRun(
+            f"the worktree is on {head} but has uncommitted changes: {shown}{more}. "
+            f"A doc `run` block's commands read the worktree, so these would be "
+            f"gated as though committed. Commit or stash them, then gate"
+        )
+
     # PEEL BOTH REFS TO COMMITS. `rev-parse v0.1.1` on an ANNOTATED tag returns
     # the tag OBJECT's sha, not the commit's, so comparing it to a merge-base
     # made `not-rebased` fire on a perfectly rebased run -- which is how I found
@@ -1166,9 +1200,10 @@ EXPECT_DOCS_VERDICT_CHECKS = 7
 EXPECT_CASES = 20
 EXPECT_TRAILER_CHECKS = 15
 
-# 2, and it moves only with _worktree_battery: the refusal firing, and the
-# pairing that proves it is not firing always.
-EXPECT_WORKTREE_CHECKS = 2
+# 4, and it moves only with _worktree_battery: the ref-identity refusal and its
+# pairing, then the DIRTY refusal and its pairing (fable rumor/1619.2). Each
+# refusal has the cell that proves it is not firing always.
+EXPECT_WORKTREE_CHECKS = 4
 
 
 def _worktree_battery() -> tuple[int, int]:
@@ -1211,6 +1246,31 @@ def _worktree_battery() -> tuple[int, int]:
             evaluate(repo, "main", "run", today=today)
         except CannotRun as exc:
             print(f"\n  FAIL worktree: refused a ref the worktree IS on: {exc}")
+            failures += 1
+
+        # 3. ON THE REF BUT DIRTY (fable rumor/1619.2). A tracked file edited on
+        #    disk is the ref's own content differing, so the gate must refuse AND
+        #    name the file -- "the tree is dirty" would send a reader to git
+        #    status for something the gate already knows.
+        _mk(repo, "src/one.rs", "// edited on disk and not committed\n")
+        try:
+            evaluate(repo, "main", "run", today=today)
+            print("\n  FAIL worktree: gated a DIRTY tree, so an uncommitted edit "
+                  "would be gated as though it were committed")
+            failures += 1
+        except CannotRun as exc:
+            if "src/one.rs" not in str(exc):
+                print(f"\n  FAIL worktree: refused a dirty tree without naming the "
+                      f"file: {exc}")
+                failures += 1
+
+        # 4. ITS PAIRING: the same tree, cleaned, must RUN again. Without this a
+        #    refusal that never lifted would pass cell 3 and gate nothing ever.
+        git(repo, "checkout", "-q", "--", "src/one.rs")
+        try:
+            evaluate(repo, "main", "run", today=today)
+        except CannotRun as exc:
+            print(f"\n  FAIL worktree: still refused after the tree was cleaned: {exc}")
             failures += 1
     return failures, EXPECT_WORKTREE_CHECKS
 

@@ -235,9 +235,14 @@ jobs:
           cat ../self.log
           test "$rc" -eq 124 && { echo "HANG: the gate's self-test exceeded 300s. RUNNER finding; the gate was NOT checked."; exit 124; }
           test "$rc" -eq 0 || { echo "the gate's own self-test FAILED, so its verdict on this PR means nothing"; exit "$rc"; }
-          # BOTH COUNTS ARE PINNED, AND THIS IS THE SECOND VANTAGE RATHER THAN
-          # THE MECHANISM. The gate declares EXPECT_CASES and
-          # EXPECT_TRAILER_CHECKS and asserts its own counts against them in
+          # EVERY COUNT IS PINNED, AND THIS IS THE SECOND VANTAGE RATHER THAN
+          # THE MECHANISM. This paragraph used to open "BOTH COUNTS" and name
+          # EXPECT_CASES and EXPECT_TRAILER_CHECKS, which was true of the two
+          # that existed when it was written and silently wrong once the
+          # docs-verdict and worktree batteries brought the total to four -- the
+          # same defect as the shape pattern below, an enumeration that stops
+          # covering what is added after it. So: the gate declares one EXPECT_
+          # constant per battery and asserts its own counts against them in
           # both directions, so a case that stops running fails there first
           # (ibis thread:r0.3/25, rook /26). What that assertion CANNOT catch is
           # an edit that removes a case and lowers the declaration to match: the
@@ -268,8 +273,17 @@ jobs:
           # slip: raising EXPECT_CASES is one edit of three, and the other two
           # are this grep and the count written out in
           # docs/testing-methodology.md's "Self-test the oracle".
-          grep -q '20 of 20 cases ok, 15 of 15 trailer checks ok, 7 of 7 docs-verdict checks ok, 0 failed' ../self.log \
-            || { echo "the self-test did not report 20 of 20 cases, 15 of 15 trailer checks and 7 of 7 docs-verdict checks: a case did not run, or the gate's declared counts were changed without this literal"; exit 1; }
+          #
+          # AND A THIRD TIME, 2026-10-31, mine: the worktree battery added a
+          # FOURTH tally, printing between the docs-verdict checks and `0
+          # failed` -- the same position the docs-verdict battery took in the
+          # first occurrence. The radius written two lines above is the thing I
+          # did not read before pushing, so the paragraph that was meant to
+          # prevent this was already here and already right. What differed is
+          # that it surfaced BEFORE a PR existed: ratchet drove the committed
+          # bytes (coop rumor/1618) rather than a required check catching it.
+          grep -q '20 of 20 cases ok, 15 of 15 trailer checks ok, 7 of 7 docs-verdict checks ok, 4 of 4 worktree checks ok, 0 failed' ../self.log \
+            || { echo "the self-test did not report 20 of 20 cases, 15 of 15 trailer checks, 7 of 7 docs-verdict checks and 4 of 4 worktree checks: a case did not run, or the gate's declared counts were changed without this literal"; exit 1; }
           # THIS PROOF IS NOT A SECOND COPY OF THE ASSERTION ABOVE. The grep
           # above pins the NUMBERS; this one pins the SHAPE and displays what
           # actually ran, with a pattern deliberately not coupled to the

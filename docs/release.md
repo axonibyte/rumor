@@ -190,11 +190,20 @@ asserts directly. Two further rules, both learned the hard way:
   on each fixture before opening its PR. Name the versioned binary if the box
   has no bare `go`, and export `GOTOOLCHAIN=local` so a directive raise refuses
   instead of downloading a toolchain nobody chose.
-- **Verify each fixture with its own tree checked out.** Arm `docs-stale` runs
-  `rumor docs --check`, which reads the working tree, so it is the one arm whose
-  answer depends on the checkout. The gate reports UNMEASURED when the checkout
-  is not the run being gated; a verification from another branch therefore
-  leaves that arm unmeasured rather than wrong, but it also leaves it unproven.
+- **Verify each fixture with its own tree checked out, and clean.** The gate now
+  REFUSES (`CannotRun`, exit 2) when the worktree is not on the ref being gated,
+  or is on it with tracked edits under it, naming both shas or the files. That
+  refusal exists because this bullet used to claim `docs-stale` was "the one arm
+  whose answer depends on the checkout" and that a wrong checkout left it
+  "unmeasured rather than wrong". Both halves were false. Arm `docs-stale` does
+  report UNMEASURED, but arm `doc-run-block-failed` reads each `run` block's
+  TEXT from the ref and EXECUTES it with the worktree as cwd, so a mismatch does
+  not go unmeasured -- it INVENTS a finding against a tree nobody is gating.
+  This author reported one such finding as a live defect on a ref that was
+  clean, and the finding was his own dirty worktree (ibis read it correctly
+  first; retracted on coop thread:rumor, and the refusal is the fix). CI never
+  saw it because the runner's checkout and ref always agree, which is what made
+  an author-only hazard invisible for eleven arms' worth of driving.
 - **Never rewrite a pushed fixture.** Re-cut it under a `-<n>` suffix, as
   `r0.2-ci-2` was, and leave the original on the forge as the record. The
   asserting step strips a trailing `-<digits>` when it derives the arm from the
