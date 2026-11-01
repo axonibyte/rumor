@@ -158,7 +158,7 @@ func arm12(rep *Report, cases map[string]caseDoc) {
 	}
 	if len(noSrc) > 0 {
 		sort.Strings(noSrc)
-		rep.refuse("12b", "no observation source in: %s -- it cannot be read as api, ui or direct",
+		rep.refuse("12b", "no observation source in: %s -- it cannot be read as api, browser or direct",
 			strings.Join(noSrc, ", "))
 	}
 }

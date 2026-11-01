@@ -36,7 +36,7 @@ type sessionKey struct {
 //
 // AND ONE PER ACTOR PER CONTEXT, not one per actor: an actor acting in two
 // contexts holds two sessions, because the context is what the token is for.
-// Reusing one actor's api token for its ui actions would send a token the
+// Reusing one actor's api token for its browser actions would send a token the
 // adapter issued for something else, and an adapter that happened to accept it
 // would make the contexts indistinguishable from the engine's side.
 type Sessions struct {

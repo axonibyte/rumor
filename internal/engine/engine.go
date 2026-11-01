@@ -56,7 +56,7 @@ type Check struct {
 	Actor  string        // the observing actor
 	Query  string        // what was asked, e.g. "user.count"
 	Of     string        // the claim type the query counts, e.g. "user.created"
-	Source ledger.Source // api, ui or direct (R4 refuses a fourth)
+	Source ledger.Source // api, browser or direct (R4 refuses a fourth)
 	Value  any           // what came back
 	Role   string        // the observer's role, where the project has roles
 

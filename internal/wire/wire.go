@@ -133,7 +133,7 @@ type ExecuteRequest struct {
 }
 
 // ObserveRequest reads one named observation. Token is present exactly when
-// Source is not "direct": api and ui are an actor's observations through its
+// Source is not "direct": api and browser are an actor's observations through its
 // session, and direct is the engine's, never an actor's (R9).
 //
 // Query is opaque here when Source is "direct": that verb's shape is an epic

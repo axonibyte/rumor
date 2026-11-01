@@ -386,7 +386,7 @@ response = { status = 201 }    # the expected response shape
 
 [[observation]]
 name = "user.count"            # `observe`'s `query`
-source = "api"                 # api | ui | direct
+source = "api"                 # api | browser | direct
 of = "user.created"            # the claim type it is judged against
 
 [claim."user.created"]
