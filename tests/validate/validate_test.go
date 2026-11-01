@@ -1412,3 +1412,112 @@ func TestArm21ReadsItsOwnVerdict(t *testing.T) {
 		})
 	}
 }
+
+// TestArm19Cell8PairsOnlyTheBrowserContext is cell 8's POSITIVE, and ratchet
+// named the gap it fills (coop r8/155). The cell's NEGATIVE is the fixture
+// 19/profile-venire-context-no-stage; widening `isBrowser` to accept ANY
+// context SURVIVED the whole suite -- and survived UNREACHED, which is weaker
+// than a reached survivor and ratchet said so rather than let it read the same.
+// Exactly two projects in the tree carry `[[profiles.*.venire]]` rows and both
+// are that cell's negatives, while every role in every project declares only
+// `api`, `browser`, or both. So there was no third context anywhere to widen
+// onto: the narrowing could be reversed and CI would stay green.
+//
+// MY OWN STATED REASON WAS THE SPECIFICATION FOR THIS TEST -- "a project may
+// declare a `kiosk` context whose adapter serves it, and refusing that under
+// every profile would refuse a correct project." Nothing asserted it. The
+// reason was right and unheld, which is the third time in two heads; a stated
+// reason with no cell is decoration, because the next person to widen the
+// predicate gets a green suite.
+//
+// THE PAIR IS IN ONE TEST so the boundary is one thing a reader sees: the same
+// profile, the same appended row, and only the ROLE'S CONTEXT moving. `api` is
+// the non-browser side rather than `kiosk` because `kiosk` would also trip arm
+// 21 -- the adapter does not describe it -- and a cell about arm 19 should not
+// need a second arm's refusal read around it.
+func TestArm19Cell8PairsOnlyTheBrowserContext(t *testing.T) {
+	twin := filepath.Join("..", "..", "examples", "twin")
+	for _, c := range []struct {
+		context string
+		refused bool
+	}{
+		// THE POSITIVE: a context no selected stage drives and that is not the
+		// browser one. The profile selects `api`, the role holds `api`, and the
+		// cell must say nothing.
+		{"api", false},
+		// AND THE NEGATIVE BESIDE IT, so a reader can see that the only thing
+		// separating them is the context's name.
+		{"browser", true},
+	} {
+		t.Run(c.context, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "twin")
+			if out, err := exec.Command("cp", "-r", twin, dir).CombinedOutput(); err != nil {
+				t.Fatalf("copying the twin: %v %s", err, out)
+			}
+			// `author` IS THE ROLE THE TWIN'S OWN `[[venire]]` DRAWS. Declaring
+			// any role turns on arm 19's venire cell, so any other name leaves
+			// the twin's committed row unresolved and trips that cell too.
+			b := filepath.Join(dir, "bindings.toml")
+			raw, err := os.ReadFile(b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			role := "\n[[role]]\nname = \"author\"\ncontexts = [\"" + c.context + "\"]\n"
+			if err := os.WriteFile(b, append(raw, []byte(role)...), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			// THE ROW GOES AFTER THE PROFILE'S OWN KEYS. An array-of-tables
+			// header directly under the profile header takes `stages`, `seeds`
+			// and `budget` into the row and the file stops parsing -- measured,
+			// as a mutant that was not a kill.
+			p := filepath.Join(dir, "platform.toml")
+			raw, err = os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			prof := "\n[profiles.cell]\nstages = [\"api\"]\nseeds = 1\nbudget = \"1m\"\n" +
+				"\n[[profiles.cell.venire]]\nrole = \"author\"\ncount = 1\n"
+			if err := os.WriteFile(p, append(raw, []byte(prof)...), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			rep := validate.Run(dir)
+			ran := false
+			for _, a := range rep.Evaluated {
+				if a == "19" {
+					ran = true
+				}
+			}
+			if !ran {
+				t.Fatalf("arm 19 did not evaluate, so this cell measures nothing: skipped %v, "+
+					"could not run %v", rep.Skipped, rep.CouldNotRun)
+			}
+			got := ""
+			for _, r := range rep.Refusals {
+				if r.Arm == "19" {
+					got = r.Detail
+				}
+			}
+
+			if !c.refused {
+				if got != "" {
+					t.Errorf("a role holding %q under a profile selecting api was refused by arm 19, "+
+						"and only a BROWSER context is pairable against a profile's stages: %s",
+						c.context, got)
+				}
+				t.Logf("PROOF a %q context under a profile that selects api is not paired", c.context)
+				return
+			}
+			if got == "" {
+				t.Fatalf("arm 19 did not refuse a %q context under a profile selecting api alone; "+
+					"the report carries %v", c.context, rep.Refusals)
+			}
+			for _, want := range []string{"cell", "author", c.context, "api"} {
+				if !strings.Contains(got, want) {
+					t.Errorf("the refusal does not name %q: %s", want, got)
+				}
+			}
+			t.Logf("PROOF %q -> %s", c.context, got)
+		})
+	}
+}
