@@ -1,0 +1,40 @@
+{
+  "why": "alice published one doc honestly and one PLANTED, and told dana of both. dana believes two; the truth is one, so the finding is `bug` and the control says it rests on the lie rather than on a defect -- the engine found the plant. This is how the twin EARNS attaint's corroboration guard instead of being exempted from it (fable, coop r4/63).",
+  "expect": {
+    "believed": 2,
+    "may_publish": true,
+    "finding": "bug",
+    "rests_on_planted": true
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "position": 4,
+      "of": "doc.published",
+      "query": "doc.count",
+      "source": "direct",
+      "value": 1
+    },
+    "known": [
+      "alice.doc#1",
+      "alice.doc#2"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.published",
+        "position": 1,
+        "handle": "alice.doc#1"
+      },
+      {
+        "ref": "alice.doc#2",
+        "actor": "alice",
+        "type": "doc.published",
+        "position": 3,
+        "handle": "alice.doc#2",
+        "planted": true
+      }
+    ]
+  }
+}

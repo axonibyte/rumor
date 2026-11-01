@@ -41,7 +41,11 @@ import (
 // is the pairing fable ruled into this arm rather than giving it an id -- an
 // actor holding a context no stage the profile selects can drive, which is an
 // actor the profile draws and cannot move.
-const wantFixtures = 37
+// AND ONE AT R8.4 FOR ARM 21, its action path -- the case docs/contract.md:222
+// states in words. ratchet measured at coop r8/149 that the arm's accounting
+// was armed and its JUDGEMENT was not: nothing in the tree read a refusal from
+// it, so the comparison could be made unconditionally false and stay green.
+const wantFixtures = 38
 
 // ARM 19 IS ONE ARM WITH SEVERAL CELLS, so it is the one arm with more than one
 // fixture -- and the count is declared here for the same reason every count in
@@ -977,11 +981,12 @@ var changedBy = map[string][]string{
 	"19/profile-venire-undeclared-role":  {"bindings.toml", "platform.toml", "WHY-profile-venire-undeclared-role.md"},
 	"19/profile-venire-context-no-stage": {"bindings.toml", "platform.toml", "WHY-profile-venire-context-no-stage.md"},
 
-	"9a-fault-unavailable":   {"bindings.toml"},
-	"9b-volume-unavailable":  {"bindings.toml"},
-	"9c-upgrade-unavailable": {"bindings.toml"},
-	"13-contract-mismatch":   {"platform.toml"},
-	"20-deadline-no-clock":   {"bindings.toml"},
+	"9a-fault-unavailable":     {"bindings.toml"},
+	"9b-volume-unavailable":    {"bindings.toml"},
+	"9c-upgrade-unavailable":   {"bindings.toml"},
+	"13-contract-mismatch":     {"platform.toml"},
+	"21-context-not-described": {"bindings.toml"},
+	"20-deadline-no-clock":     {"bindings.toml"},
 }
 
 // TestEveryFixtureIsTheTwinPlusItsOwnChange is the drift oracle. Without it a
@@ -1302,6 +1307,108 @@ func TestEachArm19FixtureTripsExactlyOneCell(t *testing.T) {
 				t.Errorf("%d cell(s) tripped, want 1: a fixture tripping two cells shows neither:\n  %s",
 					len(notes), strings.Join(notes, "\n  "))
 			}
+		})
+	}
+}
+
+// TestArm21ReadsItsOwnVerdict is arm 21's JUDGEMENT, and it exists because
+// ratchet measured that nothing read it (coop r8/149). The arm was wired,
+// accounted for, and skipped BY NAME when no adapter answers -- and three
+// mutants went green: its action comparison, its role comparison and its
+// `none` exemption, every one of them REACHED rather than unreachable. A drive
+// recorded in a commit message is not a check (ratchet, coop r6/173), and the
+// drive for this arm was mine, by hand, in a message.
+//
+// THE ACTION PATH IS THE FIXTURE, 21-context-not-described, and is not repeated
+// here. These are the two cases a fixture cannot carry: the ROLE path, whose
+// role the twin does not declare, and the `none` EXEMPTION, which is a POSITIVE
+// -- a fixture says which arm refused and cannot say that no arm did.
+//
+// `author` AND NOT A NEW NAME, for the reason my own profile-venire fixture
+// taught an hour before this: declaring ANY role turns on arm 19's venire cell,
+// and the twin's own `[[venire]]` draws `author`, so any other name trips that
+// cell as well and the case stops being about arm 21.
+//
+// AND EACH CELL ASSERTS THE ARM EVALUATED. Without that the `none` cell passes
+// when the project stops parsing at all -- no refusal from 21 because nothing
+// from 21 ran, which is the vacuity this suite refuses everywhere else.
+func TestArm21ReadsItsOwnVerdict(t *testing.T) {
+	twin := filepath.Join("..", "..", "examples", "twin")
+	for _, c := range []struct {
+		what, anchor, with string
+		refused            bool
+		says               string
+	}{
+		{
+			what:    "a role holding a context the describe does not offer",
+			anchor:  "[[action]]\nname = \"publish_doc\"",
+			with:    "[[role]]\nname = \"author\"\ncontexts = [\"kiosk\"]\n\n[[action]]\nname = \"publish_doc\"",
+			refused: true,
+			says:    "role author holds kiosk",
+		},
+		{
+			what:    "an action whose context is none",
+			anchor:  "name = \"publish_doc\"\ncontext = \"api\"",
+			with:    "name = \"publish_doc\"\ncontext = \"none\"",
+			refused: false,
+		},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "twin")
+			if out, err := exec.Command("cp", "-r", twin, dir).CombinedOutput(); err != nil {
+				t.Fatalf("copying the twin: %v %s", err, out)
+			}
+			p := filepath.Join(dir, "bindings.toml")
+			raw, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n := strings.Count(string(raw), c.anchor); n != 1 {
+				t.Fatalf("the anchor occurs %d time(s) in the twin's bindings.toml, so this cell "+
+					"edits nothing it means to: %q", n, c.anchor)
+			}
+			edited := strings.Replace(string(raw), c.anchor, c.with, 1)
+			if err := os.WriteFile(p, []byte(edited), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			rep := validate.Run(dir)
+			ran := false
+			for _, a := range rep.Evaluated {
+				if a == "21" {
+					ran = true
+				}
+			}
+			if !ran {
+				t.Fatalf("arm 21 did not evaluate, so this cell measures nothing: skipped %v, "+
+					"could not run %v", rep.Skipped, rep.CouldNotRun)
+			}
+			got := ""
+			for _, r := range rep.Refusals {
+				if r.Arm == "21" {
+					got = r.Detail
+				}
+			}
+
+			if !c.refused {
+				if got != "" {
+					t.Errorf("arm 21 refused a context it must not pair: %s", got)
+				}
+				t.Logf("PROOF %s is not paired against the describe", c.what)
+				return
+			}
+			if got == "" {
+				t.Fatalf("arm 21 did not refuse %s; the report carries %v", c.what, rep.Refusals)
+			}
+			if !strings.Contains(got, c.says) {
+				t.Errorf("arm 21's refusal does not name the value: %q, want it to contain %q", got, c.says)
+			}
+			// AND WHAT THE ADAPTER OFFERS, because a refusal naming only the bad
+			// value leaves a reader without the set it was compared against.
+			if !strings.Contains(got, "api") {
+				t.Errorf("arm 21's refusal does not name what the describe offers: %q", got)
+			}
+			t.Logf("PROOF %s -> %s", c.what, got)
 		})
 	}
 }

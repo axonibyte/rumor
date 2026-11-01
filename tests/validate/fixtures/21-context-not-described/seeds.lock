@@ -1,0 +1,14 @@
+# Promoted seeds for the permitted twin.
+#
+# EMPTY IS A STATE AND NOT A PLACEHOLDER: no seed has found a failure here, so
+# none has been promoted. docs/design.md:343 -- "Seeds are promoted, and the
+# promoted ones run first" -- and R5 is what writes an entry. The FORMAT of an
+# entry is R5's to define; this file does not guess at one, and an empty file
+# is the zero state of whatever R5 chooses.
+#
+# WHY THE FILE EXISTS AT ALL: validate's arm 10a refuses a project whose
+# seeds_file is not there, and platform.toml's `seeds_file` defaults to this
+# name (internal/platform:31) rather than being absent. So the twin EARNS the
+# arm by carrying the file, the way it earns attaint's corroboration control by
+# carrying a planted case (fable, coop r4/63) -- rather than the arm being
+# narrowed to let the twin through.

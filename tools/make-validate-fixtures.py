@@ -268,6 +268,27 @@ contexts = ["browser", "api"]
     # tests/validate declares how many there are. Each breaks exactly ONE
     # reference and must trip arm 19 and nothing else.
 
+    # ARM 21's FIXTURE, beside the live arms above because it is one: it needs
+    # the adapter to answer a describe. It follows their convention and changes
+    # the project's ASK rather than surface.json -- the arm is about what the
+    # project declares, not about what the fake adapter can be made to say.
+    #
+    # THE ACTION PATH, which is the one docs/contract.md:222 states in words.
+    # The role path and the `none` exemption are cells in tests/validate: a
+    # fixture asserts WHICH ARM refused and no fixture oracle reads the refusal
+    # TEXT, and `none` is a positive -- a fixture cannot say "this is not
+    # refused" (ratchet, coop r8/149).
+    d = fresh("21-context-not-described")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    before = 'name = "publish_doc"\ncontext = "api"'
+    assert s.count(before) == 1, "the twin's publish_doc no longer declares context = api"
+    s = s.replace(before, 'name = "publish_doc"\ncontext = "kiosk"', 1)
+    open(p, "w").write("# FIXTURE for arm 21: the twin with one change -- publish_doc declares a\n"
+                       "# context the adapter's describe does not offer. `kiosk` is not the browser\n"
+                       "# context on purpose: arms 4 and 5 both gate on isBrowser, so a browser\n"
+                       "# context here would trip one of them as well and the fixture would show\n"
+                       "# neither.\n" + s)
+
     d = fresh("19/requires-unknown-rule")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
     s = s.replace('requires = ["may_publish"]', 'requires = ["may_publish", "may_publish_absent"]', 1)
