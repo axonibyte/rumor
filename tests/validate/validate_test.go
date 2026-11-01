@@ -34,7 +34,14 @@ import (
 // resolves to nothing leaves the room unknown and every fan-out is then refused
 // as vacuous, which reads as "no overfill found" rather than as a broken
 // declaration.
-const wantFixtures = 35
+// AND TWO MORE AT R8.4, both cells of arm 19 again and both about a row a
+// PROFILE appends (fable, coop rumor/1662). The first is a hole this suite had
+// for one commit: the venire cell read the platform's own rows alone, so an
+// appended row naming a role nothing declares was refused by nobody. The second
+// is the pairing fable ruled into this arm rather than giving it an id -- an
+// actor holding a context no stage the profile selects can drive, which is an
+// actor the profile draws and cannot move.
+const wantFixtures = 37
 
 // ARM 19 IS ONE ARM WITH SEVERAL CELLS, so it is the one arm with more than one
 // fixture -- and the count is declared here for the same reason every count in
@@ -70,7 +77,16 @@ const wantFixtures = 35
 // the shape. `19/kind-without-a-weight` trips it. The ARM count does not move,
 // because a cell is not an arm; this number counts the fixtures that pair with
 // cells, and it was short by one for as long as that loop existed.
-const wantCells19 = 13
+// 13 -> 15 AT R8.4, TWO CELLS, BOTH ABOUT A ROW A PROFILE APPENDS (fable, coop
+// rumor/1662). `[profiles.<name>].venire` appends rows to the platform's venire
+// for one profile, so a profile's row is a venire row and both pairings are
+// this arm's: the role it names must be declared, which this arm already
+// required of the platform's own rows and did not of a profile's for one
+// commit; and the contexts that role holds must be drivable by a stage THAT
+// PROFILE selects, which nothing paired at all. Cells and not arms, on the
+// ruling itself: fable refused a fresh id for the second because a profile's
+// appended row is a venire row and the venire pairing is already arm 19's.
+const wantCells19 = 15
 
 // armOf is the fixture naming convention: <arm>-<slug>, or <arm>/<slug> for an
 // arm with several cells. The arm is the part before the first separator, so
@@ -954,6 +970,13 @@ var changedBy = map[string][]string{
 	"19/contended-limit-unknown-argument":   {"bindings.toml"},
 	"19/contended-held-unknown-observation": {"bindings.toml"},
 
+	// THE TWO PROFILE-VENIRE CELLS (fable, coop rumor/1662). THREE EDITS EACH
+	// AND ONE CONDITION under fable's r4/74 rule: the twin declares neither a
+	// role nor a profile, so both are the ground the cell stands on, and the
+	// appended row is the condition. Each fixture's README names which is which.
+	"19/profile-venire-undeclared-role":  {"bindings.toml", "platform.toml", "WHY-profile-venire-undeclared-role.md"},
+	"19/profile-venire-context-no-stage": {"bindings.toml", "platform.toml", "WHY-profile-venire-context-no-stage.md"},
+
 	"9a-fault-unavailable":   {"bindings.toml"},
 	"9b-volume-unavailable":  {"bindings.toml"},
 	"9c-upgrade-unavailable": {"bindings.toml"},
@@ -1240,5 +1263,45 @@ func TestTheWorkflowsArmCountIsTotalArms(t *testing.T) {
 					m[0], validate.TotalArms)
 			}
 		}
+	}
+}
+
+// TestEachArm19FixtureTripsExactlyOneCell is the ONE-CELL invariant, and it is
+// a separate test because TestEveryFixtureTripsExactlyItsOwnArm cannot see it:
+// arm 19 is one arm with fifteen cells, so a fixture tripping two of them trips
+// one ARM and passes there. Every `changedBy` comment above that says "a
+// fixture tripping two cells shows neither" was enforced by reading until now.
+//
+// IT CAUGHT ONE IN THE HOUR IT WAS WRITTEN, which is why it exists rather than
+// being a tidy-up. 19/profile-venire-context-no-stage declared a role named
+// `viewer` and no other, and declaring ANY role turns on the venire cell's
+// "where roles are declared at all" guard -- so the twin's own `[[venire]] role
+// = "author"` became unresolved and the fixture reported TWO notes, its
+// condition being the second. The fixture now declares `author` as well.
+//
+// THE SPLIT IS ON THE JOIN arm 19 ITSELF USES. Its refusal is the notes joined
+// with "; ", so one note is one cell; a note that ever contains that pair would
+// fail here loudly rather than quietly, which is the right way round.
+func TestEachArm19FixtureTripsExactlyOneCell(t *testing.T) {
+	for _, f := range fixtures(t) {
+		if !strings.HasPrefix(f, "19/") {
+			continue
+		}
+		t.Run(f, func(t *testing.T) {
+			rep := validate.Run(filepath.Join("fixtures", f))
+			detail := ""
+			for _, r := range rep.Refusals {
+				if r.Arm == "19" {
+					detail = r.Detail
+				}
+			}
+			if detail == "" {
+				t.Fatalf("no arm 19 refusal, and this fixture is one of its cells: %v", rep.Refusals)
+			}
+			if notes := strings.Split(detail, "; "); len(notes) != 1 {
+				t.Errorf("%d cell(s) tripped, want 1: a fixture tripping two cells shows neither:\n  %s",
+					len(notes), strings.Join(notes, "\n  "))
+			}
+		})
 	}
 }

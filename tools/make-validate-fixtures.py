@@ -341,6 +341,100 @@ count = 1
         "and refusing it would refuse an example fable's D9 requires to pass).\n\n"
         "CONDITION: `[[venire]] role = \"wizard\"`, which no [[role]] declares.\n")
 
+    # THE TWO PROFILE-VENIRE CELLS (fable, coop rumor/1662). Both need the same
+    # ground as the venire cell above -- the twin declares no roles and no
+    # profiles -- so each declares a role, a profile, and the one row that is
+    # its condition. That is one CONDITION with three edits under fable's r4/74
+    # rule, and each README names which edit is which.
+    d = fresh("19/profile-venire-undeclared-role")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    open(p, "w").write(s + '''
+# SETUP, not the condition: the twin declares no roles, and the venire cell
+# pairs only where a project declares some. `author` is the role the twin's own
+# venire draws, holding `api` alone so arm 5 stays quiet.
+[[role]]
+name = "author"
+contexts = ["api"]
+''')
+    p = os.path.join(d, "platform.toml"); s = open(p).read()
+    open(p, "w").write(s + '''
+# SETUP: a profile, because an APPENDED venire row is the subject and the twin
+# declares no profiles. The row goes after this table's own keys -- an
+# array-of-tables header directly under the header would take `stages`, `seeds`
+# and `budget` into the row and the file would stop parsing.
+[profiles.cell]
+stages = ["api"]
+seeds = 1
+budget = "1m"
+
+# THE CONDITION: an appended row drawing a role no [[role]] declares. Before
+# fable's rumor/1662 ruling the cell read the platform's own venire alone, so
+# this row was refused by nobody.
+[[profiles.cell.venire]]
+role = "wizard"
+count = 1
+''')
+    open(os.path.join(d, "WHY-profile-venire-undeclared-role.md"), "w").write(
+        "# FIXTURE for arm 19, the profile-venire role cell\n\n"
+        "SETUP: `[[role]] author` in bindings.toml, because the cell pairs only where the\n"
+        "project declares roles AT ALL; and `[profiles.cell]` in platform.toml, because an\n"
+        "APPENDED row is the subject and the twin declares no profiles.\n\n"
+        "CONDITION: `[[profiles.cell.venire]] role = \"wizard\"`, which no [[role]] declares.\n"
+        "The refusal NAMES THE PROFILE, because `draws role wizard` with no table sends a\n"
+        "reader to the platform's own venire, which is not where it is written.\n")
+
+    d = fresh("19/profile-venire-context-no-stage")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    open(p, "w").write(s + '''
+# SETUP, not the condition: TWO roles.
+#
+# `viewer` holds the BROWSER context and nothing else -- nothing else, so arm 5
+# stays quiet, since a browser-stage actor that could also reach an api action
+# is arm 5's refusal and would make this two fixtures.
+#
+# `author` IS HERE BECAUSE DECLARING ANY ROLE TURNS THE VENIRE CELL ON. That
+# cell pairs only where a project declares roles at all, so with `viewer` alone
+# the twin's OWN `[[venire]] role = "author"` became unresolved and this fixture
+# tripped two cells of arm 19 -- measured, not foreseen, and invisible to the
+# one-fixture-one-ARM oracle because both notes are arm 19's.
+[[role]]
+name = "author"
+contexts = ["api"]
+
+[[role]]
+name = "viewer"
+contexts = ["browser"]
+''')
+    p = os.path.join(d, "platform.toml"); s = open(p).read()
+    open(p, "w").write(s + '''
+# SETUP: a profile selecting the api stage ALONE. The twin enables the browser
+# stage, so the profile's own selection is what makes the row undrawable --
+# which is the point: the pairing is against the stages THIS profile selects,
+# not against what the platform enables.
+[profiles.cell]
+stages = ["api"]
+seeds = 1
+budget = "1m"
+
+# THE CONDITION: the profile draws an actor whose only context is one no stage
+# it selects drives.
+[[profiles.cell.venire]]
+role = "viewer"
+count = 1
+''')
+    open(os.path.join(d, "WHY-profile-venire-context-no-stage.md"), "w").write(
+        "# FIXTURE for arm 19, the profile-venire context cell\n\n"
+        "SETUP: `[[role]] viewer` holding `browser` and nothing else, so arm 5 stays quiet;\n"
+        "and `[profiles.cell]` selecting `api` ALONE, which is what makes the row\n"
+        "undrawable -- the twin ENABLES the browser stage, so the pairing is against the\n"
+        "stages this profile selects rather than against the platform's flag.\n\n"
+        "CONDITION: the appended row draws an actor whose only context no selected stage\n"
+        "drives. The refusal names the profile, the role, the contexts it holds and the\n"
+        "profile's stages (fable, coop rumor/1662).\n\n"
+        "WHY IT IS AN ARM: a parse refusal cannot see it. A row names a ROLE and a role's\n"
+        "contexts are in bindings.toml, which internal/platform does not read and cannot\n"
+        "import.\n")
+
     d = fresh("19/observe-arg-unknown-handle")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
     s = s.replace('of = "doc.published"\ncomponent = "doc_store"',

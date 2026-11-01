@@ -79,8 +79,10 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 	act := declared(action)
 	nemesis := declared(PoolKinds)
 	role := map[string]bool{}
+	roleContexts := map[string][]string{}
 	for _, r := range b.Roles {
 		role[r.Name] = true
+		roleContexts[r.Name] = r.Contexts
 	}
 	observedNames := make([]string, 0, len(b.Observations))
 	for _, o := range b.Observations {
@@ -161,11 +163,81 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 	// -- examples/twin is one, and refusing it would refuse an example fable's
 	// D9 requires to pass. Once a project declares one role, a venire drawing
 	// another is a typo, and examples/toy declares exactly its three.
+	//
+	// A PROFILE'S APPENDED ROWS ARE VENIRE ROWS, which is fable's ruling at
+	// coop rumor/1662 -- and this cell had the hole for exactly one commit. The
+	// level landed at fc85f87 reading `p.Venire` alone, so a row under
+	// `[profiles.<name>].venire` naming a role nothing declares resolved to
+	// nothing at the draw and was refused by nobody. The rows are walked with
+	// the profile NAMED, because "draws role wizard" with no table sends a
+	// reader to the platform's own venire, which is not where it is written.
 	if len(role) > 0 {
 		for _, m := range p.Venire {
 			if !role[m.Role] {
 				note("platform.toml: [[venire]] draws role %s: no [[role]] of that name in bindings.toml", m.Role)
 			}
+		}
+		for _, name := range profileNames(p) {
+			for _, m := range p.Profiles[name].Venire {
+				if !role[m.Role] {
+					note("platform.toml: [profiles.%s].venire draws role %s: no [[role]] of "+
+						"that name in bindings.toml", name, m.Role)
+				}
+			}
+		}
+	}
+
+	// CELL 8: A VENIRE ROW A PROFILE'S OWN STAGES CANNOT DRAW. fable ruled this
+	// into arm 19 rather than giving it an id of its own (coop rumor/1662, on
+	// the ASK at r8/148): a profile's appended row is a venire row, so the
+	// pairing is this arm's and the count does not move.
+	//
+	// WHY IT IS AN ARM AND NOT A PARSE REFUSAL, which is the asymmetry with the
+	// period's level and was asked before it was built. The period is refused
+	// inside internal/platform because a profile's own stage list says whether
+	// that profile walks -- one file, one table. A venire row names a ROLE, and
+	// a role's contexts live in bindings.toml, which internal/platform does not
+	// read and cannot import: internal/bindings reads platform, so the
+	// dependency runs the other way and the import would be a cycle. A pairing
+	// needing two files is what an arm is for.
+	//
+	// THE BROWSER CONTEXT AND NO OTHER, and the reason covers exactly that
+	// narrowing: a context is an ADAPTER-DECLARED SESSION KIND, which is what
+	// arm 21 pairs against `describe`'s contexts, and not a stage name. A
+	// project may declare a `kiosk` context whose adapter serves it, and
+	// refusing that under every profile would refuse a correct project.
+	// `browser` is the one context with a STAGE that drives it
+	// (`stages.browser.enabled`, docs/contract.md:419, and isBrowser's one
+	// name), so it is the one a profile's stage list can be said to be unable
+	// to draw. `none` is not a context and is skipped here as it is in arm 21.
+	//
+	// THE PROFILE'S OWN ROWS AND NOT THE COMMITTED ONES, which is fable's "a
+	// venire row ON a profile". A committed `[[venire]]` row is drawn by every
+	// profile and is the platform's claim rather than any profile's, so
+	// refusing it here would refuse a project for a pairing it never declared
+	// per profile. WHAT THAT LEAVES: a COMMITTED row whose role holds `browser`
+	// under a profile selecting no browser stage is still an actor that cannot
+	// act, refused by nothing -- older than this level, not ruled, and reported
+	// rather than decided here.
+	for _, name := range profileNames(p) {
+		prof := p.Profiles[name]
+		if selectsBrowserStage(prof.Stages) {
+			continue
+		}
+		for _, m := range prof.Venire {
+			var held []string
+			for _, c := range roleContexts[m.Role] {
+				if isBrowser(c) {
+					held = append(held, c)
+				}
+			}
+			if len(held) == 0 {
+				continue
+			}
+			note("platform.toml: [profiles.%s].venire draws role %s, which holds %s, and this "+
+				"profile's stages are %s: an actor holding a context no selected stage drives "+
+				"is one the profile cannot move", name, m.Role,
+				strings.Join(held, ", "), stageList(prof.Stages))
 		}
 	}
 
@@ -309,6 +381,47 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 		rep.refuse("19", "a name the project uses that the project does not declare: %s",
 			strings.Join(bad, "; "))
 	}
+}
+
+// profileNames is the declared profiles in a fixed order. arm 19 sorts its
+// refusals before printing, so this is not about the output: it is so that a
+// project with two bad profiles reports the same pair of notes on every run,
+// whatever the map hands back.
+func profileNames(p platform.Platform) []string {
+	out := make([]string, 0, len(p.Profiles))
+	for name := range p.Profiles {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// selectsBrowserStage reports whether a profile's stage list selects the
+// browser stage.
+//
+// THE NAME IS SPELLED HERE RATHER THAN TAKEN FROM isBrowser, which tests a
+// CONTEXT. The two strings are equal today and the namespaces are not -- a
+// context is an adapter-declared session kind, a stage is something the engine
+// runs -- and one helper answering for both would make a rename of either
+// silently answer for the other. This child has already met that shape twice in
+// the toy's two role namespaces.
+func selectsBrowserStage(stages []string) bool {
+	for _, s := range stages {
+		if s == "browser" {
+			return true
+		}
+	}
+	return false
+}
+
+// stageList renders a profile's stages for a refusal, `none` included, because
+// a refusal reading "this profile's stages are " has lost the half that tells a
+// reader what to change.
+func stageList(stages []string) string {
+	if len(stages) == 0 {
+		return "none"
+	}
+	return strings.Join(stages, ", ")
 }
 
 // argExists reports whether `<action>.<arg>` names an argument some action in
