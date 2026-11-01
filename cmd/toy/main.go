@@ -832,6 +832,8 @@ func (s *server) handleEventPath(w http.ResponseWriter, r *http.Request) {
 		s.joinEvent(w, r, id)
 	case len(parts) == 2 && parts[1] == "join" && r.Method == http.MethodDelete:
 		s.leaveEvent(w, r, id)
+	case len(parts) == 2 && parts[1] == "attendees" && r.Method == http.MethodGet:
+		s.eventAttendees(w, r, id)
 	case len(parts) == 2 && parts[1] == "count" && r.Method == http.MethodGet:
 		s.eventCount(w, r, id)
 	case len(parts) == 2 && parts[1] == "tally" && r.Method == http.MethodGet:
@@ -1228,6 +1230,51 @@ func (s *server) deleteEvent(w http.ResponseWriter, r *http.Request, id string) 
 	writeJSON(w, http.StatusOK, ev)
 }
 
+// eventAttendees serves the attendee list, and it is THE ONE THING IN THIS API
+// THAT ONLY THE EVENT'S ADMIN MAY HAVE.
+//
+// IT EXISTS FOR THE SECOND UI-ONLY PLANT (epic's ledger: "template renders an
+// item to the wrong role", R9's catcher; fable's shape at coop rumor/1682). That
+// row needs an item the API WITHHOLDS and the template leaks, and before this
+// path there was none: listEvents filters whole events by visibility and then
+// returns each one entire -- attendees included -- so every item on the page was
+// one the API already gave the same reader.
+//
+// AN ADMIN-ONLY PATH RATHER THAN A TIGHTER listEvents, which is fable's ruling
+// and the half that keeps the evidence: narrowing what listEvents returns would
+// move what every committed reading of this API gets, and R5's rows rest on
+// those. A NEW path is read by nobody until something asks for it.
+//
+// THE ROLE IS THE EVENT'S AND NOT THE RUN'S: roleOf answers admin only for the
+// event's own AdminID, so "admin" here is per event, which is the same notion
+// the page's gate and visibleTo use. internal/schedule's RoleOf is the venire's
+// role and a different namespace; a statute comparing the two would be comparing
+// two things that share a word.
+//
+// 403 AND NOT 404, deliberately: anyone who can see the event already knows it
+// exists -- the page told them -- so withholding the list is not a secret about
+// existence, and a 404 here would be indistinguishable from a deleted event,
+// which is a reading this project gives `missing` instead.
+func (s *server) eventAttendees(w http.ResponseWriter, r *http.Request, id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := s.session(r)
+	if sess == nil {
+		fail(w, http.StatusUnauthorized, "the attendee list needs a session")
+		return
+	}
+	ev, ok := s.st.Events[id]
+	if !ok || ev.Deleted {
+		fail(w, http.StatusNotFound, "no such event")
+		return
+	}
+	if roleOf(ev, sess.UserID) != roleAdmin {
+		fail(w, http.StatusForbidden, "the attendee list is the event admin's")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"event": ev.ID, "attendees": ev.Attendees})
+}
+
 // eventCount carries the ledger's "API visibility leak" row (epic, R5, caught
 // by api-sim): it asks for a session and then answers ANY caller, without
 // asking whether that caller's role may see the event at all. listEvents asks;
@@ -1424,12 +1471,36 @@ func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not visible to you", http.StatusNotFound)
 		return
 	}
+	// THE DEFECT: THE TEMPLATE RENDERS THE ATTENDEE LIST TO EVERY ROLE that can
+	// see the event, while the API serves it to the event's ADMIN alone
+	// (eventAttendees). That is the epic's ledger row "template renders an item
+	// to the wrong role", planted here in R8/111 on fable's shape at coop
+	// rumor/1682, with R9's browser stage as its catcher.
+	//
+	// ONE TEMPLATE WIDE, this file's rule for every plant: the gate above is
+	// untouched and correct -- a role the event is not visible to still gets a
+	// 404 and no page at all -- and the only wrong thing in the system is which
+	// roles this one element reaches. The API withholds it, the store never
+	// offers it, and a reader is the only party who can see it leak.
+	//
+	// AN EMPTY LIST IS NOT THE DEFECT, which is why the element is rendered
+	// even when there is nobody in it: a guest looking at an event with no
+	// attendees learns nothing, so the finding is a NON-EMPTY list in front of a
+	// non-admin (fable's rule at rumor/1682). Rendering the element only when it
+	// is non-empty would hide the honest case and make the plant's absence
+	// indistinguishable from an empty world.
+	attendees := ""
+	for _, a := range ev.Attendees {
+		attendees += "<li>" + html.EscapeString(a) + "</li>\n"
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	page := `<!doctype html>
 <title>` + html.EscapeString(ev.Title) + `</title>
 <h1 id="title">` + html.EscapeString(ev.Title) + `</h1>
 <p id="role">` + role + `</p>
 <p id="count">` + strconv.Itoa(ev.Rendered) + ` of ` + strconv.Itoa(ev.Capacity) + `</p>
+<ul id="attendees">
+` + attendees + `</ul>
 <form id="join" method="post" action="/ui/events/` + html.EscapeString(ev.ID) + `/join?token=` + html.EscapeString(sess.Token) + `">
 <button type="submit">join</button>
 </form>

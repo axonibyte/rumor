@@ -1390,3 +1390,62 @@ func TestTheCachedPageCountIsPlantedAndOnlyAReaderSeesIt(t *testing.T) {
 	t.Logf("PROOF after one leave the API reads 1 and the page still renders `2 of 3`, so the " +
 		"only wrong number in the system is the one a reader sees")
 }
+
+// TestTheAttendeeListIsTheAdminsInTheAPIAndEveryonesOnThePage arms the epic's
+// second UI-only row, "template renders an item to the wrong role" (R9's
+// catcher; planted here in R8/111 on fable's shape at coop rumor/1682).
+//
+// A FAILURE HERE SAYS THE PLANT IS GONE, this file's rule for every planted row.
+//
+// THE THREE READINGS ARE THE WHOLE CLAIM, and each is asserted separately
+// because they fail for different reasons: the API WITHHOLDS the list from a
+// non-admin (so the item is one the API gates), the admin's own path SERVES it
+// (so the gate is a role rule and not a dead endpoint), and the PAGE shows it to
+// a non-admin (the leak). Drop the second and an endpoint that refuses everyone
+// would pass; drop the first and the page would be leaking something the API
+// gives away anyway, which is the state this plant was built to escape.
+func TestTheAttendeeListIsTheAdminsInTheAPIAndEveryonesOnThePage(t *testing.T) {
+	h := start(t)
+	alice := h.actor("alice")
+	bob := h.actor("bob")
+	carol := h.actor("carol")
+	id := h.createEvent(alice, "who is coming", 3, []string{roleAdmin, roleMember, roleGuest})
+
+	if code, body := h.do(http.MethodPost, "/events/"+id+"/join", bob, nil); code != http.StatusOK {
+		t.Fatalf("bob joining: status %d (%v)", code, body)
+	}
+
+	// THE API WITHHOLDS IT from a guest, which is what makes the page's copy a
+	// leak rather than a second helping of something already served.
+	if code, _ := h.do(http.MethodGet, "/events/"+id+"/attendees", carol, nil); code != http.StatusForbidden {
+		t.Errorf("the attendee list for a guest: status %d, want %d -- if the API serves this to "+
+			"everyone there is no withheld item and the template cannot leak one",
+			code, http.StatusForbidden)
+	}
+	// AND THE ADMIN'S PATH SERVES IT, so the refusal above is a role rule.
+	code, body := h.do(http.MethodGet, "/events/"+id+"/attendees", alice, nil)
+	if code != http.StatusOK {
+		t.Fatalf("the attendee list for the event admin: status %d (%v)", code, body)
+	}
+	if list, _ := body["attendees"].([]any); len(list) != 1 {
+		t.Errorf("the admin's attendee list is %v, want one entry: the plant needs a NON-EMPTY "+
+			"list, because an empty one in front of a guest is no finding", body["attendees"])
+	}
+
+	// THE LEAK: the page renders the list to a guest.
+	code, body = h.do(http.MethodGet, "/ui/events/"+id, carol, nil)
+	if code != http.StatusOK {
+		t.Fatalf("the page for a guest: status %d (%v)", code, body)
+	}
+	page, _ := body["raw"].(string)
+	if !strings.Contains(page, `id="attendees"`) {
+		t.Fatalf("the page carries no attendee element at all, so the plant is GONE:\n%s", page)
+	}
+	if !strings.Contains(page, "<li>") {
+		t.Errorf("the page shows a guest an EMPTY attendee list where the API holds one entry, "+
+			"so the plant is gone: the epic's row needs an item rendered to the wrong "+
+			"role:\n%s", page)
+	}
+	t.Logf("PROOF the API answers a guest %d for the attendee list and serves the admin one "+
+		"entry, while the page renders that entry to the guest", http.StatusForbidden)
+}
