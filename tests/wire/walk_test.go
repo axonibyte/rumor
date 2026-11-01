@@ -470,7 +470,7 @@ func TestOneActorInTwoContextsHoldsTwoSessions(t *testing.T) {
 	p := walkProject(t)
 	p.Venire = []platform.Member{{Role: "member", Count: 1}}
 	p.Actions[0].Context = "api"
-	p.Actions[1].Context = "ui"
+	p.Actions[1].Context = "browser"
 
 	sess, err := wire.Open(ctx, fakeSpawn(), 20*time.Second)
 	if err != nil {
@@ -792,7 +792,7 @@ func TestAnActionInAnUnheldContextIsNeverDrawn(t *testing.T) {
 	drew := func(roles []bindings.Role) (bool, bool) {
 		t.Helper()
 		p := walkProject(t)
-		p.Actions[1].Context = "ui"
+		p.Actions[1].Context = "browser"
 		p.Roles = roles
 		sawUI, sawAPI := false, false
 		for _, seed := range []uint64{1, 2, 3, 4, 5} {
@@ -812,7 +812,7 @@ func TestAnActionInAnUnheldContextIsNeverDrawn(t *testing.T) {
 		return sawUI, sawAPI
 	}
 
-	held, api := drew([]bindings.Role{{Name: "member", Contexts: []string{"api", "ui"}}})
+	held, api := drew([]bindings.Role{{Name: "member", Contexts: []string{"api", "browser"}}})
 	if !held {
 		t.Fatalf("the control never drew the ui action even with ui held, so this arm cannot tell "+
 			"a gate from an absence (api drawn: %v)", api)

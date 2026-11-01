@@ -34,7 +34,7 @@ func TestRoleOfStripsTheOrdinalAndNotTheRole(t *testing.T) {
 
 func TestHoldsContext(t *testing.T) {
 	member := []bindings.Role{{Name: "member", Contexts: []string{"api"}}}
-	both := []bindings.Role{{Name: "member", Contexts: []string{"api", "ui"}}}
+	both := []bindings.Role{{Name: "member", Contexts: []string{"api", "browser"}}}
 
 	// CONTEXT "none" IS HELD BY EVERYBODY, driven against a role list that
 	// holds NOTHING: it is not a context, so there is no session for a role to
@@ -51,14 +51,14 @@ func TestHoldsContext(t *testing.T) {
 	// AND THE OTHER WAY, which is the whole point of the gate: a context the
 	// role does not declare is NOT held, and that is an answer rather than an
 	// error -- the action is inapplicable, not a could-not-run.
-	held, err := HoldsContext(member, "join_event_ui", "member_1", "ui")
+	held, err := HoldsContext(member, "join_event_ui", "member_1", "browser")
 	if err != nil {
 		t.Fatalf("an unheld context must be an answer, not a refusal: %v", err)
 	}
 	if held {
 		t.Error("a role declaring only api held ui")
 	}
-	if held, err := HoldsContext(both, "join_event_ui", "member_1", "ui"); err != nil || !held {
+	if held, err := HoldsContext(both, "join_event_ui", "member_1", "browser"); err != nil || !held {
 		t.Errorf("a role declaring api and ui must hold ui: %v %v", held, err)
 	}
 
@@ -66,7 +66,7 @@ func TestHoldsContext(t *testing.T) {
 	// project declaring NO roles gets no gate here. The static pairing of a
 	// context against the roles that hold it needs the bindings alone and
 	// belongs in `rumor validate`.
-	if held, err := HoldsContext(nil, "join_event_ui", "member_1", "ui"); err != nil || !held {
+	if held, err := HoldsContext(nil, "join_event_ui", "member_1", "browser"); err != nil || !held {
 		t.Errorf("a project declaring no roles must not be gated here: %v %v", held, err)
 	}
 

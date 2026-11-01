@@ -544,7 +544,7 @@ func TestAnActionInAnUnheldContextIsInapplicable(t *testing.T) {
 	moved := ""
 	for i := range acts {
 		if acts[i].Context == "api" && len(acts[i].Emits) > 0 {
-			acts[i].Context = "ui"
+			acts[i].Context = "browser"
 			moved = acts[i].Name
 			break
 		}
@@ -555,7 +555,7 @@ func TestAnActionInAnUnheldContextIsInapplicable(t *testing.T) {
 	}
 
 	// BASELINE: the role holds BOTH contexts, so nothing is gated out.
-	both := []bindings.Role{{Name: "member", Contexts: []string{"api", "ui"}}}
+	both := []bindings.Role{{Name: "member", Contexts: []string{"api", "browser"}}}
 	before, err := schedule.Pool(ctx, statute(t), acts, l, actor, w, "", "", tbl(t), both, knownFor(t, l, actor), toyActors(t), nil)
 	if err != nil {
 		t.Fatalf("Pool with both contexts held: %v", err)
