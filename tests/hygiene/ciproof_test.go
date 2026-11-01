@@ -273,3 +273,110 @@ func TestTheTimeoutDiagnosticCountsTheSetItLists(t *testing.T) {
 	t.Logf("PROOF one pattern on both sides of the fraction, driven over a %d-line log: %d reported, "+
 		"%d listed, and the three non-reports left out", strings.Count(log, "\n"), wantReported, len(gotLines))
 }
+
+// TestTheFailureViewActuallySearchesTheLog RUNS the test step's FAIL/panic
+// pattern, because for some number of runs it did not run at all.
+//
+// MEASURED ON RUN 1012 (task 1012, 2026-11-01): the step printed "(no FAIL or
+// panic line in test.log)" over a log holding `--- FAIL: TestX`, a bare `FAIL`,
+// and `FAIL forge.../tests/run 607.258s`. The pattern was
+// `^(--- )?FAIL|^panic:|^\t+--- FAIL`, and BSD grep 2.6.0-FreeBSD refuses `\t`
+// in an ERE outright -- "grep: trailing backslash (\)" -- so the whole grep
+// exited 2, printed nothing, and under `set -o pipefail` the `|| echo` branch
+// fired. A broken search and a clean log printed the same sentence, and the
+// sentence is the reassuring one.
+//
+// SO THE ARM DRIVES THE PATTERN AND DOES NOT READ IT. A text assertion that the
+// pattern "contains FAIL" would have passed on the broken one: it did contain
+// FAIL. What separates them is whether grep can COMPILE it, which only running
+// it answers -- the same reason the diagnostic arm above runs its own pattern
+// rather than comparing spellings.
+//
+// AND THE SECOND HALF IS THE rc, which is the defect that outlives the regexp.
+// `rc 1` is "no match" and is the only rc the reassuring sentence may be
+// printed for; anything above 1 is the instrument failing. A step that cannot
+// tell those apart mis-reads every future break the same way, so this arm
+// requires the step to branch on the rc rather than on emptiness.
+func TestTheFailureViewActuallySearchesTheLog(t *testing.T) {
+	path := filepath.Join("..", "..", ".forgejo", "workflows", "ci.yml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	test, ok := splitSteps(string(raw))["test"]
+	if !ok {
+		t.Fatalf("%s has no step named `test`", path)
+	}
+
+	rx := regexp.MustCompile(`grep -nE '([^']*)' \.\./test\.log`)
+	// THE FAILURE VIEW AND NOT EVERY -nE GREP IN THE STEP: the cached-verdict
+	// refusal reads the same log with the same flags, and it is a different
+	// claim. `panic:` is the clause only the failure view carries.
+	var pats []string
+	for _, m := range rx.FindAllStringSubmatch(test, -1) {
+		if strings.Contains(m[1], "panic") {
+			pats = append(pats, m[1])
+		}
+	}
+	if len(pats) != 1 {
+		t.Fatalf("%s spells %d FAIL/panic grep(s) over ../test.log, want exactly one: this arm "+
+			"drives the pattern, and two would leave one undriven", path, len(pats))
+	}
+	pattern := pats[0]
+
+	// THE FIXTURE CARRIES EVERY SHAPE `go test -v` USES TO REPORT A FAILURE,
+	// and three that must not match. The indented one is a SUBTEST and it is
+	// the clause the broken pattern was written for -- so a fix that merely
+	// deleted `\t` would pass the compile and lose the case.
+	log := strings.Join([]string{
+		"ok  \tforge.axonibyte.com/axonibyte/rumor/internal/wire\t0.201s",
+		"--- PASS: TestSomethingFine (0.01s)",
+		"=== RUN   TestSomethingElse",
+		"--- FAIL: TestTopLevel (0.01s)",
+		"\t--- FAIL: TestTopLevel/the_subtest (0.00s)",
+		"panic: runtime error: index out of range",
+		"FAIL\tforge.axonibyte.com/axonibyte/rumor/tests/run\t607.258s",
+		"",
+	}, "\n")
+	logPath := filepath.Join(t.TempDir(), "test.log")
+	if err := os.WriteFile(logPath, []byte(log), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// rc 0 AND FOUR LINES. The rc is asserted separately from the count
+	// because they fail differently: rc 2 is the pattern not compiling (today's
+	// defect) and a short count is the pattern compiling and missing a shape.
+	cmd := exec.Command("grep", "-nE", pattern, logPath)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("the step's own FAIL/panic pattern %q does not run: %v. A pattern grep cannot "+
+			"compile searches nothing, and the step's `rc 1` branch prints `(no FAIL or panic "+
+			"line in test.log)` over whatever the log actually holds", pattern, err)
+	}
+	got := strings.Split(strings.TrimSpace(string(out)), "\n")
+	const wantMatches = 4
+	if len(got) != wantMatches {
+		t.Errorf("the pattern matched %d line(s) of the fixture, want %d: %q",
+			len(got), wantMatches, got)
+	}
+	for _, want := range []string{"--- FAIL: TestTopLevel (", "the_subtest", "panic:", "tests/run"} {
+		if !strings.Contains(strings.Join(got, "\n"), want) {
+			t.Errorf("the pattern misses %q, which `go test -v` prints for a failure", want)
+		}
+	}
+
+	// AND THE STEP BRANCHES ON THE rc. Keyed on the sentence: it may appear in
+	// the arm for rc 1 and nowhere else, so a future edit that moves it back
+	// behind a bare `||` fails here.
+	const sentence = "(no FAIL or panic line in test.log)"
+	if !strings.Contains(test, "frc") || !strings.Contains(test, `case "$frc" in`) {
+		t.Errorf("%s does not capture the FAIL grep's own rc, so it cannot tell a broken search "+
+			"from a clean log", path)
+	}
+	if strings.Contains(test, "|| echo \""+sentence) {
+		t.Errorf("%s prints %q on ANY nonzero rc, which is the defect run 1012 hid: a grep that "+
+			"exits 2 reads as a clean log", path, sentence)
+	}
+	t.Logf("PROOF the step's own pattern %q ran and matched %d of %d failure shapes",
+		pattern, len(got), wantMatches)
+}

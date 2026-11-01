@@ -241,8 +241,35 @@ jobs:
           # scrolls off. The mined lines come first for the same reason the
           # licences step mines its log -- a verdict a reader has to scroll for
           # is a verdict that gets missed.
-          grep -nE '^(--- )?FAIL|^panic:|^\t+--- FAIL' ../test.log | head -40 \
-            || echo "(no FAIL or panic line in test.log)"
+          # NO `\t` IN THE PATTERN, which is measured and not style. BSD grep
+          # 2.6.0-FreeBSD refuses `^\t+--- FAIL` outright -- "grep: trailing
+          # backslash (\)" -- so the WHOLE grep exits 2 and prints nothing, and
+          # under `set -o pipefail` the `||` branch then printed "(no FAIL or
+          # panic line in test.log)". Run 1012 said that sentence over a log
+          # holding `--- FAIL`, `FAIL` and `FAIL ... tests/run 607.258s`: the
+          # failure view had never searched anything, and the run read as a
+          # clean hang for as long as nobody opened the log.
+          #
+          # AND A BROKEN SEARCH IS NOT AN EMPTY LOG. rc 1 is "no match" and is
+          # the ONLY rc the reassuring sentence may be printed for; rc above 1
+          # is the instrument failing, which is louder than anything it could
+          # have found and fails the step on its own. That distinction is the
+          # defect, not the regexp: a pattern can be fixed in one line, while
+          # "no output means nothing was wrong" mis-reads every future break
+          # the same way.
+          #
+          # NO PIPE, so the rc is grep's own and not `head`'s, and so a reader
+          # that stops early cannot kill the writer (`sed -n` consumes the
+          # stream where `head` closes it).
+          view_broken=0
+          grep -nE '^(--- )?FAIL|^panic:|^[[:space:]]+--- FAIL' ../test.log > ../fails.txt
+          frc=$?
+          case "$frc" in
+            0) sed -n '1,40p' ../fails.txt ;;
+            1) echo "(no FAIL or panic line in test.log)" ;;
+            *) echo "FAILURE VIEW BROKEN: the FAIL/panic grep exited $frc, so this log has NOT been searched and no verdict below rests on it"
+               view_broken=1 ;;
+          esac
           tail -20 ../test.log
           test "$rc" -eq 124 && {
             echo "HANG: go test exceeded 1800s. The CONSEQUENCE holds either way -- this is a finding against the test, not a red build -- but the premise does not: rc 124 proves only that 1800s elapsed, and a test taking 1801s terminates."
@@ -289,6 +316,11 @@ jobs:
             exit 124
           }
           test "$rc" -eq 0 || { echo "go test exited $rc"; exit "$rc"; }
+          # AND A GREEN RUN WHOSE FAILURE VIEW WAS BROKEN IS NOT GREEN. The
+          # branches above exit on their own rc, so this reaches only a run that
+          # passed -- where an unsearched log is the one case nothing else would
+          # ever report.
+          test "$view_broken" -eq 0 || { echo "the failure view did not run, so this pass is unverified"; exit 1; }
           # and a value only execution produces: the harness's own per-package
           # verdict. `go test` prints `ok <pkg> <elapsed>` for each package that
           # ran, so its absence means no package ran at all -- which is what a
