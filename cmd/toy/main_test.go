@@ -1392,8 +1392,8 @@ func TestTheCachedPageCountIsPlantedAndOnlyAReaderSeesIt(t *testing.T) {
 		t.Errorf("the page agrees with the API after a leave, so there is no UI-only defect "+
 			"left to find:\n%s", page)
 	}
-	t.Logf("PROOF after one leave the API reads 1 and the page still renders `2 of 3`, so the " +
-		"only wrong number in the system is the one a reader sees")
+	t.Logf("PROOF after one leave the API's count path reads 1 and the page still renders " +
+		"`2 of 3`; the leave's own reply carries both numbers, which the bytes cell asserts")
 }
 
 // TestTheAttendeeListIsTheAdminsInTheAPIAndEveryonesOnThePage arms the epic's
@@ -1545,4 +1545,95 @@ func TestTheStaleNumberIsInTheApisOwnBytesAndNothingReadsItThere(t *testing.T) {
 	}
 	t.Logf("PROOF the leave body carries count=1 rendered=2 while both declared read paths " +
 		"answer 1, so the defect is unread rather than unseen")
+}
+
+// TestAnEmptyAttendeeListStillRendersItsElement is ratchet's first cell from coop
+// r8/179, and it exists because the comment beside the plant argued this by name
+// and nothing held it: rendering the `<ul>` only when the list is non-empty
+// SURVIVED every arm in the tree.
+//
+// WHY IT MATTERS MORE THAN IT LOOKS: fable's rule is that an empty list is no
+// finding (rumor/1682), so ABSENT and EMPTY must not read alike. If the element
+// disappears when there is nobody in it, a repaired template -- one that gates
+// the list to admins -- renders nothing for a guest and reads exactly like an
+// event nobody has joined. The plant's absence would then be indistinguishable
+// from the honest world, which is the one thing a plant must never be.
+func TestAnEmptyAttendeeListStillRendersItsElement(t *testing.T) {
+	h := start(t)
+	alice := h.actor("alice")
+	carol := h.actor("carol")
+	id := h.createEvent(alice, "nobody yet", 3, []string{roleAdmin, roleMember, roleGuest})
+
+	code, body := h.do(http.MethodGet, "/ui/events/"+id, carol, nil)
+	if code != http.StatusOK {
+		t.Fatalf("the page for a guest: status %d (%v)", code, body)
+	}
+	page, _ := body["raw"].(string)
+	if !strings.Contains(page, `id="attendees"`) {
+		t.Errorf("an event with no attendees renders no #attendees element, so an EMPTY list "+
+			"and an ABSENT one read alike -- and a template repaired to gate the list would "+
+			"then look exactly like an unjoined event:\n%s", page)
+	}
+	if strings.Contains(page, "<li>") {
+		t.Errorf("an event with no attendees renders a list item:\n%s", page)
+	}
+	t.Logf("PROOF an event nobody has joined still carries #attendees, with no entries in it")
+}
+
+// TestThePageShowsEveryAttendeeTheAdminsPathServes is ratchet's second cell from
+// coop r8/179: the element was asserted by SHAPE and never by CONTENT.
+//
+// WHAT SURVIVED: rendering `<li>someone</li>` per attendee instead of the id, and
+// rendering only the FIRST entry. Either leaves every arm green while the
+// withheld item never actually leaves the API -- and the plant arm's own PROOF
+// line claimed "the page renders that entry", which is a content claim that
+// nothing checked.
+//
+// SO THE ASSERTION IS THE ADMIN'S OWN LIST, read through the path the API gates
+// and compared entry by entry against what the page shows a guest. That is the
+// comparison the leak is about: not that the page has a list, but that it has
+// THAT list.
+func TestThePageShowsEveryAttendeeTheAdminsPathServes(t *testing.T) {
+	h := start(t)
+	alice := h.actor("alice")
+	bob, bobID := h.actorWithID("bob")
+	carol, carolID := h.actorWithID("carol")
+	id := h.createEvent(alice, "two coming", 3, []string{roleAdmin, roleMember, roleGuest})
+	for _, who := range []string{bob, carol} {
+		if code, body := h.do(http.MethodPost, "/events/"+id+"/join", who, nil); code != http.StatusOK {
+			t.Fatalf("joining: status %d (%v)", code, body)
+		}
+	}
+
+	// THE ADMIN'S LIST IS THE ORACLE, taken through the gated path.
+	code, body := h.do(http.MethodGet, "/events/"+id+"/attendees", alice, nil)
+	if code != http.StatusOK {
+		t.Fatalf("the admin's attendee list: status %d (%v)", code, body)
+	}
+	served, _ := body["attendees"].([]any)
+	if len(served) != 2 {
+		t.Fatalf("the admin's path served %v, want two entries", body["attendees"])
+	}
+
+	// dave is a guest: not the admin, not an attendee.
+	dave := h.actor("dave")
+	code, body = h.do(http.MethodGet, "/ui/events/"+id, dave, nil)
+	if code != http.StatusOK {
+		t.Fatalf("the page for a guest: status %d (%v)", code, body)
+	}
+	page, _ := body["raw"].(string)
+	if n := strings.Count(page, "<li>"); n != len(served) {
+		t.Errorf("the admin's path served %d attendee(s) and the page shows a guest %d entry/ies: "+
+			"a page that renders only some of the list leaks less than the API withholds, and "+
+			"an arm counting the element rather than its contents cannot tell:\n%s",
+			len(served), n, page)
+	}
+	for _, want := range []string{bobID, carolID} {
+		if !strings.Contains(page, "<li>"+want+"</li>") {
+			t.Errorf("the page does not show a guest the entry %q that the admin's path served, "+
+				"so what leaks is not the withheld item:\n%s", want, page)
+		}
+	}
+	t.Logf("PROOF the admin's path served %d attendee(s) and the page shows a guest the same "+
+		"ids, one element each", len(served))
 }

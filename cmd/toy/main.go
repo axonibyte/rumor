@@ -1190,9 +1190,15 @@ func (s *server) leaveEvent(w http.ResponseWriter, r *http.Request, id string) {
 	// (`missing`) this statute already carries a rule for.
 	//
 	// ONE DEFECT WIDE, this file's rule for every plant: one write is absent
-	// and nothing else is touched. A reader of the API here is correct, so is a
-	// reader of the store, and the only wrong number in the system is the one
-	// on the page.
+	// and nothing else is touched. Every declared READ path stays correct -- the
+	// count path and the store path both answer the new number -- and the only
+	// CONSUMER of a wrong one is the page's reader.
+	//
+	// NOT "a reader of the API here is correct", which is what this comment said
+	// until ratchet drove it at coop r8/179: "the phrase went, the claim stayed".
+	// THIS HANDLER'S OWN REPLY carries `count=1 rendered=2`, because it answers
+	// with the event entire. The bytes are honest about both numbers; what makes
+	// the defect a reader's is that nothing consumes the stale one but the page.
 	if err := s.save(); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
