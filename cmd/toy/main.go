@@ -69,6 +69,26 @@ type event struct {
 	// fact is where the ledger's "stale count after delete" row lives, and the
 	// honest version keeps them equal.
 	Count int `json:"count"`
+	// Rendered is THE NUMBER THE PAGE SHOWS, and it is the ledger's "cached
+	// page shows a count the API already updated" row (epic, R9's catcher,
+	// planted here in R8/111 by fable's ruling at coop rumor/1464 -- the way
+	// R5 planted the race and R7 the grace, with R8's stages driven against it
+	// and finding nothing because no stage of R8 reads a page).
+	//
+	// THREE NUMBERS WITH THREE TIMINGS, which is why this is a third field and
+	// not a reuse of either: Count is R5's, maintained by the write that
+	// changes it; Tally is the worker's, maintained by the recount queue; and
+	// Rendered is the PAGE'S, maintained by the writes that render afterwards.
+	// Folding the page's number into Count would make the plant invisible --
+	// the page and the API would read one field and could never disagree, which
+	// is exactly the state examples/toy/cases/viewer-reads-the-page.json is the
+	// honest control for.
+	//
+	// THE DEFECT IS ONE WRITE WIDE: every path that changes the count sets this
+	// too EXCEPT leaveEvent, so the API's count drops on a leave and the page
+	// keeps the number it last rendered. A reader is served a count the API has
+	// already updated, and only a reader can see it.
+	Rendered int `json:"rendered"`
 	// Tally is THE WORKER'S OWN NUMBER and nothing else reads or writes it.
 	// Count above is maintained by the write that changes it, which is what
 	// R5's rows rest on; Tally is maintained by the RECOUNT QUEUE and by
@@ -990,6 +1010,10 @@ func (s *server) acceptInvitation(w http.ResponseWriter, r *http.Request, id str
 	// the number R5's rows are about, and a second way in that left it alone
 	// would be a count defect nobody planted.
 	ev.Count = len(ev.Attendees)
+	// AND THE PAGE'S NUMBER WITH IT. A second way in that left Rendered behind
+	// would plant the SAME defect twice, in two places, and a shrink could not
+	// say which write it had found.
+	ev.Rendered = ev.Count
 	inv.Accepted = true
 	if err := s.save(); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
@@ -1101,6 +1125,9 @@ func (s *server) joinEvent(w http.ResponseWriter, r *http.Request, id string) {
 	// advances the queue by one, so a job enqueued by every join could never
 	// leave the queue deeper than one.
 	ev.Count = len(ev.Attendees)
+	// AND THE PAGE'S NUMBER, so a join is honest in both readings and the
+	// omission in leaveEvent is the only place a reader and the API differ.
+	ev.Rendered = ev.Count
 	if err := s.save(); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1138,6 +1165,22 @@ func (s *server) leaveEvent(w http.ResponseWriter, r *http.Request, id string) {
 	// SYNCHRONOUS, for the join's reason: this is R5's number, and the worker's
 	// is the recount queue's business.
 	ev.Count = len(ev.Attendees)
+	// THE DEFECT: ev.Rendered IS NOT UPDATED WITH THE COUNT IT CACHES. The
+	// API's number drops here and the page keeps the one it last rendered, so a
+	// reader is served a count the API has already updated -- the epic's ledger
+	// row, planted in R8/111 under fable's ruling at coop rumor/1464.
+	//
+	// LEAVING IS THE RIGHT WRITE TO PLANT IT IN, and the choice is not
+	// arbitrary: a join raises both numbers, so a world that only joins reads
+	// the same figure twice and is the honest control. Only a path that LOWERS
+	// the count can leave a cache high, and leaveEvent is the one such path a
+	// walk can reach -- delete makes the page 404, which is a different reading
+	// (`missing`) this statute already carries a rule for.
+	//
+	// ONE DEFECT WIDE, this file's rule for every plant: one write is absent
+	// and nothing else is touched. A reader of the API here is correct, so is a
+	// reader of the store, and the only wrong number in the system is the one
+	// on the page.
 	if err := s.save(); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1386,7 +1429,7 @@ func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
 <title>` + html.EscapeString(ev.Title) + `</title>
 <h1 id="title">` + html.EscapeString(ev.Title) + `</h1>
 <p id="role">` + role + `</p>
-<p id="count">` + strconv.Itoa(ev.Count) + ` of ` + strconv.Itoa(ev.Capacity) + `</p>
+<p id="count">` + strconv.Itoa(ev.Rendered) + ` of ` + strconv.Itoa(ev.Capacity) + `</p>
 <form id="join" method="post" action="/ui/events/` + html.EscapeString(ev.ID) + `/join?token=` + html.EscapeString(sess.Token) + `">
 <button type="submit">join</button>
 </form>

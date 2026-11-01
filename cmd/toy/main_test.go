@@ -1322,3 +1322,71 @@ func TestAStateFileWhoseMapsAreNullReloadsAndStillWrites(t *testing.T) {
 		t.Error("a recount against a world loaded from nulls produced no id")
 	}
 }
+
+// TestTheCachedPageCountIsPlantedAndOnlyAReaderSeesIt arms the epic's ledger
+// row "cached page shows a count the API already updated" -- listed against R9
+// and PLANTED here in R8/111 by fable's ruling at coop rumor/1464, the way R5
+// planted the race and R7 the grace.
+//
+// A FAILURE HERE SAYS THE PLANT IS GONE, which is this file's rule for every
+// planted row: the toy is the system under test and its bugs are deliberate, so
+// the arm asserts the DEFECT and a green suite over an honest toy would mean
+// R9's browser stage has nothing to find.
+//
+// THE TWO READINGS ARE TAKEN OF ONE WORLD AT ONE MOMENT, which is what makes
+// this a UI-only bug rather than a timing one: no settle, no clock, no second
+// write between them. The API answers the number it holds and the page answers
+// the number it last rendered, and only the second is wrong.
+//
+// LEAVING IS THE WRITE THAT EXPOSES IT: a join raises both numbers, so the
+// honest control (examples/toy/cases/viewer-reads-the-page.json) is a world
+// that only joins. Nothing here asserts the store, and the comment in main.go
+// does not claim more than this test drives.
+func TestTheCachedPageCountIsPlantedAndOnlyAReaderSeesIt(t *testing.T) {
+	h := start(t)
+	alice := h.actor("alice")
+	bob := h.actor("bob")
+	id := h.createEvent(alice, "a cached count", 3, []string{roleAdmin, roleMember, roleGuest})
+
+	for _, who := range []string{alice, bob} {
+		if code, body := h.do(http.MethodPost, "/events/"+id+"/join", who, nil); code != http.StatusOK {
+			t.Fatalf("joining: status %d (%v)", code, body)
+		}
+	}
+	if got := h.count(id, alice); got != 2 {
+		t.Fatalf("after two joins the API count is %d, want 2", got)
+	}
+	code, body := h.do(http.MethodGet, "/ui/events/"+id, alice, nil)
+	if code != http.StatusOK {
+		t.Fatalf("the page: status %d (%v)", code, body)
+	}
+	if page, _ := body["raw"].(string); !strings.Contains(page, "2 of 3") {
+		t.Fatalf("before the leave the page reads something other than `2 of 3`, so the two "+
+			"readings never agreed and this arm cannot show them diverging:\n%s", page)
+	}
+
+	// THE LEAVE, which lowers the API's number and leaves the page's alone.
+	if code, body := h.do(http.MethodDelete, "/events/"+id+"/join", bob, nil); code != http.StatusOK {
+		t.Fatalf("leaving: status %d (%v)", code, body)
+	}
+	if got := h.count(id, alice); got != 1 {
+		t.Errorf("after the leave the API count is %d, want 1: the API's number is not the "+
+			"planted one and must still be correct", got)
+	}
+	code, body = h.do(http.MethodGet, "/ui/events/"+id, alice, nil)
+	if code != http.StatusOK {
+		t.Fatalf("the page after the leave: status %d (%v)", code, body)
+	}
+	page, _ := body["raw"].(string)
+	if !strings.Contains(page, "2 of 3") {
+		t.Errorf("the page reads the UPDATED count after a leave, so the plant is GONE: the "+
+			"epic's row requires a reader to be served a count the API has already updated, and "+
+			"R9's browser stage is what catches it:\n%s", page)
+	}
+	if strings.Contains(page, "1 of 3") {
+		t.Errorf("the page agrees with the API after a leave, so there is no UI-only defect "+
+			"left to find:\n%s", page)
+	}
+	t.Logf("PROOF after one leave the API reads 1 and the page still renders `2 of 3`, so the " +
+		"only wrong number in the system is the one a reader sees")
+}
