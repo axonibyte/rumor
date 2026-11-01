@@ -18,6 +18,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -50,6 +51,18 @@ func made(body any) answer    { return answer{http.StatusCreated, body} }
 func fine(body any) answer    { return answer{http.StatusOK, body} }
 func refused(code int) answer { return answer{code, map[string]any{"error": "refused"}} }
 
+// doc is a stub answer served AS A DOCUMENT rather than as JSON, for the one
+// route that answers HTML.
+//
+// WITHOUT IT THE PAGE OBSERVATION COULD ONLY BE DRIVEN ON ITS FAILURE PATH: a
+// JSON body carries no #count element, so the extraction would fault and the
+// POSITIVE -- the number a reader is actually shown -- would never be read by
+// anything. A stub that cannot serve the shape under test turns a missing cell
+// into a passing one.
+type doc string
+
+func served(body string) answer { return answer{http.StatusOK, doc(body)} }
+
 // stub is a toy-shaped server that records what it was asked and answers from a
 // table keyed on "METHOD /path".
 func stub(t *testing.T, answers map[string]answer) (*adapter, *[]seen) {
@@ -66,6 +79,12 @@ func stub(t *testing.T, answers map[string]answer) (*adapter, *[]seen) {
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			_ = json.NewEncoder(w).Encode(map[string]any{"error": "the stub has no answer for " + key})
+			return
+		}
+		if d, isDoc := ans.body.(doc); isDoc {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(ans.code)
+			_, _ = io.WriteString(w, string(d))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -679,4 +698,139 @@ func TestTheAdapterRemovesTheStateDirectoryItMade(t *testing.T) {
 			t.Errorf("a failed open left %d entrie(s) in the sandbox, started at %d", got, before)
 		}
 	})
+}
+
+// eventPage is the toy's own page, byte for byte as cmd/toy writes it. It is
+// copied rather than built from a shared template on purpose: if the toy's
+// markup moves, this stub keeps serving the OLD shape and the extraction test
+// goes green against a page no toy produces. The pairing against the real
+// template is `rumor validate examples/toy` and the walk, which spawn a toy.
+const eventPage = `<!doctype html>
+<title>standup</title>
+<h1 id="title">standup</h1>
+<p id="role">guest</p>
+<p id="count">2 of 10</p>
+<form id="join" method="post" action="/ui/events/e-1/join?token=t-1">
+<button type="submit">join</button>
+</form>
+`
+
+// TestThePageObservationReadsTheRenderedCount is the browser source's own
+// positive, and it reads the number the application SHOWS rather than the one
+// it computes -- which is the whole reason a browser observation exists beside
+// `event_count` instead of being a second api query.
+func TestThePageObservationReadsTheRenderedCount(t *testing.T) {
+	a, log := stub(t, map[string]answer{
+		"GET /ui/events/e-1": served(eventPage),
+	})
+	out := ask(t, a, map[string]any{
+		"kind": "observe", "query": "page_count", "source": "browser", "token": "t-1",
+		"args": map[string]any{"event": "e-1"},
+	})
+	if out["kind"] != "observe" {
+		t.Fatalf("not an observe: %v", out)
+	}
+	// THE SCALAR AND NOT THE PAIR. The element reads "2 of 10" and the
+	// observation's value is the COUNT: the statute compares it to `believed`,
+	// which is a number, so handing back "2 of 10" or a map would never equal
+	// it and every reading would be a finding (the shape event_count's own
+	// value had until 2026-10-24).
+	if got, ok := out["value"].(float64); !ok || got != 2 {
+		t.Errorf("the value is %#v, want the scalar 2", out["value"])
+	}
+	if len(*log) != 1 || (*log)[0].path != "/ui/events/e-1" {
+		t.Fatalf("the adapter called %v", *log)
+	}
+	// AND THROUGH THE READER'S OWN SESSION: the page is gated on the role the
+	// token's user holds, so a fetch with no Authorization reads a different
+	// page -- or none -- than the actor the walk drew.
+	if auth := (*log)[0].auth; auth != "Bearer t-1" {
+		t.Errorf("the page was fetched with auth %q, want the observer's own token", auth)
+	}
+}
+
+// TestThePageObservationIsBrowserSourcedAndNotApi pins the SOURCE this query is
+// served through, which is the half that keeps `browser` from becoming a label:
+// an adapter answering it through `api` would hand back a number read from the
+// store while the ledger recorded it as a reading of the page.
+func TestThePageObservationIsBrowserSourcedAndNotApi(t *testing.T) {
+	a, log := stub(t, map[string]answer{
+		"GET /ui/events/e-1": served(eventPage),
+	})
+	kind, detail := faultOf(t, ask(t, a, map[string]any{
+		// THE TOKEN IS HERE TO REACH THE CHECK UNDER TEST. internal/wire
+		// refuses an `api` or `browser` observation carrying none -- fault
+		// `field`, before this adapter sees the message -- so without it this
+		// cell measures the wire's validation and not the adapter's source
+		// pairing. Measured: it failed for exactly that reason first.
+		"kind": "observe", "query": "page_count", "source": "api", "token": "t-1",
+		"args": map[string]any{"event": "e-1"},
+	}))
+	if kind != string(wire.FaultSource) {
+		t.Errorf("a source mismatch is fault %q, want %q", kind, wire.FaultSource)
+	}
+	if !strings.Contains(detail, "browser") || !strings.Contains(detail, "api") {
+		t.Errorf("the fault names neither side: %q", detail)
+	}
+	if len(*log) != 0 {
+		t.Errorf("the adapter fetched the page anyway, %d time(s)", len(*log))
+	}
+}
+
+// TestAPageWithoutACountElementIsAFaultAndNotZero holds the sentence the
+// extraction's own comment makes: a page carrying no #count is a page this
+// observation CANNOT READ, and zero is a reading. Without this cell the
+// extraction could return (0, true) on a broken template and every walk would
+// see an empty event rather than a fault.
+func TestAPageWithoutACountElementIsAFaultAndNotZero(t *testing.T) {
+	a, _ := stub(t, map[string]answer{
+		"GET /ui/events/e-1": served("<!doctype html>\n<title>standup</title>\n<p id=\"role\">guest</p>\n"),
+	})
+	kind, detail := faultOf(t, ask(t, a, map[string]any{
+		"kind": "observe", "query": "page_count", "source": "browser", "token": "t-1",
+		"args": map[string]any{"event": "e-1"},
+	}))
+	if kind != string(wire.FaultInternal) {
+		t.Errorf("a page with no #count is fault %q, want %q", kind, wire.FaultInternal)
+	}
+	if !strings.Contains(detail, "#count") {
+		t.Errorf("the fault does not name what was missing: %q", detail)
+	}
+}
+
+// TestAPageTheObserverCannotSeeIsAFaultAndNotZero holds the other half of the
+// same sentence. The toy answers 404 both for an event that is gone and for one
+// not visible to the reader's role, and NEITHER IS A NUMBER -- so an absence
+// read as zero would make a hidden page look like an empty event, which is the
+// reading a visibility finding would then rest on.
+func TestAPageTheObserverCannotSeeIsAFaultAndNotZero(t *testing.T) {
+	a, _ := stub(t, map[string]answer{
+		"GET /ui/events/e-1": {http.StatusNotFound, doc("not visible to you\n")},
+	})
+	kind, detail := faultOf(t, ask(t, a, map[string]any{
+		"kind": "observe", "query": "page_count", "source": "browser", "token": "t-1",
+		"args": map[string]any{"event": "e-1"},
+	}))
+	if kind != string(wire.FaultInternal) {
+		t.Errorf("a page the observer cannot see is fault %q, want %q", kind, wire.FaultInternal)
+	}
+	if !strings.Contains(detail, "404") {
+		t.Errorf("the fault does not name the status: %q", detail)
+	}
+}
+
+// TestAPageObservationWithNoSubjectIsRefusedBeforeTheToy is the subject guard,
+// the same one event_count carries: a page_count naming no event has no page to
+// read, and asking the toy for /ui/events/ would be a request about nothing.
+func TestAPageObservationWithNoSubjectIsRefusedBeforeTheToy(t *testing.T) {
+	a, log := stub(t, nil)
+	kind, _ := faultOf(t, ask(t, a, map[string]any{
+		"kind": "observe", "query": "page_count", "source": "browser", "token": "t-1",
+	}))
+	if kind != string(wire.FaultField) {
+		t.Errorf("a subjectless page_count is fault %q, want %q", kind, wire.FaultField)
+	}
+	if len(*log) != 0 {
+		t.Errorf("the adapter asked the toy anyway, %d time(s)", len(*log))
+	}
 }

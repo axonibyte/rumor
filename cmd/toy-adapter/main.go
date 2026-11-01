@@ -34,6 +34,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -62,6 +64,12 @@ var (
 		// session, where `direct` is the engine's look into the store.
 		{Name: "event_tally", Source: wire.SourceAPI},
 		{Name: "store_event_count", Source: wire.SourceDirect},
+		// THE PAGE'S OWN READING, source `browser` (R8/111). It is the only
+		// observation here that reads a DOCUMENT rather than a JSON route, and
+		// the one whose value the application RENDERS rather than computes: the
+		// count the page shows a reader is what a stale per-event cache would
+		// get wrong while /events/<id>/count stayed right.
+		{Name: "page_count", Source: wire.SourceBrowser},
 		// THE EXPIRY, whose value is an INSTANT and not a count: the only
 		// observation in this adapter that answers a time. `api`, because an
 		// actor reads it through its own session the way it reads a count.
@@ -553,6 +561,8 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 		want = wire.SourceAPI
 	case "store_event_count":
 		want = wire.SourceDirect
+	case "page_count":
+		want = wire.SourceBrowser
 	// THE PROBE QUERIES, which R6.2 reserved as the two reported kinds' own
 	// names. internal/quiesce asks for `queue_depth` and `worker_idle` through
 	// source `direct` and nothing else: the wire does not move, because
@@ -568,6 +578,45 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 	if m.Source != want {
 		return fault(id, wire.FaultSource, "source",
 			fmt.Sprintf("%q is observed through %s and was asked through %s", name, want, m.Source))
+	}
+
+	// THE BROWSER OBSERVATION LEAVES HERE, because the page is a DOCUMENT and
+	// every other observation below is a JSON route. a.call decodes the body
+	// into a struct, so sending it a page would fail on the first `<` and
+	// report a decode error about a document that was served correctly.
+	//
+	// AND IT IS THE RENDERED NUMBER, not the computed one. /events/<id>/count
+	// answers from the store; this reads what a reader is SHOWN, so the two
+	// disagree exactly when the page's own number is stale -- which is the
+	// whole reason a browser source exists rather than a second api query.
+	if name == "page_count" {
+		if subject == "" {
+			return fault(id, wire.FaultField, "args",
+				"page_count names one event: send it as args.event")
+		}
+		path := "/ui/events/" + subject
+		code, doc, err := a.page(path, m.Token)
+		if err != nil {
+			return fault(id, wire.FaultInternal, "", err.Error())
+		}
+		if code >= 400 {
+			// A PAGE THE OBSERVER CANNOT SEE IS NOT A VALUE. The toy answers
+			// 404 both for an event that is gone and for one not visible to
+			// the reader's role, and neither is a number -- so this says so
+			// rather than reading an absence as zero, which would make a
+			// hidden page look like an empty one.
+			return fault(id, wire.FaultInternal, "query",
+				fmt.Sprintf("the toy answered %s with status %d", path, code))
+		}
+		n, ok := pageCount(doc)
+		if !ok {
+			return fault(id, wire.FaultInternal, "query",
+				fmt.Sprintf("%s carries no #count element, so what it renders is unknown", path))
+		}
+		return wire.ObserveResponse{
+			Envelope: wire.Envelope{Kind: wire.KindObserve, Contract: wire.ContractVersion, ID: id},
+			Value:    n,
+		}
 	}
 
 	var path string
@@ -672,6 +721,65 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 // call makes one HTTP request against the toy and decodes the body into out
 // when out is not nil. It returns the status so a caller can tell the system
 // refusing an action from the transport failing.
+// page GETs a document and hands back its TEXT. It is a.call's sibling for the
+// one route that answers HTML, and it exists rather than a flag on a.call
+// because every other caller wants the body decoded and would have to opt out.
+func (a *adapter) page(path, token string) (int, string, error) {
+	req, err := http.NewRequest(http.MethodGet, a.base+path, nil)
+	if err != nil {
+		return 0, "", fmt.Errorf("building GET %s: %w", path, err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	start := time.Now()
+	resp, err := a.client.Do(req)
+	lat := time.Since(start)
+	// THE CALL IS COUNTED AND TIMED LIKE ANY OTHER, which is not bookkeeping:
+	// the adapter reports its slowest call, and a page fetch left out of that
+	// would make the report quietly wrong about where a walk spent its time.
+	a.calls++
+	if lat > a.slowest {
+		a.slowest, a.slowestWhat = lat, http.MethodGet+" "+path
+	}
+	if err != nil {
+		return 0, "", fmt.Errorf("GET %s: %w", path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.StatusCode, "", fmt.Errorf("reading %s: %w", path, err)
+	}
+	return resp.StatusCode, string(raw), nil
+}
+
+// pageCountRe reads the number the event page RENDERS, out of the element the
+// page gives an id for.
+//
+// A REGEXP AND NOT A PARSER, and the reason is the id: cmd/toy writes
+// `<p id="count">N of C</p>` itself, so the anchor is the application's own
+// contract with its reader rather than a guess about HTML. The CAPACITY is
+// matched and discarded deliberately -- requiring it is what keeps this from
+// matching a `#count` element of some other shape and reading the wrong number
+// out of it.
+var pageCountRe = regexp.MustCompile(`<p id="count">([0-9]+) of ([0-9]+)</p>`)
+
+// pageCount extracts the rendered count. The second return is whether the page
+// carried one at all, which is NOT the same question as zero: a page with no
+// such element is a page this observation cannot read, and reading that as 0
+// would make a broken template look like an empty event.
+func pageCount(doc string) (int, bool) {
+	m := pageCountRe.FindStringSubmatch(doc)
+	if m == nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
 func (a *adapter) call(method, path, token string, body map[string]any, out any) (int, error) {
 	var payload io.Reader
 	if body != nil {
