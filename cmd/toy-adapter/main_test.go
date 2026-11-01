@@ -834,3 +834,71 @@ func TestAPageObservationWithNoSubjectIsRefusedBeforeTheToy(t *testing.T) {
 		t.Errorf("the adapter asked the toy anyway, %d time(s)", len(*log))
 	}
 }
+
+// TestTheCountPatternDISCRIMINATES is the pair ratchet asked for at coop
+// r8/160, and the distinction it rests on is theirs: eventPage carries ONE
+// number pair and no decoy, so `<p id="count">([0-9]+)` and
+// `([0-9]+) of ([0-9]+)` both read 2 off it. A pattern that agrees with itself
+// on a page with one candidate says nothing about WHICH candidate it picks --
+// so dropping the capacity requirement and dropping the id anchor entirely both
+// stayed green while the positive above passed.
+//
+// FOURTH TIME THIS SHAPE FOR ME, and ratchet named what the first three had in
+// common: every one was a predicate's DISCRIMINATION left unheld while its
+// REASON sat in a comment. arm 21's `none`, cell 8's context, the gate's two
+// arms, and now this. A reason is checkable only against an input it has to
+// reject, and a fixture with nothing to reject supplies none.
+//
+// SO EACH CELL CARRIES THE CANDIDATE ITS PREDICATE MUST REFUSE, which is the
+// whole difference between this test and the positive one above.
+func TestTheCountPatternDISCRIMINATES(t *testing.T) {
+	// A #count OF ANOTHER SHAPE. The element is there, carries a number, and is
+	// NOT the pair this page's contract defines -- so the capacity requirement
+	// is what refuses it, and without that requirement it would read 3 and the
+	// walk would compare a bare attendance figure to a believed count as though
+	// the template had not changed under it.
+	const otherShape = `<!doctype html>
+<h1 id="title">standup</h1>
+<p id="count">3</p>
+`
+	// A DECOY PAIR BEFORE THE ELEMENT. An unanchored pattern reads 5 here, and
+	// 5 is a number the page genuinely renders -- just not the one the reader is
+	// being told is the count. This is the cell the id anchor exists for.
+	const decoyFirst = `<!doctype html>
+<h1 id="title">standup</h1>
+<p>5 of 9</p>
+<p id="count">2 of 10</p>
+`
+	for _, c := range []struct {
+		what, page string
+		want       float64 // 0 means: no value, the observation faults
+	}{
+		{"a #count of another shape yields no value", otherShape, 0},
+		{"a decoy pair before the element is not the count", decoyFirst, 2},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			a, _ := stub(t, map[string]answer{"GET /ui/events/e-1": served(c.page)})
+			out := ask(t, a, map[string]any{
+				"kind": "observe", "query": "page_count", "source": "browser", "token": "t-1",
+				"args": map[string]any{"event": "e-1"},
+			})
+			if c.want == 0 {
+				kind, detail := faultOf(t, out)
+				if kind != string(wire.FaultInternal) {
+					t.Errorf("fault %q, want %q", kind, wire.FaultInternal)
+				}
+				if !strings.Contains(detail, "#count") {
+					t.Errorf("the fault does not name what was missing: %q", detail)
+				}
+				t.Logf("PROOF %s", c.what)
+				return
+			}
+			got, ok := out["value"].(float64)
+			if !ok || got != c.want {
+				t.Errorf("the value is %#v, want %v -- the pattern read the wrong candidate",
+					out["value"], c.want)
+			}
+			t.Logf("PROOF %s: read %v", c.what, got)
+		})
+	}
+}
