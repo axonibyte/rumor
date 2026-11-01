@@ -1,0 +1,67 @@
+{
+  "why": "A DELETED EVENT'S PAGE IS NOT SERVED, AND THAT IS CORRECT. stale-count's world -- the one committed ledger carrying an `event.deleted` -- read through the PAGE by a viewer instead of through the API by alice. The application 404s the page of an event it deleted, which is what a reader sees, so the observation reads `missing` and the statute's page clause calls it consistent. ITS SIBLING IS stale-count ITSELF: the same prefix read through the API still reports 1 and is a `bug`, because the api oracle answers for a deleted event and the page does not. Neither oracle is wrong and that is the whole reason `missing` is a VALUE rather than a fault -- a fault would have ended the run on a subject the application was right to withhold (fable, coop rumor/1669). `deleted` reads the sealed PREFIX and `believed` reads what the observer HOLDS, which is why bob believes one attendee without knowing of the delete. THREE RULES ARE bob's AND NOT alice's, which is the whole of what moved besides the reading: he made no event so may_create_event is true, and he has already joined so may_join is false and may_leave true. honest-count carries the same three for the same observer.",
+  "expect": {
+    "believed": 1,
+    "role_sees_subject": true,
+    "may_join": false,
+    "finding": "consistent",
+    "rests_on_planted": false,
+    "may_leave": true,
+    "may_create_user": true,
+    "has_user": false,
+    "may_create_event": true,
+    "may_delete": false
+  },
+  "input": {
+    "observation": {
+      "actor": "bob",
+      "of": "event.joined",
+      "query": "page_count",
+      "source": "browser",
+      "value": "missing",
+      "role": "viewer",
+      "position": 5
+    },
+    "known": [
+      "alice.event#1",
+      "bob.join#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 1,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "bob.join#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 3,
+        "handles": [
+          "bob.join#1",
+          "alice.event#1"
+        ]
+      },
+      {
+        "ref": "alice.del#1",
+        "actor": "alice",
+        "type": "event.deleted",
+        "position": 5,
+        "handles": [
+          "alice.del#1",
+          "alice.event#1"
+        ]
+      }
+    ]
+  }
+}

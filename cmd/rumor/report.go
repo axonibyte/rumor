@@ -97,7 +97,45 @@ func reportProject(dir, profile string, stdout, stderr io.Writer) int {
 	// give: a line omitted when there is nothing to say cannot be told from a
 	// build that never learned to print it.
 	_, _ = fmt.Fprintf(stdout, "report: venire -- %s\n", venireFacts(prep.Platform, profile))
+	// AND WHAT THIS PROFILE CLAIMS TO OBSERVE, which is fable's third line at
+	// coop rumor/1678: "three declarations, one level, one resolver, one report
+	// line each". The reader's question is the venire line's exactly -- whether
+	// their own claims are in force -- and it has a second half the pool's does
+	// not, because a claim takes a name OUT of every other profile's set.
+	//
+	// FROM THE PLATFORM ALONE, like every line above it. This command reads one
+	// file on purpose: a declaration is decided by the platform and the profile
+	// together, and loading bindings.toml here would make a report of what a
+	// profile DECLARES fail on a project whose bindings do not parse. So this
+	// line names the claims and not the resolved set -- the resolved set is a
+	// fact about two documents, and `rumor run`'s observation count is where a
+	// reader sees it.
+	_, _ = fmt.Fprintf(stdout, "report: observations -- %s\n",
+		observationFacts(prep.Platform, profile))
 	return 0
+}
+
+// observationFacts is what one profile claims to observe, in the project's own
+// words.
+//
+// IT NAMES THE CLAIMS AND THE CONSEQUENCE, which is where it differs from
+// venireFacts and is the point of printing it at all. An appended venire row
+// can only add actors to the profile that declares it; a CLAIM also removes the
+// name from every other profile, so a reader of this line needs both halves --
+// and the profile that reads "claims none" is told what that means rather than
+// left to infer it from an absence.
+func observationFacts(p platform.Platform, profile string) string {
+	if profile == "" {
+		return "no profile selected, so a run takes the observations no profile claims"
+	}
+	pr, ok := p.Profiles[profile]
+	if !ok || len(pr.Observations) == 0 {
+		return fmt.Sprintf("[profiles.%s] claims none, so a run of it takes the observations "+
+			"no profile claims", profile)
+	}
+	return fmt.Sprintf("[profiles.%s].observations claims %s, which this profile takes in "+
+		"addition to the observations no profile claims -- and which no other profile takes",
+		profile, strings.Join(pr.Observations, ", "))
 }
 
 // venireFacts is the actor pool one profile draws, in the project's own words.

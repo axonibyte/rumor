@@ -234,7 +234,12 @@ const root = "../.."
 // absent. The mutant exists because rook measured the control for that row
 // INERT at coop rumor/1426: a distinction only a hand-driven mutant exercised
 // was a distinction nothing re-measured.
-const declaredQuotes = 60
+// 60 -> 62 AT R8/111's READER: a SIXTEENTH mutant, and the same
+// one-file-times-two arithmetic as the 56 -> 58 and 58 -> 60 moves -- m16 makes
+// the page-missing clause ignore `deleted`, so it is a copy of the statute like
+// every other mutant and carries the same two quotes. Not a word of new prose.
+// 0 absent.
+const declaredQuotes = 62
 
 // knownChainGaps are the places where this file's warrant chain does NOT join,
 // each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which

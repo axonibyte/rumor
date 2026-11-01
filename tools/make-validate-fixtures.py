@@ -456,6 +456,91 @@ count = 1
         "contexts are in bindings.toml, which internal/platform does not read and cannot\n"
         "import.\n")
 
+    # THE TWO PROFILE-OBSERVATION CELLS (fable, coop rumor/1678). The
+    # observations level is the venire's one declaration over, and it has the
+    # same two pairings: a name nothing declares, and a name whose source no
+    # stage the profile selects can drive.
+    #
+    # ONE EDIT FOR THE FIRST AND THREE FOR THE SECOND, and the asymmetry is the
+    # pairing's. A name nothing declares needs no ground in bindings.toml --
+    # what makes it wrong is the absence. A source that cannot be driven needs a
+    # browser-source observation to exist at all, and the twin's only one is
+    # `direct`.
+    d = fresh("19/profile-observation-undeclared")
+    p = os.path.join(d, "platform.toml"); s = open(p).read()
+    open(p, "w").write(s + '''
+# SETUP: a profile, because a profile's CLAIM is the subject and the twin
+# declares none. `observations` sits among this table's own keys, after them for
+# the reason the venire fixtures' rows sit after them -- a header directly under
+# the table header would take `stages`, `seeds` and `budget` with it.
+[profiles.cell]
+stages = ["api"]
+seeds = 1
+budget = "1m"
+
+# THE CONDITION: a claim on a name bindings.toml does not declare.
+observations = ["nosuch"]
+''')
+    open(os.path.join(d, "WHY-profile-observation-undeclared.md"), "w").write(
+        "# FIXTURE for arm 19, the profile-observation name cell\n\n"
+        "SETUP: `[profiles.cell]` in platform.toml, because a profile's claim is the\n"
+        "subject and the twin declares no profiles.\n\n"
+        "CONDITION: `observations = [\"nosuch\"]`, a name no [[observation]] declares.\n\n"
+        "WHY THIS CELL IS THE DANGEROUS ONE: a profile's claim is also what takes a name\n"
+        "OUT of the project's set (platform.Observes), so a misspelled claim removes\n"
+        "nothing and leaves the real observation taken by EVERY profile -- restoring the\n"
+        "reading the level was ruled in to prevent, while reading as a working\n"
+        "declaration from inside the profile that wanted it.\n")
+
+    d = fresh("19/profile-observation-source-no-stage")
+    p = os.path.join(d, "bindings.toml"); s = open(p).read()
+    open(p, "w").write(s + '''
+# SETUP, not the condition: an observation whose source is `browser`. The twin
+# declares one and its source is `direct`, which is read from a component rather
+# than driven by a stage -- so until this row exists the cell has nothing to
+# pair. It names no component and no args, so it reaches no other arm.
+[[observation]]
+name = "page.count"
+source = "browser"
+of = "doc.published"
+''')
+    p = os.path.join(d, "surface.json")
+    surf = json.load(open(p))
+    # AND THE ADAPTER DESCRIBES IT, which is setup and not decoration: a
+    # bindings observation the surface omits is 19/observation-not-in-describe's
+    # own cell, so leaving the surface alone would trip two cells of this arm
+    # and show neither.
+    surf["observations"].append({"name": "page.count", "source": "browser"})
+    open(p, "w").write(json.dumps(surf, indent=2) + "\n")
+    p = os.path.join(d, "platform.toml"); s = open(p).read()
+    open(p, "w").write(s + '''
+# SETUP: a profile selecting the api stage ALONE. The twin enables the browser
+# stage, so the profile's own selection is what makes the observation
+# undrivable -- the pairing is against the stages THIS profile selects, not
+# against what the platform enables.
+[profiles.cell]
+stages = ["api"]
+seeds = 1
+budget = "1m"
+
+# THE CONDITION: the profile takes an observation whose source no stage it
+# selects drives.
+observations = ["page.count"]
+''')
+    open(os.path.join(d, "WHY-profile-observation-source-no-stage.md"), "w").write(
+        "# FIXTURE for arm 19, the profile-observation source cell\n\n"
+        "SETUP: `[[observation]] page.count` with source `browser` in bindings.toml and\n"
+        "the same name in surface.json, because the twin's only observation is `direct`\n"
+        "and an observation the surface omits trips the describe cell instead; and\n"
+        "`[profiles.cell]` selecting `api` ALONE, which is what makes the source\n"
+        "undrivable -- the twin ENABLES the browser stage, so the pairing is against the\n"
+        "stages this profile selects rather than against the platform's flag.\n\n"
+        "CONDITION: `observations = [\"page.count\"]` under a profile selecting no stage\n"
+        "that drives `browser`.\n\n"
+        "WHY IT IS AN ARM: a parse refusal cannot see it. The claim names an observation\n"
+        "and an observation's SOURCE lives in bindings.toml, which internal/platform does\n"
+        "not read and cannot import -- cell 8's reason one declaration over.\n")
+
     d = fresh("19/observe-arg-unknown-handle")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
     s = s.replace('of = "doc.published"\ncomponent = "doc_store"',

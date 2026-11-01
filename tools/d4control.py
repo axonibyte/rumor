@@ -216,6 +216,17 @@ ADDED_BY = {
         "toy/invitation-honored-at-the-expiry",
         "toy/accepted-then-the-clock-moved",
     ],
+    "111": [                            # R8.4: the page, read and withheld
+        # THE READER'S CONTROL, a live page whose count agrees -- the reader
+        # arrives agreeing before the plants make it disagree.
+        "toy/viewer-reads-the-page",
+        # AND THE PAGE CLAUSE'S TWO SIDES. `missing` is CORRECT for a deleted
+        # event, whose page the application withholds, and a FINDING for a live
+        # one. The second is the discriminating case: without it the clause
+        # could drop `deleted` and every case would still agree.
+        "toy/viewer-reads-a-deleted-page",
+        "toy/viewer-reads-a-live-page-that-is-gone",
+    ],
 }
 
 

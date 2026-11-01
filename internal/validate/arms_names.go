@@ -85,8 +85,10 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 		roleContexts[r.Name] = r.Contexts
 	}
 	observedNames := make([]string, 0, len(b.Observations))
+	obsSource := map[string]wire.Source{}
 	for _, o := range b.Observations {
 		observedNames = append(observedNames, o.Name)
+		obsSource[o.Name] = o.Source
 	}
 	observed := declared(observedNames)
 
@@ -238,6 +240,67 @@ func arm19(rep *Report, b bindings.Bindings, p platform.Platform, rules []string
 				"profile's stages are %s: an actor holding a context no selected stage drives "+
 				"is one the profile cannot move", name, m.Role,
 				strings.Join(held, ", "), stageList(prof.Stages))
+		}
+	}
+
+	// CELL 9: A PROFILE TAKING AN OBSERVATION bindings.toml DOES NOT DECLARE.
+	// The observations level is fable's ruling at coop rumor/1678, and this is
+	// the first of the two pairings it needs -- cells of this arm rather than
+	// new ids for cell 8's reason: the claim is a NAME, and what it names lives
+	// in the other document.
+	//
+	// IT IS THE DANGEROUS HALF OF THE TWO, which is why it is spelled before
+	// the source cell. A profile's claim is also what takes a name OUT of the
+	// project's set (platform.Observes), so a misspelled claim does not merely
+	// name nothing: it leaves the real observation claimed by no profile and
+	// therefore taken by every one of them -- silently restoring the reading
+	// the level was ruled in to prevent. A typo here reads as a working
+	// declaration from inside the profile that wanted it, because that profile
+	// observes the name either way.
+	for _, name := range profileNames(p) {
+		for _, o := range p.Profiles[name].Observations {
+			if observed[o] {
+				continue
+			}
+			note("platform.toml: [profiles.%s].observations names %s: no observation of that "+
+				"name, and a profile's claim is also what takes a name out of the project's "+
+				"set -- so a name nothing declares removes nothing and every profile still "+
+				"observes what this one meant to keep", name, o)
+		}
+	}
+
+	// CELL 10: AN OBSERVATION A PROFILE'S OWN STAGES CANNOT DRIVE, which is
+	// cell 8 one declaration over and is stated in the ruling itself: "a
+	// profile observation whose source the profile's stages cannot reach is
+	// refused by name under arm 19's cell, as its venire row is".
+	//
+	// THE BROWSER SOURCE AND NO OTHER, and the narrowing is cell 8's exactly
+	// and covers the same ground. A source is adapter-served: `direct` reads a
+	// declared component, `api` IS the walk, and `browser` is the one source
+	// with a stage that drives it (`stages.browser.enabled`, isBrowser's one
+	// name). A project declaring some further source its adapter serves is not
+	// one this cell can judge, and refusing it under every profile would refuse
+	// a correct project.
+	//
+	// THE PROFILE'S OWN CLAIMS AND NOT THE PROJECT'S ROWS, which is cell 8's
+	// third clause and leaves the same remainder: a project-level
+	// `[[observation]]` with a browser source is taken by every profile,
+	// including those selecting no browser stage, and is refused by nothing
+	// here. That is older than this level and is reported rather than decided
+	// -- except that the toy no longer has one, because this ruling moved its
+	// only browser observation onto the profile that drives it.
+	for _, name := range profileNames(p) {
+		prof := p.Profiles[name]
+		if selectsBrowserStage(prof.Stages) {
+			continue
+		}
+		for _, o := range prof.Observations {
+			if obsSource[o] != wire.SourceBrowser {
+				continue
+			}
+			note("platform.toml: [profiles.%s].observations takes %s, whose source is %s, and "+
+				"this profile's stages are %s: an observation no selected stage drives is one "+
+				"the profile cannot make", name, o, wire.SourceBrowser, stageList(prof.Stages))
 		}
 	}
 

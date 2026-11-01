@@ -24,7 +24,7 @@ offered as the check. One line per case, then a tally:
 ```
 planted-lie      honest-only                consistent  statute.rego:55            72 trace event(s)  agrees
 transitive-count charlie-explained          explained   statute.rego:61           284 trace event(s)  agrees
-check: 34 case(s) over 5 package(s) from ledger files, 34 agreed, 0 disagreed
+check: 37 case(s) over 5 package(s) from ledger files, 37 agreed, 0 disagreed
 ```
 
 Each line carries the finding, **the definition that produced it** — module and
@@ -260,7 +260,7 @@ planted-lie      m1-ignores-position        alive from the cases only (the seal 
 planted-lie      bug                        reached by stripped-tag
 planted-lie      with-planted               cleared by removing 1 planted claim(s)
 transitive-count charlie-own-lie            planted but not a control: the strip clause is not applied
-attaint: 5 package(s), 34 case(s), 30 rule(s), 38 mutant(s); 3 planted lie(s) corroborated of 6, 3 cleared by removal, 3 planted-not-control; 30 rule(s) killed, 0 unmutated; 0 refusal(s)
+attaint: 5 package(s), 37 case(s), 30 rule(s), 39 mutant(s); 3 planted lie(s) corroborated of 6, 3 cleared by removal, 3 planted-not-control; 30 rule(s) killed, 0 unmutated; 0 refusal(s)
 LINES
 
 # BOTH GUARDS BELOW ARE UNCONDITIONAL, which the first cut got wrong: the total
@@ -922,6 +922,7 @@ report: stage api -- reconciles only after the last step, which is every run bef
 report: stage concurrency -- enabled, and declares nothing a run reads beyond that
 report: stage fuzz -- enabled, and declares nothing a run reads beyond that
 report: venire -- 1 admin, 2 member, 1 guest -- from [[venire]], with no profile selected
+report: observations -- no profile selected, so a run takes the observations no profile claims
 ```
 
 **The api line names the LEVEL as well as the period**, because "4" and "where
@@ -936,6 +937,7 @@ report: stages selected -- api
 report: stages skipped -- none
 report: stage api -- reconciles every 4 step(s) while the walk runs, and after the last step -- from [profiles.reconciling].reconcile_every
 report: venire -- 1 admin, 2 member, 1 guest -- from [[venire]]; [profiles.reconciling] appends none
+report: observations -- [profiles.reconciling] claims none, so a run of it takes the observations no profile claims
 ```
 
 The table is named in the project's own words — a line a reader can go and
@@ -950,6 +952,31 @@ committed evidence is that the committed rows are untouched. A profile that
 adds nothing says `appends none` rather than being omitted, for the reason the
 skip list prints `none`: a line left out when there is nothing to say cannot be
 told from a build that never learned to print it.
+
+**The observations line names the claims and what claiming does to every
+other profile.** `[profiles.<name>].observations` claims observation names for
+runs of that profile (fable, coop rumor/1678), and a claim has a second effect
+the venire's appending does not: a claimed name stops being the project's, so it
+is taken by the claimants and by nobody else. A reader of this line is usually
+asking whether their own claim is in force, and the answer is incomplete without
+the consequence — which is why the line carries both, and why a profile that
+claims nothing is told what that means rather than left to read it off an
+absence:
+
+```console
+$ rumor report examples/toy --profile viewing
+report: stages selected -- api
+report: stages skipped -- browser (enabled and this build cannot run it yet)
+report: stage api -- reconciles only after the last step, which is every run before R8/110 -- no period at any level (absent)
+report: venire -- 1 admin, 2 member, 1 guest -- from [[venire]]; [profiles.viewing].venire appends 1 viewer
+report: observations -- [profiles.viewing].observations claims page_count, which this profile takes in addition to the observations no profile claims -- and which no other profile takes
+```
+
+**It names the claims and not the resolved set**, because the resolved set is a
+fact about two documents and this command reads one on purpose: loading
+`bindings.toml` to print it would make a report of what a profile DECLARES fail
+on a project whose bindings do not parse. `rumor run`'s observation count is
+where a reader sees what a walk actually took.
 
 **One line per SELECTED stage carries what that stage DECLARES**, and the
 `api` stage's declaration is its reconciliation period

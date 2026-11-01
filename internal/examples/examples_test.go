@@ -17,7 +17,21 @@ const realTree = "../../examples"
 // count of what was EXAMINED is asserted first.
 const (
 	wantPackages = 5
-	wantCases    = 34
+	// 34 -> 35 AT R8.4: examples/toy gains viewer-reads-the-page, the browser
+	// source's control -- the same world as honest-count read through the PAGE
+	// rather than the API. It agreed on every one of its thirteen expectations
+	// without one of them being retyped, which is the point of carrying them over
+	// unchanged: the ledger did not move, so a rule whose verdict HAD moved would
+	// be a rule reading the observation's channel, and none of them may.
+	// AND 35 -> 37 WITH THE PAGE CLAUSE: the statute gained a guarded reading
+	// for an unservable page, so the corpus gained its two sides --
+	// viewer-reads-a-deleted-page, where `missing` is CORRECT because the
+	// application withheld a page it had deleted, and
+	// viewer-reads-a-live-page-that-is-gone, where the same reading on a live
+	// event is the finding the clause exists to leave alone. The second is the
+	// discriminating one: without it the clause could drop `deleted` and every
+	// case would still agree.
+	wantCases = 37
 )
 
 func TestRunOverTheCommittedTree(t *testing.T) {

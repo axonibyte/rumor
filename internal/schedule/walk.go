@@ -2798,6 +2798,34 @@ func falsifyVisibleTo(a bindings.Action, truth []string, src *Source) ([]string,
 	return others[i], nil
 }
 
+// ObservationsFor is the observations one profile's walk makes, and it is the
+// only reader of the level fable ruled at coop rumor/1678.
+//
+// THE RULE IT APPLIES IS platform.Observes's AND NOT ITS OWN. This function
+// holds the join and not the policy: the rows are bindings.toml's, the claims
+// are platform.toml's, and one of the two documents has to be where "a name no
+// profile claims is the project's" is written down. Stating it again here would
+// be two statements of one rule, which is the defect this child has now found
+// in three places.
+//
+// ORDER IS THE DECLARATION'S, so a profile that takes every observation gets
+// them in bindings.toml's order and a walk's trace reads the same with the
+// level as without it.
+//
+// READ THROUGH THE RESOLVER AND NOT THE FIELD, which is the lesson the venire's
+// level left: Project.Observations was assigned `brep.Bindings.Observations`
+// directly until this ruling, so a profile's claim would have been a field
+// every adapter writes and nothing reads.
+func ObservationsFor(p platform.Platform, profile string, b bindings.Bindings) []bindings.Observation {
+	out := make([]bindings.Observation, 0, len(b.Observations))
+	for _, o := range b.Observations {
+		if p.Observes(profile, o.Name) {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
 // EventualOf is the project's eventual claim types, as the walk takes them.
 //
 // IT IS HERE AND EXPORTED BECAUSE TWO CALLERS NEED IT AND ONE OF THEM IS A

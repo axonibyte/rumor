@@ -346,6 +346,21 @@ of = "event.joined"
 args = ["event"]
 component = "store"
 
+# AND THE PAGE'S OWN COUNT, THROUGH `browser` (R8/111). The same subject as
+# event_count above and a different ORACLE: that one asks the API, this one
+# reads the number the application RENDERS to a reader. The two disagree
+# exactly when the page's own figure is stale, which is the row this statute
+# already carries a `bug` for -- so a reading that agrees is the control and a
+# reading that differs is the finding.
+#
+# `of` IS event.joined, THE SAME CLAIM TYPE, because the question is the same
+# one: how many joins the observer believes. The channel is what changed.
+[[observation]]
+name = "page_count"
+source = "browser"
+of = "event.joined"
+args = ["event"]
+
 # THE WORKER'S COUNT, OBSERVED BY ITS OWN QUERY AND ABOUT ITS OWN SUBJECT.
 #
 # `args = ["recount"]` is load-bearing twice over: it names the entity
@@ -454,13 +469,17 @@ timing = "immediate"
 # THE ROLES, each carried by a case: member by honest-count, guest by
 # untold-join and visibility-leak, admin by the other three.
 #
-# ALL THREE HOLD `api` AND NONE HOLDS `browser`, which is arm 5's doing and is
-# worth saying rather than leaving as an omission: that arm refuses a role
-# holding a browser context that can ALSO reach non-browser actions, and every
-# role here observes through the API in its own case. A browser-only role is
-# what R9 adds when the stage actually runs; declaring one now would either trip
-# arm 5 or name a role no case carries, and the agreement test refuses the
-# second.
+# THE FIRST THREE HOLD `api` AND ONLY `viewer` HOLDS `browser`, which is arm
+# 5's doing and is worth saying rather than leaving as an omission: that arm
+# refuses a role holding a browser context that can ALSO reach non-browser
+# actions, so a browser role is browser-ONLY or it is refused.
+#
+# THIS COMMENT SAID THE BROWSER ROLE WAS R9'S UNTIL R8.4, and its two reasons
+# were right and both are now discharged rather than waived. "It would trip arm
+# 5": `viewer` holds nothing but `browser`, so it reaches only `join_event_ui`.
+# "It would name a role no case carries, and the agreement test refuses that":
+# cases/viewer-reads-the-page.json carries it, which is the same commit's work
+# -- the role and the case that justifies it do not arrive separately.
 [[role]]
 name = "admin"
 contexts = ["api"]
@@ -472,6 +491,17 @@ contexts = ["api"]
 [[role]]
 name = "guest"
 contexts = ["api"]
+
+# THE READER, holding the browser context and nothing else. It ACTS only
+# through `join_event_ui` and its purpose is to OBSERVE: `page_count` above is
+# read through this role's own session, and walk.go asks sessions.Token(actor,
+# "browser") for it -- an actor with no browser session "observes nothing
+# through it" and returns neither a finding nor a fault, which is why the role
+# is what makes that observation occur at all rather than a declaration nothing
+# reaches.
+[[role]]
+name = "viewer"
+contexts = ["browser"]
 
 # THE RUN CONTROLS THIS PROJECT'S CLOCK, and the table being here is what says
 # so: `rumor` may hold a clock only where the project declares one, and

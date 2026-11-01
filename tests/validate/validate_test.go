@@ -45,7 +45,14 @@ import (
 // states in words. ratchet measured at coop r8/149 that the arm's accounting
 // was armed and its JUDGEMENT was not: nothing in the tree read a refusal from
 // it, so the comparison could be made unconditionally false and stay green.
-const wantFixtures = 38
+// AND TWO MORE AT R8/111, the same shape one declaration over: the
+// observations level fable ruled at coop rumor/1678 has a profile claiming
+// observation NAMES, so its two pairings are a name nothing declares and a name
+// whose source no stage the profile selects can drive. The first is the one
+// that bites quietly -- a profile's claim is also what takes a name out of the
+// project's set, so a misspelled claim leaves the observation taken by every
+// profile and reads as a working declaration from the profile that wanted it.
+const wantFixtures = 40
 
 // ARM 19 IS ONE ARM WITH SEVERAL CELLS, so it is the one arm with more than one
 // fixture -- and the count is declared here for the same reason every count in
@@ -90,7 +97,14 @@ const wantFixtures = 38
 // PROFILE selects, which nothing paired at all. Cells and not arms, on the
 // ruling itself: fable refused a fresh id for the second because a profile's
 // appended row is a venire row and the venire pairing is already arm 19's.
-const wantCells19 = 15
+// 15 -> 17 AT R8/111, TWO CELLS, BOTH ABOUT A NAME A PROFILE CLAIMS (fable,
+// coop rumor/1678). `[profiles.<name>].observations` claims observation names
+// for one profile, and a claimed name stops being the project's -- so the
+// claims need the pairings the rows got: the name must be declared, and the
+// source it is declared with must be drivable by a stage THAT PROFILE selects.
+// Cells and not arms, on cell 8's ruling read one declaration over: the claim
+// is a name and what it names is in the other document, which is this arm.
+const wantCells19 = 17
 
 // armOf is the fixture naming convention: <arm>-<slug>, or <arm>/<slug> for an
 // arm with several cells. The arm is the part before the first separator, so
@@ -981,6 +995,15 @@ var changedBy = map[string][]string{
 	"19/profile-venire-undeclared-role":  {"bindings.toml", "platform.toml", "WHY-profile-venire-undeclared-role.md"},
 	"19/profile-venire-context-no-stage": {"bindings.toml", "platform.toml", "WHY-profile-venire-context-no-stage.md"},
 
+	// THE TWO PROFILE-OBSERVATION CELLS (fable, coop rumor/1678). ONE EDIT AND
+	// THREE, and the asymmetry is the pairing's rather than an oversight: a
+	// name nothing declares needs no ground in bindings.toml, while a source no
+	// stage drives needs a browser-source observation to exist -- and needs the
+	// SURFACE to describe it, or the fixture trips 19/observation-not-in-describe's
+	// cell as well and shows neither.
+	"19/profile-observation-undeclared":      {"platform.toml", "WHY-profile-observation-undeclared.md"},
+	"19/profile-observation-source-no-stage": {"bindings.toml", "surface.json", "platform.toml", "WHY-profile-observation-source-no-stage.md"},
+
 	"9a-fault-unavailable":     {"bindings.toml"},
 	"9b-volume-unavailable":    {"bindings.toml"},
 	"9c-upgrade-unavailable":   {"bindings.toml"},
@@ -1273,7 +1296,7 @@ func TestTheWorkflowsArmCountIsTotalArms(t *testing.T) {
 
 // TestEachArm19FixtureTripsExactlyOneCell is the ONE-CELL invariant, and it is
 // a separate test because TestEveryFixtureTripsExactlyItsOwnArm cannot see it:
-// arm 19 is one arm with fifteen cells, so a fixture tripping two of them trips
+// arm 19 is one arm with seventeen cells, so a fixture tripping two of them trips
 // one ARM and passes there. Every `changedBy` comment above that says "a
 // fixture tripping two cells shows neither" was enforced by reading until now.
 //

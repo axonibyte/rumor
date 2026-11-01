@@ -1,0 +1,37 @@
+{
+  "why": "alice published twice and told dana of the first only. dana counts what dana was told, so a mutant dropping the knowledge filter from `believed` reports two here and dies.",
+  "expect": {
+    "believed": 1,
+    "may_publish": true,
+    "finding": "consistent"
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "position": 3,
+      "of": "doc.published",
+      "query": "doc.count",
+      "source": "direct",
+      "value": 1
+    },
+    "known": [
+      "alice.doc#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.published",
+        "position": 1,
+        "handle": "alice.doc#1"
+      },
+      {
+        "ref": "alice.doc#2",
+        "actor": "alice",
+        "type": "doc.published",
+        "position": 3,
+        "handle": "alice.doc#2"
+      }
+    ]
+  }
+}

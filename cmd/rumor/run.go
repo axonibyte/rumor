@@ -148,7 +148,13 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		// THE OBSERVATIONS THE WALK MAKES (R5.5). A project declaring none is
 		// walked as before, which is what keeps every pre-R5.5 fixture's
 		// meaning.
-		Observations: brep.Bindings.Observations,
+		// THE OBSERVATIONS THIS PROFILE TAKES, through the resolver and not the
+		// field (fable, coop rumor/1678), for the reason the line above gives for
+		// the pool. A project declaring none is walked as before, which is what
+		// keeps every pre-R5.5 fixture's meaning, and so is a project whose
+		// observations no profile claims -- which is every project committed
+		// before this ruling.
+		Observations: schedule.ObservationsFor(prep.Platform, profile, brep.Bindings),
 		// THE EVENTUAL TYPES, so the walk can judge a lagging observation as
 		// `pending` instead of `bug` (R6.3). BOTH FORMS TRAVEL, the duration
 		// one with its parsed nanoseconds: this comment said "only the quiesce

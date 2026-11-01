@@ -460,6 +460,47 @@ stages = ["concurrency"]
 seeds = 1
 budget = "1m"
 
+# THE READER'S PROFILE (R8/111; fable ruled the level at coop rumor/1660). It
+# is the one world in which this project draws a BROWSER actor, and it is a
+# profile rather than a row on `[[venire]]` for the reason the period's level
+# exists: a row added to the committed venire would reach every run of every
+# profile -- the release control's digests, all five promoted seeds, and D10's
+# precondition among them. Appended here, it reaches runs of THIS profile and
+# nothing else, and every committed row draws the pool it always drew.
+#
+# NAMED BY NO COMMITTED ROW, which is the half that keeps the evidence: no
+# `[weights.profile.viewing]` and no seed in seeds.lock selects it, so adding
+# it moves no recorded reading.
+#
+# BOTH STAGES, AND THE SECOND IS NOT DECORATION: arm 19's venire cell refuses a
+# row whose role holds a context no stage THIS profile selects can drive, so a
+# `viewer` drawn under `stages = ["api"]` alone is refused by name. The walk is
+# the api stage and the browser session is opened within it; whether the browser
+# STAGE itself can run is stage.Plan's answer and not this table's.
+[profiles.viewing]
+stages = ["api", "browser"]
+seeds = 1
+budget = "1m"
+# AND THE OBSERVATION THIS PROFILE TAKES, which is the level fable ruled at coop
+# rumor/1678 and the half the venire row above cannot supply. A `[[observation]]`
+# row in bindings.toml reaches every walk of every profile: declared there alone,
+# `page_count` opened a browser session in all five promoted seeds and in the
+# release control -- six sessions where the committed reading has four, 14 steps
+# where it has 24, and tests/clock's control failing. Named here, it is taken by
+# runs of THIS profile and no other, and no committed row names this profile.
+#
+# THE SOURCE IS WHY BOTH STAGES ARE SELECTED ABOVE: `page_count` is read through
+# `browser`, and arm 19 refuses by name an observation a profile's own stages
+# cannot drive -- so this row and that stage list stand or fall together.
+observations = ["page_count"]
+
+# THE APPENDED ROW. One reader, because what it is for is observing: `page_count`
+# is read through this actor's own browser session, and one is enough to make
+# the observation occur.
+[[profiles.viewing.venire]]
+role = "viewer"
+count = 1
+
 [[rollback]]
 # THE PROCESS-RESTART PROVIDER, which C3 implements and R5.3 consumes. It covers
 # `store` -- the component the bindings name on the `direct` observation, and

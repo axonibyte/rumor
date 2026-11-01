@@ -363,6 +363,36 @@ finding := "consistent" if {
 	input.observation.value == believed
 }
 
+# THE PAGE'S OWN GUARD, with expiry_observation's shape and for its reason
+# (fable, coop rumor/1669): a judgement written for one kind of observation
+# cannot be handed a second kind. A `missing` reading says the adapter could not
+# SERVE the subject, which for this project is the event's page.
+#
+# KEYED ON THE QUERY AND NOT THE SOURCE, which is the narrowing and its reason:
+# `missing` is answerable through ANY source -- the field is on every observe
+# response -- so `source == "browser"` would claim this rule for a second
+# browser observation that does not exist yet and whose subject might not be a
+# page at all. The query names the one observation this is about.
+page_observation if input.observation.query == "page_count"
+
+# A DELETED EVENT'S PAGE IS NOT SERVED, AND THAT IS CORRECT. The application
+# 404s the page of an event it has deleted -- which is what a reader sees --
+# while /events/<id>/count still answers for the same event. The two oracles
+# disagree there and NEITHER IS WRONG, which is the whole reason `missing` is a
+# value rather than a fault: a fault would have ended the run on a subject the
+# application was right to withhold.
+#
+# A LIVE EVENT'S PAGE READING `missing` IS A FINDING AND NEEDS NO RULE: the
+# default is `bug` and nothing makes a live unservable page consistent. That
+# asymmetry IS the guard -- one reading is correct for a deleted subject and a
+# defect for a live one -- and it is why this clause carries `deleted` rather
+# than standing on the query alone.
+finding := "consistent" if {
+	page_observation
+	deleted
+	input.observation.value == "missing"
+}
+
 # AN INVITATION HONORED PAST ITS EXPIRY -- R7.4's LEDGER ROW, and the first
 # rule in this statute that reads the run's CLOCK.
 #

@@ -1,0 +1,79 @@
+{
+  "why": "THE SAME WORLD AS honest-count, READ THROUGH THE PAGE INSTEAD OF THE API. bob holds alice's event and his own join and believes one attendee; the page he is served renders 1, so the reading agrees and the finding is `consistent`. It is the browser source's CONTROL: the reader arrives agreeing with a correct page, and the plants head then makes the same observation disagree -- the reader exists before the defect it catches. THE ROLE IS `viewer` AND THAT IS THE RUMOR ROLE, not the toy's per-event one: internal/schedule sets a check's role from RoleOf(actor) off the venire for api and browser alike, and the statute matches it against the claim's `visible_to` -- so the event claim admits `viewer` here, which is the only change to the ledger. The toy's own page gate is a different reader and answers `guest` for a non-attendee. EVERY OTHER EXPECTATION IS honest-count's UNCHANGED, which is the point: the ledger did not move, so a rule whose verdict moved would be a rule reading the observation's channel, and none of them should.",
+  "expect": {
+    "believed": 1,
+    "role_sees_subject": true,
+    "finding": "consistent",
+    "rests_on_planted": false,
+    "may_join": false,
+    "may_leave": true,
+    "may_create_user": false,
+    "has_user": true,
+    "may_create_event": true,
+    "may_delete": false,
+    "may_invite": false,
+    "may_accept": false,
+    "expiry_sound": false
+  },
+  "input": {
+    "observation": {
+      "actor": "bob",
+      "of": "event.joined",
+      "query": "page_count",
+      "source": "browser",
+      "value": 1,
+      "role": "viewer",
+      "position": 5
+    },
+    "known": [
+      "bob.user#1",
+      "alice.event#1",
+      "bob.join#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handles": [
+          "alice.user#1"
+        ]
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 2,
+        "handles": [
+          "bob.user#1"
+        ]
+      },
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 3,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "bob.join#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 5,
+        "handles": [
+          "bob.join#1",
+          "alice.event#1"
+        ]
+      }
+    ]
+  }
+}

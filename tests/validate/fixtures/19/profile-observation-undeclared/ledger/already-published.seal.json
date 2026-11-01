@@ -1,0 +1,11 @@
+{
+ "bound": 1,
+ "known_in_prefix": [
+  "alice.doc#1"
+ ],
+ "observer": "alice",
+ "own_claims_need_no_tell": [
+  "alice.doc#1"
+ ],
+ "seal": 1
+}

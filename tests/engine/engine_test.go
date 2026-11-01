@@ -59,8 +59,14 @@ const statutePackage = "data.rumor.statute"
 // before any verdict is reported. They match tests/statute's own declarations.
 const (
 	wantPackages = 5
-	wantCases    = 34
-	wantMutants  = 38
+	// 34 -> 37 AND 38 -> 39 AT R8.4, and the two move together because the
+	// statute gained a rule: examples/toy's page clause arrived with its own
+	// mutant (m16, the clause without `deleted`) and with the two cases that tell
+	// the mutant from the statute -- `missing` is correct for a deleted event's
+	// page and a finding for a live one. The third case is the reader's control.
+	// These match tests/statute's own declarations, as the comment above says.
+	wantCases   = 37
+	wantMutants = 39
 )
 
 type observation struct {

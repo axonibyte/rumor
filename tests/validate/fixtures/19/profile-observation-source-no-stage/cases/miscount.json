@@ -1,0 +1,31 @@
+{
+  "why": "The same ledger as fresh-publisher, read back as two. The finding is `bug`, this package's other outcome, and the corroboration control is pinned FALSE -- a bug with no plant behind it -- which kills a mutant defaulting either one.",
+  "expect": {
+    "believed": 1,
+    "may_publish": true,
+    "finding": "bug",
+    "rests_on_planted": false
+  },
+  "input": {
+    "observation": {
+      "actor": "dana",
+      "position": 2,
+      "of": "doc.published",
+      "query": "doc.count",
+      "source": "direct",
+      "value": 2
+    },
+    "known": [
+      "alice.doc#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.doc#1",
+        "actor": "alice",
+        "type": "doc.published",
+        "position": 1,
+        "handle": "alice.doc#1"
+      }
+    ]
+  }
+}

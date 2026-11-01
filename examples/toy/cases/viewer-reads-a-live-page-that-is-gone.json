@@ -1,0 +1,79 @@
+{
+  "why": "A LIVE EVENT'S PAGE READING `missing` IS A FINDING, and this case is the page clause's DISCRIMINATING input: viewer-reads-the-page's world exactly, with the reading changed and nothing else. The event is not deleted, so the application has no reason to withhold its page -- an unservable page here is the defect a browser observation exists to catch, and the statute's default `bug` is what says so. WITHOUT THIS CASE the page clause could be widened to stand on the query alone, dropping `deleted`, and every case would still agree: the guard's reason would be written down and held by nothing (ratchet, coop r8/160).",
+  "expect": {
+    "believed": 1,
+    "role_sees_subject": true,
+    "finding": "bug",
+    "rests_on_planted": false,
+    "may_join": false,
+    "may_leave": true,
+    "may_create_user": false,
+    "has_user": true,
+    "may_create_event": true,
+    "may_delete": false,
+    "may_invite": false,
+    "may_accept": false,
+    "expiry_sound": false
+  },
+  "input": {
+    "observation": {
+      "actor": "bob",
+      "of": "event.joined",
+      "query": "page_count",
+      "source": "browser",
+      "value": "missing",
+      "role": "viewer",
+      "position": 5
+    },
+    "known": [
+      "bob.user#1",
+      "alice.event#1",
+      "bob.join#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handles": [
+          "alice.user#1"
+        ]
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 2,
+        "handles": [
+          "bob.user#1"
+        ]
+      },
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 3,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "bob.join#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 5,
+        "handles": [
+          "bob.join#1",
+          "alice.event#1"
+        ]
+      }
+    ]
+  }
+}

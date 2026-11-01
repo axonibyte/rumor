@@ -423,8 +423,8 @@ func allFixtures(t *testing.T) [][2]string {
 	// 30 SINCE examples/toy/cases/dropped-recount (R6.3, 2026-10-26). The
 	// number is declared so a corpus that SHRANK is a failure and not a quiet
 	// pass; it is re-read when a case lands, never widened to what was found.
-	if len(out) != 34 {
-		t.Fatalf("expected the 34 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
+	if len(out) != 37 {
+		t.Fatalf("expected the 37 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
 	}
 	return out
 }

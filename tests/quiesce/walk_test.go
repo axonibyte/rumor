@@ -160,12 +160,18 @@ func walk(t *testing.T, seed uint64, steps int) schedule.Record {
 	defer func() { _ = sess.Close() }()
 
 	p := schedule.Project{
-		Statute:      string(statute),
-		Actions:      brep.Bindings.Actions,
-		Weights:      prep.Platform.Weights,
-		Venire:       prep.Platform.Venire,
-		Roles:        brep.Bindings.Roles,
-		Observations: brep.Bindings.Observations,
+		Statute: string(statute),
+		Actions: brep.Bindings.Actions,
+		Weights: prep.Platform.Weights,
+		Venire:  prep.Platform.Venire,
+		Roles:   brep.Bindings.Roles,
+		// THE OBSERVATIONS THIS PROFILE TAKES, through the resolver as `rumor run`
+		// reads them (fable, coop rumor/1678). A harness reading the FIELD walks a
+		// project no run of it can produce: the toy's `page_count` is claimed by
+		// `[profiles.viewing]`, so reading the field made every walk here open a
+		// browser session and observe through it -- measured as this suite's
+		// control failing, which is how the omission was found.
+		Observations: schedule.ObservationsFor(prep.Platform, "", brep.Bindings),
 		Eventual:     schedule.EventualOf(brep.Bindings),
 	}
 	if len(brep.Bindings.Probes) > 0 {

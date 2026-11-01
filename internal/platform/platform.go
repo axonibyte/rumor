@@ -121,6 +121,25 @@ type Profile struct {
 	// added there would reach every run of every profile.
 	Venire []Member
 
+	// Observations is `[profiles.<name>].observations`: the observation NAMES
+	// this profile adds to the project's, and the third declaration to be given
+	// a profile level -- fable's ruling at coop rumor/1678 on R8/111's finding.
+	//
+	// NAMES AND NOT ROWS, which is the one way this declaration's shape differs
+	// from the venire's, and the difference is which document the row lives in.
+	// A venire row is this file's own vocabulary: `[[venire]]` is a table of
+	// platform.toml, so a profile's copy of one is the same two keys in the same
+	// document. What an observation IS -- its source, its claim type, its
+	// arguments -- is bindings.toml's, which this package does not read and
+	// cannot import, because internal/bindings reads THIS one and the import
+	// would be a cycle. So a profile names what it takes and internal/bindings
+	// keeps what the thing is, rather than this table learning a second
+	// document's schema in order to hold a copy.
+	//
+	// A NAME NO PROFILE CLAIMS IS THE PROJECT'S, and that half of the rule is
+	// Observes's to state rather than this field's.
+	Observations []string
+
 	Stages []string
 	Seeds  int
 	Budget time.Duration
@@ -237,6 +256,54 @@ func (p Platform) VenireFor(profile string) []Member {
 	out = append(out, p.Venire...)
 	out = append(out, extra...)
 	return out
+}
+
+// Observes answers whether a run of one profile takes the observation named,
+// and it is the ONE place the observations level's rule is stated -- fable's
+// ruling at coop rumor/1678.
+//
+// IT APPENDS, LIKE THE OTHER TWO, and it is a predicate rather than a slice
+// because the rows are bindings.toml's: a caller holds the declared
+// observations already and needs to know which of them this profile's walk
+// makes. internal/schedule's ObservationsFor is that caller, and the only one.
+//
+// A NAME NO PROFILE CLAIMS REACHES EVERY PROFILE, which is the whole of why
+// this level is safe to give a project that already has committed evidence.
+// Every observation declared before this ruling is claimed by no profile, so it
+// is taken by every run exactly as it was -- BY CONSTRUCTION and not by a
+// check, which is the argument the period's level and the venire's both rest
+// on.
+//
+// A NAME SOME PROFILE CLAIMS IS NOT THE PROJECT'S, and that is the half that
+// makes the level mean anything. Without it a profile's declaration could only
+// ADD a row already reaching every walk, so declaring `page_count` under
+// `[profiles.viewing]` would still open a browser session in every committed
+// run -- measured at coop rumor/1675 as six sessions where the committed
+// reading has four, and tests/clock's control failing with it. A name is the
+// project's or it is its claimants', never both.
+//
+// TWO PROFILES MAY CLAIM ONE NAME, and both take it. There is no expression
+// here for "no profile may want what another wants", and inventing one would
+// refuse a correct project for a coincidence.
+//
+// AN UNDECLARED PROFILE AND THE EMPTY NAME TAKE THE PROJECT'S OBSERVATIONS, as
+// VenireFor's callers get the committed pool, and for that resolver's reason: a
+// profile name no platform declares is stage.Plan's refusal, made before this
+// is reached.
+func (p Platform) Observes(profile, observation string) bool {
+	claimed := false
+	for name, pr := range p.Profiles {
+		for _, o := range pr.Observations {
+			if o != observation {
+				continue
+			}
+			if name == profile && profile != "" {
+				return true
+			}
+			claimed = true
+		}
+	}
+	return !claimed
 }
 
 // stageAPI is internal/stage's API constant, spelled here because this package
@@ -434,6 +501,21 @@ func Parse(doc map[string]any) Report {
 						strings.Join(prof.Stages, ", "), stageAPI))
 				}
 			}
+			// AND THE OBSERVATIONS THIS PROFILE TAKES, by name (fable, coop
+			// rumor/1678). Not required: a profile declaring none takes the
+			// project's observations and nothing else, which is every profile
+			// committed before this level existed.
+			//
+			// NO REFUSAL HERE, AND THE ASYMMETRY WITH THE PERIOD IS DELIBERATE.
+			// The period's two refusals are both answerable inside this file: a
+			// negative count is wrong on its face, and whether this profile walks
+			// is its own `stages` list. Every way an observation name can be wrong
+			// needs bindings.toml -- the name may be declared by nothing, or
+			// declared with a source no stage this profile selects can drive --
+			// and a pairing across two documents is what an arm is for. Arm 19
+			// carries both, beside the venire cell it already carries for the same
+			// reason.
+			prof.Observations = pt.Strings("observations", false)
 			// THE APPENDED ROWS ARE READ THE WAY THE PLATFORM'S OWN ARE, so a
 			// malformed row is refused in the same words, and keyed by the
 			// profile -- which is what makes the refusal name the row a reader

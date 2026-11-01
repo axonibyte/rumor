@@ -138,7 +138,13 @@ func TestEveryDrillTripsItsOwnArm(t *testing.T) {
 			// THE COUNTS ARE ASSERTED ON EVERY DRILL, pass or fail. A damaged
 			// tree that stopped being read at all would refuse for the right
 			// clause and the wrong reason.
-			if rep.Packages != 5 || rep.Cases != 34 || rep.Mutants != 38 || rep.Rules != 30 {
+			// 34 -> 37 CASES AND 38 -> 39 MUTANTS AT R8/111's READER: the toy
+			// gained the three browser-observation cases (a live page read, a
+			// deleted event's page, and a live event whose page is gone) and
+			// m16, which is the mutant for the last of them. The rule count
+			// does not move: the statute's new clause is a second body for
+			// `finding`, which rules.json already declares.
+			if rep.Packages != 5 || rep.Cases != 37 || rep.Mutants != 39 || rep.Rules != 30 {
 				t.Fatalf("%s examined %d package(s), %d case(s), %d rule(s), %d mutant(s); every drill is a damaged copy of the whole tree",
 					d.id, rep.Packages, rep.Cases, rep.Rules, rep.Mutants)
 			}
