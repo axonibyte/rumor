@@ -291,9 +291,21 @@ jobs:
           # NO PIPE, so the rc is grep's own and not `head`'s, and so a reader
           # that stops early cannot kill the writer (`sed -n` consumes the
           # stream where `head` closes it).
+          # AND THE rc IS CAPTURED THROUGH `||`, WHICH IS NOT STYLE EITHER. The
+          # runner invokes a step with -e, and under -e a BARE command exiting
+          # nonzero ends the script there -- no output, rc 1. The first cut of
+          # this block ran the grep bare, so on a run whose suite PASSED the
+          # grep found nothing, exited 1, and killed the step: task 1014 spent
+          # 11.5 minutes on a green suite and reported `exit status 1` with an
+          # empty log. The `|| echo` form this replaced was doing two jobs at
+          # once -- it masked grep's error AND it kept -e from firing -- and
+          # removing the mask took the guard with it.
+          #
+          # `|| frc=$?` DOES BOTH CORRECTLY: the grep sits in an AND-OR list, so
+          # -e does not apply to it, and the rc still reaches the case below.
           view_broken=0
-          grep -nE '^(--- )?FAIL|^panic:|^[[:space:]]+--- FAIL' ../test.log > ../fails.txt
-          frc=$?
+          frc=0
+          grep -nE '^(--- )?FAIL|^panic:|^[[:space:]]+--- FAIL' ../test.log > ../fails.txt || frc=$?
           case "$frc" in
             0) sed -n '1,40p' ../fails.txt ;;
             1) echo "(no FAIL or panic line in test.log)" ;;

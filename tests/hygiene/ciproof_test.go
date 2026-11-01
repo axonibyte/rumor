@@ -482,3 +482,98 @@ func TestTheTwoTestBudgetsAgree(t *testing.T) {
 	t.Logf("PROOF floor %ds < watchdog %ds < budget %ds, all three read out of %s",
 		floorSeconds, inner, outer, filepath.Base(path))
 }
+
+// TestTheFailureViewSurvivesTheRunnersErrFlag RUNS the failure-view fragment
+// under -e, because reading it cannot show what -e does to it.
+//
+// MEASURED ON TASK 1014: the step spent 11.5 minutes on a suite that PASSED and
+// reported `exit status 1` with an empty log. The forge invokes a step with -e,
+// and under -e a BARE command exiting nonzero ends the script right there. The
+// grep had just been changed from `grep ... || echo "(no FAIL...)"` to a bare
+// `grep ... > ../fails.txt`, so on a green run it found nothing, exited 1, and
+// killed the step before any branch could print. The form it replaced was doing
+// two jobs at once -- masking grep's error AND keeping -e from firing -- and
+// removing the mask took the guard with it.
+//
+// SO THE GREEN PATH IS THE ONE THAT BREAKS, which is why this arm drives the
+// CLEAN log first. Every earlier arm here drove a log with failures in it: the
+// mined lines, the four shapes, the rc branches. A log with NOTHING to find is
+// the case the rc-1 guard exists for, and no arm had ever run it.
+//
+// IT SUBSTITUTES THE PATHS AND NOTHING ELSE. The fragment is lifted out of
+// ci.yml verbatim between `view_broken=0` and its `esac`, with only the two file
+// paths redirected into the temp dir -- so the thing under test is the step's
+// own text, not a transcription of it.
+func TestTheFailureViewSurvivesTheRunnersErrFlag(t *testing.T) {
+	path := filepath.Join("..", "..", ".forgejo", "workflows", "ci.yml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	test, ok := splitSteps(string(raw))["test"]
+	if !ok {
+		t.Fatalf("%s has no step named `test`", path)
+	}
+
+	const open = "view_broken=0"
+	i := strings.Index(test, open)
+	if i < 0 {
+		t.Fatalf("%s's test step has no `%s`, so the failure view's shape has changed and this "+
+			"arm is reading for something that is gone", path, open)
+	}
+	j := strings.Index(test[i:], "esac")
+	if j < 0 {
+		t.Fatalf("%s's failure view does not reach an `esac`", path)
+	}
+	fragment := test[i : i+j+len("esac")]
+
+	// THE rc REACHES `frc`, and this is a text clause because the execution
+	// below cannot distinguish "captured correctly" from "captured by luck".
+	//
+	// ITS FIRST DRAFT WAS WORTHLESS AND THE MUTANT SHOWED IT: `Contains("|") &&
+	// !Contains("||")` was meant to refuse a pipe, and the grep PATTERN carries
+	// `|` as alternation -- so it could only ever fire on the correct text, and
+	// it was skipped on the correct text only because `|| frc=$?` happens to
+	// contain `||`. A clause that cannot fail where it matters and false-fires
+	// where it does not adds a way to be wrong and no way to be right.
+	if !strings.Contains(fragment, "|| frc=$?") {
+		t.Errorf("the failure view does not capture the grep's rc through an AND-OR list " +
+			"(`|| frc=$?`): under the runner's -e a bare grep that finds nothing ends the step " +
+			"with no output, which is what task 1014 did to a green suite")
+	}
+
+	for _, c := range []struct {
+		name, log, want string
+	}{
+		{"a clean log", "ok  \tforge.axonibyte.com/axonibyte/rumor/internal/wire\t0.201s\n",
+			"(no FAIL or panic line in test.log)"},
+		{"a log with a failure", "--- FAIL: TestTopLevel (0.01s)\nFAIL\tforge/x\t2.0s\n",
+			"--- FAIL: TestTopLevel"},
+	} {
+		dir := t.TempDir()
+		logPath := filepath.Join(dir, "test.log")
+		if err := os.WriteFile(logPath, []byte(c.log), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		script := strings.ReplaceAll(fragment, "../test.log", logPath)
+		script = strings.ReplaceAll(script, "../fails.txt", filepath.Join(dir, "fails.txt"))
+		scriptPath := filepath.Join(dir, "view.sh")
+		if err := os.WriteFile(scriptPath, []byte(script+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		out, err := exec.Command("sh", "-e", scriptPath).CombinedOutput()
+		if err != nil {
+			t.Errorf("%s: the failure view exits nonzero under -e (%v) and printed %q. The forge "+
+				"runs a step with -e, so this is the step dying before it reports anything",
+				c.name, err, string(out))
+			continue
+		}
+		if !strings.Contains(string(out), c.want) {
+			t.Errorf("%s: the failure view printed %q, want it to contain %q",
+				c.name, string(out), c.want)
+		}
+	}
+	t.Logf("PROOF the step's own failure view ran under -e over a clean log and a failing one, " +
+		"exiting 0 and reporting in both")
+}
