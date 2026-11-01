@@ -783,6 +783,40 @@ if [ "$wantr" != "$gotr" ]; then
   fail=1
 fi
 
+# AND THE PROFILED REPORT, WHICH IS A SECOND TRANSCRIPT AND SO NEEDS ITS OWN
+# COMPARISON. D14's rule is the whole reason: a verbatim transcript sits inside
+# a block the gate runs, or the gate records it unchecked and names the file --
+# and this file already carries that lesson twice, at the attaint sample and at
+# the two `run:` transcripts. A sample added beside a checked one inherits
+# nothing from it.
+#
+# ITS EXTRACTION CANNOT BE THE ONE ABOVE: that sed anchors `$ rumor report
+# examples/toy$` to the end of the line, which this invocation's `--profile`
+# deliberately does not match. Two samples, two extractions, each naming its
+# own invocation.
+wantp=$(sed -n '/^\$ rumor report examples\/toy --profile reconciling$/,/^```$/p' docs/cli.md | sed '1d;$d')
+[ -n "$wantp" ] || {
+  echo 'the profiled report sample is no longer where this block looks for it'
+  exit 1
+}
+gotp=$(rumor report examples/toy --profile reconciling) || {
+  echo 'rumor report --profile reconciling did not exit 0, which this sample documents'
+  exit 1
+}
+if [ "$wantp" != "$gotp" ]; then
+  echo 'the profiled report in docs/cli.md is not what the tool prints:'
+  printf 'documented:\n%s\ntool:\n%s\n' "$wantp" "$gotp"
+  fail=1
+fi
+
+# AND THE TWO DISAGREE, which is what makes the pair a measurement about the
+# PRECEDENCE rather than two copies of one line. Identical output would mean the
+# profile level was not read, and both comparisons above would still pass.
+if [ "$gotr" = "$gotp" ]; then
+  echo 'the profiled and unprofiled reports are byte-identical, so the profile level is not read'
+  fail=1
+fi
+
 # AND AN UNASKED RUN SAYS NOTHING ABOUT STAGES ON EITHER STREAM.
 ro=$(mktemp) || exit 1
 re=$(mktemp) || exit 1
@@ -883,10 +917,26 @@ where the fixture does.
 $ rumor report examples/toy
 report: stages selected -- api, concurrency, fuzz
 report: stages skipped -- browser (enabled and this build cannot run it yet)
-report: stage api -- reconciles only after the last step, which is every run before R8/110
+report: stage api -- reconciles only after the last step, which is every run before R8/110 -- no period at any level (absent)
 report: stage concurrency -- enabled, and declares nothing a run reads beyond that
 report: stage fuzz -- enabled, and declares nothing a run reads beyond that
 ```
+
+**The api line names the LEVEL as well as the period**, because "4" and "where
+4 came from" are different questions and only the second one tells a reader
+whether their own declaration is the one in force. The period resolves
+**profile, then stage, then absent** — the order `[weights.*]` already uses —
+so the same project answers differently under a profile that declares one:
+
+```console
+$ rumor report examples/toy --profile reconciling
+report: stages selected -- api
+report: stages skipped -- none
+report: stage api -- reconciles every 4 step(s) while the walk runs, and after the last step -- from [profiles.reconciling].reconcile_every
+```
+
+The table is named in the project's own words — a line a reader can go and
+edit — rather than as the bare level.
 
 **One line per SELECTED stage carries what that stage DECLARES**, and the
 `api` stage's declaration is its reconciliation period

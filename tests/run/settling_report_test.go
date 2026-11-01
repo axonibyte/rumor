@@ -403,3 +403,64 @@ func fixtureWithPeriod(t *testing.T, every int) (string, string, int) {
 	}
 	return run(t, "run", dir, "--seed", "42", "--steps", "5")
 }
+
+// THE PRODUCT'S OWN EXAMPLE RECONCILES, from the COMMITTED project with no copy
+// and no edit -- which is the whole reason fable gave the period a profile level
+// at coop rumor/1619.
+//
+// EVERY OTHER ARM IN THIS FILE DECLARES THE PERIOD IN A TEMP COPY, and that is
+// the gap this one closes: a knob exercised only by fixtures the tests build is
+// a knob the product's own corpus does not use, which is the permission pattern
+// R8/111 found twice (a field with no reader, a knob with no declaration). This
+// arm would fail if `[profiles.reconciling]` were deleted from examples/toy.
+//
+// AND IT REACHES A VERDICT rather than merely running passes. Under the default
+// mix the passes run and hold nothing, so `Settled` stays empty -- the profile's
+// weights block exists to reach the held pending, justified line by line in
+// platform.toml's own comment.
+func TestTheToysOwnProfileReconcilesAndReachesAVerdict(t *testing.T) {
+	const toy = "../../examples/toy"
+	// SEED 101 AT 30 STEPS AND NOT 13 AT 40, chosen by cost: both reach a
+	// periodic verdict under this profile, 101 at step 24 and 13 at step 32, so
+	// the shorter walk is the cheaper witness to the same property. Measured on
+	// this tree.
+	out, errb, code := run(t, "run", toy, "--seed", "101", "--steps", "30",
+		"--profile", "reconciling")
+	if code != 0 && code != 3 {
+		t.Fatalf("exited %d, want 0 or a finding\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	}
+	line := settlingLine(t, out)
+	if !strings.Contains(line, "declared every 4 step(s)") {
+		t.Errorf("the committed profile's period does not reach the walk, so platform.toml's "+
+			"profile level is not read: %q", line)
+	}
+	if !strings.Contains(line, "bug of kind stale") {
+		t.Errorf("the product's own example runs passes but reaches no verdict, so `Settled` "+
+			"is empty in the one project that ships with the tool: %q", line)
+	}
+
+	// AND THE SAME SEED UNDER `settling` HAS NO PERIOD AT ALL, which is the
+	// measurement the ruling turns on and the reason the level exists.
+	//
+	// seeds.lock's rows 12 and 66 NAME `settling`, and both were measured
+	// without a period: row 12's stale is found by the END-OF-RUN
+	// reconciliation and row 66 witnesses two pendings held and cleared. A
+	// period on that profile -- or on the shared `[stages.api]` table, which
+	// every profile reads -- would move the live bounds and so the draws, and
+	// those two rows would need re-deriving rather than re-measuring. This arm
+	// is what makes "declaring it moved nothing" a check instead of a claim.
+	// FIVE STEPS, AND THE SHORT WALK IS NOT A WEAKENING: this control asserts
+	// what `settling` DECLARES, which no number of steps can change. A 40-step
+	// run of it shrinks a real finding and cost 50 seconds to prove a fact
+	// about a TOML table.
+	sout, _, scode := run(t, "run", toy, "--seed", "101", "--steps", "5",
+		"--profile", "settling")
+	if scode != 0 && scode != 3 {
+		t.Fatalf("the settling control exited %d\n%s", scode, sout)
+	}
+	sline := settlingLine(t, sout)
+	if !strings.Contains(sline, "no period is declared") {
+		t.Errorf("`settling` carries a period, so seeds.lock's rows 12 and 66 are no longer "+
+			"the worlds they were measured in: %q", sline)
+	}
+}

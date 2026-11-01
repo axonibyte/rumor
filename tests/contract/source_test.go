@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
+	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/stage"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
@@ -68,5 +70,33 @@ func TestTheWireAndLedgerSourceVocabulariesAgreeByValue(t *testing.T) {
 				"so a run writes a fact the ledger refuses -- at the first observation of that "+
 				"source, at RUNTIME and not at compile time", p.what, p.w, p.l)
 		}
+	}
+}
+
+// AND THE SAME HAZARD ONE PACKAGE OVER: internal/platform spells the walking
+// stage's name as its own untyped constant because it CANNOT import
+// internal/stage -- internal/stage reads platform.Platform, so the dependency
+// runs that way and importing back would be a cycle.
+//
+// SO THE TWO COPIES ARE JOINED BY NOTHING. platform's period resolver reads
+// `p.Stages["api"]` through its local copy while cmd/rumor reads
+// `Stages[stage.API]` through the real one, and a rename of the stage would
+// leave the resolver silently reading a table no project declares -- the
+// resolver would answer `absent` for every project, every period would read as
+// undeclared, and nothing would fail to build.
+//
+// IT IS THE SAME SHAPE AS THE CAST ABOVE AND NOT A GENERAL TIDINESS ARM: two
+// packages holding one vocabulary, joined where the compiler cannot look. The
+// comment on platform's constant promises this test exists; this is it.
+//
+// COMPARED BY VALUE AND NOT AGAINST A LITERAL, for the reason the source arm
+// gives: a coordinated rename of the stage is legitimate, and an arm pinning
+// "api" would fail on the next correct move.
+func TestThePlatformsWalkingStageNameMatchesTheStageConstant(t *testing.T) {
+	if platform.WalkingStageName() != stage.API {
+		t.Errorf("internal/platform resolves the period from stage %q while internal/stage "+
+			"calls the walking stage %q, so the resolver reads a table no project declares "+
+			"and every period reads as absent",
+			platform.WalkingStageName(), stage.API)
 	}
 }

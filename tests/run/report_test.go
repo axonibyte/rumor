@@ -207,3 +207,47 @@ func TestTheReportNamesAPeriodOnANonWalkingStageAsInert(t *testing.T) {
 		t.Errorf("a period on concurrency changed what the api stage reports:\n%s", out)
 	}
 }
+
+// AND THE REPORT NAMES THE LEVEL THE PERIOD CAME FROM, which is fable's clause
+// at coop rumor/1619: "4" and "where 4 came from" are different questions, and
+// only the second tells a reader whether THEIR declaration is the one in force.
+//
+// DRIVEN ON THE COMMITTED TOY AT BOTH LEVELS, which is what makes it a test of
+// the PRECEDENCE: the same project answers differently under a profile that
+// declares a period, so an identical pair of lines would mean the profile level
+// was not read while both halves still looked asserted.
+func TestTheReportNamesTheLevelThePeriodCameFrom(t *testing.T) {
+	const toy = "../../examples/toy"
+
+	// THE PROFILE LEVEL, from the committed `reconciling` profile.
+	out, errb, code := run(t, "report", toy, "--profile", "reconciling")
+	if code != 0 {
+		t.Fatalf("report exited %d\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	}
+	if !strings.Contains(out, "reconciles every 4 step(s)") {
+		t.Errorf("the profile's period does not reach the report:\n%s", out)
+	}
+	// THE TABLE IS NAMED IN THE PROJECT'S OWN WORDS, a line a reader can go and
+	// edit, rather than the bare level word.
+	if !strings.Contains(out, "from [profiles.reconciling].reconcile_every") {
+		t.Errorf("the report gives the period without the table it came from:\n%s", out)
+	}
+
+	// AND WITH NO PROFILE THE SAME PROJECT REPORTS NO PERIOD AT ANY LEVEL, so
+	// the profile's declaration does not leak into an unprofiled read.
+	uout, _, ucode := run(t, "report", toy)
+	if ucode != 0 {
+		t.Fatalf("the unprofiled report exited %d:\n%s", ucode, uout)
+	}
+	if !strings.Contains(uout, "no period at any level") {
+		t.Errorf("an unprofiled read of the toy reports a period, so the profile level leaks "+
+			"into every run:\n%s", uout)
+	}
+	// THE PAIR MUST DIFFER. Identical output would satisfy both halves above on
+	// a build that ignored the profile entirely, because the first assertion
+	// would then be reading a stage-level period that does not exist.
+	if out == uout {
+		t.Errorf("the profiled and unprofiled reports are byte-identical, so the level is "+
+			"not read:\n%s", out)
+	}
+}

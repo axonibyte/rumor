@@ -207,6 +207,72 @@ budget = "1m"
 # rather than searched for at gate time. The budget is the toy's own scale -- a
 # recount is a map write and a file write -- so a minute is ~2000x the worst
 # request measured at r5/… and an expiry here would be a stall, not slow work.
+# THE `reconciling` PROFILE, AND IT IS THE PRODUCT'S OWN EXAMPLE OF A PERIOD
+# (R8/111; fable's ruling at coop rumor/1619, taking quill's option (b) at
+# r8/124 over declaring the period on the shared api stage).
+#
+# WHY A PROFILE AND NOT `[stages.api]`. The period is DECLARED, and a project
+# that declares it nowhere ships a knob nothing in its own corpus exercises --
+# the permission pattern this child found twice over, a field with no reader
+# beside a knob with no declaration. But `[stages.api]` is shared by every
+# profile, and determinism is per (seed, period): a period there would move the
+# release control's five digest rows, all five promoted seeds in seeds.lock --
+# two of which, 12 and 66, are ABOUT reconciliation and would need re-deriving
+# rather than re-measuring -- every executed sample in docs/cli.md, and D10's
+# own PRECONDITION, which is rook's finding at r8/125 and the sharpest of them:
+# axis 1 is non-vacuous only because the walk REACHES a full event fourteen
+# times, and a mid-walk re-check moves the live bounds and so the draws. An arm
+# whose precondition has quietly gone does not announce it.
+#
+# SO THE PERIOD LIVES WHERE NO COMMITTED ROW LOOKS. This profile is named by no
+# line of seeds.lock, no control invocation and no test, so declaring it moves
+# nothing -- and `settling` is deliberately NOT given one, because rows 12 and
+# 66 name that profile and carry traces measured without a period.
+#
+# THE WEIGHTS ARE DECLARED, AND MY FIRST VERSION OF THIS COMMENT ARGUED THE
+# OPPOSITE. It said the default mix was deliberate, because a weights block
+# would make this a second `settling`. The drive refuted it: under the default
+# mix the passes RUN and hold nothing on every seed tried, so `Settled` is
+# always empty -- and a field with no reader is the exact defect this child
+# exists to close, so an example that never populates it is the weaker half of
+# the demonstration. Measured at 40 steps, period 4, seeds 13/23/5/101/42/7:
+#
+#   recount_event 40, create_event 8, delete_event 0    4 of 6 reach a verdict
+#   without create_event                                2 of 6
+#   without delete_event                                seed 13 loses its verdict
+#
+# SO EVERY LINE IS JUSTIFIED BY ITS OWN ABLATION, on ONE seed set rather than
+# three. `recount_event = 40` makes the sequence the row needs -- recount, change
+# the attendance, recount AGAIN -- likely at all. `delete_event = 0` keeps it
+# reachable: an `event.deleted` claim in the prefix puts the statute beyond both
+# `consistent` and `explained`, so a delete ends the run's ability to find this.
+# `create_event = 8` lowers creates from the default 15, concentrating recounts
+# on fewer events; dropping it HALVES the hit rate.
+#
+# AND THE FIRST ABLATION OF create_event WAS A SINGLE SEED AND SAID "INERT".
+# Seed 13 keeps its verdict without the line, so one reading licensed removing
+# it; six seeds say it doubles the rate. One seed is a reading and not a
+# finding -- and the two sets have to be the SAME set, which my first comparison
+# got wrong by measuring four seeds against six.
+#
+# THE MIX IS `settling`'s TWO LOAD-BEARING LINES AND NOT A COPY OF IT: settling
+# also carries create_event 8, and its row is the END-OF-RUN verdict where this
+# profile's is the PERIODIC one. If settling's mix is ever retuned, this one is
+# re-measured rather than followed -- two tables that agree today are not one
+# table.
+#
+# 4 AND NOT 2, measured: both reach verdicts, and 4 asks half as often.
+[profiles.reconciling]
+stages = ["api"]
+seeds = 1
+budget = "1m"
+reconcile_every = 4
+
+[weights.profile.reconciling]
+recount_event = 40
+create_event = 8
+delete_event = 0
+
 [profiles.settling]
 stages = ["api"]
 seeds = 1

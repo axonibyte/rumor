@@ -580,3 +580,130 @@ func TestAnUnknownWitnessIsRefusedNamingTheKnownSet(t *testing.T) {
 		})
 	}
 }
+
+// R8/111's PROFILE LEVEL for the period (fable, coop rumor/1619).
+//
+// THE FIXTURE'S WALKING STAGE IS `api-sim` AND THE PRODUCT'S IS `api`, which is
+// why every cell below declares its own `api` stage rather than reusing the
+// fixture's: the resolver reads `Stages["api"]` because the walk IS that stage,
+// so a cell built on `api-sim` would exercise the absent branch while looking
+// like it exercised the stage branch. Found by writing it the other way first.
+func TestThePeriodResolvesProfileThenStageThenAbsent(t *testing.T) {
+	// withLevels returns the fixture carrying an `api` stage and a `walking`
+	// profile that selects it, each period applied only when non-negative so
+	// one helper serves every cell.
+	withLevels := func(stageEvery, profileEvery int) map[string]any {
+		doc := wellFormed()
+		st := map[string]any{"enabled": true}
+		if stageEvery >= 0 {
+			st["reconcile_every"] = int64(stageEvery)
+		}
+		doc["stages"].(map[string]any)["api"] = st
+		pr := map[string]any{"stages": []any{"api"}, "seeds": int64(1), "budget": "1m"}
+		if profileEvery >= 0 {
+			pr["reconcile_every"] = int64(profileEvery)
+		}
+		doc["profiles"].(map[string]any)["walking"] = pr
+		return doc
+	}
+	for _, tc := range []struct {
+		what       string
+		stageEvery int
+		profEvery  int
+		profile    string
+		wantEvery  int
+		wantLevel  PeriodLevel
+	}{
+		{"neither level declares one", -1, -1, "walking", 0, PeriodAbsent},
+		{"the stage alone", 6, -1, "walking", 6, PeriodFromStage},
+		{"the profile alone", -1, 3, "walking", 3, PeriodFromProfile},
+		// THE CELL THAT MAKES IT A PRECEDENCE and not two independent reads:
+		// both declared, and the profile must win.
+		{"both, and the profile wins", 6, 3, "walking", 3, PeriodFromProfile},
+		// AND THE SAME PLATFORM READ WITHOUT A PROFILE falls to the stage, so
+		// the profile's period cannot leak into an unprofiled run -- which is
+		// the whole reason this level exists: declaring it must move nothing
+		// that does not name the profile.
+		{"both declared, asked with no profile", 6, 3, "", 6, PeriodFromStage},
+		{"profile only, asked with no profile", -1, 3, "", 0, PeriodAbsent},
+		// ZERO IS NOT A LEVEL. A profile declaring 0 declares no period and
+		// falls through, rather than overriding the stage with a zero -- the
+		// other reading would make 0 the one stage-level value no profile could
+		// leave alone.
+		{"the profile declares zero over a stage period", 6, 0, "walking", 6, PeriodFromStage},
+		{"a profile nobody declared", 6, -1, "absent-profile", 6, PeriodFromStage},
+	} {
+		t.Run(tc.what, func(t *testing.T) {
+			rep := Parse(withLevels(tc.stageEvery, tc.profEvery))
+			if !rep.OK() {
+				t.Fatalf("refused: %v", rep.Refusals)
+			}
+			every, level := rep.Platform.ReconcileEvery(tc.profile)
+			if every != tc.wantEvery || level != tc.wantLevel {
+				t.Errorf("got %d from %q, want %d from %q",
+					every, level, tc.wantEvery, tc.wantLevel)
+			}
+		})
+	}
+}
+
+// A PERIOD ON A PROFILE THAT DOES NOT RUN THE WALK IS REFUSED BY NAME, which is
+// the one new refusal the level needs (fable, coop rumor/1619).
+//
+// AND THE OTHER DIRECTION IS WHAT MAKES THE ARM WORTH HAVING, as the
+// stage-level guard's comment says of itself: a guard refusing every profile
+// period would satisfy the first half alone, so a profile that DOES select the
+// api stage must be accepted with its value intact.
+func TestAProfilePeriodIsRefusedWhenTheProfileDoesNotWalk(t *testing.T) {
+	for _, tc := range []struct {
+		what    string
+		stages  []any
+		every   int64
+		refused bool
+		reason  string
+	}{
+		{"no api stage at all", []any{"concurrency", "fuzz"}, 4, true, "do not include"},
+		{"an empty stage list", []any{}, 4, true, "do not include"},
+		// `api-sim` IS NOT `api`, and this cell exists because the fixture uses
+		// that name: a resolver matching a prefix or a substring would accept
+		// it, and the refusal would then be silent for the one project shape
+		// most likely to hit it.
+		{"api-sim, which is not the walking stage", []any{"api-sim"}, 4, true, "do not include"},
+		{"api among others", []any{"concurrency", "api"}, 4, false, ""},
+		{"api alone", []any{"api"}, 4, false, ""},
+		// NEGATIVE IS ITS OWN REFUSAL and must not be swallowed by the
+		// does-not-walk one: a profile that walks and declares -1 is refused
+		// for the sign, naming it.
+		{"negative on a walking profile", []any{"api"}, -1, true, "cannot be negative"},
+		// AND ZERO IS ACCEPTED ON A NON-WALKING PROFILE, because zero declares
+		// no period -- so there is nothing for that profile to fail to read.
+		// Without this cell the guard could fire on every profile carrying the
+		// key at all.
+		{"zero on a non-walking profile", []any{"fuzz"}, 0, false, ""},
+	} {
+		t.Run(tc.what, func(t *testing.T) {
+			doc := wellFormed()
+			doc["stages"].(map[string]any)["api"] = map[string]any{"enabled": true}
+			doc["profiles"].(map[string]any)["cell"] = map[string]any{
+				"stages": tc.stages, "seeds": int64(1), "budget": "1m",
+				"reconcile_every": tc.every,
+			}
+			rep := Parse(doc)
+			if tc.refused {
+				if rep.OK() {
+					t.Fatalf("accepted a period of %d on stages %v", tc.every, tc.stages)
+				}
+				if !names(rep.Refusals, "profiles.cell.reconcile_every", tc.reason) {
+					t.Errorf("refused for the wrong reason: %v", rep.Refusals)
+				}
+				return
+			}
+			if !rep.OK() {
+				t.Fatalf("refused: %v", rep.Refusals)
+			}
+			if got := rep.Platform.Profiles["cell"].ReconcileEvery; got != int(tc.every) {
+				t.Errorf("the period parsed as %d, want %d", got, tc.every)
+			}
+		})
+	}
+}

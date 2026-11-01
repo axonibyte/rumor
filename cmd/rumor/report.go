@@ -85,7 +85,7 @@ func reportProject(dir, profile string, stdout, stderr io.Writer) int {
 	// told from a build that never learned to report that stage at all.
 	for _, name := range selected {
 		_, _ = fmt.Fprintf(stdout, "report: stage %s -- %s\n", name,
-			stageFacts(name, prep.Platform.Stages[name]))
+			stageFacts(name, prep.Platform, profile))
 	}
 	return 0
 }
@@ -132,10 +132,15 @@ func parseReportArgs(args []string) (dir, profile, bad string) {
 // stageFacts is what one selected stage DECLARES, in its own words.
 //
 // THE PERIOD IS THE api STAGE'S AND NO OTHER'S, which is not a formatting
-// choice but the subject's shape: cmd/rumor/run.go reads
-// `Stages[stage.API].ReconcileEvery` and says why -- the walk IS the api stage,
-// so a period under another stage's table is a period for a stage that does not
-// walk.
+// choice but the subject's shape: the walk IS the api stage, so a period under
+// another stage's table is a period for a stage that does not walk.
+//
+// THIS COMMENT SAID "cmd/rumor/run.go reads `Stages[stage.API].ReconcileEvery`"
+// AND THAT WAS TRUE FOR ONE HEAD. The profile level (fable, coop rumor/1619)
+// moved the read into platform.Platform.ReconcileEvery, the one place the
+// precedence is stated, so a sentence citing run.go's old expression now points
+// at code that is not there. A claim about a sibling file is re-read on the
+// tree being committed, not inherited from the head it was written on.
 //
 // SO A PERIOD DECLARED ELSEWHERE IS NAMED AS INERT RATHER THAN PRINTED AS IF IT
 // WORKED. That is the one reading this line can give that no other output can:
@@ -144,7 +149,8 @@ func parseReportArgs(args []string) (dir, profile, bad string) {
 // the exact shape `reconcile_every`'s own negative guard was added to refuse.
 // Printing it the same way for every stage would make this report the thing
 // that CONFIRMS the mistake.
-func stageFacts(name string, st platform.Stage) string {
+func stageFacts(name string, p platform.Platform, profile string) string {
+	st := p.Stages[name]
 	if name != stage.API {
 		if st.ReconcileEvery > 0 {
 			return fmt.Sprintf("declares reconcile_every = %d, which only the %s stage reads, "+
@@ -152,9 +158,26 @@ func stageFacts(name string, st platform.Stage) string {
 		}
 		return "enabled, and declares nothing a run reads beyond that"
 	}
-	if st.ReconcileEvery > 0 {
-		return fmt.Sprintf("reconciles every %d step(s) while the walk runs, and after the "+
-			"last step", st.ReconcileEvery)
+	// THE EFFECTIVE PERIOD AND THE LEVEL IT CAME FROM, which is fable's clause
+	// at coop rumor/1619 and the reason this verb is where the declaration
+	// lives: a reader asking "does my project reconcile" is usually asking
+	// "is MY declaration the one in force", and the number alone cannot say.
+	//
+	// IT IS THE RESOLVER'S ANSWER AND NOT THIS FUNCTION'S READING. Spelling
+	// the precedence a second time here is the drift the single resolver
+	// exists to prevent, and it would be invisible: both spellings agree until
+	// a project declares the period at both levels.
+	every, level := p.ReconcileEvery(profile)
+	if every == 0 {
+		return fmt.Sprintf("reconciles only after the last step, which is every run before "+
+			"R8/110 -- no period at any level (%s)", level)
 	}
-	return "reconciles only after the last step, which is every run before R8/110"
+	// THE LEVEL IS NAMED IN THE PROJECT'S OWN WORDS, a table a reader can go
+	// and edit, rather than as the bare word the type carries.
+	where := "[stages." + stage.API + "].reconcile_every"
+	if level == platform.PeriodFromProfile {
+		where = "[profiles." + profile + "].reconcile_every"
+	}
+	return fmt.Sprintf("reconciles every %d step(s) while the walk runs, and after the "+
+		"last step -- from %s", every, where)
 }

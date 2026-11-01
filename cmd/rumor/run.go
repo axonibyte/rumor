@@ -166,7 +166,15 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		// A PROJECT WITHOUT THE KEY READS 0 -- a missing map entry is the zero
 		// Stage -- and reconciles only after the last step, exactly as every
 		// run did before this existed.
-		ReconcileEvery: prep.Platform.Stages[stage.API].ReconcileEvery,
+		//
+		// RESOLVED THROUGH platform.ReconcileEvery AND NOT READ FROM THE STAGE
+		// TABLE DIRECTLY, since fable's ruling at coop rumor/1619 gave the
+		// period a profile level. This line used to be
+		// `prep.Platform.Stages[stage.API].ReconcileEvery`, which is now one of
+		// the two levels rather than the whole answer -- and a second reader
+		// spelling the precedence its own way is how a tuned knob silently does
+		// nothing, which is why there is exactly one resolver.
+		ReconcileEvery: periodFor(prep.Platform, profile),
 		// AND WHERE THIS PROJECT'S DEADLINES ARE READ (R7.4). `advance` lands
 		// on these beside the live pending bounds; a project declaring none is
 		// walked exactly as R7.3 left it.
@@ -1152,4 +1160,16 @@ func skipList(skipped map[string]string) string {
 		out = append(out, fmt.Sprintf("%s (%s)", name, skipped[name]))
 	}
 	return strings.Join(out, "; ")
+}
+
+// periodFor is the resolver, named here so the two call sites -- the walk and
+// `rumor report` -- cannot drift apart in how they ask.
+//
+// IT DISCARDS THE LEVEL deliberately: the WALK does not care where its period
+// came from, only what it is, and a walk that behaved differently by level
+// would make the level a second knob. `rumor report` keeps the level, because
+// its reader is asking which of their declarations is in force.
+func periodFor(p platform.Platform, profile string) int {
+	every, _ := p.ReconcileEvery(profile)
+	return every
 }

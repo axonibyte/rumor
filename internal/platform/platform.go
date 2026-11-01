@@ -92,6 +92,21 @@ type Weights struct {
 
 // Profile is R22's: which stages to run, how many seeds, and the budget.
 type Profile struct {
+	// ReconcileEvery is `[profiles.<name>].reconcile_every`, and it is the
+	// level fable ruled at coop rumor/1619: the same period the api stage's
+	// table can carry, declarable per profile so a project can reconcile in
+	// ONE declared world without moving any measurement taken in the others.
+	//
+	// WHY THE LEVEL EXISTS AT ALL. R8/111 found the period declared by no
+	// project in the tree -- a knob with no declaration beside a field with no
+	// reader. Putting it on `[stages.api]` to fix that would have reached every
+	// run of examples/toy under every profile, which is the release control's
+	// five digest rows, all five promoted seeds (two of them ABOUT
+	// reconciliation), and D10's precondition -- rook's finding at r8/125, and
+	// the sharpest item on the list, because an arm whose precondition has
+	// quietly gone does not announce it.
+	ReconcileEvery int
+
 	Stages []string
 	Seeds  int
 	Budget time.Duration
@@ -133,6 +148,67 @@ func (w Weights) Weight(stage, profile, kind string) (int, bool) {
 	v, ok := w.Default[kind]
 	return v, ok
 }
+
+// PeriodLevel names where an effective period came from, because "4" and
+// "where 4 came from" are different questions and only the second one tells a
+// reader whether their own declaration is the one in force.
+type PeriodLevel string
+
+// The three levels, and `PeriodAbsent` is a value rather than an empty string
+// for the reason `rumor report` exists: a level omitted when there is nothing
+// to say cannot be told from a build that never learned to report one.
+const (
+	PeriodFromProfile PeriodLevel = "profile"
+	PeriodFromStage   PeriodLevel = "stage"
+	PeriodAbsent      PeriodLevel = "absent"
+)
+
+// ReconcileEvery resolves the walk's period for one profile, and it is the ONE
+// place the precedence is stated -- fable's wording at coop rumor/1619.
+//
+// THE ORDER IS THE ONE Weight ALREADY HAS, deliberately: profile, then stage,
+// then absent. A second precedence spelled differently from the first is how a
+// tuned knob silently does nothing, which is the hazard Weight's own comment
+// names, and this is the second knob to acquire levels.
+//
+// IT IS READ FROM THE api STAGE'S TABLE AND NO OTHER at the stage level,
+// because the walk IS the api stage; a period under another stage's table is a
+// period for a stage that does not walk, and `rumor report` names that as inert
+// rather than printing it as though it worked.
+//
+// ZERO IS NOT A LEVEL. A profile declaring `reconcile_every = 0` is declaring
+// no period, which reads as absent here rather than as a profile-level zero
+// overriding a stage-level period -- the opposite reading would make `0` the
+// one value that cannot be expressed at the stage level once any profile exists.
+func (p Platform) ReconcileEvery(profile string) (int, PeriodLevel) {
+	if profile != "" {
+		if pr, ok := p.Profiles[profile]; ok && pr.ReconcileEvery > 0 {
+			return pr.ReconcileEvery, PeriodFromProfile
+		}
+	}
+	if st, ok := p.Stages[stageAPI]; ok && st.ReconcileEvery > 0 {
+		return st.ReconcileEvery, PeriodFromStage
+	}
+	return 0, PeriodAbsent
+}
+
+// stageAPI is internal/stage's API constant, spelled here because this package
+// cannot import that one: internal/stage reads platform.Platform, so the
+// dependency runs the other way and importing back would be a cycle.
+//
+// THE COPY IS JOINED TO THE ORIGINAL BY A TEST AND BY NOTHING ELSE. A rename of
+// the stage would leave this resolver reading a table no project declares --
+// every period would resolve to `absent`, every project would report itself as
+// not reconciling, and nothing would fail to build. That is the shape of the
+// cast tests/contract/source_test.go already arms between wire and ledger, so
+// the pin lives beside it, in the one package that may import both.
+const stageAPI = "api"
+
+// WalkingStageName exports the copy above for that pin alone. It is a function
+// rather than an exported constant so that nothing in the product can read the
+// stage's name from here instead of from internal/stage, which would make the
+// copy load-bearing where it is meant to be a shadow.
+func WalkingStageName() string { return stageAPI }
 
 // --- parsing --------------------------------------------------------------
 
@@ -269,6 +345,48 @@ func Parse(doc map[string]any) Report {
 				pt.Refuse("seeds", fmt.Sprintf("%d: a profile that runs no seed runs nothing", prof.Seeds))
 			}
 			prof.Budget = pt.Duration("budget", true)
+			prof.ReconcileEvery = pt.Int("reconcile_every", false)
+			// NEGATIVE IS REFUSED BY NAME, the same way the stage table's is
+			// and for its reason: `n % period` never reaches 0 for a negative,
+			// so the walk would reconcile only at the end while the
+			// declaration said otherwise -- a knob that reads as set and does
+			// nothing.
+			if prof.ReconcileEvery < 0 {
+				pt.Refuse("reconcile_every", fmt.Sprintf(
+					"%d: a period is a count of steps and cannot be negative", prof.ReconcileEvery))
+			}
+			// AND A PERIOD ON A PROFILE THAT DOES NOT RUN THE WALK IS REFUSED
+			// BY NAME, which is fable's clause at coop rumor/1619 and the one
+			// new refusal this level needs.
+			//
+			// The walk IS the api stage, so a period on a profile whose stage
+			// list omits api is a period nothing will read -- exactly the inert
+			// declaration `rumor report` names on a non-walking STAGE, except
+			// that here it can be refused outright: a stage table is shared by
+			// every profile and cannot be judged alone, where a profile's own
+			// stage list says whether that profile walks.
+			//
+			// REFUSED RATHER THAN REPORTED because the two cases differ in who
+			// can still be right. `[stages.concurrency].reconcile_every` may be
+			// read by a future stage that walks; a profile selecting no api
+			// stage will never walk under its own declaration, so there is no
+			// reading on which the period means anything.
+			if prof.ReconcileEvery > 0 {
+				walks := false
+				for _, st := range prof.Stages {
+					if st == stageAPI {
+						walks = true
+						break
+					}
+				}
+				if !walks {
+					pt.Refuse("reconcile_every", fmt.Sprintf(
+						"%d: this profile's stages are %s, which do not include %q -- the walk IS "+
+							"that stage, so a period declared here is one no run of this profile "+
+							"can read", prof.ReconcileEvery,
+						strings.Join(prof.Stages, ", "), stageAPI))
+				}
+			}
 			pt.Done()
 			p.Profiles[name] = prof
 		}
