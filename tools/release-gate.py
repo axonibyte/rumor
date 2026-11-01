@@ -1275,6 +1275,137 @@ def _worktree_battery() -> tuple[int, int]:
     return failures, EXPECT_WORKTREE_CHECKS
 
 
+# 3, and it moves only with _changelog_date_battery: the content-head ABSENCE
+# that kills the old guard, the bump on its own day, and the bump judged on
+# another day so the absence has a presence partner.
+EXPECT_CHANGELOG_DATE_CHECKS = 3
+
+
+def _changelog_date_battery() -> tuple[int, int]:
+    """Drive the changelog arms' `version_changed` guard, both ways. (failures, ran)
+
+    IT CANNOT BE A `cases` ENTRY, and ratchet measured why (rumor/1620): that
+    runner expects either `ids == [arm]` or no findings at all, and a CONTENT
+    head legitimately fires version-unchanged AND subject-mismatch. What this
+    needs asserted is "those two, and every changelog arm ABSENT" -- a two-arm
+    expectation no `cases` shape can express. So it gets a battery, like the
+    trailer, docs-verdict and worktree checks before it.
+
+    CELL 1 IS THE ONE THAT FAILS ON THE OLD CODE. The guard was `head_version is
+    not None`, which is true of every commit in a repo that HAS a version file,
+    so a content head was judged against the changelog's top section and refused
+    for the date of a release it is not making. Reverting the guard kills cell 1
+    and nothing else -- which is the measurement, and the reason this file is
+    where the lesson lives rather than a note.
+    """
+    failures = 0
+    today = "2026-01-01"
+    other = "2026-02-02"
+    with tempfile.TemporaryDirectory() as raw:
+        repo = _world(Path(raw), today)
+
+        # 1. A CONTENT HEAD, judged on a day that is NOT the changelog's. It
+        #    moves no version, so no changelog arm has anything to say about it.
+        git(repo, "checkout", "-q", "-b", "content")
+        _mk(repo, "src/one.rs", "// a content change that bumps nothing\n")
+        _mk(repo, "docs/design.md", "design, and its mapped doc moves with it\n")
+        _commit(repo, "fix: a content head")
+        ids = {found[0] for found in evaluate(repo, "main", "content", today=other)}
+        stray = sorted(arm for arm in ids if arm.startswith("changelog-"))
+        if stray:
+            print(f"\n  FAIL changelog-date: {stray} fired on a head that changes "
+                  f"no version, so the gate judged a release this run is not "
+                  f"making. all findings: {sorted(ids)}")
+            failures += 1
+
+        # 2. A BUMP ON ITS OWN DAY must pass clean. Without this cell, cell 1's
+        #    absence is equally satisfied by a gate that lost the arms entirely.
+        git(repo, "checkout", "-q", "main")
+        git(repo, "checkout", "-q", "-b", "bump")
+        _clean_run(repo, today)
+        ids = {found[0] for found in evaluate(repo, "main", "bump", today=today)}
+        if ids:
+            print(f"\n  FAIL changelog-date: a clean bump on its own day was "
+                  f"refused: {sorted(ids)}")
+            failures += 1
+
+        # 3. THE SAME BUMP JUDGED ON ANOTHER DAY, and the arm must fire ALONE.
+        #    This is cell 1's presence partner: between them the narrowing is
+        #    shown to remove the arm where there is no new version and NOWHERE
+        #    else, which is what "the reason covers exactly what it narrows"
+        #    means when it is measured rather than argued.
+        ids = {found[0] for found in evaluate(repo, "main", "bump", today=other)}
+        if ids != {"changelog-date-wrong"}:
+            print(f"\n  FAIL changelog-date: a bump dated for another day gave "
+                  f"{sorted(ids)}, wanted changelog-date-wrong ALONE")
+            failures += 1
+    return failures, EXPECT_CHANGELOG_DATE_CHECKS
+
+
+# 4, and it moves only with STREAM_CASES: both streams, each one alone, neither.
+EXPECT_STREAM_CHECKS = 4
+
+# A FAILING `run` BLOCK, ONE PER STREAM COMBINATION. ibis rumor/1589 measured the
+# defect these keep out: `(done.stderr or done.stdout)` takes stderr WHOLE
+# whenever stderr is non-empty, so a block that echoes its own diagnostic to
+# STDOUT while a tool inside it writes to STDERR had three DISTINCT failures all
+# refuse with one identical stderr line -- a microsecond timing, in a refusal
+# about a documentation sample.
+#
+# THE `both` CASE IS THE ONE THAT FAILS ON THE OLD CODE, and it carries the TAIL
+# assertion with it: stdout has two lines and only the last may be shown, so a
+# reader cannot mistake "the tail of each stream" for "each stream".
+#
+# EACH CASE ALSO ASSERTS WHAT MUST NOT APPEAR. A message naming both streams
+# unconditionally would satisfy every `musts` here and say "stderr:" about a
+# block that never wrote to it, which is the overclaim half of the same defect.
+STREAM_CASES = (
+    ("both streams, each named",
+     "echo first-out; echo out-line; echo err-line >&2; exit 3",
+     ("stdout: out-line", "stderr: err-line"), ("first-out",)),
+    ("stdout alone", "echo only-out; exit 3",
+     ("stdout: only-out",), ("stderr:",)),
+    ("stderr alone", "echo only-err >&2; exit 3",
+     ("stderr: only-err",), ("stdout:",)),
+    ("neither stream", "exit 3",
+     ("no output",), ("stdout:", "stderr:")),
+)
+
+
+def _stream_battery() -> tuple[int, int]:
+    """Drive run_doc_blocks' failure message over each stream combination.
+
+    IT CANNOT BE A `cases` ENTRY either, and for a different reason than the
+    battery above: `cases` compares arm IDS, and what is wrong here is a
+    message FORMAT. Every one of these trips doc-run-block-failed, so no
+    id-based expectation can tell the fixed message from the broken one.
+    """
+    failures = 0
+    today = "2026-01-01"
+    for label, script, musts, must_nots in STREAM_CASES:
+        with tempfile.TemporaryDirectory() as raw:
+            repo = _world(Path(raw), today)
+            git(repo, "checkout", "-q", "-b", "run")
+            _mk(repo, "docs/sample.md", "# sample\n\n```sh run\n" + script + "\n```\n")
+            _commit(repo, "docs: a run block that fails")
+            got = run_doc_blocks(repo, "run")
+            if len(got) != 1:
+                print(f"\n  FAIL stream ({label}): {len(got)} failure(s) reported, "
+                      f"wanted exactly 1 -- the fixture has stopped reaching the "
+                      f"arm: {got}")
+                failures += 1
+                continue
+            line = got[0]
+            missing = [m for m in musts if m not in line]
+            present = [m for m in must_nots if m in line]
+            if missing or present:
+                print(f"\n  FAIL stream ({label}): {line!r}"
+                      + (f"; missing {missing}" if missing else "")
+                      + (f"; must NOT contain {present}" if present else ""))
+                failures += 1
+    return failures, EXPECT_STREAM_CHECKS
+
+
 def _trailer_battery() -> tuple[int, int]:
     """Drive docs_unchanged() over every shape a trailer arrives in.
 
@@ -1683,6 +1814,8 @@ def self_test() -> int:
     battery_failures, trailer_checks = _trailer_battery()
     docs_failures, docs_checks = _docs_verdict_battery()
     worktree_failures, worktree_checks = _worktree_battery()
+    date_failures, date_checks = _changelog_date_battery()
+    stream_failures, stream_checks = _stream_battery()
     failures = 0
     ran = 0
     for arm, label, build in cases:
@@ -1732,7 +1865,11 @@ def self_test() -> int:
                              ("docs-verdict check", docs_checks,
                               EXPECT_DOCS_VERDICT_CHECKS),
                              ("worktree check", worktree_checks,
-                              EXPECT_WORKTREE_CHECKS)):
+                              EXPECT_WORKTREE_CHECKS),
+                             ("changelog-date check", date_checks,
+                              EXPECT_CHANGELOG_DATE_CHECKS),
+                             ("stream check", stream_checks,
+                              EXPECT_STREAM_CHECKS)):
         if got == want:
             continue
         how = "FEWER than" if got < want else "MORE than"
@@ -1750,13 +1887,17 @@ def self_test() -> int:
     # all 14 cases passed -- a count that says something untrue, which is the
     # defect this whole round is about.
     total = (failures + battery_failures + docs_failures + worktree_failures
-             + size_failures)
+             + date_failures + stream_failures + size_failures)
     print(f"\n  {ran - failures} of {ran} cases ok, "
           f"{trailer_checks - battery_failures} of {trailer_checks} trailer "
           f"checks ok, {docs_checks - docs_failures} of {docs_checks} "
           f"docs-verdict checks ok, "
           f"{worktree_checks - worktree_failures} of {worktree_checks} "
-          f"worktree checks ok, {total} failed")
+          f"worktree checks ok, "
+          f"{date_checks - date_failures} of {date_checks} "
+          f"changelog-date checks ok, "
+          f"{stream_checks - stream_failures} of {stream_checks} "
+          f"stream checks ok, {total} failed")
     return RC_FINDINGS if total else RC_CLEAN
 
 

@@ -282,8 +282,15 @@ jobs:
           # prevent this was already here and already right. What differed is
           # that it surfaced BEFORE a PR existed: ratchet drove the committed
           # bytes (coop rumor/1618) rather than a required check catching it.
-          grep -q '20 of 20 cases ok, 15 of 15 trailer checks ok, 7 of 7 docs-verdict checks ok, 4 of 4 worktree checks ok, 0 failed' ../self.log \
-            || { echo "the self-test did not report 20 of 20 cases, 15 of 15 trailer checks, 7 of 7 docs-verdict checks and 4 of 4 worktree checks: a case did not run, or the gate's declared counts were changed without this literal"; exit 1; }
+          #
+          # FIFTH AND SIXTH TALLIES, SAME DAY, AND THE RADIUS WAS READ FIRST:
+          # the changelog-date and stream batteries (ratchet rumor/1620 -- two
+          # of the three fixes on this branch had no cell that fails on the old
+          # code) moved the declaration and all three sites in one commit. That
+          # is what this paragraph is for, and it is the first time it was used
+          # before the fact rather than read afterwards.
+          grep -q '20 of 20 cases ok, 15 of 15 trailer checks ok, 7 of 7 docs-verdict checks ok, 4 of 4 worktree checks ok, 3 of 3 changelog-date checks ok, 4 of 4 stream checks ok, 0 failed' ../self.log \
+            || { echo "the self-test did not report 20 of 20 cases, 15 of 15 trailer checks, 7 of 7 docs-verdict checks, 4 of 4 worktree checks, 3 of 3 changelog-date checks and 4 of 4 stream checks: a case did not run, or the gate's declared counts were changed without this literal"; exit 1; }
           # THIS PROOF IS NOT A SECOND COPY OF THE ASSERTION ABOVE. The grep
           # above pins the NUMBERS; this one pins the SHAPE and displays what
           # actually ran, with a pattern deliberately not coupled to the

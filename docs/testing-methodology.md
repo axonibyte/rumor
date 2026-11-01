@@ -161,12 +161,34 @@ the toy, 22 of 24 with the browser stage off, 19 of 24 with no adapter on
 PATH.
 
 `tools/release-gate.py --self-test` drives twenty cases, fifteen trailer checks,
-seven docs-verdict checks and four worktree checks, and asserts that **each arm
-fires alone**. Each count is declared as a constant and asserted in both
+seven docs-verdict checks, four worktree checks, three changelog-date checks and
+four stream checks, and asserts that **each arm fires alone**. Each count is declared as a constant and asserted in both
 directions, because a case that silently stops running is invisible in a
 self-consistent total. The release-gate workflow runs that self-test before the
 gate judges a pull request, because a gate whose arms have stopped
 discriminating would otherwise refuse or admit a run with nobody the wiser.
+
+**Four of the six tallies are batteries, and not for tidiness.** The `cases`
+runner compares arm *ids*: an entry either names one arm that must fire alone,
+or names none and must pass clean. Three kinds of check cannot be expressed in
+that shape, and each got a battery once a fix of its kind shipped with nothing
+keeping it:
+
+- **An expected refusal.** The worktree checks expect `CannotRun`, which the
+  `cases` runner reads as a failure. There is no way for a check whose correct
+  outcome is "the gate refused to run" to pass there.
+- **A two-arm expectation.** A content head legitimately fires
+  `version-unchanged` *and* `subject-mismatch`, so the assertion that the
+  changelog arms are *absent* on it fits neither `cases` shape.
+- **A message format.** Every stream check trips `doc-run-block-failed`, so no
+  id-based expectation can tell a message that names both streams from one that
+  reports only `stderr`.
+
+The two latter batteries exist because a reviewer drove the branch's committed
+bytes and found that reverting either fix left the whole self-test green
+(`rumor/1620`). Both reverts are now killed, and by exactly one cell each: a
+mutant that survives every `cases` entry is the measurement that says a battery
+is owed, not an opinion about taste.
 
 **It is not one case per arm, and the gap is where a broken arm hid.** This
 section used to say "twelve cases — one per refusal arm plus a clean run", and
