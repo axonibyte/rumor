@@ -1860,3 +1860,79 @@ func TestTheRecordCarriesTheStageItWasDispatchedAs(t *testing.T) {
 	t.Logf("PROOF dispatched as api -> %v, as nothing -> %v, %d steps either way",
 		ran.Stages, none.Stages, len(ran.Steps))
 }
+
+// TestAnUnservableSubjectIsAValueAndTheWalkDoesNotRefuse is fable's ruling at
+// coop rumor/1669 driven end to end: the adapter reports the OUTCOME as a
+// field, the walk writes the VALUE, and a statute compares it. Before the
+// ruling an adapter that could not serve a subject answered a FAULT, and a
+// fault on observe has no skip in this package -- the only two are an
+// unresolvable handle and a missing session -- so the run ended on it.
+//
+// THE STATUTE IS THE INSTRUMENT, and that is forced rather than chosen:
+// schedule.Record carries a COUNT of observations and not their values, so a
+// cell asserting the conversion needs a judge that reads one. `bug` ENDS a walk
+// (r5/152 ruling 2), so a walk that ran every step is a walk whose observation
+// read `missing` -- and with the conversion removed the value is null, the
+// default fires, and the record stops at step 1.
+//
+// BOTH HALVES OF THE RULING ARE ASSERTED SEPARATELY: that the walk did not
+// REFUSE (the error), and that the value reached the statute (the step count).
+// A skip would satisfy the first and fail the second, which is the distinction
+// fable's "a skip hides the one thing a browser observation exists to show"
+// turns on.
+func TestAnUnservableSubjectIsAValueAndTheWalkDoesNotRefuse(t *testing.T) {
+	ctx := context.Background()
+	const seed = 20261101
+	const steps = 5
+
+	const judge = `package rumor.statute
+
+default finding := "bug"
+
+finding := "consistent" if input.observation.value == "missing"
+
+default may_create_event := true
+
+default may_join := true
+`
+	// A SURFACE THAT RECORDS THE OUTCOME. internal/fake answers a recorded
+	// `missing` as the FIELD rather than as a value that happens to be that
+	// string, which is what puts this cell on the path under test.
+	surface := fake.Default()
+	surface.Observations = append(surface.Observations,
+		wire.Observation{Name: "gone", Source: wire.SourceAPI})
+	surface.Observe["gone"] = wire.ValueMissing
+	raw, err := json.Marshal(surface)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "surface.json")
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := walkProject(t)
+	p.Statute = judge
+	p.Observations = []bindings.Observation{
+		{Name: "gone", Source: wire.SourceAPI, Of: "event.created"},
+	}
+	sess, err := wire.Open(ctx, fakeSpawn("--surface", path), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	rec, err := schedule.Walk(ctx, p, sess, seed, steps, 1)
+	if err != nil {
+		t.Fatalf("the walk REFUSED an unservable subject, which the ruling forbids: %v", err)
+	}
+	if len(rec.Steps) != steps {
+		t.Fatalf("the walk ran %d of %d step(s), so the observation did not read %q -- "+
+			"a `bug` ends a walk", len(rec.Steps), steps, wire.ValueMissing)
+	}
+	if rec.Observations != steps {
+		t.Errorf("%d observation(s) evaluated over %d step(s)", rec.Observations, steps)
+	}
+	t.Logf("PROOF an unservable subject read %q at every one of %d step(s), and the walk did not refuse",
+		wire.ValueMissing, len(rec.Steps))
+}

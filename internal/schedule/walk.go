@@ -1661,6 +1661,26 @@ func observeOne(ctx context.Context, statute string, sess *wire.Session, session
 	// `[deadline].instants` needs the NUMBER, so it is handed back rather
 	// than dug back out of a map.
 	value := resp.Value
+	// A SUBJECT THE ADAPTER COULD NOT SERVE IS A VALUE, and this is the ONE
+	// place the word is written (fable, coop rumor/1669). The adapter reports
+	// the OUTCOME as a field and never the spelling, so a misspelling cannot
+	// enter from an adapter and read as an ordinary value a statute happens not
+	// to match.
+	//
+	// AND THE WALK NEVER REFUSES ON IT, which is the clause that distinguishes
+	// this from the fault it replaced: a fault on observe has no skip here --
+	// the only two are an unresolvable handle and a missing session, both
+	// above -- so an unservable subject used to end the run. It is now a
+	// reading the statute judges, and a statute that cares guards on it the
+	// way the expiry rules guard on their own kind.
+	//
+	// IT IS NOT A SKIP EITHER, and fable's reason is the sharper one: a skip
+	// hides the one thing a browser observation exists to show. A page the
+	// reader cannot see is exactly the finding such an observation is for, so
+	// it must reach the statute rather than vanish before it.
+	if resp.Missing {
+		value = wire.ValueMissing
+	}
 	check := engine.Check{
 		Query:  decl.Name,
 		Of:     decl.Of,

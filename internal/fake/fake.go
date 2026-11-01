@@ -232,6 +232,23 @@ func (cfg Config) answer(contract string, line []byte, calls map[string]int, clo
 				Detail: fmt.Sprintf("%q is not recorded in this surface; it records %s", m.Query, list(keysAny(cfg.Surface.Observe))),
 			})
 		}
+		// A RECORDED SURFACE MUST BE ABLE TO RECORD EVERY ANSWER THE CONTRACT
+		// ALLOWS, and `missing` became one at fable's ruling (coop rumor/1669).
+		// A surface recording that word reports the OUTCOME -- the field -- and
+		// not a value that happens to be the same string.
+		//
+		// THE TWO ARE WORTH KEEPING APART, which is the whole reason this is a
+		// branch rather than a pass-through: recorded as a bare VALUE it would
+		// exercise the walk's ordinary path and say nothing about the field the
+		// walk converts, so a drill could record `missing` and prove nothing
+		// about the thing it was recording.
+		if word, isStr := value.(string); isStr && word == wire.ValueMissing {
+			typed = wire.ObserveResponse{
+				Envelope: wire.Envelope{Kind: wire.KindObserve, Contract: contract, ID: env.ID},
+				Missing:  true,
+			}
+			break
+		}
 		typed = wire.ObserveResponse{
 			Envelope: wire.Envelope{Kind: wire.KindObserve, Contract: contract, ID: env.ID},
 			Value:    value,

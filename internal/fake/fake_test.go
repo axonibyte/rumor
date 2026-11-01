@@ -541,3 +541,54 @@ func TestARepeatExecutionAnswersADifferentID(t *testing.T) {
 		}
 	}
 }
+
+// TestARecordedMissingIsTheOutcomeAndNotAValue holds the one-word branch this
+// package gained for fable's ruling (coop rumor/1669), and its PAIR is the
+// point: a surface records `missing` to mean the OUTCOME, and any other string
+// is still an ordinary value.
+//
+// WITHOUT THE SECOND CASE THE BRANCH IS UNHELD. Widening it to every string
+// would make a surface recording a word -- an enum, a status, a name -- answer
+// as though the subject were unservable, and the walk would write `missing`
+// over a value the surface meant literally. The cell therefore carries the
+// string the branch must NOT take.
+func TestARecordedMissingIsTheOutcomeAndNotAValue(t *testing.T) {
+	for _, c := range []struct {
+		what, recorded string
+		missing        bool
+	}{
+		{"the word is the outcome", wire.ValueMissing, true},
+		{"another string is a value", "pending-elsewhere", false},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			cfg := dflt()
+			cfg.Surface.Observe["subject"] = c.recorded
+			raw := drive(t, cfg, request(wire.KindObserve, map[string]any{
+				"query": "subject", "source": string(wire.SourceAPI), "token": "fake-token",
+			}))
+			msg, err := wire.DecodeResponse(raw)
+			if err != nil {
+				t.Fatalf("the real decoder refused this answer: %v\n%s", err, raw)
+			}
+			resp, ok := msg.(wire.ObserveResponse)
+			if !ok {
+				t.Fatalf("not an observe response: %#v", msg)
+			}
+			if resp.Missing != c.missing {
+				t.Errorf("missing is %v, want %v (recorded %q)", resp.Missing, c.missing, c.recorded)
+			}
+			if c.missing {
+				// AND NO VALUE BESIDE IT: the spelling is the walk's to write.
+				if resp.Value != nil {
+					t.Errorf("a value was written beside missing: %#v", resp.Value)
+				}
+				t.Logf("PROOF %s, with no value beside it", c.what)
+				return
+			}
+			if resp.Value != c.recorded {
+				t.Errorf("the value is %#v, want %q", resp.Value, c.recorded)
+			}
+			t.Logf("PROOF %s: %q came back as the value", c.what, c.recorded)
+		})
+	}
+}

@@ -232,7 +232,38 @@ type ExecuteResponse struct {
 type ObserveResponse struct {
 	Envelope
 	Value any `json:"value"`
+
+	// Missing says the adapter could not SERVE the subject, and fable ruled it
+	// an ANSWER rather than a fault (coop rumor/1669): a page that is not
+	// served is what a browser sees, so it is what a reader of the ledger
+	// should see too.
+	//
+	// WHY A FIELD AND NOT THE VALUE ITSELF. The walk turns this into the
+	// observation's value, spelled ValueMissing, and the adapter never writes
+	// that word -- the SPELLING belongs to docs/vocabulary.md and the engine
+	// that compares it, not to each adapter. An adapter reporting the string
+	// would make every adapter a second place the word could be misspelled,
+	// and a misspelling would read as an ordinary value a statute simply does
+	// not match.
+	//
+	// ADDITIVE, SO THE CONTRACT STAYS "2" (fable, same ruling): an adapter that
+	// never sets it is unchanged, `omitempty` keeps it off the wire for every
+	// existing answer, and no persisted artifact gains a field.
+	//
+	// IT IS NOT AN ERROR AND NOT A ZERO. A fault would refuse the run -- the
+	// walk has no skip for one -- and a zero would make a page the observer
+	// cannot see read as an empty one, which is the reading a visibility
+	// finding would then rest on.
+	Missing bool `json:"missing,omitempty"`
 }
+
+// ValueMissing is the observation value the walk records for a subject the
+// adapter could not serve. It is A VALUE A STATUTE MAY COMPARE AND NOT THE
+// ABSENCE OF ONE, which is the half of fable's ruling that decides how a
+// statute is written against it: a rule may ask whether the reading is
+// `missing` and be right about a deleted subject, where a rule reading silence
+// has nothing to ask.
+const ValueMissing = "missing"
 
 // ClockRequest asks the app-exposed test clock to move. It is the envelope plus
 // two fields and nothing else.
@@ -339,7 +370,14 @@ var responses = map[Kind]shape{
 		required: []string{"kind", "contract", "id", "actions", "observations", "contexts", "components", "capabilities"},
 	},
 	KindExecute: {required: []string{"kind", "contract", "id", "ids", "response"}},
-	KindObserve: {required: []string{"kind", "contract", "id", "value"}},
+	// `missing` IS OPTIONAL AND `value` STAYS REQUIRED, which is what keeps this
+	// additive: an adapter that never answers `missing` is unchanged, and one
+	// that does still sends `value` (null). THE TABLE IS THE SECOND INSTRUMENT
+	// over the same line -- `into` reads the struct tags -- and this package
+	// says in its own words that a disagreement between them is a defect HERE.
+	// It was: the field went on the struct first and the strict decoder refused
+	// a message the struct could hold, which is the pairing working.
+	KindObserve: {required: []string{"kind", "contract", "id", "value"}, optional: []string{"missing"}},
 	KindClock:   {required: []string{"kind", "contract", "id", "t"}},
 	KindSession: {required: []string{"kind", "contract", "id", "token"}},
 	KindError:   {required: []string{"kind", "contract", "id", "error"}},

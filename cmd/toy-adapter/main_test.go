@@ -798,24 +798,64 @@ func TestAPageWithoutACountElementIsAFaultAndNotZero(t *testing.T) {
 	}
 }
 
-// TestAPageTheObserverCannotSeeIsAFaultAndNotZero holds the other half of the
-// same sentence. The toy answers 404 both for an event that is gone and for one
-// not visible to the reader's role, and NEITHER IS A NUMBER -- so an absence
-// read as zero would make a hidden page look like an empty event, which is the
-// reading a visibility finding would then rest on.
-func TestAPageTheObserverCannotSeeIsAFaultAndNotZero(t *testing.T) {
-	a, _ := stub(t, map[string]answer{
-		"GET /ui/events/e-1": {http.StatusNotFound, doc("not visible to you\n")},
-	})
-	kind, detail := faultOf(t, ask(t, a, map[string]any{
-		"kind": "observe", "query": "page_count", "source": "browser", "token": "t-1",
-		"args": map[string]any{"event": "e-1"},
-	}))
-	if kind != string(wire.FaultInternal) {
-		t.Errorf("a page the observer cannot see is fault %q, want %q", kind, wire.FaultInternal)
-	}
-	if !strings.Contains(detail, "404") {
-		t.Errorf("the fault does not name the status: %q", detail)
+// TestAPageNotServedIsMissingAndNotAFault holds fable's ruling at coop
+// rumor/1669, and it REPLACES a cell of mine that asserted the opposite an hour
+// earlier: a 404 on the page used to be `internal`, which refused the run,
+// because the walk has no skip for an adapter fault.
+//
+// A PAGE THAT IS NOT SERVED IS WHAT A BROWSER SEES, so it is an answer. The toy
+// answers 404 both for a deleted event and for one not visible to this reader's
+// role, and `missing` is neither the number nor silence -- which keeps the half
+// of the old cell that was right: a hidden page read as 0 would look like an
+// empty event.
+//
+// THE 500 IS THE DISCRIMINATING INPUT and the reason this is a pair: the
+// narrowing is "404 alone, not every >= 400", so the cell carries a status the
+// narrowing must still refuse. Without it, widening the branch to every error
+// would make a BROKEN SERVER read exactly like a deleted event, and nothing
+// would say so.
+func TestAPageNotServedIsMissingAndNotAFault(t *testing.T) {
+	for _, c := range []struct {
+		what    string
+		code    int
+		missing bool
+	}{
+		{"a 404 is an answer", http.StatusNotFound, true},
+		{"a 500 is still a fault", http.StatusInternalServerError, false},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			a, _ := stub(t, map[string]answer{
+				"GET /ui/events/e-1": {c.code, doc("not served\n")},
+			})
+			out := ask(t, a, map[string]any{
+				"kind": "observe", "query": "page_count", "source": "browser", "token": "t-1",
+				"args": map[string]any{"event": "e-1"},
+			})
+			if !c.missing {
+				kind, detail := faultOf(t, out)
+				if kind != string(wire.FaultInternal) {
+					t.Errorf("fault %q, want %q", kind, wire.FaultInternal)
+				}
+				if !strings.Contains(detail, "500") {
+					t.Errorf("the fault does not name the status: %q", detail)
+				}
+				t.Logf("PROOF %s", c.what)
+				return
+			}
+			if out["kind"] != "observe" {
+				t.Fatalf("a 404 did not answer an observe: %v", out)
+			}
+			if m, ok := out["missing"].(bool); !ok || !m {
+				t.Errorf("the answer does not carry missing: %v", out)
+			}
+			// AND NO VALUE, because the SPELLING is the walk's to write: an
+			// adapter reporting the word would make every adapter a second
+			// place it could be misspelled.
+			if v, present := out["value"]; present && v != nil {
+				t.Errorf("the adapter wrote a value beside missing: %#v", v)
+			}
+			t.Logf("PROOF %s, and the adapter writes no value for it", c.what)
+		})
 	}
 }
 

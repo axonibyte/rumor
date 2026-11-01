@@ -198,6 +198,7 @@ a bare id could not say which was which.
 | field | type | consumer |
 |---|---|---|
 | `value` | any | what was observed. The ledger writes it as an `observed` fact at the position it assigns, with the source the engine asked for |
+| `missing` | bool, optional | the adapter could not **serve** the subject -- a page that is not there, or not there for this observer. It is an ANSWER and not a fault (fable, coop rumor/1669): a fault on `observe` has no skip in the walk, so a subject the application was right to withhold used to END the run. The engine turns it into the observation's value, `missing`, which docs/vocabulary.md v5 defines as A VALUE A STATUTE MAY COMPARE AND NOT THE ABSENCE OF ONE -- and the ADAPTER never writes that word, because an adapter spelling it would make every adapter a second place it could be misspelled. OPTIONAL AND ADDITIVE, so the contract stays "2": `value` is still required and still sent (null), `omitempty` keeps the field off every existing answer, and an adapter that never sets it is unchanged |
 
 **No position.** The ledger assigns positions on append (`docs/design.md`:
 "Positions are assigned by the store, not passed in"), and

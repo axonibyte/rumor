@@ -642,12 +642,31 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 		if err != nil {
 			return fault(id, wire.FaultInternal, "", err.Error())
 		}
-		if code >= 400 {
-			// A PAGE THE OBSERVER CANNOT SEE IS NOT A VALUE. The toy answers
+		if code == http.StatusNotFound {
+			// A PAGE THAT IS NOT SERVED IS AN ANSWER, not a fault, and that is
+			// fable's ruling at coop rumor/1669 -- which REVERSES what this
+			// branch said when it was written an hour earlier. The toy answers
 			// 404 both for an event that is gone and for one not visible to
-			// the reader's role, and neither is a number -- so this says so
-			// rather than reading an absence as zero, which would make a
-			// hidden page look like an empty one.
+			// this reader's role; in both the browser sees no page, which is
+			// what a reader of the ledger should see too. So the observation
+			// reports `missing` and the walk records it as a value.
+			//
+			// AND IT IS STILL NOT ZERO, which was the right half of the
+			// original reading: a hidden page read as 0 would look like an
+			// empty event, and that is the reading a visibility finding would
+			// then rest on. `missing` is neither the number nor silence.
+			//
+			// 404 ALONE AND NOT EVERY >= 400, which is the narrowing and its
+			// reason: a 500 is the application BREAKING rather than a page
+			// withheld, and reporting that as `missing` would make a broken
+			// server read exactly like a deleted event. Every other status
+			// keeps the fault below.
+			return wire.ObserveResponse{
+				Envelope: wire.Envelope{Kind: wire.KindObserve, Contract: wire.ContractVersion, ID: id},
+				Missing:  true,
+			}
+		}
+		if code >= 400 {
 			return fault(id, wire.FaultInternal, "query",
 				fmt.Sprintf("the toy answered %s with status %d", path, code))
 		}
