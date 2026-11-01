@@ -210,7 +210,21 @@ jobs:
           # produced: measured at dd614ba, 0 PROOF lines of 37 plain and 344 of
           # 2275 with -v (rook, coop rumor/1119). The mining step below is what
           # reads them; this flag is what makes them exist to read.
-          timeout 900 "$GO" test -count=1 -v ./... > ../test.log 2>&1 || rc=$?
+          # THE CAP IS A BUDGET AND NOT A CHECK, so it moves: fable ruled 900 -> 1800
+          # at coop rumor/1665 after runs 619 and 622 both died here at exactly 900s
+          # with NO test failing -- rc 124, "(no FAIL or panic line in test.log)".
+          # WHERE THE TIME GOES, from run 995's own package lines, the last green
+          # run before the crossing: tests/run 598.000s, tests/attaint 424.883s,
+          # tests/clock 84.998s, tests/engine 78.091s. `go test ./...` runs packages
+          # in parallel, so the wall clock is the critical path and tests/run is it.
+          # The suite's growth is recorded for 111's bump notes rather than chased
+          # here, and this line is the budget that stops a slow suite reading as a
+          # broken one.
+          #
+          # CONTENTION IS NOT THE CAUSE, measured rather than assumed: nothing
+          # overlapped 622's window on the runner, while 995 -- which PASSED -- was
+          # overlapped for four minutes.
+          timeout 1800 "$GO" test -count=1 -v ./... > ../test.log 2>&1 || rc=$?
           # THE FAILURE VIEW IS MINED AND NOT ONLY TAILED, because -v moved what
           # the last 20 lines contain: under -v a tail is the verbose output of
           # whichever package finished last, so a FAIL twenty packages earlier
@@ -220,7 +234,7 @@ jobs:
           grep -nE '^(--- )?FAIL|^panic:|^\t+--- FAIL' ../test.log | head -40 \
             || echo "(no FAIL or panic line in test.log)"
           tail -20 ../test.log
-          test "$rc" -eq 124 && { echo "HANG: go test exceeded 900s. The CONSEQUENCE holds either way -- this is a finding against the test, not a red build -- but the premise does not: rc 124 proves only that 900s elapsed, and a test taking 901s terminates. Read test.log for which package started last."; exit 124; }
+          test "$rc" -eq 124 && { echo "HANG: go test exceeded 1800s. The CONSEQUENCE holds either way -- this is a finding against the test, not a red build -- but the premise does not: rc 124 proves only that 1800s elapsed, and a test taking 1801s terminates. Read test.log for which package started last."; exit 124; }
           test "$rc" -eq 0 || { echo "go test exited $rc"; exit "$rc"; }
           # and a value only execution produces: the harness's own per-package
           # verdict. `go test` prints `ok <pkg> <elapsed>` for each package that
