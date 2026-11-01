@@ -234,7 +234,27 @@ jobs:
           grep -nE '^(--- )?FAIL|^panic:|^\t+--- FAIL' ../test.log | head -40 \
             || echo "(no FAIL or panic line in test.log)"
           tail -20 ../test.log
-          test "$rc" -eq 124 && { echo "HANG: go test exceeded 1800s. The CONSEQUENCE holds either way -- this is a finding against the test, not a red build -- but the premise does not: rc 124 proves only that 1800s elapsed, and a test taking 1801s terminates. Read test.log for which package started last."; exit 124; }
+          test "$rc" -eq 124 && {
+            echo "HANG: go test exceeded 1800s. The CONSEQUENCE holds either way -- this is a finding against the test, not a red build -- but the premise does not: rc 124 proves only that 1800s elapsed, and a test taking 1801s terminates."
+            # AND WHICH PACKAGES FINISHED, BY NAME AND WITH THEIR OWN ELAPSED.
+            # This branch has said "read test.log for which package started
+            # last" since it was written and never printed it -- and test.log
+            # lives in the runner's workspace, so it is gone with the job and
+            # the one reader who could answer never had it. The cost is
+            # measured rather than supposed: a timeout has now been diagnosed
+            # TWICE by reading a GREEN run's log on the box for per-package
+            # figures, because the RED one carries a tail of whichever package
+            # finished last and nothing else.
+            #
+            # THE HUNG PACKAGE IS THE DIFFERENCE, which is why the total is
+            # printed beside the list: `go test ./...` reports a package when it
+            # finishes, so the ones missing from this list are the ones still
+            # running when the budget expired.
+            echo "--- completed, with each package's own elapsed:"
+            grep -aE '^(ok|FAIL)[[:space:]]+forge\.axonibyte\.com/' ../test.log || echo "(none completed)"
+            echo "--- $(grep -acE '^ok[[:space:]]+forge\.axonibyte\.com/' ../test.log) of $(timeout 60 "$GO" list ./... | wc -l | tr -d ' ') package(s) reported; the rest were still running, and the hang is in that difference"
+            exit 124
+          }
           test "$rc" -eq 0 || { echo "go test exited $rc"; exit "$rc"; }
           # and a value only execution produces: the harness's own per-package
           # verdict. `go test` prints `ok <pkg> <elapsed>` for each package that
