@@ -65,8 +65,9 @@ const (
 	// the mutant from the statute -- `missing` is correct for a deleted event's
 	// page and a finding for a live one. The third case is the reader's control.
 	// These match tests/statute's own declarations, as the comment above says.
-	wantCases   = 37
-	wantMutants = 39
+	// 37 -> 40 AND 39 -> 41 AT R8/111's SECOND PLANT: R8/111's second plant adds three cases for one role-shaped rule (the finding, the admin control, the empty list) and two mutants for the rules they arm (m17 the role check dropped, m18 the count judgement unscoped).
+	wantCases   = 40
+	wantMutants = 41
 )
 
 type observation struct {

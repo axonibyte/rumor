@@ -353,8 +353,34 @@ expiry_sound if true
 # ledger rows a run can catch in R5: the visibility leak and the stale count.
 default finding := "bug"
 
+# AND IT IS SCOPED AWAY FROM THE OBSERVATION THAT IS NOT ABOUT THAT NUMBER,
+# which is this file's own principle one rule further on -- "a judgement written
+# for one kind of observation cannot be handed a second kind" -- applied to the
+# judgement that had no such guard.
+#
+# WHY IT NEEDS ONE. `believed` is the join count, and this rule called any
+# observation consistent whose value happened to equal it. R8/111's second plant
+# is a page that shows a NON-ADMIN the attendee list: an honest attendee count
+# equals the join count exactly, so without a guard the leak reads as consistent
+# and the plant is uncatchable -- a judgement about a number answering a question
+# about a ROLE.
+#
+# IT NAMES THE EXCLUDED ONE AND NOT THE INCLUDED ONES, and that is measured
+# rather than preferred. The first cut listed the four queries that ARE about the
+# join count and let everything else fall to the default, on the reasoning that an
+# unscoped observation should have to be ruled on. Six tests in tests/quiesce then
+# failed at step 1 with `create_event [bug]`: they walk THIS statute with an
+# observation of their own named `attendance` (walk_test.go:317), which reports the
+# join count under a name this file cannot know. The set of count queries is not
+# closed -- a harness may invent one -- while the set of observations this statute
+# knows are NOT counts is exactly as long as the rules below it.
+#
+# SO THE DIRECTION IS THE SAFE ONE HERE AND NOT IN GENERAL: a future observation
+# that is not about the join count must exclude itself, and the clause it adds to
+# do that sits beside its own judgement, where a reader of either will find it.
 finding := "consistent" if {
 	not deleted
+	not attendee_observation
 	input.observation.value == believed
 }
 
@@ -386,6 +412,34 @@ finding := "consistent" if {
 	page_observation
 	deleted
 	input.observation.value == "missing"
+}
+
+# WHO THE PAGE SHOWS, AND THIS RULE IS ROLE-SHAPED (fable, coop rumor/1682). The
+# epic's ledger row is "template renders an item to the wrong role": the API
+# serves the attendee list to the event's ADMIN alone and the template renders it
+# to every role the event is visible to, so the finding is not a wrong NUMBER but
+# a wrong AUDIENCE.
+#
+# THE ROLE IS THE OBSERVATION'S, which is the venire's role and the same one
+# role_sees_subject reads against a claim's `visible_to`. cmd/toy's own per-event
+# admin is a different namespace that shares the word, and a rule comparing the
+# two would be comparing two things that happen to spell alike.
+attendee_observation if input.observation.query == "page_attendees"
+
+# AN EVENT'S ADMIN MAY SEE WHO IS COMING: the API serves them that list on its
+# own path, so a page showing it to them is the application working.
+finding := "consistent" if {
+	attendee_observation
+	input.observation.role == "admin"
+}
+
+# AND AN EMPTY LIST TELLS NOBODY ANYTHING, so it is not a finding whoever reads
+# it. This clause is what makes the plant's ABSENCE distinguishable from an event
+# nobody has joined: without it, a repaired template would read as a finding on
+# every empty page.
+finding := "consistent" if {
+	attendee_observation
+	input.observation.value == 0
 }
 
 # AN INVITATION HONORED PAST ITS EXPIRY -- R7.4's LEDGER ROW, and the first

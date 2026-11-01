@@ -1,0 +1,79 @@
+{
+  "why": "THE FINDING'S HONEST CONTROL, one field apart: the same world, the same non-empty list, observed by a role the API would have served. An event's admin may see who is coming -- that is what /events/<id>/attendees is for -- so the page showing it to them is the application working, and the rule says so explicitly rather than leaving it to the default. THE ROLE IS THE VENIRE'S, which is the same namespace role_sees_subject reads against a claim's `visible_to`, and not cmd/toy's per-event admin that shares the word.",
+  "expect": {
+    "believed": 1,
+    "role_sees_subject": true,
+    "finding": "consistent",
+    "rests_on_planted": false,
+    "may_join": false,
+    "may_leave": true,
+    "may_create_user": false,
+    "has_user": true,
+    "may_create_event": true,
+    "may_delete": false,
+    "may_invite": false,
+    "may_accept": false,
+    "expiry_sound": false
+  },
+  "input": {
+    "observation": {
+      "actor": "bob",
+      "of": "event.joined",
+      "query": "page_attendees",
+      "source": "browser",
+      "value": 1,
+      "role": "admin",
+      "position": 5
+    },
+    "known": [
+      "bob.user#1",
+      "alice.event#1",
+      "bob.join#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handles": [
+          "alice.user#1"
+        ]
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 2,
+        "handles": [
+          "bob.user#1"
+        ]
+      },
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 3,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "bob.join#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 5,
+        "handles": [
+          "bob.join#1",
+          "alice.event#1"
+        ]
+      }
+    ]
+  }
+}

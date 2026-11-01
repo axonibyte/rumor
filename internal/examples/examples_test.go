@@ -31,7 +31,13 @@ const (
 	// event is the finding the clause exists to leave alone. The second is the
 	// discriminating one: without it the clause could drop `deleted` and every
 	// case would still agree.
-	wantCases = 37
+	// AND 37 -> 40 WITH THE ATTENDEE RULE (R8/111's second plant; fable, coop
+	// rumor/1682). Three cases for one role-shaped judgement, and each exists
+	// for a different reason rather than for coverage: a non-admin shown a
+	// NON-EMPTY list is the finding, an admin shown the same list is the honest
+	// control one field away, and an empty list is what makes the plant's
+	// ABSENCE distinguishable from an event nobody has joined.
+	wantCases = 40
 )
 
 func TestRunOverTheCommittedTree(t *testing.T) {

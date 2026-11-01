@@ -50,9 +50,14 @@ MUTATIONS = {
     "m1-believed-ignores-visibility": (
         "believed := count(joined_by_observer) - count(left_by_observer) if role_sees_subject",
         "believed := count(joined_by_observer) - count(left_by_observer)"),
+    # THE ANCHOR MOVED WHEN THE RULE GAINED ITS SCOPE (R8/111): the consistent
+    # judgement is now guarded by `counts_the_joins`, so the old two-line body no
+    # longer occurs and the generator refused rather than mutating a rule this
+    # mutant is not about. The CHANGE is unmoved -- `deleted` dropped and nothing
+    # else -- which is what the mutant's name and header claim.
     "m2-finding-ignores-delete": (
-        'finding := "consistent" if {\n\tnot deleted\n\tinput.observation.value == believed\n}',
-        'finding := "consistent" if {\n\tinput.observation.value == believed\n}'),
+        'finding := "consistent" if {\n\tnot deleted\n\tnot attendee_observation\n\tinput.observation.value == believed\n}',
+        'finding := "consistent" if {\n\tnot attendee_observation\n\tinput.observation.value == believed\n}'),
     "m3-may-join-always": (
         "may_join if {\n\tknows_of_subject\n\tnot already_joined\n}",
         "may_join if true"),
@@ -94,6 +99,33 @@ MUTATIONS = {
     # accepted-then-the-clock-moved was authored for exactly this (rook
     # rumor/1426, /1430; ratchet /1428 required the case to carry the clock on
     # the case path as well as the claim's `t`, which it now does).
+    # THE TWO MUTANTS FOR THE ATTENDEE RULE (R8/111's second plant). Each is
+    # killed by a case the same commit added, which is the only way a new rule is
+    # armed rather than merely present.
+    #
+    # m17 drops the ROLE from the admin clause, so every reader is treated as one
+    # the API would have served and a viewer's non-empty reading goes consistent.
+    # That is the plant's finding turned off, and viewer-sees-the-attendee-list is
+    # what refuses it.
+    "m17-attendee-list-shown-to-anyone": (
+        'finding := "consistent" if {\n\tattendee_observation\n\tinput.observation.role == "admin"\n}',
+        'finding := "consistent" if attendee_observation'),
+    # m18 drops the SCOPE from the count judgement, which is the collision this
+    # rule was given a scope for: an honest attendee count equals the join count
+    # exactly, so without the guard the leak reads as consistent by a judgement
+    # about a number answering a question about a role. It was unarmed for as long
+    # as the scope was absent, because nothing observed a page's audience.
+    "m18-count-judgement-unscoped": (
+        'finding := "consistent" if {\n\tnot deleted\n\tnot attendee_observation\n\tinput.observation.value == believed\n}',
+        'finding := "consistent" if {\n\tnot deleted\n\tinput.observation.value == believed\n}'),
+    # m16 ARRIVED HAND-CUT AND IS NOW GENERATED LIKE THE REST (R8/111). It was
+    # written beside the page clause in the same commit as that clause, which is
+    # exactly how the nine in this file's header had drifted: a mutant cut from
+    # the statute as it stood never re-cuts itself, and the next rule added to the
+    # statute leaves it a multi-hunk diff that tests/statute refuses.
+    "m16-page-missing-ignores-delete": (
+        'finding := "consistent" if {\n\tpage_observation\n\tdeleted\n\tinput.observation.value == "missing"\n}',
+        'finding := "consistent" if {\n\tpage_observation\n\tinput.observation.value == "missing"\n}'),
     "m15-honored-past-expiry-reads-the-seal-clock": (
         "\tc.t > input.observation.value",
         "\tinput.clock.now > input.observation.value"),

@@ -239,7 +239,12 @@ const root = "../.."
 // the page-missing clause ignore `deleted`, so it is a copy of the statute like
 // every other mutant and carries the same two quotes. Not a word of new prose.
 // 0 absent.
-const declaredQuotes = 62
+// 62 -> 66 AT R8/111's SECOND PLANT: two more mutants (m17 drops the attendee
+// rule's role check, m18 the count judgement's guard), and every mutant is a copy
+// of the statute, which carries two attributed quotes as this oracle counts them.
+// One file times two, twice -- the same arithmetic as the 56 -> 58, 58 -> 60 and
+// 60 -> 62 moves, and not a word of new prose. 0 absent.
+const declaredQuotes = 66
 
 // knownChainGaps are the places where this file's warrant chain does NOT join,
 // each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which

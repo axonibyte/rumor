@@ -361,6 +361,25 @@ source = "browser"
 of = "event.joined"
 args = ["event"]
 
+# AND WHO THE PAGE SAYS IS COMING, which is the reader for the second UI-only
+# plant (fable's shape at coop rumor/1682). The API serves the attendee list to
+# the event's ADMIN alone -- /events/<id>/attendees answers 403 to anyone else --
+# and the template renders it to every role the event is visible to, so a reader
+# is the only party who can be shown an item the API withholds.
+#
+# THE VALUE IS A COUNT AND NOT THE NAMES, and the reason is the statute's rather
+# than brevity: the finding is that a non-admin was SHOWN the list at all, so the
+# names add nothing a rule reads and would put other actors' ids in every report
+# this observation appears in.
+#
+# `of` IS event.joined, as page_count's is: the list is made of joins, and the
+# claim type is what the walk resolves `args` against.
+[[observation]]
+name = "page_attendees"
+source = "browser"
+of = "event.joined"
+args = ["event"]
+
 # THE WORKER'S COUNT, OBSERVED BY ITS OWN QUERY AND ABOUT ITS OWN SUBJECT.
 #
 # `args = ["recount"]` is load-bearing twice over: it names the entity

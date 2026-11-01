@@ -1,0 +1,79 @@
+{
+  "why": "THE SECOND PLANT'S FINDING, and the whole of it is the AUDIENCE: bob observes the attendee list through his own browser session and the list is not empty. The API serves that list to the event's ADMIN alone -- /events/<id>/attendees answers 403 to anyone else -- so a `viewer` being shown one entry is an item rendered to the wrong role (the epic's ledger row; fable's shape at coop rumor/1682). THE NUMBER IS NOT THE DEFECT: one attendee is the correct count, and the generic consistent judgement cannot reach this observation anyway because `counts_the_joins` names the four queries that are about the join count and this is not one of them. Nothing makes a non-admin's non-empty reading consistent, so the default `bug` is the verdict, which is the same asymmetry the page clause rests on.",
+  "expect": {
+    "believed": 1,
+    "role_sees_subject": true,
+    "finding": "bug",
+    "rests_on_planted": false,
+    "may_join": false,
+    "may_leave": true,
+    "may_create_user": false,
+    "has_user": true,
+    "may_create_event": true,
+    "may_delete": false,
+    "may_invite": false,
+    "may_accept": false,
+    "expiry_sound": false
+  },
+  "input": {
+    "observation": {
+      "actor": "bob",
+      "of": "event.joined",
+      "query": "page_attendees",
+      "source": "browser",
+      "value": 1,
+      "role": "viewer",
+      "position": 5
+    },
+    "known": [
+      "bob.user#1",
+      "alice.event#1",
+      "bob.join#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handles": [
+          "alice.user#1"
+        ]
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 2,
+        "handles": [
+          "bob.user#1"
+        ]
+      },
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 3,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "bob.join#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 5,
+        "handles": [
+          "bob.join#1",
+          "alice.event#1"
+        ]
+      }
+    ]
+  }
+}

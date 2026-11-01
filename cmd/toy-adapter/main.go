@@ -70,6 +70,7 @@ var (
 		// count the page shows a reader is what a stale per-event cache would
 		// get wrong while /events/<id>/count stayed right.
 		{Name: "page_count", Source: wire.SourceBrowser},
+		{Name: "page_attendees", Source: wire.SourceBrowser},
 		// THE EXPIRY, whose value is an INSTANT and not a count: the only
 		// observation in this adapter that answers a time. `api`, because an
 		// actor reads it through its own session the way it reads a count.
@@ -604,7 +605,7 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 		want = wire.SourceAPI
 	case "store_event_count":
 		want = wire.SourceDirect
-	case "page_count":
+	case "page_count", "page_attendees":
 		want = wire.SourceBrowser
 	// THE PROBE QUERIES, which R6.2 reserved as the two reported kinds' own
 	// names. internal/quiesce asks for `queue_depth` and `worker_idle` through
@@ -632,10 +633,10 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 	// answers from the store; this reads what a reader is SHOWN, so the two
 	// disagree exactly when the page's own number is stale -- which is the
 	// whole reason a browser source exists rather than a second api query.
-	if name == "page_count" {
+	if name == "page_count" || name == "page_attendees" {
 		if subject == "" {
 			return fault(id, wire.FaultField, "args",
-				"page_count names one event: send it as args.event")
+				name+" names one event: send it as args.event")
 		}
 		path := "/ui/events/" + subject
 		code, doc, err := a.page(path, m.Token)
@@ -669,6 +670,18 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 		if code >= 400 {
 			return fault(id, wire.FaultInternal, "query",
 				fmt.Sprintf("the toy answered %s with status %d", path, code))
+		}
+		if name == "page_attendees" {
+			n, ok := pageAttendees(doc)
+			if !ok {
+				return fault(id, wire.FaultInternal, "query",
+					fmt.Sprintf("%s carries no #attendees element, so who it shows is unknown",
+						path))
+			}
+			return wire.ObserveResponse{
+				Envelope: wire.Envelope{Kind: wire.KindObserve, Contract: wire.ContractVersion, ID: id},
+				Value:    n,
+			}
 		}
 		n, ok := pageCount(doc)
 		if !ok {
@@ -813,6 +826,32 @@ func (a *adapter) page(path, token string) (int, string, error) {
 		return resp.StatusCode, "", fmt.Errorf("reading %s: %w", path, err)
 	}
 	return resp.StatusCode, string(raw), nil
+}
+
+// pageAttendeesRe reads the attendee list the page renders, out of the element
+// the page gives an id for.
+//
+// IT MATCHES THE ELEMENT AND COUNTS INSIDE IT, in two steps rather than one
+// regexp over `<li>`: a bare `<li>` count would read list items from anywhere on
+// the page, and a second list added later would be counted into this
+// observation's value without anything saying so.
+//
+// NON-GREEDY AND (?s), because the element spans lines: the list is written one
+// `<li>` per line by cmd/toy, and a greedy match would run to the LAST `</ul>`
+// on the page if another list is ever added above it.
+var pageAttendeesRe = regexp.MustCompile(`(?s)<ul id="attendees">(.*?)</ul>`)
+
+// pageAttendees counts the attendees the page SHOWS. The second return is
+// whether the page carried the element at all, for pageCount's reason: a page
+// with no list is a page this observation cannot read, and reading that as 0
+// would make a removed element look like an event nobody has joined -- which is
+// exactly the honest reading the plant's finding has to be told apart from.
+func pageAttendees(doc string) (int, bool) {
+	m := pageAttendeesRe.FindStringSubmatch(doc)
+	if m == nil {
+		return 0, false
+	}
+	return strings.Count(m[1], "<li>"), true
 }
 
 // pageCountRe reads the number the event page RENDERS, out of the element the

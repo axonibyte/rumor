@@ -492,7 +492,11 @@ budget = "1m"
 # THE SOURCE IS WHY BOTH STAGES ARE SELECTED ABOVE: `page_count` is read through
 # `browser`, and arm 19 refuses by name an observation a profile's own stages
 # cannot drive -- so this row and that stage list stand or fall together.
-observations = ["page_count"]
+# AND THE SECOND PLANT'S READER BESIDE IT (fable, coop rumor/1682). Both are
+# browser observations and both are claimed here and nowhere else, so no
+# committed row carries either and every committed walk observes exactly what it
+# did before -- the same construction the venire and the period rest on.
+observations = ["page_count", "page_attendees"]
 
 # THE APPENDED ROW. One reader, because what it is for is observing: `page_count`
 # is read through this actor's own browser session, and one is enough to make

@@ -1,0 +1,79 @@
+{
+  "why": "THE OTHER CONTROL: a non-admin reader, and nothing to leak. An empty list tells nobody anything, so it is not a finding whoever reads it -- and this case is what makes the plant's ABSENCE distinguishable from an event nobody has joined. Without the clause it exercises, a repaired template would read as a finding on every empty page, which is the shape that makes a green suite mean nothing.",
+  "expect": {
+    "believed": 1,
+    "role_sees_subject": true,
+    "finding": "consistent",
+    "rests_on_planted": false,
+    "may_join": false,
+    "may_leave": true,
+    "may_create_user": false,
+    "has_user": true,
+    "may_create_event": true,
+    "may_delete": false,
+    "may_invite": false,
+    "may_accept": false,
+    "expiry_sound": false
+  },
+  "input": {
+    "observation": {
+      "actor": "bob",
+      "of": "event.joined",
+      "query": "page_attendees",
+      "source": "browser",
+      "value": 0,
+      "role": "viewer",
+      "position": 5
+    },
+    "known": [
+      "bob.user#1",
+      "alice.event#1",
+      "bob.join#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 1,
+        "handles": [
+          "alice.user#1"
+        ]
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 2,
+        "handles": [
+          "bob.user#1"
+        ]
+      },
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 3,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "bob.join#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 5,
+        "handles": [
+          "bob.join#1",
+          "alice.event#1"
+        ]
+      }
+    ]
+  }
+}

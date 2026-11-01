@@ -423,8 +423,9 @@ func allFixtures(t *testing.T) [][2]string {
 	// 30 SINCE examples/toy/cases/dropped-recount (R6.3, 2026-10-26). The
 	// number is declared so a corpus that SHRANK is a failure and not a quiet
 	// pass; it is re-read when a case lands, never widened to what was found.
-	if len(out) != 37 {
-		t.Fatalf("expected the 37 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
+	// 37 -> 40: R8/111's second plant adds three cases for one role-shaped rule (the finding, the admin control, the empty list) and two mutants for the rules they arm (m17 the role check dropped, m18 the count judgement unscoped).
+	if len(out) != 40 {
+		t.Fatalf("expected the 40 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
 	}
 	return out
 }
