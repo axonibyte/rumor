@@ -2,8 +2,10 @@ package hygiene_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -133,4 +135,141 @@ func stepNames(steps map[string]string) []string {
 		names = append(names, n)
 	}
 	return names
+}
+
+// TestTheTimeoutDiagnosticCountsTheSetItLists EXECUTES the rc-124 diagnostic
+// against a log whose answer is known, and it exists because the arithmetic has
+// been wrong three times in one day and nothing held it any of the three times
+// (ratchet, coop r8/166):
+//
+//	r8/162   the list said `^(ok|FAIL)` and the count said `^ok`      nothing held it
+//	/1675    the denominator counted every package and the numerator
+//	         only those that run tests                                nothing held it
+//	003a3a2  `?` is a report and was outside both                     nothing holds it
+//
+// THE RECURRING SHAPE IS A NUMERATOR AND A DENOMINATOR OVER DIFFERENT SETS, so
+// this arm holds the shape and not the three instances: the two halves of the
+// fraction must be the SAME pattern, and that pattern must count every kind of
+// line `go test` uses to report a package.
+//
+// IT RUNS THE FILE'S OWN TEXT rather than a copy of the pattern. A second
+// spelling here would be a third place to keep in step, and the defect this
+// arm is for is two places already disagreeing -- so the pattern is extracted
+// from ci.yml and handed to `grep`, which is what the step does with it.
+//
+// WHY IT IS TESTABLE AT ALL, which is the clause the untestable-configuration
+// exemption would otherwise cover: this diagnostic is a pure function of a log
+// file. Give it bytes, it prints figures. No runner, no toy, no forge.
+func TestTheTimeoutDiagnosticCountsTheSetItLists(t *testing.T) {
+	path := filepath.Join("..", "..", ".forgejo", "workflows", "ci.yml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	test, ok := splitSteps(string(raw))["test"]
+	if !ok {
+		t.Fatalf("%s has no step named `test`", path)
+	}
+
+	// THE TWO HALVES, as the step spells them: the list is `grep -aE` and the
+	// count is `grep -acE`, both over ../test.log.
+	rx := regexp.MustCompile(`grep -a(c?)E '([^']*)' \.\./test\.log`)
+	var list, count []string
+	for _, m := range rx.FindAllStringSubmatch(test, -1) {
+		pat := m[2]
+		// THE REPORTED-SET PAIR AND NOT EVERY GREP IN THE STEP. The step also
+		// greps for an ok-line and for a cached verdict, which are different
+		// claims; the pair this arm is about is the one naming a FAILED
+		// package as reported, which is what makes it the fraction's set.
+		if !strings.Contains(pat, "ok") || !strings.Contains(pat, "FAIL") {
+			continue
+		}
+		if m[1] == "c" {
+			count = append(count, pat)
+		} else {
+			list = append(list, pat)
+		}
+	}
+	if len(list) != 1 || len(count) != 1 {
+		t.Fatalf("%s spells %d list grep(s) and %d count grep(s) over the reported set, want one "+
+			"of each: this arm reads the pair, and two of either would leave one unread",
+			path, len(list), len(count))
+	}
+	if list[0] != count[0] {
+		t.Errorf("the list counts %q and the figure counts %q: a numerator and a denominator over "+
+			"different sets is the defect this arm exists for, and it has shipped twice",
+			list[0], count[0])
+	}
+
+	// AND THE DENOMINATOR IS EVERY PACKAGE, which is the other side of the same
+	// fraction: `go list ./...` counts a package with no test files, so the
+	// numerator must count its `?` line or the figure reads short on a run
+	// where nothing was running at all.
+	//
+	// ON THE FIGURE'S OWN LINE AND NOT ANYWHERE IN THE STEP, which is this
+	// clause's second draft and the reason is a measurement. The first spelled
+	// `strings.Contains(test, "list ./...")`, and the step uses `go list`
+	// elsewhere -- so replacing the denominator with the literal `echo 42` left
+	// this arm green. A clause that passes while the thing it names is gone is
+	// the defect this file is about.
+	var figure string
+	for _, line := range strings.Split(test, "\n") {
+		if strings.Contains(line, "package(s) reported;") {
+			figure = line
+			break
+		}
+	}
+	if figure == "" {
+		t.Fatalf("%s prints no `package(s) reported;` figure, so there is no fraction to read "+
+			"and every clause below would pass vacuously", path)
+	}
+	if !strings.Contains(figure, "list ./...") {
+		t.Errorf("the figure takes its denominator from something other than `go list ./...`: %q. "+
+			"A literal or a narrower list cannot be said to count the same packages as the "+
+			"numerator", strings.TrimSpace(figure))
+	}
+	if !strings.Contains(figure, count[0]) {
+		t.Errorf("the figure's numerator is not the pattern this arm read (%q): %q",
+			count[0], strings.TrimSpace(figure))
+	}
+
+	// THE FIXTURE: one line of each kind `go test` reports, one package absent
+	// entirely, and three lines that must NOT count -- a verbose FAIL header,
+	// an indented line carrying the word, and a package of another module.
+	log := strings.Join([]string{
+		"ok  \tforge.axonibyte.com/axonibyte/rumor/internal/wire\t0.201s",
+		"FAIL\tforge.axonibyte.com/axonibyte/rumor/tests/clock\t7.134s",
+		"?   \tforge.axonibyte.com/axonibyte/rumor/internal/vocabulary\t[no test files]",
+		"--- FAIL: TestSomething (0.01s)",
+		"    walk_test.go:189: ok  forge.axonibyte.com/axonibyte/rumor/internal/quoted",
+		"ok  \tsome.other.host/not/ours\t1.000s",
+		"",
+	}, "\n")
+	logPath := filepath.Join(t.TempDir(), "test.log")
+	if err := os.WriteFile(logPath, []byte(log), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	const wantReported = 3
+	out, _ := exec.Command("sh", "-c",
+		"grep -acE '"+count[0]+"' "+logPath).Output()
+	got := strings.TrimSpace(string(out))
+	if got != strconv.Itoa(wantReported) {
+		t.Errorf("the figure reads %q over a log carrying ok, FAIL and `?` for this module and "+
+			"three lines that are not package reports; want %d", got, wantReported)
+	}
+	lines, _ := exec.Command("sh", "-c",
+		"grep -aE '"+list[0]+"' "+logPath).Output()
+	gotLines := strings.Split(strings.TrimSpace(string(lines)), "\n")
+	if len(gotLines) != wantReported {
+		t.Fatalf("the list printed %d line(s) over that log, want %d: %q",
+			len(gotLines), wantReported, gotLines)
+	}
+	for _, want := range []string{"internal/wire", "tests/clock", "internal/vocabulary"} {
+		if !strings.Contains(strings.Join(gotLines, "\n"), want) {
+			t.Errorf("the list omits %s, which reported", want)
+		}
+	}
+	t.Logf("PROOF one pattern on both sides of the fraction, driven over a %d-line log: %d reported, "+
+		"%d listed, and the three non-reports left out", strings.Count(log, "\n"), wantReported, len(gotLines))
 }
