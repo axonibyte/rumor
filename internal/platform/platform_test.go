@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -705,5 +706,93 @@ func TestAProfilePeriodIsRefusedWhenTheProfileDoesNotWalk(t *testing.T) {
 				t.Errorf("the period parsed as %d, want %d", got, tc.every)
 			}
 		})
+	}
+}
+
+// renderVenire is this file's own reading of a pool, so a cell below states the
+// order as well as the membership. cmd/rumor has a renderer of its own and this
+// is deliberately not it: a test sharing the product's formatter cannot tell a
+// correct pool from a formatter that agrees with itself.
+func renderVenire(ms []Member) string {
+	parts := make([]string, 0, len(ms))
+	for _, m := range ms {
+		parts = append(parts, fmt.Sprintf("%d %s", m.Count, m.Role))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// TestAProfilesVenireAppendsAndNeverReplaces is the appended level's control,
+// and its cells are fable's ruling at coop rumor/1660 read back: a profile with
+// no rows of its own draws the pool the platform committed, an undeclared name
+// draws it, the empty name draws it, and a profile's rows come AFTER the
+// committed ones rather than instead of any of them.
+//
+// THE LAST CELL IS THE ONE THAT CARRIES THE RULING. A row naming a role the
+// platform ALREADY names draws MORE actors of it -- 1 host and then 2 host --
+// because this file has no expression for "fewer", and a level that could
+// shrink the committed pool could invalidate a committed seed. A resolver that
+// replaced by role would pass every other cell here.
+func TestAProfilesVenireAppendsAndNeverReplaces(t *testing.T) {
+	doc := wellFormed()
+	doc["stages"].(map[string]any)["api"] = map[string]any{"enabled": true}
+	doc["profiles"].(map[string]any)["cell"] = map[string]any{
+		"stages": []any{"api"}, "seeds": int64(1), "budget": "1m",
+		"venire": []any{
+			map[string]any{"role": "viewer", "count": int64(2)},
+			map[string]any{"role": "host", "count": int64(2)},
+		},
+	}
+	doc["profiles"].(map[string]any)["bare"] = map[string]any{
+		"stages": []any{"api"}, "seeds": int64(1), "budget": "1m",
+	}
+	rep := Parse(doc)
+	if !rep.OK() {
+		t.Fatalf("a well-formed appended venire was refused: %v", rep.Refusals)
+	}
+	p := rep.Platform
+
+	const committed = "1 host, 3 guest"
+	for _, c := range []struct{ what, profile, want string }{
+		{"the empty name", "", committed},
+		{"a profile declaring no rows", "bare", committed},
+		{"a profile that is not declared", "nonesuch", committed},
+		{"the profile's own rows, after the committed ones", "cell", committed + ", 2 viewer, 2 host"},
+	} {
+		if got := renderVenire(p.VenireFor(c.profile)); got != c.want {
+			t.Errorf("%s: draws %q, want %q", c.what, got, c.want)
+		}
+	}
+
+	// AND THE ANSWER IS A COPY, driven rather than asserted. The resolver's
+	// comment says a caller cannot reach the committed pool through what it
+	// hands back; a shared slice would make that false for every profile at
+	// once, from a call that reads like a read.
+	v := p.VenireFor("")
+	if len(v) == 0 {
+		t.Fatal("the committed pool is empty, so this cell has no subject")
+	}
+	v[0].Count = 99
+	if p.Venire[0].Count == 99 {
+		t.Error("mutating the resolver's answer changed the committed pool: it handed back its own slice")
+	}
+}
+
+// TestAProfileVenireRowIsRefusedByName holds the appended rows to the same
+// reader the platform's own rows go through, which is why the refusal reads the
+// same words -- and names the row where it is written rather than as "a venire
+// entry", so a reader knows which table to open.
+func TestAProfileVenireRowIsRefusedByName(t *testing.T) {
+	doc := wellFormed()
+	doc["stages"].(map[string]any)["api"] = map[string]any{"enabled": true}
+	doc["profiles"].(map[string]any)["cell"] = map[string]any{
+		"stages": []any{"api"}, "seeds": int64(1), "budget": "1m",
+		"venire": []any{map[string]any{"role": "viewer", "count": int64(0)}},
+	}
+	rep := Parse(doc)
+	if rep.OK() {
+		t.Fatal("accepted a profile venire row that draws no actors")
+	}
+	if !names(rep.Refusals, "profiles.cell.venire[0].count", "can do nothing") {
+		t.Errorf("refused under the wrong name or for the wrong reason: %v", rep.Refusals)
 	}
 }

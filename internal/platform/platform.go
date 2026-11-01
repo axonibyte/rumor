@@ -107,6 +107,20 @@ type Profile struct {
 	// quietly gone does not announce it.
 	ReconcileEvery int
 
+	// Venire is `[profiles.<name>].venire`: rows this profile ADDS to the
+	// platform's venire, and the level fable ruled at coop rumor/1660 on the
+	// finding at r8/146.
+	//
+	// IT APPENDS AND CAN NEVER REPLACE, which is the whole of why a level here
+	// is safe to give a project that already has committed evidence. A profile
+	// declaring no rows draws the pool it always drew -- BY CONSTRUCTION and
+	// not by a check -- so seeds.lock's five rows, the executed samples and
+	// D10's precondition keep their meaning without this field being consulted
+	// at all. That is the same argument the period's level rests on, and the
+	// reason both are per profile rather than on `[[venire]]` itself: a row
+	// added there would reach every run of every profile.
+	Venire []Member
+
 	Stages []string
 	Seeds  int
 	Budget time.Duration
@@ -190,6 +204,39 @@ func (p Platform) ReconcileEvery(profile string) (int, PeriodLevel) {
 		return st.ReconcileEvery, PeriodFromStage
 	}
 	return 0, PeriodAbsent
+}
+
+// VenireFor is the actor pool one profile draws, and it is the ONE place the
+// appending is stated -- fable's ruling at coop rumor/1660.
+//
+// IT APPENDS, IN ORDER, AND NEVER REPLACES. A profile's rows come after the
+// platform's, so a profile naming a role the platform already names draws MORE
+// actors of it rather than a different number. There is no expression in this
+// file for "fewer", and that is deliberate rather than unfinished: a level that
+// could shrink the committed pool could silently invalidate a committed seed,
+// which is the one thing this level was added to be unable to do.
+//
+// A PROFILE THAT IS NOT DECLARED DRAWS THE COMMITTED POOL, as do one with no
+// rows and the empty profile name. The resolver does not refuse an unknown
+// profile: `rumor run --profile nonesuch` is stage.Plan's refusal and is made
+// before this is reached, and answering again in a different voice would be two
+// statements of one rule.
+//
+// THE RESULT IS ALWAYS A COPY, the no-rows path included. Handing a caller this
+// platform's own slice lets one `append` write into the committed pool's spare
+// capacity -- a mutation of what every other profile reads, from a call that
+// reads like a read.
+func (p Platform) VenireFor(profile string) []Member {
+	var extra []Member
+	if profile != "" {
+		if pr, ok := p.Profiles[profile]; ok {
+			extra = pr.Venire
+		}
+	}
+	out := make([]Member, 0, len(p.Venire)+len(extra))
+	out = append(out, p.Venire...)
+	out = append(out, extra...)
+	return out
 }
 
 // stageAPI is internal/stage's API constant, spelled here because this package
@@ -386,6 +433,25 @@ func Parse(doc map[string]any) Report {
 							"can read", prof.ReconcileEvery,
 						strings.Join(prof.Stages, ", "), stageAPI))
 				}
+			}
+			// THE APPENDED ROWS ARE READ THE WAY THE PLATFORM'S OWN ARE, so a
+			// malformed row is refused in the same words, and keyed by the
+			// profile -- which is what makes the refusal name the row a reader
+			// has to go and edit rather than "a venire entry".
+			//
+			// THERE IS NO "no entries" REFUSAL HERE, and the asymmetry with the
+			// platform's venire is the point: an empty `[[venire]]` at the top
+			// level is a run with no actors, while a profile declaring none is
+			// the ordinary case and draws the committed pool.
+			for _, m := range pt.Tables("venire") {
+				var member Member
+				member.Role = m.Str("role", true)
+				member.Count = m.Int("count", true)
+				if member.Count < 1 {
+					m.Refuse("count", fmt.Sprintf("%d: a role with no actors can do nothing", member.Count))
+				}
+				m.Done()
+				prof.Venire = append(prof.Venire, member)
 			}
 			pt.Done()
 			p.Profiles[name] = prof

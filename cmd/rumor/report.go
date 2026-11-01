@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
@@ -87,7 +88,50 @@ func reportProject(dir, profile string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stdout, "report: stage %s -- %s\n", name,
 			stageFacts(name, prep.Platform, profile))
 	}
+	// AND THE POOL THIS PROFILE DRAWS, which is fable's clause at coop
+	// rumor/1660 and the same reading the period's line gives: a reader asking
+	// which actors their profile runs is usually asking whether their OWN rows
+	// are in force, and the platform's `[[venire]]` alone cannot say.
+	//
+	// ALWAYS, AND `appends none` INCLUDED, for the reason the two lines above
+	// give: a line omitted when there is nothing to say cannot be told from a
+	// build that never learned to print it.
+	_, _ = fmt.Fprintf(stdout, "report: venire -- %s\n", venireFacts(prep.Platform, profile))
 	return 0
+}
+
+// venireFacts is the actor pool one profile draws, in the project's own words.
+//
+// IT NAMES THE APPENDED ROWS SEPARATELY rather than printing the resolved pool
+// as one list, and that is the whole reason this helper exists: a resolved list
+// cannot be told from a platform that declared those rows at the top level,
+// where the entire safety argument for the level is that the COMMITTED rows are
+// untouched. A reader has to be able to see which rows are the profile's.
+func venireFacts(p platform.Platform, profile string) string {
+	committed := memberList(p.Venire)
+	if profile == "" {
+		return committed + " -- from [[venire]], with no profile selected"
+	}
+	pr, ok := p.Profiles[profile]
+	if !ok || len(pr.Venire) == 0 {
+		return fmt.Sprintf("%s -- from [[venire]]; [profiles.%s] appends none", committed, profile)
+	}
+	return fmt.Sprintf("%s -- from [[venire]]; [profiles.%s].venire appends %s",
+		committed, profile, memberList(pr.Venire))
+}
+
+// memberList renders venire rows in the order the file declares them, because
+// the draw reads them in that order and a report that sorted them would answer
+// a question about a pool nobody declared.
+func memberList(ms []platform.Member) string {
+	if len(ms) == 0 {
+		return "none"
+	}
+	parts := make([]string, 0, len(ms))
+	for _, m := range ms {
+		parts = append(parts, fmt.Sprintf("%d %s", m.Count, m.Role))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // parseReportArgs takes PROJECT and `--profile NAME` and REFUSES everything

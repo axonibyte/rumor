@@ -138,8 +138,13 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		Statute: string(statute),
 		Actions: brep.Bindings.Actions,
 		Weights: prep.Platform.Weights,
-		Venire:  prep.Platform.Venire,
-		Roles:   brep.Bindings.Roles,
+		// THE POOL THIS PROFILE DRAWS, through the resolver and not the field
+		// (fable, coop rumor/1660). Reading `.Venire` here would leave the
+		// appended level with no reader in the product, which is the defect
+		// this child has now found three times: a field every adapter writes
+		// and nothing reads.
+		Venire: prep.Platform.VenireFor(profile),
+		Roles:  brep.Bindings.Roles,
 		// THE OBSERVATIONS THE WALK MAKES (R5.5). A project declaring none is
 		// walked as before, which is what keeps every pre-R5.5 fixture's
 		// meaning.
@@ -290,10 +295,10 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 			return walkStage(ctx, dir, prep, brep.Bindings.Probes, p, seed, steps, stdout, stderr)
 		},
 		stage.Concurrency: func() int {
-			return concurrencyStage(ctx, dir, prep, brep.Bindings, seed, stdout, stderr)
+			return concurrencyStage(ctx, dir, prep, brep.Bindings, seed, profile, stdout, stderr)
 		},
 		stage.Fuzz: func() int {
-			return fuzzStage(ctx, dir, prep, brep.Bindings, stdout, stderr)
+			return fuzzStage(ctx, dir, prep, brep.Bindings, profile, stdout, stderr)
 		},
 	}
 	if noRunner := missingRunners(stages, runners); len(noRunner) > 0 {
@@ -834,9 +839,13 @@ func parseRunArgs(args []string) (dir string, seed uint64, haveSeed bool, steps 
 // than reporting findings grounded in a key nobody declared. 2 is "what an
 // observation would have said is unknown", which is exactly that.
 func fuzzStage(ctx context.Context, dir string, prep platform.Report,
-	b bindings.Bindings, stdout, stderr io.Writer) int {
+	b bindings.Bindings, profile string, stdout, stderr io.Writer) int {
 
-	actors, err := schedule.Actors(prep.Platform.Venire)
+	// THE PROFILE REACHES HERE FOR THE POOL AND NOTHING ELSE. A stage that
+	// drew the platform's venire while the walk drew the profile's would
+	// make one run contend with actors another run of the same profile
+	// never had.
+	actors, err := schedule.Actors(prep.Platform.VenireFor(profile))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "run: could not run: the venire this stage would drive: %v\n", err)
 		return 2
@@ -886,9 +895,9 @@ func fuzzStage(ctx context.Context, dir string, prep platform.Report,
 }
 
 func concurrencyStage(ctx context.Context, dir string, prep platform.Report,
-	b bindings.Bindings, seed uint64, stdout, stderr io.Writer) int {
+	b bindings.Bindings, seed uint64, profile string, stdout, stderr io.Writer) int {
 
-	actors, err := schedule.Actors(prep.Platform.Venire)
+	actors, err := schedule.Actors(prep.Platform.VenireFor(profile))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "run: could not run: the venire this stage would contend "+
 			"with: %v\n", err)

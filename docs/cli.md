@@ -921,6 +921,7 @@ report: stages skipped -- browser (enabled and this build cannot run it yet)
 report: stage api -- reconciles only after the last step, which is every run before R8/110 -- no period at any level (absent)
 report: stage concurrency -- enabled, and declares nothing a run reads beyond that
 report: stage fuzz -- enabled, and declares nothing a run reads beyond that
+report: venire -- 1 admin, 2 member, 1 guest -- from [[venire]], with no profile selected
 ```
 
 **The api line names the LEVEL as well as the period**, because "4" and "where
@@ -934,10 +935,21 @@ $ rumor report examples/toy --profile reconciling
 report: stages selected -- api
 report: stages skipped -- none
 report: stage api -- reconciles every 4 step(s) while the walk runs, and after the last step -- from [profiles.reconciling].reconcile_every
+report: venire -- 1 admin, 2 member, 1 guest -- from [[venire]]; [profiles.reconciling] appends none
 ```
 
 The table is named in the project's own words — a line a reader can go and
 edit — rather than as the bare level.
+
+**The venire line names the committed pool and a profile's additions
+separately.** `[profiles.<name>].venire` APPENDS rows for runs of that profile
+and can never replace one (fable, coop rumor/1660), so printing the resolved
+list alone would read exactly like a platform that had declared those rows at
+the top level — and the whole reason the level is safe to give a project with
+committed evidence is that the committed rows are untouched. A profile that
+adds nothing says `appends none` rather than being omitted, for the reason the
+skip list prints `none`: a line left out when there is nothing to say cannot be
+told from a build that never learned to print it.
 
 **One line per SELECTED stage carries what that stage DECLARES**, and the
 `api` stage's declaration is its reconciliation period
