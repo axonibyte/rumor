@@ -396,6 +396,35 @@ type Record struct {
 	// that differs by box.
 	Settled []string
 
+	// SettleEvery and SettlePasses are the DENOMINATOR for Settled, and they
+	// exist because `len(Settled) == 0` reads in four states that matter.
+	//
+	// SettleEvery is the period as the stage declared it, 0 when none was.
+	// SettlePasses is how many times the periodic pass actually ran, and
+	// SettleDue how many steps it was DUE at -- every step where
+	// `n % SettleEvery == 0`, whether or not the pass then ran.
+	//
+	// THIS IS D6's DEFECT ONE FIELD OVER, and it was found the same way: rook
+	// drove the periodic half at coop r8/116 over 8 seeds and 20 steps and
+	// reached no verdict at all, and the run said nothing either way -- so a
+	// period that never came due, a pass the walk stopped before, a pass that
+	// ran and held no work, and a pass that reached verdicts were one silence.
+	// Reconciled's own comment above records the identical mistake: an absence
+	// is only evidence when it carries what it was an absence OF.
+	//
+	// DUE AND PASSES ARE SEPARATE NUMBERS, not a bool, because their
+	// DIFFERENCE is the fact: due > passes means the step arrived and the pass
+	// did not run, which the walk's own guard at the periodic block says can
+	// only be a stopped walk or a project with no prober. cmd/rumor prints
+	// both numbers rather than naming a cause, because this type does not
+	// compose the operator's prose -- the Quiesce fields just below say why.
+	//
+	// COUNTS, AND NEVER AN ELAPSED TIME, for the reason Settled gives above:
+	// two runs of one seed and one period must be comparable on these.
+	SettleEvery  int
+	SettleDue    int
+	SettlePasses int
+
 	// Quiesce records WHETHER THE QUESTION WAS ASKED and what it answered, so
 	// a reader can tell "did not run" from "ran, found nothing".
 	//
@@ -776,7 +805,12 @@ func (c *runClock) advance(a clockAsker, delta int64) (int64, error) {
 }
 
 func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps, attempt int) (Record, error) {
-	rec := Record{Seed: seed, Attempt: attempt}
+	// SettleEvery IS STAMPED AT THE START and not at the periodic block,
+	// because a project that declares a period the walk never reaches must
+	// still report the period it declared -- stamping it where the pass runs
+	// would make exactly the zero-passes case indistinguishable from "no
+	// period declared", which is the state SettleDue exists to separate.
+	rec := Record{Seed: seed, Attempt: attempt, SettleEvery: p.ReconcileEvery}
 	// THE STAGE THIS WALK WAS DISPATCHED AS, recorded before anything can
 	// fail: a walk that stops early still ran as the stage it was given, and
 	// the record is printed even when the walk stopped (the loop below says
@@ -1008,7 +1042,22 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		// states: the probes having JUST been asked is what makes a surviving
 		// disagreement a pending past its bound rather than a pending that
 		// simply has not been looked at again.
+		//
+		// THE DUE COUNT IS TAKEN OUTSIDE THE RUN CONDITION, deliberately, and
+		// this split is the whole point of SettleDue: the step arriving and
+		// the pass running are two facts, and the old single conjunction could
+		// report neither. A reader who sees due 5 / passes 0 knows the period
+		// came due and something else stopped the pass; the conjunction made
+		// that identical to a walk too short to reach the period once.
+		//
+		// NOTHING ELSE MOVED. The body's condition is the same conjunction it
+		// always was -- `!stopped`, a prober, the period due -- so no run
+		// reconciles at a step it did not reconcile at before.
+		if p.ReconcileEvery > 0 && n%p.ReconcileEvery == 0 {
+			rec.SettleDue++
+		}
 		if !stopped && p.ReconcileEvery > 0 && n%p.ReconcileEvery == 0 && p.Prober != nil {
+			rec.SettlePasses++
 			st, qerr := p.Prober.Quiesce(ctx)
 			if qerr != nil {
 				return rec, fmt.Errorf("schedule: step %d: asking whether the system settled "+

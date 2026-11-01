@@ -637,7 +637,39 @@ run:   4 member_1 join_event [member_1.join_event#2] <- [member_1.event#1]
 run:   5 member_1 create_event [member_1.event#2]
 run: walkable -- seed 42, 5 step(s), 4 handle(s), 1 session(s), 5 observation(s); 1 rollback provider(s) registered
 run:   quiesce -- 0 pending(s) open at the end; reconciliation: no quiesce probes are declared, so nothing was asked and nothing reconciled
+run:   settling -- no period is declared, so the walk reconciled only at the end
 ```
+
+**The `settling` line is the PERIODIC reconciliation, and it is a second line
+rather than a clause of the first because the two are two events.** The quiesce
+line above reports what the END-OF-RUN pass judged; this reports what the
+passes at `[stages.api].reconcile_every` judged while the walk was still
+running. Folding them together would change what every existing reader of the
+reconciliation line means by it, which is the reason
+`schedule.Record.Settled` gives for not being `Reconciled`.
+
+**It carries three counts before any verdict, and that is the point.** A
+declared period prints `due at D, ran P` — how many steps the period came due
+at, and how many of those actually reconciled — and then either the verdicts it
+reached, `no pass held work to re-ask`, or why no pass ran. Those are four
+states that were ONE SILENCE until R8/111: a period that never came due, a pass
+the walk stopped before, a pass that ran and found nothing held, and a pass that
+reached a verdict all left the same output. rook drove the field at coop r8/116
+over 8 seeds and 20 steps, reached no verdict, and had no denominator to say
+which of the four it had measured — the same defect D6 fixed one field over, and
+an absence is only evidence when it carries what it is an absence of.
+
+**`due` and `ran` differ when a due pass did not run**, which by the walk's own
+guard is a stopped walk or a project with no probe. The line states the
+shortfall and does not name the cause: a finding is reported two lines up, so a
+reader has both facts and this line does not guess between them.
+
+**Until R8/111 no invocation of this tool could print any of it.** The field
+was written by the walk and read by nothing in `cmd/` — a permission rather
+than an occurrence (fable, coop rumor/1610) — and `reconcile_every` was
+declared by no project in the tree, so the path from `platform.toml` to the
+walk had never run end to end. Six test arms asserted on the field and all six
+passed throughout: a suite is not a consumer.
 
 **Both `run:` transcripts in this file are EXECUTED, and the block reads them
 OUT OF THE DOCUMENT.** R8's D14 (rook, coop r8/10): a verbatim transcript sits

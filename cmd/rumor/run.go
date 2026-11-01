@@ -632,6 +632,68 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 		_, _ = fmt.Fprintf(stderr, "run: writing the quiesce line: %v\n", err)
 		return 2
 	}
+	// AND THE PERIODIC HALF, which until this line had NO READER IN THE
+	// PRODUCT AT ALL. rook drove D11 at coop r8/116 and found `rec.Settled`
+	// referenced zero times outside internal/schedule -- the line above joins
+	// `Reconciled` and nothing else -- and fable ruled at rumor/1610 that a
+	// field no product path emits is a PERMISSION rather than an occurrence.
+	// Six test arms asserted on the field and made it look reached; a suite is
+	// not a consumer, which is the clear's first question now.
+	//
+	// IT IS A SECOND LINE AND NOT A CLAUSE OF THE FIRST, because the two
+	// reconciliations are two events: Settled's own comment refuses to fold
+	// periodic verdicts into `Reconciled` on the ground that it would change
+	// what every existing reader of that field means, and appending them to
+	// that field's SENTENCE would do the same thing to every reader of the
+	// line.
+	//
+	// THE FOUR STATES ARE FOUR SENTENCES, for D6's reason one field over: the
+	// period never came due, it came due and the pass did not run, it ran and
+	// held no work, and it reached verdicts were one silence before, and rook's
+	// null result over 8 seeds could not say which of them it was.
+	//
+	// THE NUMBERS ARE PRINTED RATHER THAN A CAUSE NAMED. due > passes can only
+	// be a stopped walk or a project with no prober, by the walk's own guard,
+	// and this line has the counts and not the reason -- so it states the
+	// difference and leaves the diagnosis to the reader who also has the
+	// finding line two lines up.
+	//
+	// CLOCK-FREE AND IN STEP ORDER, so D1's byte-identical-attempts property
+	// holds over it exactly as it does over the line above.
+	// THE THREE NUMBERS ARE UNCONDITIONAL AND THE VERDICT CLAUSE VARIES, and
+	// the first shape here had it the other way round -- four whole sentences,
+	// one per state. Driven at 12 steps on seed 42 with a period of 4, the
+	// shortfall sentence won the switch and printed "due at 1, ran 0" while
+	// saying NOTHING about what the passes that did run had found, because the
+	// branch that reports verdicts sat below it. A sentence per state loses a
+	// state's facts the moment two states overlap, and these overlap: a walk
+	// can skip one pass, run another, and have that one reach a verdict.
+	settled := "no period is declared, so the walk reconciled only at the end"
+	if rec.SettleEvery > 0 {
+		settled = fmt.Sprintf("declared every %d step(s), due at %d, ran %d",
+			rec.SettleEvery, rec.SettleDue, rec.SettlePasses)
+		switch {
+		case len(rec.Settled) > 0:
+			settled += ": " + strings.Join(rec.Settled, ", ")
+		case rec.SettlePasses > 0:
+			settled += ": no pass held work to re-ask"
+		case rec.SettleDue == 0:
+			settled += ": the period never came due in this walk"
+		default:
+			// THE DISJUNCTION IS LEFT STANDING rather than resolved here. By
+			// the walk's own guard a due pass is skipped for a stopped walk or
+			// an absent prober, and the run line two lines up names a finding
+			// when there is one -- so a reader has what they need and this
+			// line does not guess. Resolving it would mean reading
+			// QuiesceAsked as "a prober exists", which is that field's
+			// documented meaning one step bent.
+			settled += ": every pass was skipped, by a stopped walk or a project with no probe"
+		}
+	}
+	if _, err := fmt.Fprintf(stdout, "run:   settling -- %s\n", settled); err != nil {
+		_, _ = fmt.Fprintf(stderr, "run: writing the settling line: %v\n", err)
+		return 2
+	}
 	// AND EACH PENDING'S LIFE, which is what D1 and both of D3's clearing
 	// paths read. rook's gate verdict (coop rumor/1223) drove them against
 	// v0.1.37 and reached none: the walk computed a per-step verdict that can
