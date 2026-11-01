@@ -1936,3 +1936,86 @@ default may_join := true
 	t.Logf("PROOF an unservable subject read %q at every one of %d step(s), and the walk did not refuse",
 		wire.ValueMissing, len(rec.Steps))
 }
+
+// TestALiveSubjectsCountReachesTheStatuteAsANumber is the cell above's OTHER
+// direction, and ratchet's ask at coop r8/165: with the conversion made
+// unconditional the suite still went red, but by
+// TestAdvanceLandsOnADeclaredDeadlineAndNotOnlyOnAPendingBound -- a CLOCK test
+// and no cell of the head that wrote the conversion. Re-scope that test and
+// nothing in the tree says every observation must NOT read `missing`.
+//
+// IT IS THE MIRROR IMAGE OF ITS SIBLING, deliberately, down to the seed and the
+// step count: one surface answers an outcome and one answers a NUMBER, and each
+// walk's step count is the assertion. A `bug` ends a walk (r5/152 ruling 2), so
+// a walk that ran every step is a walk whose observation reached the statute as
+// the number the adapter sent -- and with the conversion unconditional the
+// value is the string `missing`, `is_number` is false, the default fires, and
+// the record stops at step 1.
+//
+// `is_number` AND NOT `== 3`, because the claim is about the TYPE surviving the
+// walk and not about one reading. A statute comparing against the literal would
+// also pass on a project whose adapter sent the number as a string, which is
+// the neighbouring defect and not this one.
+//
+// WHY THE PLANTS' HEAD OWNS IT (ratchet, r8/165): examples/toy's statute now
+// says in words that "a LIVE event's page reading `missing` IS a finding and
+// needs no rule -- the default is `bug`". That asymmetry is the browser
+// observation's whole value, and it rests on a live page's count arriving as a
+// number. This is that sentence, armed.
+func TestALiveSubjectsCountReachesTheStatuteAsANumber(t *testing.T) {
+	ctx := context.Background()
+	const seed = 20261101
+	const steps = 5
+	const served = 3
+
+	const judge = `package rumor.statute
+
+default finding := "bug"
+
+finding := "consistent" if is_number(input.observation.value)
+
+default may_create_event := true
+
+default may_join := true
+`
+	// A SURFACE THAT SERVES THE SUBJECT, answered as a JSON number -- which is
+	// how a real adapter's page count arrives, and how the toy's does.
+	surface := fake.Default()
+	surface.Observations = append(surface.Observations,
+		wire.Observation{Name: "served", Source: wire.SourceAPI})
+	surface.Observe["served"] = served
+	raw, err := json.Marshal(surface)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "surface.json")
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := walkProject(t)
+	p.Statute = judge
+	p.Observations = []bindings.Observation{
+		{Name: "served", Source: wire.SourceAPI, Of: "event.created"},
+	}
+	sess, err := wire.Open(ctx, fakeSpawn("--surface", path), 20*time.Second)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	rec, err := schedule.Walk(ctx, p, sess, seed, steps, 1)
+	if err != nil {
+		t.Fatalf("the walk refused a served subject: %v", err)
+	}
+	if len(rec.Steps) != steps {
+		t.Fatalf("the walk ran %d of %d step(s), so a SERVED subject did not reach the statute "+
+			"as a number -- a `bug` ends a walk, and the only reading that is not a number "+
+			"here is %q", len(rec.Steps), steps, wire.ValueMissing)
+	}
+	if rec.Observations != steps {
+		t.Errorf("%d observation(s) evaluated over %d step(s)", rec.Observations, steps)
+	}
+	t.Logf("PROOF a served subject read the number %d at every one of %d step(s), so the walk "+
+		"writes %q only where the adapter reported it", served, len(rec.Steps), wire.ValueMissing)
+}
