@@ -1101,10 +1101,19 @@ type citeReport struct {
 // arm would stay green. ratchet's rule at coop r6/173: if a refusal has no arm,
 // it is armed by nothing. Now the self-test below builds a tree that has one.
 //
-// THE SWEPT TREE'S OWN tests/vocabulary IS SKIPPED and it is not tidiness, for
-// the reason sources() gives: the self-test constructs citations to names that
-// are deliberately in no statute, and a sweep reading its own fixtures would
-// report them every run.
+// NOTHING IS SKIPPED BUT .git, AND THE EXCLUSION THIS ARM USED TO CARRY WAS
+// BORROWED (ratchet, coop r8/186). It skipped this whole package for the reason
+// sources() gives above -- "the control below plants a quote deliberately absent
+// from the document" -- which is the QUOTE check's reason and covers none of
+// this walker: proseOf takes only commentBlocks from a .go file, so the
+// self-test's constructed citations are string literals it cannot see, and the
+// tree the self-test builds is a t.TempDir that no walk of `root` reaches.
+//
+// So a whole package sat excluded behind a justification for something else, and
+// it is the package whose prose names the most rules. ratchet measured it: with
+// the skip pointed elsewhere the suite stays green. An exclusion is a decision
+// about what this project permanently stops noticing, and this one bought
+// nothing. sources() keeps its own, which it earns.
 func sweepCitations(dir string) (citeReport, error) {
 	var rep citeReport
 	pkgs, err := filepath.Glob(filepath.Join(dir, "examples", "*", "statute.rego"))
@@ -1125,13 +1134,12 @@ func sweepCitations(dir string) (citeReport, error) {
 	}
 	rep.Statutes = len(corpora)
 
-	skipDir := filepath.Join(dir, "tests", "vocabulary")
 	err = filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if info.IsDir() {
-			if info.Name() == ".git" || p == skipDir {
+			if info.Name() == ".git" {
 				return filepath.SkipDir
 			}
 			return nil
