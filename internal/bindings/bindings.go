@@ -149,6 +149,11 @@ type Bindings struct {
 	// which is what R7.2 adds.
 	Clock     map[string]any
 	ClockForm ClockForm
+	// ClockZone is the IANA zone name `[clock].zone` declares, and it is the
+	// SECOND typed half of this table (R7.5). ABSENT MEANS WHAT IT MEANT
+	// BEFORE THIS PHASE: the run's clock is an instant and nothing reads it as
+	// a local time, so every project written before this key keeps its walk.
+	ClockZone string
 	// Quiesce stays the RESERVED MAP for anything the table carries beyond the
 	// probes, so a project is not refused for a key R7 reserves. Probes is the
 	// typed half, which is what R6.2 added.
@@ -719,6 +724,30 @@ func Parse(doc map[string]any) Report {
 						"either one the engine moves through the adapter's `clock` request "+
 						"or a stack under faked time, and nothing else can be seeded",
 						form, ClockAdapter, ClockFaked))
+				}
+				// THE ZONE IS OPTIONAL AND A NAME NO DATABASE HOLDS IS NOT
+				// (R7.5), which is `form`'s split above read for a second key:
+				// this phase's own field, spelled wrong, is refused here.
+				//
+				// EMPTY BRANCHES FIRST, AND IT IS NOT TIDINESS.
+				// time.LoadLocation("") SUCCEEDS and answers UTC, so a refusal
+				// keyed on the error alone would read `zone = ""` as a DECLARED
+				// UTC and a project that wrote the key meaning nothing would
+				// silently gain a zone (measured, coop r7/91).
+				//
+				// AND THE VERDICT IS THE ERROR, NEVER THE POINTER:
+				// LoadLocation answers a NON-NIL *Location even when it fails
+				// -- "Not/AZone" comes back as UTC with err set -- so a check
+				// written against the pointer accepts every name. The
+				// `Not/AZone` cell is the one that catches that writing.
+				if zone := t.Str("zone", false); zone != "" {
+					if _, err := time.LoadLocation(zone); err != nil {
+						t.Refuse("zone", fmt.Sprintf("%q: %v -- `zone` is the IANA name the "+
+							"engine reads the run's instant in, and a name no zone database "+
+							"holds is this phase's own field spelled wrong", zone, err))
+					} else {
+						b.ClockZone = zone
+					}
 				}
 			}
 			if reserved.key == "deadline" {

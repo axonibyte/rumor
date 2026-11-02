@@ -957,3 +957,84 @@ func TestAContentionMissingEitherHalfIsRefusedByName(t *testing.T) {
 		}
 	}
 }
+
+// TestAZoneIsDeclarableAndANameNoDatabaseHoldsIsRefused is R7.5's first cell:
+// `[clock].zone` is this table's SECOND typed key and it takes `form`'s split --
+// optional at the parse, and a value this phase OWNS spelled wrong refused here
+// (fable, coop r7/95).
+//
+// TWO WRITINGS IT EXISTS TO REFUSE, both measured before the code was cut
+// (ratchet, coop r7/91):
+//
+//   - EMPTY IS NOT UTC. time.LoadLocation("") SUCCEEDS and answers UTC, so a
+//     parse refusing only on the error would read `zone = ""` as a DECLARED
+//     UTC: a project that wrote the key meaning nothing would gain a zone, and
+//     every transition landing that follows from one.
+//   - THE VERDICT IS THE ERROR AND NEVER THE POINTER. LoadLocation answers a
+//     NON-NIL *Location even when it fails -- `Not/AZone` comes back as UTC
+//     with err set -- so a check written `if loc != nil` accepts every name.
+//     The Not/AZone case is what catches that writing, which is why this arm
+//     asserts a REFUSAL and not merely that no zone was carried.
+//
+// WHAT IT DOES NOT PROVE: that anything READS the zone. Nothing consumes
+// ClockZone yet -- the landings and `input.clock.local` are later heads of this
+// child -- so this cell is about the declaration alone.
+func TestAZoneIsDeclarableAndANameNoDatabaseHoldsIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		what, zone, want string
+		refuse           bool
+	}{
+		{what: "an IANA name is carried", zone: "America/Chicago", want: "America/Chicago"},
+		{what: "UTC is a zone like any other", zone: "UTC", want: "UTC"},
+		{what: "a name no database holds is refused", zone: "Not/AZone", refuse: true},
+		{what: "an EMPTY zone is absent and not UTC", zone: "", want: ""},
+	} {
+		t.Run(tc.what, func(t *testing.T) {
+			doc := wellFormed()
+			doc["clock"] = map[string]any{"form": "faked", "zone": tc.zone}
+			rep := Parse(doc)
+			if tc.refuse {
+				if rep.OK() {
+					t.Fatalf("zone %q parsed clean: a name no zone database holds is this "+
+						"phase's own field spelled wrong, which `form` refuses here too",
+						tc.zone)
+				}
+				if !names(rep.Refusals, "clock.zone", tc.zone) {
+					t.Errorf("no refusal at clock.zone naming the value %q: %v",
+						tc.zone, rep.Refusals)
+				}
+				if !names(rep.Refusals, "clock.zone", "no zone database") {
+					t.Errorf("the refusal at clock.zone does not say what was wrong with it: %v",
+						rep.Refusals)
+				}
+				if rep.Bindings.ClockZone != "" {
+					t.Errorf("a REFUSED zone was carried as %q, so a consumer would read a "+
+						"zone the parse rejected", rep.Bindings.ClockZone)
+				}
+				return
+			}
+			if !rep.OK() {
+				t.Fatalf("zone %q is refused: %v", tc.zone, rep.Refusals)
+			}
+			if rep.Bindings.ClockZone != tc.want {
+				t.Errorf("ClockZone is %q, want %q", rep.Bindings.ClockZone, tc.want)
+			}
+		})
+	}
+
+	// AND THE KEY IS OPTIONAL, which is the state every project written before
+	// this phase is in: a [clock] with no zone parses and declares none.
+	doc := wellFormed()
+	doc["clock"] = map[string]any{"form": "faked"}
+	rep := Parse(doc)
+	if !rep.OK() {
+		t.Fatalf("a [clock] with no zone is refused: %v", rep.Refusals)
+	}
+	if rep.Bindings.ClockZone != "" {
+		t.Errorf("a clock with no zone declares %q", rep.Bindings.ClockZone)
+	}
+	if !t.Failed() {
+		t.Logf("PROOF a zone is carried, UTC is one of them, an unknown name is refused at " +
+			"clock.zone naming the value, and an empty or absent key declares none")
+	}
+}

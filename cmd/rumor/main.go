@@ -22,6 +22,22 @@ import (
 	"sort"
 	"strings"
 
+	// THE ZONE DATABASE IS EMBEDDED AND NOT READ OFF THE BOX (R7.5; fable's
+	// ruling at coop r7/95). `[clock].zone` is refused when no zone database
+	// holds the name, and unembedded that refusal is a statement about the
+	// FILESYSTEM as much as the name: a host with no /usr/share/zoneinfo
+	// refuses a correct `America/Chicago`, a provisioning finding wearing a
+	// declaration error's clothes.
+	//
+	// AND IT IS THE DETERMINISM THAT PAYS FOR THE BYTES, which is the half
+	// ibis's measurement at r7/92 left standing: the CI jail does hold a
+	// database, so nothing was breaking -- but the landings a walk draws are
+	// derived from this data at walk time and a committed seed's trace moves
+	// with it (ratchet r7/93, ibis r7/94). Embedded, one database answers on
+	// every box and the version a seed's row names is the BINARY's, not
+	// whatever the host happened to carry.
+	_ "time/tzdata"
+
 	"forge.axonibyte.com/axonibyte/rumor/internal/attaint"
 	"forge.axonibyte.com/axonibyte/rumor/internal/coverage"
 	"forge.axonibyte.com/axonibyte/rumor/internal/examples"
