@@ -729,17 +729,25 @@ func Parse(doc map[string]any) Report {
 				// (R7.5), which is `form`'s split above read for a second key:
 				// this phase's own field, spelled wrong, is refused here.
 				//
-				// EMPTY BRANCHES FIRST, AND IT IS NOT TIDINESS.
-				// time.LoadLocation("") SUCCEEDS and answers UTC, so a refusal
-				// keyed on the error alone would read `zone = ""` as a DECLARED
-				// UTC and a project that wrote the key meaning nothing would
-				// silently gain a zone (measured, coop r7/91).
+				// EMPTY BRANCHES FIRST, AND WHAT IT GUARDS IS THE CONSUMER
+				// RATHER THAN THIS PARSE. time.LoadLocation("") SUCCEEDS and
+				// answers a REAL UTC -- non-nil, no error. Here the branch is
+				// EQUIVALENT to letting "" through, because this field stores
+				// the NAME and "" is "" either way, which ibis drove at coop
+				// rumor/1732. It is kept for the head that RESOLVES the name:
+				// there, an empty zone taking the LoadLocation path would make
+				// a project that wrote the key meaning nothing read as a
+				// DECLARED UTC, and the cell for that belongs to that head.
 				//
-				// AND THE VERDICT IS THE ERROR, NEVER THE POINTER:
-				// LoadLocation answers a NON-NIL *Location even when it fails
-				// -- "Not/AZone" comes back as UTC with err set -- so a check
-				// written against the pointer accepts every name. The
-				// `Not/AZone` cell is the one that catches that writing.
+				// AND THE VERDICT IS THE ERROR BECAUSE THE ERROR IS THE SIGNAL,
+				// not because the pointer lies. This comment first said
+				// LoadLocation "answers a NON-NIL *Location even when it
+				// fails", which is FALSE: a failed lookup answers loc == nil
+				// WITH the error set. It PRINTS as "UTC" because fmt calls
+				// (*Location).String() on the nil receiver, and I read a
+				// formatted nil off my own probe as a value (ibis, coop
+				// rumor/1732). `loc == nil` is an equivalent verdict here, so
+				// the choice is the idiom and not a guard.
 				if zone := t.Str("zone", false); zone != "" {
 					if _, err := time.LoadLocation(zone); err != nil {
 						t.Refuse("zone", fmt.Sprintf("%q: %v -- `zone` is the IANA name the "+

@@ -966,15 +966,24 @@ func TestAContentionMissingEitherHalfIsRefusedByName(t *testing.T) {
 // TWO WRITINGS IT EXISTS TO REFUSE, both measured before the code was cut
 // (ratchet, coop r7/91):
 //
-//   - EMPTY IS NOT UTC. time.LoadLocation("") SUCCEEDS and answers UTC, so a
-//     parse refusing only on the error would read `zone = ""` as a DECLARED
-//     UTC: a project that wrote the key meaning nothing would gain a zone, and
-//     every transition landing that follows from one.
-//   - THE VERDICT IS THE ERROR AND NEVER THE POINTER. LoadLocation answers a
-//     NON-NIL *Location even when it fails -- `Not/AZone` comes back as UTC
-//     with err set -- so a check written `if loc != nil` accepts every name.
-//     The Not/AZone case is what catches that writing, which is why this arm
-//     asserts a REFUSAL and not merely that no zone was carried.
+// WHAT IT HOLDS AND WHAT IT CANNOT, corrected after ibis drove both at coop
+// rumor/1732 -- the four cases each discriminate on the value they name, and
+// two REASONS the first writing gave for them do not:
+//
+//   - IT HOLDS the refusal of a name no zone database carries, and the
+//     acceptance of one that it does, UTC among them.
+//   - IT CANNOT HOLD "empty is not UTC". This field stores the NAME, so
+//     `zone = ""` stores "" whether the parse branches on it or not; the claim
+//     belongs to the head that RESOLVES a name, where LoadLocation("")
+//     answering a real UTC is the hazard.
+//   - IT CANNOT HOLD "a refused zone is not carried" either. Parse returns
+//     Report{Refusals: found} with a ZERO Bindings on any refusal
+//     (bindings.go), so ClockZone reads "" whatever this parse assigned, and
+//     an assertion here would pass over an assignment moved out of its else.
+//   - AND THE POINTER CLAIM WAS FALSE: a failed LoadLocation answers
+//     loc == nil WITH the error, printing as "UTC" only because fmt calls
+//     (*Location).String() on a nil receiver. There was no writing for the
+//     Not/AZone case to catch.
 //
 // WHAT IT DOES NOT PROVE: that anything READS the zone. Nothing consumes
 // ClockZone yet -- the landings and `input.clock.local` are later heads of this
@@ -1006,10 +1015,6 @@ func TestAZoneIsDeclarableAndANameNoDatabaseHoldsIsRefused(t *testing.T) {
 				if !names(rep.Refusals, "clock.zone", "no zone database") {
 					t.Errorf("the refusal at clock.zone does not say what was wrong with it: %v",
 						rep.Refusals)
-				}
-				if rep.Bindings.ClockZone != "" {
-					t.Errorf("a REFUSED zone was carried as %q, so a consumer would read a "+
-						"zone the parse rejected", rep.Bindings.ClockZone)
 				}
 				return
 			}
