@@ -194,6 +194,11 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		// hold a clock only where the project declares one, and internal/ledger
 		// refuses a clock fact without it; the table's presence is the control.
 		ClockControl: bindings.ClockControlled(brep.Bindings),
+		// AND THE ZONE IT READS ITS INSTANT IN (R7.5). Carried straight
+		// through like the form: internal/bindings has already refused a name
+		// no zone database holds, and an absent or empty key is no zone, which
+		// internal/schedule's resolver reads rather than this site.
+		ClockZone: brep.Bindings.ClockZone,
 		// AND R7.2's TYPED `form` SAYS HOW. It is carried straight through:
 		// the parser has already refused a word that is neither form, and a
 		// table that names NO form is refused by the walk, which is the reader

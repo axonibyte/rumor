@@ -131,6 +131,19 @@ type Project struct {
 	// that costs. This is the reader that knows which request it was about to
 	// send, so this is where a clocked project with no form is named.
 	ClockForm bindings.ClockForm
+
+	// ClockZone is the IANA zone name `[clock].zone` declares (R7.5), carried
+	// through from internal/bindings, which has already refused a name no zone
+	// database holds. EMPTY IS NO ZONE and takes today's walk: `[clock]` with
+	// no `zone` is every project written before this phase, and `zone = ""` is
+	// a project that wrote the key and declared nothing.
+	//
+	// AND EMPTY MUST NOT REACH time.LoadLocation, which is the half the parse
+	// could not hold and this reader owes (ratchet and ibis, coop rumor/1732):
+	// LoadLocation("") SUCCEEDS and answers a real UTC, so a resolver that
+	// passed "" through would make such a project silently declare UTC and
+	// gain every transition landing that follows from one.
+	ClockZone string
 }
 
 // Prober answers whether the system under test has gone quiet.
@@ -945,7 +958,17 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		// value is an instant, and the ones the run has already OBSERVED are
 		// targets too. A project declaring none is walked exactly as R7.3
 		// left it.
-		landings := Landings(append(reg.Untils(), deadlines...), clk.t)
+		// AND THE NEXT ZONE TRANSITION JOINS THE BOUNDS (R7.5, issue 115's
+		// deliverable 2). A transition is a place the clock must be able to
+		// land, which is what an `until` already is -- so `Landings` is
+		// untouched and the three instants, the dedup, the drop of what is not
+		// ahead and the one-set rule all come from the function above.
+		//
+		// THE DECISION IS A FUNCTION AND NOT THESE LINES, which is what makes
+		// it drivable: a cell asks `untilsWithTransition` directly rather than
+		// reaching it through a whole Walk, so the no-zone, no-window and
+		// no-transition readings are each one assertion.
+		landings := Landings(untilsWithTransition(p.ClockZone, append(reg.Untils(), deadlines...), clk.t), clk.t)
 
 		pool, err := Pool(ctx, p.Statute, p.Actions, l, actor, p.Weights, p.Stage, p.Profile, table,
 			p.Roles, known, actors, landings)
