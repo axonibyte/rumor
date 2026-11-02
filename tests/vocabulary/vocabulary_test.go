@@ -1218,9 +1218,14 @@ func TestEveryCitedRuleNameIsARule(t *testing.T) {
 		t.Fatalf("collected %d citation(s) and not one inside a corpus package, so the corpus tier "+
 			"read nothing", rep.Collected)
 	}
-	t.Logf("PROOF %d rule citation(s) collected over %d statute(s), %d of them inside a corpus, "+
-		"%d form(s) applied tree-wide and 1 inside a corpus only",
-		rep.Collected, rep.Statutes, rep.CorpusTier, len(ruleCiteForms)-1)
+	// A PROOF LINE AFTER AN Errorf IS A CLAIM THE RUN JUST DISPROVED: a Logf
+	// always runs, so the proof printed beside the failure that refutes it
+	// (ratchet, coop r8/184).
+	if !t.Failed() {
+		t.Logf("PROOF %d rule citation(s) collected over %d statute(s), %d of them inside a corpus, "+
+			"%d form(s) applied tree-wide and 1 inside a corpus only",
+			rep.Collected, rep.Statutes, rep.CorpusTier, len(ruleCiteForms)-1)
+	}
 }
 
 // THE SWEEP'S OWN SELF-TEST, in three parts: every form catches a citation to a
@@ -1367,9 +1372,14 @@ func TestTheCitedRuleSweepFires(t *testing.T) {
 		t.Error("the built tree's corpus tier collected nothing, so the corpus-only form was never " +
 			"applied where it is allowed")
 	}
-	t.Logf("PROOF %d form(s) each catch a citation to a name in no statute, the corrected wording "+
-		"trips %d and every one resolves, one text yields 2 faults inside a corpus and 1 outside, "+
-		"and a built tree of %d statute(s) and %d citation(s) reports exactly the 2 bad names -- "+
-		"one held to its own corpus, one to the union",
-		len(ruleCiteForms), hits, rep.Statutes, rep.Collected)
+	// A PROOF LINE AFTER AN Errorf IS A CLAIM THE RUN JUST DISPROVED: a Logf
+	// always runs, so the proof printed beside the failure that refutes it
+	// (ratchet, coop r8/184).
+	if !t.Failed() {
+		t.Logf("PROOF %d form(s) each catch a citation to a name in no statute, the corrected wording "+
+			"trips %d and every one resolves, one text yields 2 faults inside a corpus and 1 outside, "+
+			"and a built tree of %d statute(s) and %d citation(s) reports exactly the 2 bad names -- "+
+			"one held to its own corpus, one to the union",
+			len(ruleCiteForms), hits, rep.Statutes, rep.Collected)
+	}
 }

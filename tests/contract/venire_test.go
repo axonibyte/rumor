@@ -369,6 +369,11 @@ func TestNoCommittedProfileCanSeeAPage(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("PROOF %d platform file(s) read; no world a committed seed replays takes a browser "+
-		"observation", len(files))
+	// A PROOF LINE AFTER AN Errorf IS A CLAIM THE RUN JUST DISPROVED: a Logf
+	// always runs, so the proof printed beside the failure that refutes it
+	// (ratchet, coop r8/184).
+	if !t.Failed() {
+		t.Logf("PROOF %d platform file(s) read; no world a committed seed replays takes a browser "+
+			"observation", len(files))
+	}
 }

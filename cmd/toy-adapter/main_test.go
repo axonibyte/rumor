@@ -1090,7 +1090,12 @@ func TestThePageReadersAreTheElementsAndNotThePage(t *testing.T) {
 			"`N of C` shape is cmd/toy's contract with this reader, and matching a bare number "+
 			"would take the wrong one out of some other element that shares the id", n, ok)
 	}
-	t.Logf("PROOF both readers take their own element out of a two-list page: attendees 2 of a " +
-		"page holding 6 list items, count 2 of 3, absent reads false where empty reads true, " +
-		"and a `#count` without a capacity is not read at all")
+	// A PROOF LINE AFTER AN Errorf IS A CLAIM THE RUN JUST DISPROVED: a Logf
+	// always runs, so the proof printed beside the failure that refutes it
+	// (ratchet, coop r8/184).
+	if !t.Failed() {
+		t.Logf("PROOF both readers take their own element out of a two-list page: attendees 2 of a " +
+			"page holding 6 list items, count 2 of 3, absent reads false where empty reads true, " +
+			"and a `#count` without a capacity is not read at all")
+	}
 }
