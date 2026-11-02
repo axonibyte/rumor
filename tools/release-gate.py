@@ -405,9 +405,12 @@ DEFAULT_BLOCK_BUDGET_S = 60
 
 # `budget_s=` is OPTIONAL, so every fence already in the tree keeps parsing and
 # keeps the default -- the widening cannot silently drop a block from the arm.
+# ONE LITERAL, NOT TWO ADJACENT ONES: tests/docs/docsrun_test.go asserts this
+# pattern as a CONTIGUOUS substring of this file (gateFencePython), so splitting
+# it across implicit concatenation makes that guard unable to see it even when
+# the pattern is right. ibis found that at coop rumor/1710.
 _RUN_FENCE = re.compile(
-    r"^```(?:sh|bash|console)\s+run(?:\s+budget_s=(?P<budget>\d+))?\s*$"
-    r"(?P<body>.*?)^```\s*$",
+    r"^```(?:sh|bash|console)\s+run(?:\s+budget_s=(?P<budget>\d+))?\s*$(?P<body>.*?)^```\s*$",
     re.M | re.S,
 )
 

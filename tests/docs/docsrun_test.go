@@ -50,9 +50,9 @@ const root = "../.."
 
 // THE FENCE FORM IS THE GATE'S, TRANSLITERATED, AND PINNED BELOW. Python's
 // re.M|re.S are Go's (?m) and (?s); every other byte is the same.
-const gateFencePython = "^```(?:sh|bash|console)\\s+run\\s*$(?P<body>.*?)^```\\s*$"
+const gateFencePython = "^```(?:sh|bash|console)\\s+run(?:\\s+budget_s=(?P<budget>\\d+))?\\s*$(?P<body>.*?)^```\\s*$"
 
-var fenceRe = regexp.MustCompile("(?ms)^```(?:sh|bash|console)\\s+run\\s*$(.*?)^```\\s*$")
+var fenceRe = regexp.MustCompile("(?ms)" + gateFencePython)
 
 // A Go toolchain in COMMAND POSITION: at the start of a line, or after a
 // pipe, a separator, or a command substitution.
@@ -94,7 +94,9 @@ func docRunBlocks(t *testing.T) []block {
 			out = append(out, block{
 				file: filepath.ToSlash(rel),
 				line: strings.Count(text[:m[0]], "\n") + 1,
-				body: text[m[2]:m[3]],
+				// GROUP 2, NOT 1: the optional `budget_s=` capture now
+				// precedes the body (rook, coop rumor/1710).
+				body: text[m[4]:m[5]],
 			})
 		}
 		return nil
