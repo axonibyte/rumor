@@ -46,6 +46,7 @@ import subprocess
 import sys
 import typing
 import tempfile
+import time
 from pathlib import Path
 
 RC_CLEAN = 0
@@ -382,6 +383,35 @@ def mapped_docs(coverage: str | None, path: str) -> list[str]:
     return out
 
 
+# THE PER-BLOCK BUDGET IS DECLARED BY THE BLOCK, and 60 is only the default.
+#
+# WHY IT MOVED (ratchet rumor/1697, ibis /1702, fable's ruling /1699). The budget
+# was a hard literal with no knob, and docs/cli.md's attaint sample had grown onto
+# it: four timings on one box gave 69.1, 64.4, 73.5, 68.9s and ratchet's gave 62.9
+# then 59.6, 59.6, 59.0 -- so the VERDICT ON A RELEASE turned on load, and PR 117's
+# gate refused for a timing rather than for anything in the release.
+#
+# A BUDGET IS NOT A CHECK -- it exists to stop a HANG wedging a single-concurrency
+# runner, which is the same reading fable gave ci.yml's step cap at /1673. So the
+# block that knows what it measures declares what it needs, and the gate enforces
+# the declaration rather than a number no author can see.
+#
+# AND THE MARGIN IS SIZED OFF THE RIGHT HALF: ibis measured the walk alone at
+# 37.2s but a COLD `go build` at 24.2s against 0.2-1.0s warm, so roughly half of a
+# first run is the Go build cache and not the corpus. A margin taken from the walk
+# would still flap on a clean runner, which is why the declaration below is a
+# multiple of the cold-start sum and not of the warm one.
+DEFAULT_BLOCK_BUDGET_S = 60
+
+# `budget_s=` is OPTIONAL, so every fence already in the tree keeps parsing and
+# keeps the default -- the widening cannot silently drop a block from the arm.
+_RUN_FENCE = re.compile(
+    r"^```(?:sh|bash|console)\s+run(?:\s+budget_s=(?P<budget>\d+))?\s*$"
+    r"(?P<body>.*?)^```\s*$",
+    re.M | re.S,
+)
+
+
 def run_doc_blocks(repo: Path, ref: str) -> list[str]:
     """Doc fenced blocks marked `run`, executed. Returns the failures.
 
@@ -395,26 +425,36 @@ def run_doc_blocks(repo: Path, ref: str) -> list[str]:
         if not name.startswith("docs/") or not name.endswith(".md"):
             continue
         text = show(repo, ref, name) or ""
-        for found in re.finditer(
-            r"^```(?:sh|bash|console)\s+run\s*$(?P<body>.*?)^```\s*$",
-            text,
-            re.M | re.S,
-        ):
+        for ordinal, found in enumerate(_RUN_FENCE.finditer(text), 1):
             script = found.group("body")
+            # WHICH BLOCK, WHICH LINE. The old refusal said only "docs/cli.md: a
+            # `run` block exceeded 60s" and cli.md holds THREE -- ratchet
+            # rumor/1697: "the message cannot say which". A reader then greps a
+            # file for the slow one. The line number is the fence's own, counted
+            # off the ref's text, so it points at the block in the file being
+            # gated rather than at a working copy.
+            where = f"{name} block {ordinal} (line {text.count(chr(10), 0, found.start()) + 1})"
+            declared = found.group("budget")
+            budget = int(declared) if declared else DEFAULT_BLOCK_BUDGET_S
+            started = time.monotonic()
             try:
                 done = subprocess.run(
                     ["sh", "-c", script],
                     cwd=str(repo),
                     capture_output=True,
                     text=True,
-                    timeout=60,
+                    timeout=budget,
                     check=False,
                 )
             except subprocess.TimeoutExpired:
-                failures.append(f"{name}: a `run` block exceeded 60s")
+                failures.append(
+                    f"{where}: a `run` block exceeded its {budget}s budget "
+                    f"({'declared in the fence' if declared else 'the default'}) "
+                    f"after {time.monotonic() - started:.1f}s"
+                )
                 continue
             except OSError as exc:
-                failures.append(f"{name}: a `run` block could not be started: {exc}")
+                failures.append(f"{where}: a `run` block could not be started: {exc}")
                 continue
             if done.returncode != 0:
                 # BOTH STREAMS, EACH NAMED -- and this is the SIBLING of a defect
@@ -448,7 +488,8 @@ def run_doc_blocks(repo: Path, ref: str) -> list[str]:
                 if se:
                     shown.append(f"stderr: {se[-1]}")
                 failures.append(
-                    f"{name}: a `run` block exited {done.returncode}: "
+                    f"{where}: a `run` block exited {done.returncode} after "
+                    f"{time.monotonic() - started:.1f}s: "
                     + ("; ".join(shown) if shown else "no output")
                 )
     return failures
@@ -1441,6 +1482,63 @@ def _stream_battery() -> tuple[int, int]:
     return failures, EXPECT_STREAM_CHECKS
 
 
+# 3, and it moves only with _budget_battery: the declared budget refusing, the
+# declared budget ALLOWING, and an undeclared fence still parsing.
+EXPECT_BUDGET_CHECKS = 3
+
+
+def _budget_battery() -> tuple[int, int]:
+    """Drive the per-block budget both ways, and the fence's optional group.
+
+    WHAT THIS DOES NOT PROVE, said here rather than implied: the DEFAULT's value.
+    Driving it would need a block that sleeps past 60s, which is a minute of wall
+    clock in a unit battery for one integer. Cell 3 proves an undeclared fence
+    still PARSES and is still gated -- that the number it then gets is 60 rests on
+    DEFAULT_BLOCK_BUDGET_S being the only expression in that branch, read not
+    driven.
+    """
+    failures = 0
+    today = "2026-01-01"
+    cases = (
+        # label, fence suffix, body, expect_failure, musts
+        ("a declared budget REFUSES the block that exceeds it",
+         " budget_s=1", "sleep 3\n", True,
+         ("block 1", "1s budget", "declared in the fence")),
+        ("the same declaration ALLOWS a block inside it",
+         " budget_s=9", "sleep 1\n", False, ()),
+        ("an UNDECLARED fence still parses and is still gated",
+         "", "exit 7\n", True, ("block 1", "exited 7")),
+    )
+    for label, suffix, body, want_fail, musts in cases:
+        with tempfile.TemporaryDirectory() as raw:
+            try:
+                repo = _world(Path(raw), today)
+                git(repo, "checkout", "-q", "-b", "run")
+                _mk(repo, "docs/b.md",
+                    "# b\n\n```sh run" + suffix + "\n" + body + "```\n")
+                _commit(repo, "docs: a run block with a budget")
+                got = run_doc_blocks(repo, "run")
+            except CannotRun as exc:
+                print(f"\n  FAIL budget ({label}): the gate could not run: {exc}")
+                failures += 1
+                continue
+            if want_fail and len(got) != 1:
+                print(f"\n  FAIL budget ({label}): {len(got)} failure(s), wanted 1: {got}")
+                failures += 1
+                continue
+            if not want_fail:
+                if got:
+                    print(f"\n  FAIL budget ({label}): refused a block inside its "
+                          f"own declared budget: {got}")
+                    failures += 1
+                continue
+            missing = [m for m in musts if m not in got[0]]
+            if missing:
+                print(f"\n  FAIL budget ({label}): {got[0]!r} is missing {missing}")
+                failures += 1
+    return failures, EXPECT_BUDGET_CHECKS
+
+
 def _trailer_battery() -> tuple[int, int]:
     """Drive docs_unchanged() over every shape a trailer arrives in.
 
@@ -1851,6 +1949,7 @@ def self_test() -> int:
     worktree_failures, worktree_checks = _worktree_battery()
     date_failures, date_checks = _changelog_date_battery()
     stream_failures, stream_checks = _stream_battery()
+    budget_failures, budget_checks = _budget_battery()
     failures = 0
     ran = 0
     for arm, label, build in cases:
@@ -1904,7 +2003,9 @@ def self_test() -> int:
                              ("changelog-date check", date_checks,
                               EXPECT_CHANGELOG_DATE_CHECKS),
                              ("stream check", stream_checks,
-                              EXPECT_STREAM_CHECKS)):
+                              EXPECT_STREAM_CHECKS),
+                             ("budget check", budget_checks,
+                              EXPECT_BUDGET_CHECKS)):
         if got == want:
             continue
         how = "FEWER than" if got < want else "MORE than"
@@ -1922,7 +2023,8 @@ def self_test() -> int:
     # all 14 cases passed -- a count that says something untrue, which is the
     # defect this whole round is about.
     total = (failures + battery_failures + docs_failures + worktree_failures
-             + date_failures + stream_failures + size_failures)
+             + date_failures + stream_failures + budget_failures
+             + size_failures)
     print(f"\n  {ran - failures} of {ran} cases ok, "
           f"{trailer_checks - battery_failures} of {trailer_checks} trailer "
           f"checks ok, {docs_checks - docs_failures} of {docs_checks} "
@@ -1932,7 +2034,9 @@ def self_test() -> int:
           f"{date_checks - date_failures} of {date_checks} "
           f"changelog-date checks ok, "
           f"{stream_checks - stream_failures} of {stream_checks} "
-          f"stream checks ok, {total} failed")
+          f"stream checks ok, "
+          f"{budget_checks - budget_failures} of {budget_checks} "
+          f"budget checks ok, {total} failed")
     return RC_FINDINGS if total else RC_CLEAN
 
 

@@ -211,7 +211,23 @@ Six lines appear and one disappears for a net of five. A pairing figure is not
 derivable from the mutant count, which is why this one was measured as a diff
 against the released tree and not adjusted by arithmetic.
 
-```sh run
+```sh run budget_s=180
+# THE BUDGET IS DECLARED BECAUSE THIS BLOCK KNOWS WHAT IT MEASURES AND THE GATE
+# DOES NOT. It walks 42 mutants over 41 cases, so it grows with every child, and
+# on 2026-11-02 it grew onto the gate's old 60s literal: PR 117's release gate
+# refused v0.1.46 for a TIMING rather than for anything in the release (rook
+# rumor/1701, ibis /1702, ruled at /1699).
+#
+# 180 IS THREE TIMES THE COLD-START SUM, NOT THE WARM ONE, and that is the whole
+# reason for the number. ibis measured the walk alone at 37.2s but a COLD
+# `go build` at 24.2s against 0.2-1.0s warm -- so about half of a first run on a
+# clean runner is the Go build cache, and a margin sized off the warm 38s would
+# flap exactly where it must not. 37 + 24 = 61 is the cold floor; the readings
+# that straddled the old literal were 59.0-73.5s across two boxes under load.
+#
+# RAISE IT WHEN THE CORPUS GROWS, and do not raise it to silence a HANG: a budget
+# exists to stop one wedging a single-concurrency runner, which is what it is for
+# and all it is for.
 # THIS BLOCK IS THE SAMPLE AND ITS OWN CHECK. `release-gate.py` executes every
 # fenced block marked `run` and fails on a nonzero exit, so the lines quoted
 # here cannot drift from the tool without the gate saying so. The previous

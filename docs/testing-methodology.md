@@ -161,8 +161,9 @@ the toy, 22 of 24 with the browser stage off, 19 of 24 with no adapter on
 PATH.
 
 `tools/release-gate.py --self-test` drives twenty cases, fifteen trailer checks,
-seven docs-verdict checks, four worktree checks, three changelog-date checks and
-four stream checks, and asserts that **each arm fires alone**. Each count is declared as a constant and asserted in both
+seven docs-verdict checks, four worktree checks, three changelog-date checks,
+four stream checks and three budget checks, and asserts that **each arm fires
+alone**. Each count is declared as a constant and asserted in both
 directions, because a case that silently stops running is invisible in a
 self-consistent total. The release-gate workflow runs that self-test before the
 gate judges a pull request, because a gate whose arms have stopped
