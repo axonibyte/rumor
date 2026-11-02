@@ -999,3 +999,98 @@ func TestAToyThatStartsAndNeverPrintsIsRefusedNotWaitedFor(t *testing.T) {
 	}
 	t.Logf("PROOF a toy that starts and stays silent is refused in %s, not waited for", elapsed)
 }
+
+// TestThePageReadersAreTheElementsAndNotThePage is ratchet's finding at coop
+// r8/182: pageAttendees and pageAttendeesRe were in no _test.go at all, and
+// neither was pageCount. The producer's half of "absent and empty must not read
+// alike" is held in cmd/toy's suite; the consumer's was held by nothing.
+//
+// THE DOCUMENT IS CRAFTED AND THAT IS THE POINT. ratchet drove two survivors --
+// counting `<li>` over the whole page, and a GREEDY
+// `(?s)<ul id="attendees">(.*)</ul>` -- and both are EQUIVALENT to the committed
+// spelling on a page with ONE list, which is the only page cmd/toy serves today.
+// So no fixture taken from the toy can tell them apart, and the cell has to be a
+// document written to separate them: two lists, one of them not the attendees.
+//
+//	the whole-page count   counts the other list's items too          -- reads 6
+//	the greedy match       runs to the LAST </ul> and swallows both   -- reads 5
+//
+// AND THE SECOND RETURN IS THE CLAIM, not a convenience: a page with no
+// #attendees element is a page this observation cannot read, and answering 0
+// would make a removed element look like an event nobody has joined -- the
+// honest reading the plant's finding has to be told apart from. The statute
+// rests on that distinction at examples/toy/statute.rego:474, where an empty
+// list is `consistent` for every role.
+func TestThePageReadersAreTheElementsAndNotThePage(t *testing.T) {
+	const twoLists = `<!doctype html>
+<h1 id="title">a page with two lists</h1>
+<p id="role">guest</p>
+<p id="count">2 of 3</p>
+<ul id="attendees">
+<li>u-1</li>
+<li>u-2</li>
+</ul>
+<ul id="elsewhere">
+<li>not an attendee</li>
+<li>nor this</li>
+<li>nor this either</li>
+</ul>
+<li>a stray item outside every list</li>
+`
+	n, ok := pageAttendees(twoLists)
+	if !ok {
+		t.Fatalf("pageAttendees found no #attendees element in a page that carries one")
+	}
+	if n != 2 {
+		t.Errorf("pageAttendees counted %d where the #attendees list holds 2 and the page holds "+
+			"6 list items: a whole-page count reads 6 and a greedy match reads 5, and neither is "+
+			"distinguishable from the committed form on the one-list page the toy serves", n)
+	}
+
+	// ABSENT IS NOT EMPTY, both ways round.
+	const noList = `<!doctype html>
+<p id="count">0 of 3</p>
+`
+	if n, ok := pageAttendees(noList); ok || n != 0 {
+		t.Errorf("pageAttendees read (%d, %v) on a page with NO #attendees element, want (0, "+
+			"false): reading 0 as an answer makes a removed element look like an event nobody "+
+			"has joined", n, ok)
+	}
+	const emptyList = `<!doctype html>
+<ul id="attendees">
+</ul>
+`
+	if n, ok := pageAttendees(emptyList); !ok || n != 0 {
+		t.Errorf("pageAttendees read (%d, %v) on an EMPTY #attendees element, want (0, true): an "+
+			"empty list is an answer, and the statute's :474 clause turns on it", n, ok)
+	}
+
+	// AND THE COUNT READER, which had no cell either.
+	if n, ok := pageCount(twoLists); !ok || n != 2 {
+		t.Errorf("pageCount read (%d, %v) on `<p id=\"count\">2 of 3</p>`, want (2, true)", n, ok)
+	}
+	if n, ok := pageCount(noList); !ok || n != 0 {
+		t.Errorf("pageCount read (%d, %v) on `<p id=\"count\">0 of 3</p>`, want (0, true): zero "+
+			"rendered is an answer", n, ok)
+	}
+	const noCount = `<!doctype html>
+<ul id="attendees">
+<li>u-1</li>
+</ul>
+`
+	if n, ok := pageCount(noCount); ok || n != 0 {
+		t.Errorf("pageCount read (%d, %v) on a page with no #count element, want (0, false)", n, ok)
+	}
+
+	// THE CAPACITY IS REQUIRED ON PURPOSE, which pageCountRe's own comment claims
+	// and nothing held: a `#count` element of another shape must not have a
+	// number read out of it.
+	if n, ok := pageCount(`<p id="count">4</p>`); ok || n != 0 {
+		t.Errorf("pageCount read (%d, %v) out of `<p id=\"count\">4</p>`, want (0, false): the "+
+			"`N of C` shape is cmd/toy's contract with this reader, and matching a bare number "+
+			"would take the wrong one out of some other element that shares the id", n, ok)
+	}
+	t.Logf("PROOF both readers take their own element out of a two-list page: attendees 2 of a " +
+		"page holding 6 list items, count 2 of 3, absent reads false where empty reads true, " +
+		"and a `#count` without a capacity is not read at all")
+}
