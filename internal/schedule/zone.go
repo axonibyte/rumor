@@ -108,10 +108,15 @@ func zoneOf(name string) *time.Location {
 // an empty list would make `advance` live where it is not today and move a
 // committed reading the compatibility clause promises is unmoved.
 //
-// THE INPUT IS NOT MUTATED IN PLACE for the reason every append to a borrowed
-// slice has: `reg.Untils()` hands out a slice the register owns, and growing
-// it here could write through to its backing array. The transition arrives in
-// a copy.
+// THE INPUT IS NOT GROWN IN PLACE, AND THE REASON IS THE CONTRACT RATHER THAN
+// A LIVE HAZARD. A function handed a slice cannot see who else holds its
+// array, so appending into spare capacity is a write through to a caller that
+// may share one. ibis measured that today's caller does not: Register.Untils
+// builds `make([]int64, 0, len(r.open))` fresh per call, so the hazard this
+// cites is not live at the one production site (coop rumor/1740). The copy
+// stays because the contract is the thing a later caller will rely on, and
+// `zone_test.go` reads the BACKING ARRAY to hold it -- the slice header cannot
+// see such a write, which is how a mutant doing it survived the first cell.
 func untilsWithTransition(zone string, untils []int64, now int64) []int64 {
 	loc := zoneOf(zone)
 	if loc == nil || len(untils) == 0 {

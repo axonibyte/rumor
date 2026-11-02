@@ -161,6 +161,27 @@ func TestOnlyTheNextTransitionJoinsTheBounds(t *testing.T) {
 		t.Errorf("June to July gave %v, want exactly [%d]: a window with no transition in it "+
 			"leaves the walk it had", got, jul)
 	}
+	// TWO BOUNDS, AND THE WINDOW REACHES THE FURTHEST. Every case above holds
+	// ONE bound, where the nearest and the furthest are the same instant -- so
+	// a reader taking the NEAREST passed all of them, and fable's /90(3)
+	// window was armed only where the two could not differ (ibis, coop
+	// rumor/1740). Here the transition lies between them: with the nearest it
+	// is out of range and nothing joins.
+	feb := time.Date(2026, time.February, 15, 0, 0, 0, 0, time.UTC).UnixNano()
+	dec := time.Date(2026, time.December, 15, 0, 0, 0, 0, time.UTC).UnixNano()
+	if got := untilsWithTransition("America/Chicago", []int64{feb, dec}, jan); len(got) != 3 ||
+		got[2] != spring {
+		t.Errorf("bounds {feb, dec} at jan gave %v, want the two plus %d: the window runs to "+
+			"the FURTHEST live bound, and a reader taking the nearest finds nothing between "+
+			"January and February", got, spring)
+	}
+	// AND THE OTHER END OF THE SAME CLAUSE: a furthest bound at or BEFORE now
+	// is no window at all, which `to <= from` is for.
+	if got := untilsWithTransition("America/Chicago", []int64{jan}, apr); len(got) != 1 {
+		t.Errorf("a bound BEFORE the clock gave %v, want it alone: there is no window from "+
+			"April back to January, and a search that ran anyway would offer a landing the "+
+			"mover refuses for moving time backward", got)
+	}
 	// AND NO LIVE BOUND MEANS NO WINDOW: nothing joins, so `advance` does not
 	// become live where it is not today (fable, coop r7/90(3)).
 	if got := untilsWithTransition("America/Chicago", nil, jan); len(got) != 0 {
@@ -168,8 +189,12 @@ func TestOnlyTheNextTransitionJoinsTheBounds(t *testing.T) {
 			"window to search, and appending here would make `advance` live in a zone-declared "+
 			"project that declares no deadline", got)
 	}
-	// THE BORROWED SLICE IS NOT WRITTEN THROUGH: the register owns what
-	// Untils() hands out, so a transition must arrive in a copy.
+	// THE CALLER'S SLICE IS NOT GROWN IN PLACE, and the reason is the
+	// CONTRACT rather than a live hazard: ownership is not visible from inside
+	// a function that is handed a slice, so a future caller sharing one would
+	// be written through. ibis measured that today's caller is not that
+	// caller -- Register.Untils builds a fresh slice per call -- so what this
+	// holds is the contract and not a defect it prevents (coop rumor/1740).
 	owned := make([]int64, 1, 4)
 	owned[0] = apr
 	backing := owned[:cap(owned)]
