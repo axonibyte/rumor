@@ -811,9 +811,11 @@ func TestAProfileVenireRowIsRefusedByName(t *testing.T) {
 func TestClockStartResolvesProfileThenClockThenEpoch(t *testing.T) {
 	const spring = int64(1772956800000000000)
 	const fall = int64(1793516400000000000)
+	const before70 = int64(-86400000000000) // 1969-12-31T00:00:00Z
 	p := Platform{Profiles: map[string]Profile{
 		"dst-spring": {ClockStart: spring},
 		"plain":      {},
+		"pre70":      {ClockStart: before70},
 	}}
 	for _, tc := range []struct {
 		what, profile string
@@ -827,6 +829,16 @@ func TestClockStartResolvesProfileThenClockThenEpoch(t *testing.T) {
 		{"no profile named takes the project's", "", fall, fall, ClockStartFromClock},
 		{"neither declares one, so the epoch", "plain", 0, 0, ClockStartEpoch},
 		{"a profile's ZERO is absent and inherits", "plain", spring, spring, ClockStartFromClock},
+		// A NEGATIVE IS A DECLARATION AND NOT AN ABSENCE, which this file
+		// argues three times and armed in none until ibis drove it (coop
+		// rumor/1748). The guard is `!= 0` and one character from the period's
+		// `> 0`, so a reader writing the period's test twice would reverse
+		// this decision with every cell still green: an instant before 1970 is
+		// a world a project may want, where a negative PERIOD is arithmetic
+		// that can never reach zero.
+		{"a NEGATIVE profile start wins, it is not an absence", "pre70", fall, before70,
+			ClockStartFromProfile},
+		{"a NEGATIVE project start wins too", "plain", before70, before70, ClockStartFromClock},
 	} {
 		t.Run(tc.what, func(t *testing.T) {
 			at, level := p.ClockStartFor(tc.profile, tc.declared)
@@ -898,6 +910,24 @@ func TestAStartOnAProfileThatCannotWalkIsRefused(t *testing.T) {
 	// committed before this level readable.
 	if rep := Parse(withProfile([]any{"concurrency"}, nil)); !rep.OK() {
 		t.Errorf("a non-walking profile with NO clock_start is refused: %v", rep.Refusals)
+	}
+	// A NEGATIVE IS A DECLARATION AND PARSES, which this file argues and ibis
+	// found armed by nothing (coop rumor/1748): an instant before 1970 is a
+	// world a project may want, so the guard here is `!= 0` and not the
+	// period's `> 0`, one character apart and the opposite decision.
+	rep = Parse(withProfile([]any{"api"}, int64(-86400000000000)))
+	if !rep.OK() {
+		t.Fatalf("a pre-1970 clock_start is refused: %v -- the clock's own refusal is about "+
+			"moving BACKWARD, not about where it began", rep.Refusals)
+	}
+	if got := rep.Platform.Profiles["p"].ClockStart; got != -86400000000000 {
+		t.Errorf("a negative clock_start parsed as %d", got)
+	}
+	// AND A NEGATIVE ON A PROFILE THAT CANNOT WALK IS STILL REFUSED, so the
+	// non-walking clause reads the DECLARATION and not the sign.
+	if rep := Parse(withProfile([]any{"concurrency"}, int64(-86400000000000))); rep.OK() {
+		t.Errorf("a negative clock_start on a non-walking profile parsed clean: the clause is " +
+			"about whether the profile walks, not about the value")
 	}
 	// A ZERO IS ABSENT TOO, and must not trip the refusal: the resolver reads 0
 	// as "declares nothing", so the parse must not call it a declaration.

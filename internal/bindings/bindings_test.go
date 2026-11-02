@@ -1076,6 +1076,15 @@ func TestAClockMayDeclareWhereItStarts(t *testing.T) {
 		t.Errorf("a [clock] with no start gives %d (refusals %v), want 0 and none",
 			rep.Bindings.ClockStart, rep.Refusals)
 	}
+	// A NEGATIVE IS CARRIED, not refused: an instant before 1970 is a world a
+	// project may want, which this key's comment argues and nothing held until
+	// ibis drove it (coop rumor/1748).
+	doc = wellFormed()
+	doc["clock"] = map[string]any{"form": "faked", "start": int64(-86400000000000)}
+	if rep := Parse(doc); !rep.OK() || rep.Bindings.ClockStart != -86400000000000 {
+		t.Errorf("a pre-1970 start gives %d (refusals %v), want it carried whole",
+			rep.Bindings.ClockStart, rep.Refusals)
+	}
 	// AND A VALUE THAT IS NOT AN INTEGER IS REFUSED AT THE KEY'S OWN PATH
 	// rather than truncated or ignored -- `decl` names it, and the engine never
 	// sees a clock it was handed a word for.
