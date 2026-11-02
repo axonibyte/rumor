@@ -37,7 +37,11 @@ const (
 	// NON-EMPTY list is the finding, an admin shown the same list is the honest
 	// control one field away, and an empty list is what makes the plant's
 	// ABSENCE distinguishable from an event nobody has joined.
-	wantCases = 40
+	// AND 40 -> 41 WITH THE ATTENDEE READING OF A PAGE THAT IS NOT SERVED: the
+	// deleted-event control for the second browser observation, which a viewing
+	// walk on seed 29 found missing by reporting `bug` on a 404 the application
+	// was right to answer.
+	wantCases = 41
 )
 
 func TestRunOverTheCommittedTree(t *testing.T) {

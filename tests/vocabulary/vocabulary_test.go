@@ -244,7 +244,10 @@ const root = "../.."
 // of the statute, which carries two attributed quotes as this oracle counts them.
 // One file times two, twice -- the same arithmetic as the 56 -> 58, 58 -> 60 and
 // 60 -> 62 moves, and not a word of new prose. 0 absent.
-const declaredQuotes = 66
+// 66 -> 68 AT THE ACTION HALF: m19 is a nineteenth mutant and every mutant is a
+// copy of the statute, which carries two attributed quotes. One file times two
+// again, and not a word of new prose. 0 absent.
+const declaredQuotes = 68
 
 // knownChainGaps are the places where this file's warrant chain does NOT join,
 // each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which

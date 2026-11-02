@@ -51,6 +51,7 @@ var (
 		{Name: "create_event", Context: "api"},
 		{Name: "join_event", Context: "api"},
 		{Name: "leave_event", Context: "api"},
+		{Name: "list_attendees", Context: "api"},
 		{Name: "delete_event", Context: "api"},
 		{Name: "recount_event", Context: "api"},
 		{Name: "invite_user", Context: "api"},
@@ -501,6 +502,12 @@ func (a *adapter) execute(id string, m wire.ExecuteRequest) any {
 		p = plan{http.MethodPost, "/events/" + subject + "/join", nil, ""}
 	case "leave_event":
 		p = plan{http.MethodDelete, "/events/" + subject + "/join", nil, ""}
+	case "list_attendees":
+		// THE HONEST READING OF THE WITHHELD ITEM. It creates nothing and the
+		// list itself is not carried back: the walk judges the PAGE's copy
+		// through page_attendees, and an action that returned the names would
+		// put them in a second place for no reader.
+		p = plan{http.MethodGet, "/events/" + subject + "/attendees", nil, ""}
 	case "delete_event":
 		p = plan{http.MethodDelete, "/events/" + subject, nil, ""}
 	case "recount_event":

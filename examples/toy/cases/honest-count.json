@@ -13,7 +13,8 @@
     "may_delete": false,
     "may_invite": false,
     "may_accept": false,
-    "expiry_sound": false
+    "expiry_sound": false,
+    "may_list_attendees": false
   },
   "input": {
     "observation": {

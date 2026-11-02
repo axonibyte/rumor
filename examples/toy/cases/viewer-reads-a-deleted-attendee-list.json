@@ -1,0 +1,68 @@
+{
+  "why": "THE ATTENDEE READING OF A PAGE THAT IS NOT SERVED, which is viewer-reads-a-deleted-page's shape for the second browser observation. The application 404s the page of an event it has deleted, so BOTH page observations read `missing` there and neither is wrong -- the asymmetry the page guard carries. MEASURED RATHER THAN FORESEEN: a viewing walk on seed 29 deleted an event and reported `bug` on the next attendee reading, because the guard named only `page_count` when the second observation arrived.",
+  "expect": {
+    "believed": 1,
+    "role_sees_subject": true,
+    "may_join": false,
+    "finding": "consistent",
+    "rests_on_planted": false,
+    "may_leave": true,
+    "may_create_user": true,
+    "has_user": false,
+    "may_create_event": true,
+    "may_delete": false,
+    "may_list_attendees": false
+  },
+  "input": {
+    "observation": {
+      "actor": "bob",
+      "of": "event.joined",
+      "query": "page_attendees",
+      "source": "browser",
+      "value": "missing",
+      "role": "viewer",
+      "position": 5
+    },
+    "known": [
+      "alice.event#1",
+      "bob.join#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 1,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest",
+          "viewer"
+        ]
+      },
+      {
+        "ref": "bob.join#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 3,
+        "handles": [
+          "bob.join#1",
+          "alice.event#1"
+        ]
+      },
+      {
+        "ref": "alice.del#1",
+        "actor": "alice",
+        "type": "event.deleted",
+        "position": 5,
+        "handles": [
+          "alice.del#1",
+          "alice.event#1"
+        ]
+      }
+    ]
+  }
+}

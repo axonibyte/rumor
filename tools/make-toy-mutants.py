@@ -99,6 +99,13 @@ MUTATIONS = {
     # accepted-then-the-clock-moved was authored for exactly this (rook
     # rumor/1426, /1430; ratchet /1428 required the case to carry the clock on
     # the case path as well as the claim's `t`, which it now does).
+    # AND THE PRECONDITION'S OWN MUTANT (R8/111's action half): without the claim
+    # test every actor reads as the event's admin, the action is drawn for actors
+    # the toy answers 403 to, and the response mismatch the precondition prevents
+    # arrives on every other step.
+    "m19-may-list-attendees-always": (
+        'may_list_attendees if {\n\tsome c in held_claims\n\tc.type == "event.created"\n\tc.actor == input.observation.actor\n}',
+        'may_list_attendees if true'),
     # THE TWO MUTANTS FOR THE ATTENDEE RULE (R8/111's second plant). Each is
     # killed by a case the same commit added, which is the only way a new rule is
     # armed rather than merely present.

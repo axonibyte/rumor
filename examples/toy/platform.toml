@@ -172,6 +172,11 @@ accept_invitation = 0
 # fields are unmoved -- the pool does not consume the generator's stream for a
 # candidate it cannot draw.
 recount_event = 0
+# AND R8/111's READ OF THE WITHHELD LIST, at zero for the same reason and on the
+# same measurement: a candidate the pool cannot draw does not consume the
+# generator's stream, so every promoted seed draws what it drew. It is weighted
+# in `viewing` alone, below.
+list_attendees = 0
 
 # THE `walking` PROFILE: THE WALK ALONE, AND NOTHING ELSE NARROWED.
 #
@@ -501,6 +506,17 @@ observations = ["page_count", "page_attendees"]
 # THE APPENDED ROW. One reader, because what it is for is observing: `page_count`
 # is read through this actor's own browser session, and one is enough to make
 # the observation occur.
+# AND THE ACTION THIS PROFILE DRAWS, which is the other half of fable's shape at
+# coop rumor/1682: the honest API read of the item the template leaks, declared
+# here and nowhere else. `[weights.default]` holds it at zero, so this is the one
+# profile whose walks can take it -- and no committed row names this profile.
+#
+# THE NUMBER IS THE READ'S AND NOT A TUNING: it sits beside join_event_ui so a
+# viewing walk both makes the page's list non-empty and reads the API's own copy,
+# which is what lets one walk hold both readings of the same item.
+[weights.profile.viewing]
+list_attendees = 12
+
 [[profiles.viewing.venire]]
 role = "viewer"
 count = 1

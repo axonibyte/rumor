@@ -139,6 +139,40 @@ response = { status = 200 }
   source = "handle"
   of = "event"
 
+# READING THE ATTENDEE LIST, THE ONE ITEM THIS API WITHHOLDS (R8/111's second
+# plant; fable's shape at coop rumor/1682). cmd/toy serves /events/<id>/attendees
+# to the event's ADMIN alone and answers 403 to anyone else, and the page renders
+# that list to every role the event is visible to -- so this action is the HONEST
+# reading of the item the template leaks.
+#
+# IT EMITS NOTHING, which `emits` being optional is for: a read changes no world
+# and claims nothing, so there is no claim type for it to name. It `touches`
+# nothing for the same reason, which keeps it out of the rollback arm's way.
+#
+# ZERO IN [weights.default] AND WEIGHTED IN THE `viewing` PROFILE, which is
+# recount_event's construction below read for a second purpose and fable's "the
+# action ... declared under [profiles.viewing] alone". No committed row names
+# that profile, so no committed walk draws this and every promoted seed draws
+# what it drew.
+#
+# `may_list_attendees` IS THE PRECONDITION AND IT IS LOAD-BEARING: without it the
+# walk draws this for every actor in the pool, most of them non-admins, and each
+# draw answers 403 against the `status = 200` below -- a response mismatch on
+# every other step, which is a finding about this declaration and not about the
+# plant.
+[[action]]
+name = "list_attendees"
+context = "api"
+requires = ["may_list_attendees"]
+response = { status = 200 }
+
+  # THE EVENT WHOSE LIST IS READ, picked from the handles this actor knows, as
+  # every other event-shaped action picks it.
+  [[action.args]]
+  name = "event"
+  source = "handle"
+  of = "event"
+
 # THE WORKER'S OWN SURFACE (R6.3, issue 91), AND IT IS WEIGHTED ZERO BY DEFAULT.
 #
 # An actor asks for an event's attendance to be recomputed; cmd/toy enqueues one

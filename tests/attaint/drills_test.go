@@ -149,7 +149,11 @@ func TestEveryDrillTripsItsOwnArm(t *testing.T) {
 			// `attendee_observation` are helpers, which this corpus keeps out of
 			// rules.json by the statute's own rule, and the new clauses are
 			// bodies of `finding`.
-			if rep.Packages != 5 || rep.Cases != 40 || rep.Mutants != 41 || rep.Rules != 30 {
+			// AND 41 CASES, 42 MUTANTS, 31 RULES AT THE ACTION HALF: the rule
+			// count moves for the first time here, because `may_list_attendees`
+			// is a PRECONDITION and rules.json declares it -- unlike the two
+			// helpers, which this corpus keeps out by the statute's own rule.
+			if rep.Packages != 5 || rep.Cases != 41 || rep.Mutants != 42 || rep.Rules != 31 {
 				t.Fatalf("%s examined %d package(s), %d case(s), %d rule(s), %d mutant(s); every drill is a damaged copy of the whole tree",
 					d.id, rep.Packages, rep.Cases, rep.Rules, rep.Mutants)
 			}

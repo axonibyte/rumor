@@ -14,7 +14,8 @@
     "has_user": true,
     "may_create_user": false,
     "may_create_event": true,
-    "may_delete": false
+    "may_delete": false,
+    "may_list_attendees": false
   },
   "input": {
     "observation": {
@@ -26,18 +27,72 @@
       "role": "guest",
       "position": 8
     },
-    "clock": {"now": 30000000001},
+    "clock": {
+      "now": 30000000001
+    },
     "known": [
       "bob.user#1",
       "alice.invitation#1",
       "bob.accept#1"
     ],
     "claims": [
-      {"ref": "alice.user#1", "actor": "alice", "type": "user.created", "position": 2, "handles": ["alice.user#1"], "t": 0},
-      {"ref": "bob.user#1", "actor": "bob", "type": "user.created", "position": 3, "handles": ["bob.user#1"], "t": 0},
-      {"ref": "alice.event#1", "actor": "alice", "type": "event.created", "position": 4, "handles": ["alice.event#1"], "visible_to": ["admin", "member", "guest"], "t": 0},
-      {"ref": "alice.invitation#1", "actor": "alice", "type": "invitation.sent", "position": 5, "handles": ["alice.invitation#1", "alice.event#1"], "t": 0},
-      {"ref": "bob.accept#1", "actor": "bob", "type": "event.joined", "position": 7, "handles": ["bob.accept#1", "alice.invitation#1"], "t": 0}
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 2,
+        "handles": [
+          "alice.user#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 3,
+        "handles": [
+          "bob.user#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 4,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "alice.invitation#1",
+        "actor": "alice",
+        "type": "invitation.sent",
+        "position": 5,
+        "handles": [
+          "alice.invitation#1",
+          "alice.event#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "bob.accept#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 7,
+        "handles": [
+          "bob.accept#1",
+          "alice.invitation#1"
+        ],
+        "t": 0
+      }
     ]
   }
 }

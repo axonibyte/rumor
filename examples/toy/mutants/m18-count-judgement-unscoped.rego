@@ -262,6 +262,26 @@ default may_leave := false
 
 may_leave if already_joined
 
+# READING THE ATTENDEE LIST IS THE EVENT ADMIN'S, which is the precondition for
+# the action that reads the one item this API withholds (R8/111's second plant;
+# fable's shape at coop rumor/1682). cmd/toy answers 403 to anyone else, so this
+# is the ledger-expressible half of the application's own rule -- the same
+# relation `may_delete` below rests on, read for a different verb.
+#
+# WHY THE ACTION NEEDS ONE AT ALL, beyond validate's arm 3 refusing an action
+# that declares no precondition: without it the walk draws this action for every
+# actor in the pool, most of them non-admins, and each draw answers 403 against a
+# declared `status = 200`. That reports a response mismatch on every other step
+# -- a finding about the DECLARATION rather than about the plant, and loud enough
+# to bury the one the plant is for.
+default may_list_attendees := false
+
+may_list_attendees if {
+	some c in held_claims
+	c.type == "event.created"
+	c.actor == input.observation.actor
+}
+
 # Deleting is the admin's, and only once: the actor made the event and nothing
 # has deleted it yet. cmd/toy enforces both -- 403 for a non-admin, 404 for an
 # event already gone.
@@ -408,6 +428,19 @@ finding := "consistent" if {
 # browser observation that does not exist yet and whose subject might not be a
 # page at all. The query names the one observation this is about.
 page_observation if input.observation.query == "page_count"
+
+# AND THE SECOND BROWSER OBSERVATION IS A PAGE READING TOO (R8/111). The comment
+# above says this guard is keyed on the QUERY because `missing` is answerable
+# through any source, and "a second browser observation that does not exist yet
+# ... might not be a page at all". That observation now exists and IS the same
+# page: `page_attendees` reads the attendee element of /ui/events/<id>, so a
+# deleted event withholds it for exactly the reason it withholds the count.
+#
+# MEASURED, NOT FORESEEN: without this body a viewing walk that deletes an event
+# reports `bug` on the next attendee reading -- the application answering 404 for
+# a subject it was right to withhold, read as a defect. Seed 29 under `--profile
+# viewing` found it at the default, and the shrink ended on delete_event.
+page_observation if input.observation.query == "page_attendees"
 
 # A DELETED EVENT'S PAGE IS NOT SERVED, AND THAT IS CORRECT. The application
 # 404s the page of an event it has deleted -- which is what a reader sees --

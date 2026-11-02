@@ -66,8 +66,9 @@ const (
 	// page and a finding for a live one. The third case is the reader's control.
 	// These match tests/statute's own declarations, as the comment above says.
 	// 37 -> 40 AND 39 -> 41 AT R8/111's SECOND PLANT: R8/111's second plant adds three cases for one role-shaped rule (the finding, the admin control, the empty list) and two mutants for the rules they arm (m17 the role check dropped, m18 the count judgement unscoped).
-	wantCases   = 40
-	wantMutants = 41
+	// 40 -> 41 AND 41 -> 42: R8/111's action half: `may_list_attendees` is a tracked rule with its own mutant (m19, its sole killer), and the attendee reading of a page that is not served is the case a viewing walk on seed 29 proved missing.
+	wantCases   = 41
+	wantMutants = 42
 )
 
 type observation struct {

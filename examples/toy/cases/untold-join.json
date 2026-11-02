@@ -10,7 +10,8 @@
     "may_create_user": true,
     "has_user": false,
     "may_create_event": true,
-    "may_delete": false
+    "may_delete": false,
+    "may_list_attendees": false
   },
   "input": {
     "observation": {

@@ -218,8 +218,9 @@ func TestTheSuiteExaminesSomething(t *testing.T) {
 	// 37 -> 40 WITH THE ATTENDEE RULE (R8/111's second plant; fable, coop
 	// rumor/1682): the finding, the admin control one field away from it, and
 	// the empty list that tells the plant's absence from an unjoined event.
-	if totalCases != 40 {
-		t.Errorf("expected 40 cases across the five packages, counted %d", totalCases)
+	// 40 -> 41: R8/111's action half: `may_list_attendees` is a tracked rule with its own mutant (m19, its sole killer), and the attendee reading of a page that is not served is the case a viewing walk on seed 29 proved missing.
+	if totalCases != 41 {
+		t.Errorf("expected 41 cases across the five packages, counted %d", totalCases)
 	}
 	// 19, NOT 20, and the shortfall is documented rather than accidental: I
 	// declared 20 from a guess and this assertion caught it. planted-lie has
@@ -231,8 +232,9 @@ func TestTheSuiteExaminesSomething(t *testing.T) {
 	// 39 -> 41 AT R8/111's SECOND PLANT: m17 drops the attendee rule's role
 	// check and m18 drops the count judgement's guard, and each is killed from
 	// the ledger by a case the same change added.
-	if totalMutants != 41 {
-		t.Errorf("expected 41 mutants across the five packages, counted %d", totalMutants)
+	// 41 -> 42 for m19.
+	if totalMutants != 42 {
+		t.Errorf("expected 42 mutants across the five packages, counted %d", totalMutants)
 	}
 	t.Logf("PROOF examined %d package(s), %d case(s), %d mutant(s)",
 		len(pkgs), totalCases, totalMutants)
@@ -524,15 +526,17 @@ func TestNoStatuteCallsPrint(t *testing.T) {
 	// than a sum read off the one above: it says every module was SCANNED, so a
 	// file that stopped being examined shows here even while the corpus count
 	// stays right.
-	if modulesScanned != 46 {
-		t.Errorf("scanned %d modules, expected 46 (5 statutes + 41 mutants); a count that drifts means a file stopped being examined", modulesScanned)
+	// 46 -> 47 for m19.
+	if modulesScanned != 47 {
+		t.Errorf("scanned %d modules, expected 47 (5 statutes + 42 mutants); a count that drifts means a file stopped being examined", modulesScanned)
 	}
 	// 37 -> 40 FOR THE SAME THREE CASES, and this count is deliberately its own
 	// rather than read off the corpus: the claim here is that every case the
 	// corpus holds was EVALUATED under the hook, so a case the loader skipped
 	// would leave this number short while the corpus count stayed right.
-	if evaluations != 40 {
-		t.Errorf("evaluated %d cases under the print hook, expected 40", evaluations)
+	// 40 -> 41 for the same case.
+	if evaluations != 41 {
+		t.Errorf("evaluated %d cases under the print hook, expected 41", evaluations)
 	}
 	// The proof line states the count it MEASURED. Printing "0 prints"
 	// unconditionally put a contradiction one line under the finding when this

@@ -14,7 +14,8 @@
     "has_user": true,
     "may_create_user": false,
     "may_create_event": true,
-    "may_delete": false
+    "may_delete": false,
+    "may_list_attendees": false
   },
   "input": {
     "observation": {
@@ -26,7 +27,9 @@
       "role": "guest",
       "position": 8
     },
-    "clock": {"now": 30000000001},
+    "clock": {
+      "now": 30000000001
+    },
     "known": [
       "bob.user#1",
       "alice.invitation#1",

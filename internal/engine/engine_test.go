@@ -424,8 +424,9 @@ func allFixtures(t *testing.T) [][2]string {
 	// number is declared so a corpus that SHRANK is a failure and not a quiet
 	// pass; it is re-read when a case lands, never widened to what was found.
 	// 37 -> 40: R8/111's second plant adds three cases for one role-shaped rule (the finding, the admin control, the empty list) and two mutants for the rules they arm (m17 the role check dropped, m18 the count judgement unscoped).
-	if len(out) != 40 {
-		t.Fatalf("expected the 40 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
+	// 40 -> 41: R8/111's action half: `may_list_attendees` is a tracked rule with its own mutant (m19, its sole killer), and the attendee reading of a page that is not served is the case a viewing walk on seed 29 proved missing.
+	if len(out) != 41 {
+		t.Fatalf("expected the 41 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
 	}
 	return out
 }
