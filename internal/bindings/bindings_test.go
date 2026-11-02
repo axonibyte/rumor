@@ -1043,3 +1043,53 @@ func TestAZoneIsDeclarableAndANameNoDatabaseHoldsIsRefused(t *testing.T) {
 			"clock.zone naming the value, and an empty or absent key declares none")
 	}
 }
+
+// TestAClockMayDeclareWhereItStarts is R7.5's `[clock].start`: the project's
+// default instant, which a profile may override and internal/platform resolves
+// in one place (fable, coop r7/109).
+//
+// THE WIDTH IS THE POINT OF THE VALUE CHOSEN. An instant in nanoseconds is
+// about 1.8e18, so a reader returning Go's `int` is lossless only where `int`
+// is 64 bits; `decl.Int64` exists for that and this cell would pass against
+// either reader if it used a small number.
+//
+// WHAT IT CANNOT HOLD: "zero is absent". This field stores the INSTANT, so a
+// declared 0 and an absent key are one value here and no cell could tell them
+// apart -- the claim belongs to platform.ClockStartFor, which is where 0 means
+// inherit, and its own cell holds it there.
+func TestAClockMayDeclareWhereItStarts(t *testing.T) {
+	const spring = int64(1772956800000000000) // 2026-03-08T08:00:00Z
+	doc := wellFormed()
+	doc["clock"] = map[string]any{"form": "faked", "start": spring}
+	rep := Parse(doc)
+	if !rep.OK() {
+		t.Fatalf("a declared start is refused: %v", rep.Refusals)
+	}
+	if got := rep.Bindings.ClockStart; got != spring {
+		t.Errorf("ClockStart is %d, want %d: a 2026 instant does not survive a 32-bit int, "+
+			"which is why this key is read with Int64", got, spring)
+	}
+	// ABSENT IS ZERO, which is every project written before this key.
+	doc = wellFormed()
+	doc["clock"] = map[string]any{"form": "faked"}
+	if rep := Parse(doc); !rep.OK() || rep.Bindings.ClockStart != 0 {
+		t.Errorf("a [clock] with no start gives %d (refusals %v), want 0 and none",
+			rep.Bindings.ClockStart, rep.Refusals)
+	}
+	// AND A VALUE THAT IS NOT AN INTEGER IS REFUSED AT THE KEY'S OWN PATH
+	// rather than truncated or ignored -- `decl` names it, and the engine never
+	// sees a clock it was handed a word for.
+	doc = wellFormed()
+	doc["clock"] = map[string]any{"form": "faked", "start": "noon"}
+	rep = Parse(doc)
+	if rep.OK() {
+		t.Fatalf("a start of \"noon\" parsed clean")
+	}
+	if !names(rep.Refusals, "clock.start", "integer") {
+		t.Errorf("the refusal does not name clock.start and what was wanted: %v", rep.Refusals)
+	}
+	if !t.Failed() {
+		t.Logf("PROOF a nanosecond instant is carried whole, an absent key is 0, and a "+
+			"non-integer is refused at clock.start (%d)", spring)
+	}
+}

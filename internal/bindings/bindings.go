@@ -154,6 +154,17 @@ type Bindings struct {
 	// BEFORE THIS PHASE: the run's clock is an instant and nothing reads it as
 	// a local time, so every project written before this key keeps its walk.
 	ClockZone string
+	// ClockStart is the instant `[clock].start` declares, in nanoseconds since
+	// the epoch, and it is the PROJECT's default rather than the last word
+	// (R7.5; fable's ruling at coop r7/109). A profile may override it with
+	// `[profiles.<name>].clock_start`, and internal/platform resolves the two
+	// in one place -- profile, then this, then the epoch.
+	//
+	// ZERO IS ABSENT, which is what every project written before this key
+	// declares: the run's clock starts at the epoch unless something says
+	// otherwise, so a reader cannot tell "declared 0" from "declared nothing"
+	// and does not need to -- both ask for the same instant.
+	ClockStart int64
 	// Quiesce stays the RESERVED MAP for anything the table carries beyond the
 	// probes, so a project is not refused for a key R7 reserves. Probes is the
 	// typed half, which is what R6.2 added.
@@ -748,6 +759,14 @@ func Parse(doc map[string]any) Report {
 				// formatted nil off my own probe as a value (ibis, coop
 				// rumor/1732). `loc == nil` is an equivalent verdict here, so
 				// the choice is the idiom and not a guard.
+				// AND THE INSTANT IT STARTS AT (R7.5). Optional like the others, read
+				// at 64 bits because nanoseconds since the epoch do not fit in 32, and
+				// refused at the key's own path by `decl` when it is not an integer.
+				//
+				// THE VALUE IS NOT JUDGED HERE: a start in the past, in the future or
+				// exactly on a transition is a world a project may want, and the engine
+				// is the reader that knows what it was about to set.
+				b.ClockStart = t.Int64("start", false)
 				if zone := t.Str("zone", false); zone != "" {
 					if _, err := time.LoadLocation(zone); err != nil {
 						t.Refuse("zone", fmt.Sprintf("%q: %v -- `zone` is the IANA name the "+

@@ -233,6 +233,49 @@ func (r *Reader) Bool(key string, required bool) bool {
 	return b
 }
 
+// Int64 reads an integer AT THE WIDTH AN INSTANT NEEDS, which is why it exists
+// beside Int rather than as a cast at one call site (R7.5).
+//
+// NANOSECONDS SINCE THE EPOCH DO NOT FIT IN 32 BITS. A 2026 instant is about
+// 1.8e18, so `Int` -- which returns Go's `int` and reaches it through
+// `int(n)` -- is lossless only where `int` is 64 bits. This project builds
+// 64-bit today and `[clock].start` is the first 64-bit quantity any
+// declaration carries, so the choice is between a reader of the right width
+// and a comment promising the platform; the reader is the one that cannot go
+// stale.
+//
+// A FLOAT IS REFUSED RATHER THAN TRUNCATED, for Int's reason read for a clock:
+// half a nanosecond is a mistake in the file, and the three landings are
+// measured in whole ticks.
+func (r *Reader) Int64(key string, required bool) int64 {
+	r.mark(key)
+	v, ok := r.doc[key]
+	if !ok {
+		if required {
+			r.Refuse(key, "missing key")
+		}
+		return 0
+	}
+	n, ok := asInt64(v)
+	if !ok {
+		r.Refuse(key, fmt.Sprintf("%T: wanted an integer", v))
+		return 0
+	}
+	return n
+}
+
+func asInt64(v any) (int64, bool) {
+	switch n := v.(type) {
+	case int64:
+		return n, true
+	case int:
+		return int64(n), true
+	case int32:
+		return int64(n), true
+	}
+	return 0, false
+}
+
 // Int reads an integer. A FLOAT IS REFUSED RATHER THAN TRUNCATED: 2.5 actors is
 // a mistake in the file, and rounding it would carry the mistake into the run.
 func (r *Reader) Int(key string, required bool) int {

@@ -107,6 +107,22 @@ type Profile struct {
 	// quietly gone does not announce it.
 	ReconcileEvery int
 
+	// ClockStart is `[profiles.<name>].clock_start`, the instant a run of THIS
+	// profile starts its clock at -- the level fable ruled at coop r7/109, and
+	// the fourth to take the shape the period, the venire and the observations
+	// took in 111.
+	//
+	// WHY A PROFILE AND NOT THE PROJECT ALONE. R7.5 needs two worlds in one
+	// project: one starting in the day before the spring transition and one
+	// before the fall, because a single start in March cannot reach November in
+	// a walk any budget allows. Declared at the project level only, the second
+	// world would have to move the first -- which is a committed reading.
+	//
+	// ZERO IS ABSENT, as it is for the period: a profile declaring 0 declares
+	// nothing and takes the project's `[clock].start`, then the epoch. The
+	// opposite reading would make 0 the one instant a profile could not inherit.
+	ClockStart int64
+
 	// Venire is `[profiles.<name>].venire`: rows this profile ADDS to the
 	// platform's venire, and the level fable ruled at coop rumor/1660 on the
 	// finding at r8/146.
@@ -195,6 +211,49 @@ const (
 	PeriodFromStage   PeriodLevel = "stage"
 	PeriodAbsent      PeriodLevel = "absent"
 )
+
+// ClockStartLevel names where an effective clock start came from, for
+// PeriodLevel's reason read once more: an instant and where that instant was
+// declared are different questions, and only the second tells a reader whether
+// their own line is the one in force.
+type ClockStartLevel string
+
+// The three levels, and `ClockStartEpoch` is a value rather than an empty
+// string so that "nothing declared one, so the run begins at the epoch" is a
+// thing the report SAYS rather than a silence a reader has to interpret.
+const (
+	ClockStartFromProfile ClockStartLevel = "profile"
+	ClockStartFromClock   ClockStartLevel = "clock"
+	ClockStartEpoch       ClockStartLevel = "epoch"
+)
+
+// ClockStartFor resolves the instant a run begins at, and it is the ONE place
+// the precedence is stated -- fable's ruling at coop r7/109: the profile, then
+// the project's `[clock].start`, then the epoch.
+//
+// THE PROJECT'S DEFAULT ARRIVES AS AN ARGUMENT because it lives in the OTHER
+// document. `[clock].start` is bindings.toml's and this package does not read
+// bindings; passing the declared value in keeps the precedence in one function
+// without making internal/platform depend on internal/bindings for one field.
+// The caller that has both halves is `rumor run`, which is where the period's
+// resolver is reached from too.
+//
+// ZERO IS ABSENT AT BOTH LEVELS, as it is for the period. A profile declaring
+// `clock_start = 0` declares nothing and inherits; so does a project. The
+// alternative -- zero as a declared epoch -- would make the epoch the one
+// instant that cannot be inherited, and the epoch is exactly what inheriting
+// the whole way down already gives.
+func (p Platform) ClockStartFor(profile string, declared int64) (int64, ClockStartLevel) {
+	if profile != "" {
+		if pr, ok := p.Profiles[profile]; ok && pr.ClockStart != 0 {
+			return pr.ClockStart, ClockStartFromProfile
+		}
+	}
+	if declared != 0 {
+		return declared, ClockStartFromClock
+	}
+	return 0, ClockStartEpoch
+}
 
 // ReconcileEvery resolves the walk's period for one profile, and it is the ONE
 // place the precedence is stated -- fable's wording at coop rumor/1619.
@@ -498,6 +557,42 @@ func Parse(doc map[string]any) Report {
 						"%d: this profile's stages are %s, which do not include %q -- the walk IS "+
 							"that stage, so a period declared here is one no run of this profile "+
 							"can read", prof.ReconcileEvery,
+						strings.Join(prof.Stages, ", "), stageAPI))
+				}
+			}
+			// AND THE INSTANT A RUN OF THIS PROFILE STARTS ITS CLOCK AT
+			// (R7.5, fable's ruling at coop r7/109). Read at 64 bits for
+			// `decl.Int64`'s reason -- nanoseconds since the epoch do not fit
+			// in 32 -- and optional, so every profile committed before this
+			// level keeps the start it had.
+			//
+			// NEGATIVE IS NOT REFUSED, AND THAT IS NOT AN OMISSION: an instant
+			// before 1970 is a world a project may want, and the clock's own
+			// refusal is about moving BACKWARD rather than about where it
+			// began. The period's negative refusal exists because `n % period`
+			// can never reach zero; there is no such arithmetic here.
+			prof.ClockStart = pt.Int64("clock_start", false)
+			// AND A START ON A PROFILE THAT DOES NOT RUN THE WALK IS REFUSED BY
+			// NAME, which is the period's clause read for this level and
+			// fable's word at r7/109. The walk IS the api stage, so a start
+			// declared by a profile whose stage list omits api is an instant no
+			// run of that profile can begin at -- refusable here for the
+			// period's reason: a profile's own `stages` list says whether it
+			// walks, where a stage table shared by every profile cannot be
+			// judged alone.
+			if prof.ClockStart != 0 {
+				walks := false
+				for _, st := range prof.Stages {
+					if st == stageAPI {
+						walks = true
+						break
+					}
+				}
+				if !walks {
+					pt.Refuse("clock_start", fmt.Sprintf(
+						"%d: this profile's stages are %s, which do not include %q -- the walk IS "+
+							"that stage, so a start declared here is an instant no run of this "+
+							"profile can begin at", prof.ClockStart,
 						strings.Join(prof.Stages, ", "), stageAPI))
 				}
 			}

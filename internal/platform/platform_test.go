@@ -796,3 +796,118 @@ func TestAProfileVenireRowIsRefusedByName(t *testing.T) {
 		t.Errorf("refused under the wrong name or for the wrong reason: %v", rep.Refusals)
 	}
 }
+
+// TestClockStartResolvesProfileThenClockThenEpoch drives R7.5's fourth level
+// (fable, coop r7/109) at the ONE place its precedence is stated.
+//
+// THE PROJECT'S DEFAULT ARRIVES AS AN ARGUMENT because `[clock].start` lives in
+// bindings.toml, which this package does not read -- so the cell passes it in
+// the way `rumor run` does, and the precedence is the thing under test rather
+// than the plumbing.
+//
+// ZERO IS ABSENT AT BOTH LEVELS, which is the reading that makes the epoch
+// reachable by inheritance: a profile or a project declaring 0 declares
+// nothing, and a run with neither begins at the epoch and SAYS so.
+func TestClockStartResolvesProfileThenClockThenEpoch(t *testing.T) {
+	const spring = int64(1772956800000000000)
+	const fall = int64(1793516400000000000)
+	p := Platform{Profiles: map[string]Profile{
+		"dst-spring": {ClockStart: spring},
+		"plain":      {},
+	}}
+	for _, tc := range []struct {
+		what, profile string
+		declared      int64
+		wantAt        int64
+		wantLevel     ClockStartLevel
+	}{
+		{"a profile's own start wins", "dst-spring", fall, spring, ClockStartFromProfile},
+		{"a profile with none takes the project's", "plain", fall, fall, ClockStartFromClock},
+		{"an undeclared profile takes the project's", "nonesuch", fall, fall, ClockStartFromClock},
+		{"no profile named takes the project's", "", fall, fall, ClockStartFromClock},
+		{"neither declares one, so the epoch", "plain", 0, 0, ClockStartEpoch},
+		{"a profile's ZERO is absent and inherits", "plain", spring, spring, ClockStartFromClock},
+	} {
+		t.Run(tc.what, func(t *testing.T) {
+			at, level := p.ClockStartFor(tc.profile, tc.declared)
+			if at != tc.wantAt || level != tc.wantLevel {
+				t.Errorf("ClockStartFor(%q, %d) = (%d, %s), want (%d, %s)",
+					tc.profile, tc.declared, at, level, tc.wantAt, tc.wantLevel)
+			}
+		})
+	}
+	if !t.Failed() {
+		t.Logf("PROOF the profile wins, a zero at either level inherits, and a run with " +
+			"nothing declared reports the epoch as a LEVEL rather than as a silence")
+	}
+}
+
+// TestAStartOnAProfileThatCannotWalkIsRefused is the period's clause read for
+// R7.5's level, and it is refused at the PARSE for the period's reason: a
+// profile's own `stages` list says whether it walks, where a stage table shared
+// by every profile cannot be judged alone.
+//
+// THE WALK IS THE api STAGE, so the walking case names "api" explicitly rather
+// than borrowing the fixture's "api-sim" -- which is a stage this project
+// declares and the walk does not read, and a cell built on it would be testing
+// the refusal in both directions.
+func TestAStartOnAProfileThatCannotWalkIsRefused(t *testing.T) {
+	const spring = int64(1772956800000000000)
+	withProfile := func(stages []any, start any) map[string]any {
+		doc := wellFormed()
+		// THE api STAGE IS DECLARED HERE because the fixture's table does not
+		// carry one: it declares `api-sim`, a stage this project has and the
+		// walk does not read. A profile naming an undeclared stage is refused
+		// for THAT, which would hide the refusal under test.
+		doc["stages"].(map[string]any)["api"] = map[string]any{"enabled": true}
+		prof := map[string]any{"stages": stages, "seeds": int64(1), "budget": "1m"}
+		if start != nil {
+			prof["clock_start"] = start
+		}
+		// ADDED BESIDE THE FIXTURE'S PROFILES AND NOT INSTEAD OF THEM: a
+		// `[weights.profile.*]` table names one of them, and a doc that
+		// dropped them would be refused for an orphaned weights row rather
+		// than for this level.
+		doc["profiles"].(map[string]any)["p"] = prof
+		return doc
+	}
+
+	// A PROFILE THAT WALKS CARRIES IT.
+	rep := Parse(withProfile([]any{"api"}, spring))
+	if !rep.OK() {
+		t.Fatalf("a walking profile's clock_start is refused: %v", rep.Refusals)
+	}
+	if got := rep.Platform.Profiles["p"].ClockStart; got != spring {
+		t.Errorf("clock_start is %d, want %d: the instant must survive the parse at full "+
+			"width, which is what decl.Int64 is for", got, spring)
+	}
+
+	// ONE THAT DOES NOT IS REFUSED, BY NAME AND WITH ITS OWN STAGES IN THE
+	// MESSAGE, so the author is told which list made the instant unreadable.
+	rep = Parse(withProfile([]any{"concurrency"}, spring))
+	if rep.OK() {
+		t.Fatalf("a profile selecting no api stage carried a clock_start: the walk IS that " +
+			"stage, so the instant is one no run of this profile can begin at")
+	}
+	if !names(rep.Refusals, "profiles.p.clock_start", "concurrency") {
+		t.Errorf("the refusal does not name clock_start and this profile's stages: %v",
+			rep.Refusals)
+	}
+
+	// AND ABSENT IS NOT REFUSED EITHER WAY, which is what keeps every profile
+	// committed before this level readable.
+	if rep := Parse(withProfile([]any{"concurrency"}, nil)); !rep.OK() {
+		t.Errorf("a non-walking profile with NO clock_start is refused: %v", rep.Refusals)
+	}
+	// A ZERO IS ABSENT TOO, and must not trip the refusal: the resolver reads 0
+	// as "declares nothing", so the parse must not call it a declaration.
+	if rep := Parse(withProfile([]any{"concurrency"}, int64(0))); !rep.OK() {
+		t.Errorf("a non-walking profile with clock_start = 0 is refused: %v -- zero is absent "+
+			"at this level, so it cannot be the one value that makes a profile unreadable",
+			rep.Refusals)
+	}
+	if !t.Failed() {
+		t.Logf("PROOF a start is carried where the profile walks, refused by name with its " +
+			"stages where it does not, and absent or zero is refused neither way")
+	}
+}

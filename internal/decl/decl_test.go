@@ -429,3 +429,48 @@ func TestTOMLRefusesWhatIsNotTOMLAndAcceptsAnEmptyDocument(t *testing.T) {
 		t.Errorf("document %v", doc)
 	}
 }
+
+// TestInt64CarriesAnInstantThatIntWouldTruncate is R7.5's reason for a second
+// integer reader: `[clock].start` is nanoseconds since the epoch, about 1.8e18
+// for any instant this decade, and `Int` reaches its value through `int(n)` --
+// lossless only where Go's `int` is 64 bits.
+//
+// THE NUMBER IS THE TEST. A cell using a small integer would pass against
+// either reader and prove nothing about the width, which is the only thing
+// Int64 exists for: the value below is the first instant R7.5 lands on, and it
+// is larger than math.MaxInt32 by nine orders of magnitude.
+func TestInt64CarriesAnInstantThatIntWouldTruncate(t *testing.T) {
+	const spring = int64(1772956800000000000) // 2026-03-08T08:00:00Z
+	r := New(map[string]any{"start": spring, "small": int64(4), "words": "noon"})
+	if got := r.Int64("start", false); got != spring {
+		t.Errorf("Int64 read %d, want %d: an instant in nanoseconds does not survive a "+
+			"32-bit int, which is the whole reason this reader is not Int", got, spring)
+	}
+	// AN int AND AN int32 ARE INTEGERS TOO, since a decoder may hand either.
+	if got := r.Int64("small", false); got != 4 {
+		t.Errorf("Int64 read %d for 4", got)
+	}
+	// ABSENT IS ZERO AND NOT A REFUSAL, which is what makes the key optional:
+	// every project written before it declares nothing here.
+	if got := r.Int64("missing", false); got != 0 {
+		t.Errorf("an absent key read %d, want 0", got)
+	}
+	// AND A NON-INTEGER IS REFUSED AT THE KEY'S OWN PATH, not truncated.
+	if got := r.Int64("words", false); got != 0 {
+		t.Errorf("a string read as %d, want 0", got)
+	}
+	found := false
+	for _, ref := range r.Refusals() {
+		if ref.Path == "words" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no refusal at `words`: %v -- a value that is not an integer is this "+
+			"reader's own refusal and not a zero handed to a clock", r.Refusals())
+	}
+	if !t.Failed() {
+		t.Logf("PROOF Int64 carries %d unchanged, reads int and int32, answers 0 for an "+
+			"absent key and refuses a non-integer at its own path", spring)
+	}
+}
