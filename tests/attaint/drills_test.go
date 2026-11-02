@@ -145,7 +145,7 @@ func TestEveryDrillTripsItsOwnArm(t *testing.T) {
 			// does not move: the statute's new clause is a second body for
 			// `finding`, which rules.json already declares.
 			// 37 -> 40 CASES AND 39 -> 41 MUTANTS AT R8/111's SECOND PLANT: R8/111's second plant adds three cases for one role-shaped rule (the finding, the admin control, the empty list) and two mutants for the rules they arm (m17 the role check dropped, m18 the count judgement unscoped).
-			// The rule count still does not move -- `counts_the_joins` and
+			// The rule count still does not move -- `page_observation` and
 			// `attendee_observation` are helpers, which this corpus keeps out of
 			// rules.json by the statute's own rule, and the new clauses are
 			// bodies of `finding`.

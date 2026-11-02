@@ -50,10 +50,10 @@ MUTATIONS = {
     "m1-believed-ignores-visibility": (
         "believed := count(joined_by_observer) - count(left_by_observer) if role_sees_subject",
         "believed := count(joined_by_observer) - count(left_by_observer)"),
-    # THE ANCHOR MOVED WHEN THE RULE GAINED ITS SCOPE (R8/111): the consistent
-    # judgement is now guarded by `counts_the_joins`, so the old two-line body no
-    # longer occurs and the generator refused rather than mutating a rule this
-    # mutant is not about. The CHANGE is unmoved -- `deleted` dropped and nothing
+    # THE ANCHOR MOVED WHEN THE RULE GAINED ITS GUARD (R8/111): the consistent
+    # judgement now EXCLUDES the attendee reading (`not attendee_observation`), so
+    # the old two-line body no longer occurs and the generator refused rather than
+    # mutating a rule this mutant is not about. The CHANGE is unmoved -- `deleted` dropped and nothing
     # else -- which is what the mutant's name and header claim.
     "m2-finding-ignores-delete": (
         'finding := "consistent" if {\n\tnot deleted\n\tnot attendee_observation\n\tinput.observation.value == believed\n}',
