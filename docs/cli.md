@@ -182,7 +182,7 @@ demonstrated what it was cut to demonstrate.
 Plus four counting guards — no package, no case, no rule, no mutant — because
 every arm above is satisfied for free by an empty walk.
 
-**Seven kinds of line**, then a tally. Over `examples/` the run prints 93 of them;
+**Seven kinds of line**, then a tally. Over `examples/` the run prints 98 of them;
 one of each kind is shown here, and the counts in the tally are the whole run's:
 
 It was 84 until R7.4, and the block below is what said so: the figure is one
@@ -197,6 +197,19 @@ line only where it reaches a kind no other case reaches, and a fifteenth mutant
 adds its pairing unconditionally. THE FIGURE EXCLUDES THE TALLY LINE, which is
 why `wc -l` over the run reads one higher than the number written here -- a
 reading that nearly cost a correct figure its correction.
+
+93 TO 98 IS FOUR MUTANTS AND ONE RULE, taken as a set difference against
+v0.1.45's own run rather than reasoned from the corpus counts. R8/111's two
+plants and the action that reads the attendee list add m16, m17, m18 and m19 --
+one mutant line each -- and `may_list_attendees` is the first new RULE since
+R7.4, so it brings its own killed-by line. That is the five.
+
+THE THREE THAT MOVE `finding` ADD NO RULE LINE, which is the part a count cannot
+tell you: `finding` already had one, and m16, m17 and m18 are appended INSIDE
+it, so the diff shows that single line REWRITTEN rather than three lines added.
+Six lines appear and one disappears for a net of five. A pairing figure is not
+derivable from the mutant count, which is why this one was measured as a diff
+against the released tree and not adjusted by arithmetic.
 
 ```sh run
 # THIS BLOCK IS THE SAMPLE AND ITS OWN CHECK. `release-gate.py` executes every
