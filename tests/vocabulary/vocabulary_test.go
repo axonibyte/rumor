@@ -40,6 +40,7 @@
 package vocabulary_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -955,4 +956,420 @@ func TestTheChainCheckFires(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --- rule names cited in prose (ratchet, coop r8/182) ---------------------
+
+// ruleCiteForms are the forms this tree uses to say that a name IS a rule of a
+// statute. A citation collected here is a CLAIM about a statute, and the claim
+// is checked against what that statute declares.
+//
+// WHY THIS EXISTS. `counts_the_joins` was named in three files -- a case's
+// `why`, the mutant generator's anchor comment, and tests/attaint's rule-count
+// comment -- and was in no statute. It named a POSITIVE guard that was never
+// written; the shipped judgement excludes the attendee reading instead. Nothing
+// read those names, so one survived three files and a pushed commit message.
+// It is tests/statute's drift pin that cannot help here, for TestNoFixture-
+// NamesARetiredMechanism's reason: a pin catches an edit, and this was a birth
+// defect. And the retired-name sweep above cannot help either, because that is a
+// BLACKLIST -- it catches names known to be dead, never a name that was never
+// real.
+//
+// THE FORM CARRIES THE CLAIM, NOT THE FILE, and that was measured the hard way.
+// Resolving every backticked snake_case token instead gave 145 unresolved names
+// across examples/ -- `explained`, `pending`, `trespass`, `miscount` are finding
+// VALUES, and the toy's prose quotes `may_publish` and `made_invitation` from
+// sibling corpora on purpose. Scoping by FILE fails the same way: every
+// mechanical scope tried (files under examples/, files naming "statute", files
+// naming "statute.rego") still admitted citations about config fields and CLI
+// flags, 7 to 21 of them. An oracle that cries wolf is the failure this file
+// records at its head, so the discriminator is the wording.
+//
+// TWO TIERS, EACH MEASURED. Seven of these forms resolve cleanly over the WHOLE
+// tree: 0 unresolved out of 408 citations. `name-names` does not -- "`X` names
+// Y" is ordinary English and yields 20 citations elsewhere in the tree, every
+// one a field, a flag or a value (`seeds_file` names the file, `limit` names the
+// cap). So that one form is admitted only INSIDE a corpus package, where every
+// line of prose is about that package's statute by construction. It is armed by
+// the fires test below rather than by the corpus, because the corpus holds no
+// such citation today -- a form with no live instance is armed by nothing.
+var ruleCiteForms = []struct {
+	Form string
+	Re   *regexp.Regexp
+	// CorpusOnly keeps a form out of the tree-wide tier. Only `name-names`
+	// sets it, for the 20 measured citations named above.
+	CorpusOnly bool
+}{
+	{"is-a-helper", regexp.MustCompile("(?i)`([a-z][a-z0-9_]*)`\\s+(?:and\\s+`[a-z][a-z0-9_]*`\\s+)?(?:is|are)\\s+(?:a\\s+)?helpers?\\b"), false},
+	{"and-is-helper", regexp.MustCompile("(?i)`[a-z][a-z0-9_]*`\\s+and\\s+`([a-z][a-z0-9_]*)`\\s+are\\s+helpers?\\b"), false},
+	{"guarded-by", regexp.MustCompile("(?i)guarded by\\s+`([a-z][a-z0-9_]*)`"), false},
+	{"the-rule", regexp.MustCompile("(?i)the\\s+`([a-z][a-z0-9_]*)`\\s+rule\\b"), false},
+	{"rule-the", regexp.MustCompile("(?i)rules?\\s+`([a-z][a-z0-9_]*)`"), false},
+	{"precondition", regexp.MustCompile("`([a-z][a-z0-9_]*)`\\s+is\\s+a\\s+PRECONDITION"), false},
+	{"body-of", regexp.MustCompile("(?i)(?:bodies|body)\\s+(?:of|for)\\s+`([a-z][a-z0-9_]*)`"), false},
+	{"name-names", regexp.MustCompile("`([a-z][a-z0-9_]*)`\\s+names\\b"), true},
+}
+
+var (
+	statuteHead  = regexp.MustCompile(`(?m)^(?:default\s+)?([a-z_][a-z0-9_]*)\s*(?::=|if\b|contains\b)`)
+	statuteValue = regexp.MustCompile(`[a-z_][a-z0-9_]*\s*:=\s*"([a-z][a-z0-9_]*)"`)
+)
+
+// statuteNames is what a statute DECLARES: its rule heads, and the verdicts its
+// rules assign. BOTH, because prose names a rule either way -- internal/examples
+// says "removing `default finding` leaves the `consistent` rule standing", which
+// is accurate and names a rule by the value it produces. Holding citations to
+// heads alone would have me rewording correct prose to suit the checker.
+func statuteNames(path string) (map[string]bool, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, m := range statuteHead.FindAllStringSubmatch(string(b), -1) {
+		out[m[1]] = true
+	}
+	for _, m := range statuteValue.FindAllStringSubmatch(string(b), -1) {
+		out[m[1]] = true
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%s declares no rule at all, so every citation against it would read unresolved", path)
+	}
+	return out, nil
+}
+
+// proseOf returns the text of a file that a human READS as prose: comment
+// blocks, a case's `why` and `note`, or the whole of a document. Code is not
+// prose -- a rule name in an expression is the thing itself, not a claim about
+// it.
+func proseOf(path string, body []byte) []string {
+	switch filepath.Ext(path) {
+	case ".json":
+		var obj any
+		if err := json.Unmarshal(body, &obj); err != nil {
+			return nil
+		}
+		var out []string
+		var grab func(any)
+		grab = func(o any) {
+			switch v := o.(type) {
+			case map[string]any:
+				for k, val := range v {
+					if s, ok := val.(string); ok && (k == "why" || k == "note") {
+						out = append(out, s)
+						continue
+					}
+					grab(val)
+				}
+			case []any:
+				for _, val := range v {
+					grab(val)
+				}
+			}
+		}
+		grab(obj)
+		return out
+	case ".md":
+		return []string{string(body)}
+	case ".go", ".rego", ".py", ".sh", ".yml":
+		var out []string
+		for _, blk := range commentBlocks(string(body)) {
+			out = append(out, blk.Text)
+		}
+		return out
+	}
+	return nil
+}
+
+// citeFinding is one citation whose name the statute it is held to does not
+// declare.
+type citeFinding struct {
+	Path, Name, Form, Where string
+}
+
+type citeReport struct {
+	Collected  int
+	CorpusTier int
+	Statutes   int
+	Findings   []citeFinding
+}
+
+// sweepCitations walks a tree and RETURNS what it found rather than failing,
+// which is the whole reason it is a function and not a loop inside the test.
+// Held inline, the only way to reach the reporting path was a tree that already
+// carried a bad name, so on a clean tree that path could be deleted and every
+// arm would stay green. ratchet's rule at coop r6/173: if a refusal has no arm,
+// it is armed by nothing. Now the self-test below builds a tree that has one.
+//
+// THE SWEPT TREE'S OWN tests/vocabulary IS SKIPPED and it is not tidiness, for
+// the reason sources() gives: the self-test constructs citations to names that
+// are deliberately in no statute, and a sweep reading its own fixtures would
+// report them every run.
+func sweepCitations(dir string) (citeReport, error) {
+	var rep citeReport
+	pkgs, err := filepath.Glob(filepath.Join(dir, "examples", "*", "statute.rego"))
+	if err != nil {
+		return rep, err
+	}
+	corpora := map[string]map[string]bool{}
+	union := map[string]bool{}
+	for _, sp := range pkgs {
+		names, err := statuteNames(sp)
+		if err != nil {
+			return rep, err
+		}
+		corpora[filepath.Dir(sp)] = names
+		for n := range names {
+			union[n] = true
+		}
+	}
+	rep.Statutes = len(corpora)
+
+	skipDir := filepath.Join(dir, "tests", "vocabulary")
+	err = filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			if info.Name() == ".git" || p == skipDir {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch filepath.Ext(p) {
+		case ".go", ".rego", ".py", ".json", ".md", ".sh", ".yml":
+		default:
+			return nil
+		}
+		body, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		allowed, inCorpus, where := union, false, "the union of every statute"
+		for pkg, names := range corpora {
+			if strings.HasPrefix(p, pkg+string(os.PathSeparator)) {
+				allowed, inCorpus, where = names, true, filepath.Base(pkg)+"'s statute"
+				break
+			}
+		}
+		for _, text := range proseOf(p, body) {
+			n, faults := judgeCitations(text, inCorpus, allowed)
+			rep.Collected += n
+			if inCorpus {
+				rep.CorpusTier += n
+			}
+			for _, f := range faults {
+				rep.Findings = append(rep.Findings, citeFinding{p, f.Name, f.Form, where})
+			}
+		}
+		return nil
+	})
+	return rep, err
+}
+
+// citeFault is one citation whose name the allowed set does not declare.
+type citeFault struct{ Name, Form string }
+
+// judgeCitations is THE DECISION, run by the sweep and by its self-test alike.
+func judgeCitations(text string, inCorpus bool, allowed map[string]bool) (int, []citeFault) {
+	collected := 0
+	var faults []citeFault
+	for _, f := range ruleCiteForms {
+		if f.CorpusOnly && !inCorpus {
+			continue
+		}
+		for _, m := range f.Re.FindAllStringSubmatch(text, -1) {
+			collected++
+			if !allowed[m[1]] {
+				faults = append(faults, citeFault{m[1], f.Form})
+			}
+		}
+	}
+	return collected, faults
+}
+
+// EVERY RULE NAME CITED IN PROSE IS A RULE ITS STATUTE DECLARES.
+func TestEveryCitedRuleNameIsARule(t *testing.T) {
+	rep, err := sweepCitations(root)
+	if err != nil {
+		t.Fatalf("sweeping %s: %v", root, err)
+	}
+	// A DENOMINATOR FOR THE RESOLUTION SET ITSELF: with no statutes read, every
+	// citation would be unresolved and this suite would blame the prose.
+	if rep.Statutes < 3 {
+		t.Fatalf("found %d statute(s) under examples/, expected the corpus: a short glob would make "+
+			"every citation unresolved", rep.Statutes)
+	}
+	for _, f := range rep.Findings {
+		t.Errorf("%s cites `%s` as a rule [%s] and %s declares no such rule or verdict: a name in "+
+			"prose that is in no statute sends its reader looking for a rule they will never find",
+			f.Path, f.Name, f.Form, f.Where)
+	}
+	// THE POSITIVE CONTROL IS A FLOOR, NOT A PIN. The claim is that the sweep
+	// READ this tree's prose, which a broken walk or a changed comment syntax
+	// fails outright; the measured figure is 408 and prose is edited every
+	// series, so pinning it exactly would only manufacture churn. tests/statute
+	// pins the text of the files that must not move.
+	if rep.Collected < 100 {
+		t.Fatalf("collected %d rule citation(s) over the tree, far short of the corpus: a walk that "+
+			"reads nothing reports zero unresolved names just as a clean tree does", rep.Collected)
+	}
+	if rep.CorpusTier == 0 {
+		t.Fatalf("collected %d citation(s) and not one inside a corpus package, so the corpus tier "+
+			"read nothing", rep.Collected)
+	}
+	t.Logf("PROOF %d rule citation(s) collected over %d statute(s), %d of them inside a corpus, "+
+		"%d form(s) applied tree-wide and 1 inside a corpus only",
+		rep.Collected, rep.Statutes, rep.CorpusTier, len(ruleCiteForms)-1)
+}
+
+// THE SWEEP'S OWN SELF-TEST, in three parts: every form catches a citation to a
+// name no statute declares, the corrected wording trips none, and the WHOLE
+// SWEEP -- walk, prose extraction, resolution and report -- runs over a tree
+// built here that carries exactly two bad citations.
+//
+// BUILT RATHER THAN EDITED, which is TestTheRetiredNameSweepFires's reason: a
+// failure must not be able to leave this tree dirty.
+//
+// IT IS ALSO THE ONLY THING ARMING `name-names`. The corpus holds no citation of
+// that form today, because the one it had WAS the finding; so the sweep would
+// still pass with the form deleted, and this test would not.
+func TestTheCitedRuleSweepFires(t *testing.T) {
+	// Each stale line uses one form to call `counts_the_joins` a rule. It was in
+	// no statute, which is the finding this check comes from.
+	stale := map[string]string{
+		"is-a-helper":   "`counts_the_joins` is a helper, kept out of rules.json",
+		"and-is-helper": "`finding` and `counts_the_joins` are helpers by this corpus's rule",
+		"guarded-by":    "the consistent judgement is guarded by `counts_the_joins`",
+		"the-rule":      "the `counts_the_joins` rule covers the queries about the join count",
+		"rule-the":      "rule `counts_the_joins` is where the scope landed",
+		"precondition":  "`counts_the_joins` is a PRECONDITION and rules.json declares it",
+		"body-of":       "a second body for `counts_the_joins`, which rules.json already declares",
+		"name-names":    "`counts_the_joins` names the four queries that are about the join count",
+	}
+	if len(stale) != len(ruleCiteForms) {
+		t.Fatalf("%d constructed citation(s) for %d form(s): a form with no line here is armed by "+
+			"nothing", len(stale), len(ruleCiteForms))
+	}
+	for _, f := range ruleCiteForms {
+		line, ok := stale[f.Form]
+		if !ok {
+			t.Fatalf("form %q has no constructed citation", f.Form)
+		}
+		m := f.Re.FindStringSubmatch(line)
+		if m == nil {
+			t.Errorf("form %q did not match its own citation %q", f.Form, line)
+			continue
+		}
+		if m[1] != "counts_the_joins" {
+			t.Errorf("form %q captured %q out of %q, wanted the cited name", f.Form, m[1], line)
+		}
+	}
+
+	toy, err := statuteNames(filepath.Join(root, "examples", "toy", "statute.rego"))
+	if err != nil {
+		t.Fatalf("reading the toy's statute: %v", err)
+	}
+
+	// THE CORRECTED WORDING, which is what landed: the names are real and the
+	// guard is the negative one the statute actually carries.
+	fixed := "The rule count still does not move -- `page_observation` and `attendee_observation` " +
+		"are helpers, which this corpus keeps out of rules.json, and the judgement now EXCLUDES " +
+		"the attendee reading, so m2's anchor moved."
+	hits, faults := judgeCitations(fixed, true, toy)
+	if hits == 0 {
+		t.Error("the corrected wording tripped no form at all, so it proves nothing about the names " +
+			"it carries")
+	}
+	for _, f := range faults {
+		t.Errorf("the corrected wording still cites `%s` [%s], which the toy's statute does not "+
+			"declare", f.Name, f.Form)
+	}
+
+	// THE NARROWING IS DRIVEN, not described. "`seeds_file` names the file" is
+	// real prose from docs/contract.md and the reason `name-names` is
+	// corpus-only: outside a corpus it must be invisible, inside one it must
+	// fire. The same text, both ways round.
+	bad := "the judgement is guarded by `counts_the_joins`, and `counts_the_joins` names the queries"
+	if n, fs := judgeCitations(bad, true, toy); n != 2 || len(fs) != 2 {
+		t.Errorf("inside a corpus the decision collected %d citation(s) and %d fault(s), wanted 2 "+
+			"and 2: %+v", n, len(fs), fs)
+	}
+	if n, fs := judgeCitations(bad, false, toy); n != 1 || len(fs) != 1 {
+		t.Errorf("outside a corpus the same text collected %d citation(s) and %d fault(s), wanted 1 "+
+			"and 1: the `name-names` half must be invisible there", n, len(fs))
+	}
+	for _, f := range ruleCiteForms {
+		if (f.Form == "name-names") != f.CorpusOnly {
+			t.Errorf("form %q has CorpusOnly=%v: the measurement that justifies the narrowing -- 20 "+
+				"citations elsewhere in the tree, every one a field, a flag or a value -- covers "+
+				"`name-names` and nothing else", f.Form, f.CorpusOnly)
+		}
+	}
+
+	// AND THE WHOLE SWEEP, over a tree built to carry two bad citations and one
+	// good one. This is what arms the walk, the prose readers and the report.
+	dir := t.TempDir()
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatalf("mkdir for %s: %v", rel, err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatalf("writing %s: %v", rel, err)
+		}
+	}
+	statute := "package planted\n\ndefault finding := \"bug\"\n\n" +
+		"finding := \"consistent\" if {\n\tnot deleted\n}\n\ndeleted if input.x\n"
+	for _, pkg := range []string{"alpha", "beta", "gamma"} {
+		write(filepath.Join("examples", pkg, "statute.rego"), statute)
+	}
+	// One bad citation inside a corpus, by the corpus-only form.
+	write(filepath.Join("examples", "alpha", "cases", "c.json"),
+		`{"why": "`+"`counts_the_joins`"+` names the four queries about the join count"}`)
+	// One bad citation outside every corpus, by a tree-wide form.
+	write(filepath.Join("tools", "gen.py"),
+		"# the consistent judgement is guarded by `counts_the_joins`, so the anchor moved\n")
+	// And the SAME corpus-only wording outside a corpus, which must be ignored.
+	write(filepath.Join("docs", "contract.md"),
+		"The `seeds_file` names the file the lock is read from.\n")
+	// A citation that resolves, so the sweep is not merely finding everything.
+	write(filepath.Join("examples", "beta", "notes.md"),
+		"The `deleted` rule is a helper this corpus keeps out of rules.json.\n")
+
+	rep, err := sweepCitations(dir)
+	if err != nil {
+		t.Fatalf("sweeping the built tree: %v", err)
+	}
+	if rep.Statutes != 3 {
+		t.Fatalf("the built tree read %d statute(s), wanted 3", rep.Statutes)
+	}
+	got := map[string]string{}
+	for _, f := range rep.Findings {
+		got[f.Name+" via "+f.Form] = f.Where
+	}
+	want := map[string]string{
+		"counts_the_joins via name-names": "alpha's statute",
+		"counts_the_joins via guarded-by": "the union of every statute",
+	}
+	if len(got) != len(want) {
+		t.Errorf("the sweep reported %d finding(s) over the built tree, wanted %d: %+v",
+			len(got), len(want), rep.Findings)
+	}
+	for k, where := range want {
+		if got[k] != where {
+			t.Errorf("finding %q was held to %q, wanted %q: the statute a citation answers to is "+
+				"the one its own corpus declares", k, got[k], where)
+		}
+	}
+	if rep.CorpusTier == 0 {
+		t.Error("the built tree's corpus tier collected nothing, so the corpus-only form was never " +
+			"applied where it is allowed")
+	}
+	t.Logf("PROOF %d form(s) each catch a citation to a name in no statute, the corrected wording "+
+		"trips %d and every one resolves, one text yields 2 faults inside a corpus and 1 outside, "+
+		"and a built tree of %d statute(s) and %d citation(s) reports exactly the 2 bad names -- "+
+		"one held to its own corpus, one to the union",
+		len(ruleCiteForms), hits, rep.Statutes, rep.Collected)
 }
