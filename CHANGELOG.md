@@ -3,6 +3,127 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.46 — 2026-11-02
+
+**Two defects planted in a user interface and found by the walk, an observation
+that gets the profile's level, and the release gate's own blind spots closed** —
+issue 111, R8.4, the last of R8's four children.
+
+- **THE TOY GREW A UI AND TWO PLANTS IN IT**, which is what this child is for: a
+  walk that only ever reads an API cannot catch a template. The first is a
+  CACHED COUNT — `leaveEvent` leaves the page's rendered number behind while both
+  declared read paths answer correctly, so the defect is UNREAD rather than
+  unseen. The second is an AUDIENCE — `/events/<id>/attendees` answers 403 to
+  anyone but the event's admin, and the template renders that list to every role
+  the event is visible to. A wrong NUMBER and a wrong READER, and only the second
+  needs a role to see it.
+- **AN OBSERVATION GETS THE PROFILE'S LEVEL**, the third such declaration beside
+  the period and the venire. A `[[observation]]` row reaches every walk of every
+  profile, which is not a level at all: declaring the browser reading globally
+  moved six sessions where the committed reading has four and fourteen steps
+  where it has twenty-four, and tests/clock's own control failed. `Observes` has
+  two halves — a name no profile claims is the project's and reaches every
+  profile, so every observation declared before this ruling is taken exactly as
+  it was BY CONSTRUCTION rather than by a check; a name some profile claims is
+  not. Names and not rows, because what an observation IS belongs to
+  bindings.toml and importing it would be a cycle.
+- **AND A PROFILE MAY APPEND VENIRE ROWS, NEVER REPLACE ONE.** The hazard in a
+  profile-level declaration is the SUBTRACTION, not the addition: an appended row
+  can only add actors, while a claim takes a name from every other profile and no
+  resolver can refuse that. tests/contract holds the committed worlds against it,
+  reading seeds.lock through the product's own parser — and its first cut derived
+  the committed set from the files it was checking, a clause that could not fail
+  beside a comment claiming it could.
+- **`missing` IS A VALUE AND NOT A FAULT**, vocabulary v5. A page the application
+  withholds is an ANSWER about a deleted event and a FINDING about a live one;
+  that asymmetry is the page clause's whole guard, and it is why the clause
+  carries `deleted` rather than standing on the query alone.
+- **THE RUN REPORTS ITS STAGE SELECTION AND EVERY SKIP**, each with its reason,
+  and the periodic reconciliation's verdict gets a reader and a denominator. A
+  stage that ran and was recorded as skipped, a skip with no reason, and a stage
+  selected but never consumed are each refused by name.
+- **D12 IS DRIVEN ON BOTH AXES.** Over every committed profile the api stage
+  catches neither plant — a no-profile run selects api, concurrency and fuzz, and
+  across seeds 7, 29 and 75 the three browser names appear zero times. Under
+  `viewing` it catches both: the audience plant at seeds 13 and 29, the cached
+  count at 6, 10, 18, 32 and 51 of a CONTIGUOUS 1–60 scan, each two-sided. Seed
+  18 is the clearest — step 10 is `admin_1 leave_event`, then
+  `page_count admin_1 1 bug`, and with the write restored the same seed reads
+  `0 consistent` and walks on. The first 28 seeds tried were odd and prime and
+  found the cached count NOWHERE; a hand-picked set is not a bounded scan.
+- **A RULE NAME CITED IN PROSE IS NOW HELD TO THE STATUTE THAT DECLARES IT.**
+  `counts_the_joins` was named in three files and was in no statute — it named a
+  positive guard never written, where the shipped judgement excludes the attendee
+  reading instead. Neither existing check could see it: the drift test pins
+  statute TEXT and this was a birth defect, and the retired-name sweep is a
+  blacklist, which catches names known dead and never a name that was never real.
+  The form carries the claim and not the file: resolving every backticked token
+  gave 145 false names across `examples/`, and every mechanical file scope still
+  admitted citations about config fields and CLI flags.
+- **THE PAGE READERS GET CELLS A CRAFTED DOCUMENT MAKES POSSIBLE.** Counting
+  `<li>` over the whole page and a greedy element match are EQUIVALENT to the
+  committed spelling on a page with one list, which is the only page the toy
+  serves — so no fixture taken from the toy distinguishes them, and the cell is a
+  document written with two lists. Absent and empty must not read alike: a page
+  with no `#attendees` element is one this observation cannot read, and answering
+  0 would make a removed element look like an event nobody has joined.
+- **A PROOF LINE STOPS PRINTING BESIDE THE FAILURE THAT REFUTES IT.** A `t.Logf`
+  always runs, so a proof placed after an `Errorf` reaches the CI log next to the
+  result that disproves it — which matters here because a whole series went into
+  getting those lines INTO that log at all. `if !t.Failed()` is the cure, and the
+  form is not new: it was already in internal/flatten and internal/handle from
+  R2.2 and had lapsed.
+- **THE CI TEST STEP'S DIAGNOSTICS AND BUDGETS ARE DECLARED AND BOUNDED.** The
+  failure view actually searches the log and survives the runner's `-e` flag; the
+  per-package watchdog is declared and sits strictly inside the step's own
+  budget; the timeout diagnostic counts the set it lists. A step that reported
+  `exit status 1` over an empty log and a green suite is what made each of those
+  an arm rather than a fix.
+- **AND THE RELEASE GATE'S OWN BLIND SPOTS ARE CLOSED, FOUR OF THEM**, two of
+  which the 0.1.45 notes predicted and left. The changelog arms presuppose a new
+  version rather than refusing a content head for a date it cannot have. A failed
+  doc `run` block names BOTH streams instead of quoting whichever happened to be
+  non-empty, which had three distinct failures reading identically. The gate
+  refuses to gate a ref the worktree is not on, and refuses a dirty worktree at
+  all -- it had been reading a sample from one ref and RUNNING it in whatever
+  tree was checked out, which invented a finding that was then reported as real.
+  And a `run` block now DECLARES its own budget in its fence, every block is
+  timed, and a refusal names the block, its line, the budget, whether that budget
+  was declared, and the elapsed. Each fix carries a battery.
+- **THAT LAST ONE WAS FOUND BY THIS RELEASE REFUSING ITSELF**, which is the
+  honest way to report it: v0.1.46's first cut went red on the pull request for
+  `doc-run-block-failed`, and the refusal could name neither which of `cli.md`'s
+  three blocks ran long nor by how much. Three boxes then measured the same bytes
+  at 59.0-63.7s against a hard 60s literal. HALF OF THAT IS THE GO BUILD CACHE and
+  not the corpus: the walk alone is 37.2s with a prebuilt binary, a warm `go build`
+  is 0.2-1.0s and a cold one 24.2s, so a first run on a clean clone pays 61.7s and
+  a second pays 38. A margin derived from the warm figure would have flapped
+  again; the attaint block declares 180s against a cold 61.7s.
+- **AND THE SUITE THAT PINS THAT FENCE PATTERN CAUGHT ITS OWN FORK**, which is the
+  tidiest thing in this release. tests/docs held TWO copies of the gate's pattern:
+  one PINNED to the gate's source, one used to WALK the blocks. Changing the gate
+  fired the pin -- correctly -- while the walker stayed stale and was reading two of
+  `cli.md`'s three blocks, skipping the attaint block this road is about. The walker
+  now DERIVES from the pinned copy, so there is one pattern and the two cannot
+  disagree. A pin detects a fork; it does not prevent one, and a pin beside a second
+  copy certifies only the half it holds.
+
+**Control figures, measured on this head.** `attaint` over `examples/`: 5
+packages, 41 cases, 31 rules, 42 mutants; 3 planted lies corroborated of 6, 3
+cleared by removal, 3 planted-not-control; 31 rules killed, 0 unmutated, 0
+refusals. The `cli.md` sample prints 98 lines beside the tally, taken as a set
+difference against v0.1.45's own run rather than by arithmetic — six lines appear
+and one disappears, because three new mutants are appended INSIDE `finding`'s
+existing killed-by line. Rule citations in prose: 409 over 5 statutes, 0
+unresolved. `docs --check`: 1419 paths, every one mapped. The gate's self-test: 20 of 20
+cases, 15 of 15 trailer checks, 7 of 7 docs-verdict checks, 4 of 4 worktree
+checks, 3 of 3 changelog-date checks, 4 of 4 stream checks, 4 of 4 budget checks,
+0 failed, with `docs-stale` reported UNMEASURED rather than passed because a
+synthetic fixture repo holds no module. `cli.md`'s three `run` blocks, timed as
+the gate invokes them: 38.4s, 11.6s and 1.1s warm, 61.7s and 36.7s cold for the
+first two, against a declared 180s and the default 60s. `check-workflows`: 3 workflow files, every job and
+invocation bounded.
+
 ## 0.1.45 — 2026-10-31
 
 **A stage that was known and unrunnable, a reconciliation with a declared
