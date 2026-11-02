@@ -17,6 +17,7 @@ package contract_test
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
+	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
 // appendingProfiles is every committed profile, in every example package, that
@@ -268,4 +270,105 @@ func TestNoCommittedProfileQuietlyChangesWhatItObserves(t *testing.T) {
 			"the commit that does it", got, want)
 	}
 	t.Logf("PROOF %d platform file(s) read, %d profile(s) claiming", len(files), len(claiming))
+}
+
+// committedProfiles is every profile a committed SEED selects, per package,
+// sorted. An empty string is the default weights, which a row without a
+// `profile=` token means.
+//
+// IT IS THE SET D12 IS ABOUT, and the definition matters: a `[weights.profile.<name>]`
+// table alone makes no run happen -- a SEED does. The first cut of this arm read
+// the weights tables instead and immediately failed on `viewing`, which gained a
+// row in this same series for the action it draws. That row changes no committed
+// reading; the absence of a seed naming the profile is what does.
+var committedProfiles = map[string][]string{
+	"toy":  {"expiring", "settling", "walking"},
+	"twin": {},
+}
+
+// TestNoCommittedProfileCanSeeAPage is D12's construction held against the
+// committed files.
+//
+// WHY IT IS AN ARM AND NOT A DRIVE. The drive exists and was run: a no-profile
+// run of examples/toy selects api, concurrency and fuzz, and over seeds 7, 29 and
+// 75 it reported the api rows and the concurrency stage's capacity race while
+// `page_count`, `page_attendees` and `list_attendees` appeared zero times. But a
+// drive reads one tree at one moment; what makes it keep holding is that no world
+// a committed seed replays carries a browser observation, and that is a fact
+// about the files.
+//
+// THE PAIR WITH claimingProfiles ABOVE IS DELIBERATE: that one says WHICH profile
+// claims an observation, this one says no committed seed selects such a profile.
+// Either alone leaves the gap -- a claim added to `walking` passes the first and
+// fails this, and a seed promoted under `viewing` passes this and fails nothing
+// until someone reads the list.
+func TestNoCommittedProfileCanSeeAPage(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join(examplesDir, "*", "platform.toml"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no platform to read: %v %v", files, err)
+	}
+	sort.Strings(files)
+	for _, path := range files {
+		dir := filepath.Dir(path)
+		pkg := filepath.Base(dir)
+		prep, lerr := platform.Load(path, decl.TOML)
+		if lerr != nil || !prep.OK() {
+			t.Errorf("%s: the platform does not read: %v %v", pkg, lerr, prep.Refusals)
+			continue
+		}
+		brep, berr := bindings.Load(filepath.Join(dir, "bindings.toml"), decl.TOML)
+		if berr != nil || !brep.OK() {
+			t.Errorf("%s: the bindings do not read: %v %v", pkg, berr, brep.Refusals)
+			continue
+		}
+		raw, rerr := os.ReadFile(filepath.Join(dir, prep.Platform.SeedsFile))
+		if rerr != nil {
+			t.Errorf("%s: %v", pkg, rerr)
+			continue
+		}
+
+		// THE PRODUCT'S OWN PARSER AND NOT A REGEXP HERE: platform.ParseSeedLine
+		// is what a replay reads these lines with, so an arm spelling the
+		// grammar a second time could pass over a row the product accepts.
+		seen := map[string]bool{}
+		for _, line := range strings.Split(string(raw), "\n") {
+			sl, ok, perr := platform.ParseSeedLine(line)
+			if perr != nil {
+				t.Errorf("%s: %q: %v", pkg, line, perr)
+				continue
+			}
+			if ok {
+				seen[sl.Profile] = true
+			}
+		}
+		var selected []string
+		for name := range seen {
+			selected = append(selected, name)
+		}
+		sort.Strings(selected)
+
+		stated, ok := committedProfiles[pkg]
+		if !ok {
+			t.Errorf("%s declares a platform and committedProfiles does not name it: a package "+
+				"nothing states is one this arm passes over", pkg)
+			continue
+		}
+		if strings.Join(selected, " ") != strings.Join(stated, " ") {
+			t.Errorf("%s's seeds select [%s], stated as [%s]: a promotion that names a new "+
+				"profile is a new world a committed reading replays, and this arm has to judge it",
+				pkg, strings.Join(selected, " "), strings.Join(stated, " "))
+		}
+
+		for _, name := range selected {
+			for _, o := range schedule.ObservationsFor(prep.Platform, name, brep.Bindings) {
+				if o.Source == wire.SourceBrowser {
+					t.Errorf("%s: the world seed-selected as %q takes the browser observation "+
+						"%s, so R8's stages walking it could catch a UI-only plant the done-when "+
+						"says they do not", pkg, name, o.Name)
+				}
+			}
+		}
+	}
+	t.Logf("PROOF %d platform file(s) read; no world a committed seed replays takes a browser "+
+		"observation", len(files))
 }

@@ -473,9 +473,15 @@ budget = "1m"
 # precondition among them. Appended here, it reaches runs of THIS profile and
 # nothing else, and every committed row draws the pool it always drew.
 #
-# NAMED BY NO COMMITTED ROW, which is the half that keeps the evidence: no
-# `[weights.profile.viewing]` and no seed in seeds.lock selects it, so adding
-# it moves no recorded reading.
+# SELECTED BY NO COMMITTED SEED, which is the half that keeps the evidence: no
+# line in seeds.lock names this profile, so adding it moves no recorded reading.
+#
+# AND THE WEIGHTS ROW BELOW IS NOT A COUNTER-EXAMPLE, though this comment said
+# "no `[weights.profile.viewing]`" until the action arrived and gave it one. A
+# weights table makes no run happen -- it says how a run of that profile would
+# draw, and only a SEED makes such a run part of the record. tests/contract reads
+# seeds.lock for exactly this reason, after its first cut keyed on the weights
+# tables and failed here.
 #
 # BOTH STAGES, AND THE SECOND IS NOT DECORATION: arm 19's venire cell refuses a
 # row whose role holds a context no stage THIS profile selects can drive, so a
