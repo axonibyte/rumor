@@ -162,7 +162,7 @@ PATH.
 
 `tools/release-gate.py --self-test` drives twenty cases, fifteen trailer checks,
 seven docs-verdict checks, four worktree checks, three changelog-date checks,
-four stream checks and three budget checks, and asserts that **each arm fires
+four stream checks and four budget checks, and asserts that **each arm fires
 alone**. Each count is declared as a constant and asserted in both
 directions, because a case that silently stops running is invisible in a
 self-consistent total. The release-gate workflow runs that self-test before the

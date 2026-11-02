@@ -1482,9 +1482,10 @@ def _stream_battery() -> tuple[int, int]:
     return failures, EXPECT_STREAM_CHECKS
 
 
-# 3, and it moves only with _budget_battery: the declared budget refusing, the
-# declared budget ALLOWING, and an undeclared fence still parsing.
-EXPECT_BUDGET_CHECKS = 3
+# 4, and it moves only with _budget_battery: the declared budget refusing, the
+# declared budget ALLOWING, an undeclared fence still parsing, and TWO blocks
+# over at once naming DIFFERENT ordinals (fable rumor/1707).
+EXPECT_BUDGET_CHECKS = 4
 
 
 def _budget_battery() -> tuple[int, int]:
@@ -1536,6 +1537,35 @@ def _budget_battery() -> tuple[int, int]:
             if missing:
                 print(f"\n  FAIL budget ({label}): {got[0]!r} is missing {missing}")
                 failures += 1
+
+    # 4. TWO BLOCKS OVER AT ONCE, AND THE TWO LINES MUST NAME DIFFERENT ORDINALS.
+    #    This is the cell for the thing that actually went wrong: ratchet got one
+    #    gate run printing the refusal TWICE, both reading "docs/cli.md: a `run`
+    #    block exceeded 60s", and could not reconcile it against their own
+    #    per-block timings (rumor/1703) -- ibis worked out afterwards that it was
+    #    two DISTINCT blocks (/1704). fable named this cell at /1707. Without it
+    #    the ordinal could be a constant and every cell above would still pass.
+    with tempfile.TemporaryDirectory() as raw:
+        try:
+            repo = _world(Path(raw), today)
+            git(repo, "checkout", "-q", "-b", "run")
+            _mk(repo, "docs/two.md",
+                "# two\n\n```sh run budget_s=1\nsleep 3\n```\n\n"
+                "```sh run budget_s=1\nsleep 3\n```\n")
+            _commit(repo, "docs: two run blocks over one budget")
+            got = run_doc_blocks(repo, "run")
+        except CannotRun as exc:
+            print(f"\n  FAIL budget (two blocks over): the gate could not run: {exc}")
+            return failures + 1, EXPECT_BUDGET_CHECKS
+        if len(got) != 2:
+            print(f"\n  FAIL budget (two blocks over): {len(got)} failure(s), "
+                  f"wanted 2: {got}")
+            failures += 1
+        elif not (any("block 1" in g for g in got) and any("block 2" in g for g in got)):
+            print(f"\n  FAIL budget (two blocks over): the two refusals do not name "
+                  f"different ordinals, which is ratchet /1703's unreconcilable "
+                  f"count: {got}")
+            failures += 1
     return failures, EXPECT_BUDGET_CHECKS
 
 
