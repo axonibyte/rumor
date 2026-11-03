@@ -140,6 +140,19 @@ and hands out the address it bound, which is what `cmd/toy-adapter` reads from
 `TOY_ADDR`. Under the engine the provider owns the application; `rumor validate`
 is the case where nobody does, and there the adapter starts one of its own.
 
+**It restarts the toy into the same world.** The provider starts the process, so
+every argument the toy's world depends on is the provider's to reproduce — a
+restart that drops one hands the walk a different system under the same name.
+`--zone` is the measured case: R7.5's clock walks all shrank to a single
+`create_user`, because the restarted toy read instants in the host's zone while
+the one the walk had declared read them in another, and a world that changes
+under a rollback makes every finding after it unattributable. The zone arrives as
+`TOY_ZONE`, declared in the platform's `env` beside `TOY_ADDR` and named by its
+`zone_env`; the provider appends it to the restart's argv exactly as the adapter
+passes it to a first start. **A product with two spawners needs the same world
+from both** — the adapter's was right from the start and this one was not, and
+nothing in the walk could say which of the two it had just read.
+
 **An empty world is a world.** A checkpoint taken before anything happened
 restores to an **absent** file rather than an empty one: the toy treats a
 missing file as a fresh start, and a zero-byte file where JSON is expected is
