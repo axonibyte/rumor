@@ -255,3 +255,150 @@ func TestGlobsMatchBySegment(t *testing.T) {
 		}
 	}
 }
+
+// walkSkips is skipDirs, DUPLICATED ON PURPOSE AND NOT READ FROM IT. A test
+// that imported the production list would agree with it however that list
+// changed, which is the re-export shape: the duplication is the check. So this
+// is not asserted equal to skipDirs anywhere -- the BEHAVIOUR is what decides,
+// and if the two disagree the subtests below fail rather than this map.
+var walkSkips = map[string]bool{".git": true, "target": true}
+
+// artefactFor turns a .gitignore entry into a concrete path to create.
+//
+// It REFUSES a shape it cannot realise rather than skipping it. A silent skip
+// would let a new .gitignore entry go uncovered while this test still reported
+// a pass -- the defect being that a checker which decides for itself what
+// counts as "not applicable" hides exactly the cases nobody has thought about.
+func artefactFor(entry string) (string, bool) {
+	e := strings.TrimPrefix(entry, "/")
+	switch {
+	case e == "":
+		return "", false
+	case strings.HasSuffix(e, "/"):
+		// A directory entry: the walk descends into it, so the path it can
+		// name is a FILE inside. An empty directory contributes nothing and
+		// would make this cell pass for the wrong reason.
+		return strings.TrimSuffix(e, "/") + "/stowaway.bin", true
+	case strings.Count(e, "*") == 1:
+		return strings.Replace(e, "*", "stowaway", 1), true
+	case !strings.ContainsAny(e, "*?[]!"):
+		return e, true
+	}
+	return "", false
+}
+
+// THE DECISION, not the walk: being listed in .gitignore is NOT an exemption
+// from `docs --check`, and only the walk's own skip list is.
+//
+// fable placed this at r7/105 and the reason it had no cell is that the walk
+// DID have one. .gitignore's own comment carries the ruling, written as a
+// correction after run 142 went red on `rumor-bin`: the entry "stops the
+// artefact being COMMITTED. It does NOT stop `docs --check` failing on it,
+// because the walk in internal/coverage never reads .gitignore". The
+// protection is building out-of-tree with -o, which ci.yml and the release do.
+//
+// WHAT THIS SEES THAT THE CELLS ABOVE CANNOT, measured rather than asserted --
+// and the measurement corrected this paragraph's first draft, which claimed the
+// wrong cure left every other cell green. It does not, and the reason is luck:
+//
+//	skipDirs += "rumor", "__pycache__"   kills this cell AND
+//	                                     TestCommittedTreeIsFullyMapped
+//	skipDirs += "__pycache__" alone      kills THIS CELL ONLY
+//	skipped() += a ".pyc" suffix test    kills THIS CELL ONLY
+//
+// The first is caught elsewhere only because `rumor` collides with the real
+// directory cmd/rumor: skipping that name makes the map's `cmd/rumor/*.go`
+// entry DEAD, and the dead-entry direction refuses. Run 142's artefact was
+// actually named `rumor-bin`, which collides with nothing -- so the accident
+// that catches one entry would not have caught the artefact that started this.
+// `__pycache__` and the `*.pyc` shape collide with nothing committed, and no
+// other cell in this package can see either.
+//
+// The cure was proposed TWICE: derive the walk's skips from .gitignore. ratchet
+// put it at r7/103 after reading the file with `grep -vE '^#|^$'`, which strips
+// the comments from the one file whose comment is the ruling.
+//
+// AND IT IS DRIVEN FROM THE REAL .gitignore, not a copy of its contents, so an
+// entry added later is covered without anyone remembering this test. Three of
+// us have now hit the refusal on an artefact we had created seconds earlier --
+// rook, ibis, and ratchet at rumor/1763 ("the first run's coverage FAIL was MY
+// root binary, built with no -o") -- and all three removed the artefact, which
+// is the INTENDED response. Self-blame reaching the right act is still an
+// unarmed decision.
+func TestAGitignoredArtefactIsStillWalkedAndNamed(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".gitignore"))
+	if err != nil {
+		t.Fatalf("the ruling lives in .gitignore and it could not be read: %v", err)
+	}
+	var entries []string
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		entries = append(entries, line)
+	}
+	if len(entries) == 0 {
+		t.Fatal(".gitignore yielded no entries, so this test would pass over an " +
+			"empty corpus -- a vacuous positive, not a clean one")
+	}
+
+	refused, skipped := 0, 0
+	for _, entry := range entries {
+		rel, ok := artefactFor(entry)
+		if !ok {
+			t.Fatalf("this test cannot realise the .gitignore entry %q as a path. "+
+				"Teach artefactFor the shape rather than leaving the entry "+
+				"uncovered", entry)
+		}
+		t.Run(entry, func(t *testing.T) {
+			d := scratch(t)
+			write(t, filepath.Join(d, "docs", "coverage.toml"),
+				"[[entry]]\npath = \"docs/*.toml\"\ndocs = [\"docs/release.md\"]\n"+
+					"\n[[entry]]\npath = \"src/**\"\ndocs = [\"docs/design.md\"]\n")
+			if err := os.MkdirAll(filepath.Join(d, "src"), 0o755); err != nil {
+				t.Fatalf("fixture: %v", err)
+			}
+			write(t, filepath.Join(d, "src", "one.go"), "package one\n")
+			// THE CLEAN TREE PASSES FIRST. Without this the refusal below
+			// could be the fixture's own fault and the cell would read as
+			// proving the decision.
+			if _, err := Check(d); err != nil {
+				t.Fatalf("the fixture must pass before the artefact is added: %v", err)
+			}
+
+			path := filepath.Join(d, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatalf("fixture: %v", err)
+			}
+			write(t, path, "an artefact nobody mapped\n")
+
+			_, err := Check(d)
+			if walkSkips[strings.Split(rel, "/")[0]] {
+				if err != nil {
+					t.Fatalf("%s is under the walk's own skip list, so it must NOT "+
+						"be demanded of the map: %v", rel, err)
+				}
+				skipped++
+				return
+			}
+			if err == nil {
+				t.Fatalf("%q is in .gitignore but that is not an exemption: %s must "+
+					"be refused by the check", entry, rel)
+			}
+			if !strings.Contains(err.Error(), rel) {
+				t.Fatalf("the refusal must NAME the artefact %s, or a reader cannot "+
+					"act on it: %v", rel, err)
+			}
+			refused++
+		})
+	}
+	// BOTH HALVES OR NEITHER MEANS ANYTHING. A corpus that happened to be all
+	// skips would report a pass having proved nothing about the decision, and
+	// one that was all refusals would not have exercised the skip list at all.
+	if refused == 0 || skipped == 0 {
+		t.Fatalf("the corpus exercised %d refusal(s) and %d skip(s); both halves "+
+			"are needed or this says nothing about which list exempts a path",
+			refused, skipped)
+	}
+}
