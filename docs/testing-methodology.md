@@ -1714,6 +1714,37 @@ disables nothing, it changes which fact answers the question. A drive proves
 the corpus discriminated once, on the tree it was run against; a committed
 mutant is what re-measures it.
 
+### An arm cannot compare what the product cannot say
+
+D4's claim is that the engine supplies the system the zone it is configured to
+read its instants in, and takes it away again afterwards. The arm compared two
+whole runs. THREE MUTANTS SURVIVED IT: the engine supplying no zone at all, the
+engine supplying one of its own choosing, and the prior value left behind
+instead of restored. Each was applied and each BUILT, so none of them is the
+build error that ends in the same word as a kill — the comparison simply could
+not tell them apart, because nothing in the transcript said which zone the toy
+had read. Two runs that disagree about the world produce the same bytes when the
+world is invisible.
+
+**THE CURE BELONGED IN THE PRODUCT, NOT IN THE ARM.** `cmd/toy` now prints
+`toy: reading instants in <zone>` at startup, which makes the supplied zone
+something a reader can see and an arm can assert. The restore is the half no run
+of the toy can observe — it happens after the last one has exited — so it got an
+in-process cell in `cmd/rumor` instead. One claim, one observable, one mutant
+each.
+
+**THE RULE: WHEN SEVERAL MUTANTS SURVIVE ONE COMPARISON, SUSPECT THE OBSERVABLE
+BEFORE THE BATTERY.** A whole-run diff is the weakest oracle in this portfolio
+and the easiest to mistake for the strongest, because it can only ever see what
+the run already says: a property the product never states is one the diff will
+certify forever, and adding cases to it changes nothing. Ask what the transcript
+would have to contain for the mutant to show. If the answer is "nothing it can
+contain", the change is to the product.
+
+**WHAT IT DOES NOT PROVE.** The startup line proves the zone the toy RECEIVED,
+not the zone its arithmetic then uses; that is the allowance cases' claim, and
+they are two oracles on purpose.
+
 ## R8
 
 The lessons from R8's children, one `###` per child in landing order.
