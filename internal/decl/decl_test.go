@@ -453,7 +453,10 @@ func TestInt64CarriesAnInstantThatIntWouldTruncate(t *testing.T) {
 	r := New(map[string]any{
 		"start": spring,
 		"small": int64(4),
-		"asint": 7,
+		// int(...) IS LOAD-BEARING: `spring` is a typed int64 const, so `-spring`
+		// is an int64 and would reach the int64 arm instead -- which is how the
+		// first cut of this fix left both of the `int` arm's mutants alive.
+		"asint": int(-spring),
 		"as32":  int32(-9),
 		"words": "noon",
 	})
@@ -466,9 +469,16 @@ func TestInt64CarriesAnInstantThatIntWouldTruncate(t *testing.T) {
 	if got := r.Int64("small", false); got != 4 {
 		t.Errorf("Int64 read %d for an int64 4", got)
 	}
-	if got := r.Int64("asint", false); got != 7 {
-		t.Errorf("Int64 read %d for an int 7: a decoder handing Go's own `int` must not fall "+
-			"to the refusal path", got)
+	// THE `int` ARM GETS A NEGATIVE INSTANT, which is one value seeing both of
+	// its failures: 7 was small and positive, so the arm's WIDTH and its SIGN
+	// were each unarmed and two mutants lived there (ibis, coop rumor/1755) --
+	// the arm truncating through int32, and the arm losing its sign via
+	// uint32. I had applied that reasoning to the int64 and int32 arms and not
+	// to the one I added myself.
+	if got := r.Int64("asint", false); got != -spring {
+		t.Errorf("Int64 read %d for an int %d: a decoder handing Go's own `int` must reach the "+
+			"value at full width AND with its sign, which only a large negative can show",
+			got, -spring)
 	}
 	if got := r.Int64("as32", false); got != -9 {
 		t.Errorf("Int64 read %d for an int32 -9: 4294967287 is that value sign-extended "+
@@ -494,8 +504,9 @@ func TestInt64CarriesAnInstantThatIntWouldTruncate(t *testing.T) {
 			"reader's own refusal and not a zero handed to a clock", r.Refusals())
 	}
 	if !t.Failed() {
-		t.Logf("PROOF Int64 carries %d unchanged, reads an int64, an int and a NEGATIVE "+
-			"int32 (-9, not 4294967287), answers 0 for an absent key and refuses a "+
-			"non-integer at its own path", spring)
+		t.Logf("PROOF each arm is handed a value that discriminates: an int64 at %d for the "+
+			"width, an int at %d for the width AND the sign, an int32 at -9 (not 4294967287) "+
+			"for the sign; and an absent key reads 0 while a non-integer is refused at its "+
+			"own path", spring, -spring)
 	}
 }
