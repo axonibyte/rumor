@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type harness struct {
@@ -1300,8 +1301,13 @@ func TestTheExpiryRouteAnswersTheInstantAndNothingElse(t *testing.T) {
 func TestAStateFileWhoseMapsAreNullReloadsAndStillWrites(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
+	// SIX KEYS FOR SIX GUARDS. `quotas` joined in R7.5 and the fixture had to
+	// join with it: `DisallowUnknownFields` means an omitted key is not a null
+	// one, so a sixth guard with no key here would be UNARMED while the
+	// comment beside it said six for six -- which is this project's own
+	// "a claim with no oracle" defect pointed at a test.
 	if err := os.WriteFile(path, []byte(`{"users":null,"events":null,"sessions":null,`+
-		`"invitations":null,"recounts":null,"seq":0,"now":0,"jobs":null}`), 0o644); err != nil {
+		`"invitations":null,"recounts":null,"quotas":null,"seq":0,"now":0,"jobs":null}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	srv, err := newServer(path)
@@ -1320,6 +1326,15 @@ func TestAStateFileWhoseMapsAreNullReloadsAndStillWrites(t *testing.T) {
 	}
 	if rid := h.recount(ev, admin); rid == "" {
 		t.Error("a recount against a world loaded from nulls produced no id")
+	}
+	// AND THE SIXTH: the invitation above spent an allowance, which is a write
+	// into the map this fixture nulls.
+	if h.srv.st.Quotas == nil {
+		t.Error("the quotas map is still nil after an invitation spent an allowance")
+	}
+	if len(h.srv.st.Quotas) == 0 {
+		t.Error("no allowance was recorded, so the write that would panic on a nil map " +
+			"never happened and this cell cannot see the guard")
 	}
 }
 
@@ -1636,4 +1651,227 @@ func TestThePageShowsEveryAttendeeTheAdminsPathServes(t *testing.T) {
 	}
 	t.Logf("PROOF the admin's path served %d attendee(s) and the page shows a guest the same "+
 		"ids, one element each", len(served))
+}
+
+// zonedHarness is a world this application reads in a named zone (R7.5), which
+// `newServer`'s UTC default cannot build.
+func zonedHarness(t *testing.T, zone string) *harness {
+	t.Helper()
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		t.Fatalf("the zone database does not hold %s: %v", zone, err)
+	}
+	dir := t.TempDir()
+	srv, err := newServerInZone(filepath.Join(dir, "state.json"), loc)
+	if err != nil {
+		t.Fatalf("starting a %s world: %v", zone, err)
+	}
+	ts := httptest.NewServer(srv.routes())
+	t.Cleanup(ts.Close)
+	return &harness{t: t, ts: ts, dir: dir, srv: srv}
+}
+
+// setClock puts the world at one instant, which is the only way its time moves.
+func (h *harness) setClock(at int64) {
+	h.t.Helper()
+	code, body := h.do(http.MethodPost, "/clock", "", map[string]any{"op": "set", "t": at})
+	if code != http.StatusOK {
+		h.t.Fatalf("setting the clock to %d: status %d (%v)", at, code, body)
+	}
+}
+
+// quotaOf reads one user's allowance.
+func (h *harness) quotaOf(userID string) map[string]any {
+	h.t.Helper()
+	code, body := h.do(http.MethodGet, "/users/"+userID+"/invite-quota", "", nil)
+	if code != http.StatusOK {
+		h.t.Fatalf("reading %s's allowance: status %d (%v)", userID, code, body)
+	}
+	return body
+}
+
+// tryInvite is invite without the fatal, because an exhausted allowance is a
+// REFUSAL and the refusal is what several of these cells are about.
+func (h *harness) tryInvite(adminToken, eventID, userID string) (int, map[string]any) {
+	h.t.Helper()
+	return h.do(http.MethodPost, "/events/"+eventID+"/invitations", adminToken,
+		map[string]any{"user": userID})
+}
+
+// R7.5's PLANTED ROW: A DAILY ALLOWANCE WHOSE RESET IS COMPUTED IN WALL TIME.
+//
+// THE ARMS ASSERT THE DEFECT, which is this file's rule for every planted row:
+// the toy is the system under test and its bugs are deliberate, so a green
+// suite over an honest toy would mean R7.5's profiles have nothing to find.
+// Each cell names what the application SHOULD do beside what it does.
+//
+// ORDINARY DAYS FIRST, because a plant that was wrong every day would be a
+// broken application rather than a planted defect -- and because the whole
+// claim of this row is that it is ONE DAY WIDE.
+func TestTheInvitationAllowanceResetsAtLocalMidnightExceptWhenItDoesNot(t *testing.T) {
+	const zone = "America/Chicago"
+	chicago, err := time.LoadLocation(zone)
+	if err != nil {
+		t.Fatalf("the zone database does not hold %s: %v", zone, err)
+	}
+	// THE INSTANTS ARE DERIVED FROM A CALENDAR, not written as nanoseconds: a
+	// magic integer here would be unreadable and unfalsifiable at once.
+	at := func(y int, m time.Month, d, h, min int) int64 {
+		return time.Date(y, m, d, h, min, 0, 0, chicago).UnixNano()
+	}
+
+	t.Run("an ordinary day resets at midnight", func(t *testing.T) {
+		h := zonedHarness(t, zone)
+		admin, _ := h.actorWithID("alice")
+		_, g1 := h.actorWithID("dana")
+		_, g2 := h.actorWithID("erin")
+		_, g3 := h.actorWithID("finn")
+		ev := h.createEvent(admin, "launch", 10, nil)
+
+		h.setClock(at(2026, time.June, 10, 9, 0))
+		h.invite(admin, ev, g1)
+		h.invite(admin, ev, g2)
+		q := h.quotaOf(h.srv.st.Sessions[admin].UserID)
+		if q["reset_local"] != "00:00" {
+			t.Errorf("an ordinary day's reset is at %v local, want 00:00: this cell is the "+
+				"control for the two below and the plant must NOT be visible here", q["reset_local"])
+		}
+		if q["remaining"] != float64(0) {
+			t.Fatalf("two invitations did not spend the allowance: %v", q)
+		}
+		// A THIRD IS REFUSED, which is the feature the plant rides on.
+		if code, body := h.tryInvite(admin, ev, g3); code != http.StatusTooManyRequests {
+			t.Errorf("a third invitation in one day answered %d, want 429: %v", code, body)
+		}
+		// AND THE NEXT LOCAL DAY RESTORES IT.
+		h.setClock(at(2026, time.June, 11, 0, 1))
+		if code, body := h.tryInvite(admin, ev, g3); code != http.StatusCreated {
+			t.Errorf("the allowance did not reset on the next local day: %d (%v)", code, body)
+		}
+	})
+
+	// SPRING: THE DAY IS 23 HOURS LONG, so twenty-four hours of wall time from
+	// its midnight lands an hour INTO the next day. For that hour the
+	// application still refuses a user whose new day has begun.
+	t.Run("the spring transition resets an hour late", func(t *testing.T) {
+		h := zonedHarness(t, zone)
+		admin, _ := h.actorWithID("alice")
+		_, g1 := h.actorWithID("dana")
+		_, g2 := h.actorWithID("erin")
+		_, g3 := h.actorWithID("finn")
+		ev := h.createEvent(admin, "launch", 10, nil)
+		adminID := h.srv.st.Sessions[admin].UserID
+
+		// 2026-03-08 is the transition: 02:00 CST does not exist.
+		h.setClock(at(2026, time.March, 8, 10, 0))
+		h.invite(admin, ev, g1)
+		h.invite(admin, ev, g2)
+		q := h.quotaOf(adminID)
+		if q["reset_local"] != "01:00" {
+			t.Errorf("the planted reset is at %v local, want 01:00 -- the plant is gone and "+
+				"R7.5's spring seed has nothing to find", q["reset_local"])
+		}
+		if q["day"] != "2026-03-08" {
+			t.Fatalf("the allowance is anchored on %v", q["day"])
+		}
+
+		// 00:30 ON THE NEXT LOCAL DAY: a new day by the zone, and the
+		// application's own reset has not arrived.
+		h.setClock(at(2026, time.March, 9, 0, 30))
+		code, body := h.tryInvite(admin, ev, g3)
+		if code != http.StatusTooManyRequests {
+			t.Errorf("the spring plant is gone: an invitation 30 minutes into the new local "+
+				"day answered %d, want the stale refusal 429 (%v)", code, body)
+		}
+		stale := h.quotaOf(adminID)
+		// THE DISAGREEMENT A RULE READS: the record says yesterday while the
+		// zone says today.
+		if stale["day"] != "2026-03-08" {
+			t.Errorf("the stale allowance is anchored on %v, want 2026-03-08 -- without the "+
+				"stale day there is nothing for `input.clock.local.date` to disagree with",
+				stale["day"])
+		}
+		// AND AN HOUR LATER IT CATCHES UP, which is what makes the window one
+		// hour rather than one day.
+		h.setClock(at(2026, time.March, 9, 1, 30))
+		if code, body := h.tryInvite(admin, ev, g3); code != http.StatusCreated {
+			t.Errorf("the allowance never reset: %d (%v)", code, body)
+		}
+		if q := h.quotaOf(adminID); q["day"] != "2026-03-09" || q["reset_local"] != "00:00" {
+			t.Errorf("the day after the transition is still wrong (%v), so the plant is not "+
+				"one day wide -- fable's re-anchoring at r7/90 is what bounds it", q)
+		}
+	})
+
+	// FALL: THE DAY IS 25 HOURS LONG, so twenty-four hours of wall time from
+	// its midnight lands an hour BEFORE the next day. The allowance comes back
+	// at 23:00, while the day it belongs to is still running.
+	t.Run("the fall transition resets an hour early", func(t *testing.T) {
+		h := zonedHarness(t, zone)
+		admin, _ := h.actorWithID("alice")
+		_, g1 := h.actorWithID("dana")
+		_, g2 := h.actorWithID("erin")
+		_, g3 := h.actorWithID("finn")
+		ev := h.createEvent(admin, "launch", 10, nil)
+		adminID := h.srv.st.Sessions[admin].UserID
+
+		// 2026-11-01 is the transition: 01:00 happens twice. The clock is set
+		// before the repeat so the day's first midnight is the anchor.
+		h.setClock(at(2026, time.November, 1, 0, 30))
+		h.invite(admin, ev, g1)
+		h.invite(admin, ev, g2)
+		if q := h.quotaOf(adminID); q["reset_local"] != "23:00" {
+			t.Errorf("the planted reset is at %v local, want 23:00 -- the plant is gone and "+
+				"R7.5's fall seed has nothing to find", q["reset_local"])
+		}
+
+		// 23:30 THE SAME LOCAL DAY: still 2026-11-01, and the allowance is
+		// back when it should not be.
+		h.setClock(at(2026, time.November, 1, 23, 30))
+		code, body := h.tryInvite(admin, ev, g3)
+		if code != http.StatusCreated {
+			t.Errorf("the fall plant is gone: an invitation at 23:30 on the transition day "+
+				"answered %d, want the early-reset 201 (%v)", code, body)
+		}
+		if q := h.quotaOf(adminID); q["day"] != "2026-11-01" {
+			t.Errorf("the re-anchored allowance reads %v, want 2026-11-01: the reset fired "+
+				"early WITHIN the day, which is the defect", q["day"])
+		}
+	})
+
+	// AND UTC IS INERT, which is the compatibility property every profile
+	// committed before R7.5 depends on: a zone with no transitions makes the
+	// planted arithmetic correct on every day of the year.
+	t.Run("an unconfigured world never reaches the plant", func(t *testing.T) {
+		dir := t.TempDir()
+		srv, serr := newServer(filepath.Join(dir, "state.json"))
+		if serr != nil {
+			t.Fatalf("starting a default world: %v", serr)
+		}
+		ts := httptest.NewServer(srv.routes())
+		t.Cleanup(ts.Close)
+		h := &harness{t: t, ts: ts, dir: dir, srv: srv}
+		admin, _ := h.actorWithID("alice")
+		_, g1 := h.actorWithID("dana")
+		ev := h.createEvent(admin, "launch", 10, nil)
+		adminID := h.srv.st.Sessions[admin].UserID
+
+		// THE SAME INSTANTS THE SPRING CELL USES, so this is a measurement
+		// about the ZONE and not about the dates.
+		for _, when := range []int64{
+			at(2026, time.March, 8, 10, 0),
+			at(2026, time.November, 1, 0, 30),
+		} {
+			h.setClock(when)
+			h.invite(admin, ev, g1)
+			if q := h.quotaOf(adminID); q["reset_local"] != "00:00" {
+				t.Errorf("an unconfigured world's reset is at %v local on a transition day, "+
+					"want 00:00: UTC has no transitions and the plant must be unreachable", q["reset_local"])
+			}
+			srv.st.Quotas = map[string]*quota{}
+		}
+		if q := h.quotaOf(adminID); q["zone"] != "UTC" {
+			t.Errorf("an unconfigured world reports the zone %v", q["zone"])
+		}
+	})
 }

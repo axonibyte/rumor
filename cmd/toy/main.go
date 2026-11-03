@@ -39,6 +39,18 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	// THE DATABASE IS EMBEDDED HERE TOO, as cmd/rumor embeds it (fable, coop
+	// r7/95). The reason is this binary's own: as of R7.5 this application
+	// reads its own instants as LOCAL time, so a box whose zone database is
+	// absent or stale would make the system under test behave differently from
+	// the one a seed was promoted against -- and the walk would report a
+	// finding about the HOST. One database, in the binary, on every box.
+	//
+	// IT IS THE TOY'S FIRST AND ONLY TZ DEPENDENCY (ibis, coop r7/113): the
+	// instant stays injected through POST /clock and nothing here reads
+	// `time.Now`; the location only READS that instant.
+	_ "time/tzdata"
 )
 
 // The three roles. A role is held RELATIVE TO AN EVENT and is not a property of
@@ -162,6 +174,66 @@ type invitation struct {
 // where the instant can be READ; this is the only place it is decided.
 const invitationLifetime = int64(30 * time.Second)
 
+// invitationQuota is how many invitations ONE user may create in one LOCAL
+// day, and it is R7.5's planted row (issue 115 deliverable 4, class api).
+//
+// TWO, MEASURED RATHER THAN CHOSEN, and the figure is ibis's (coop r7/116)
+// after mine missed a stream. Across all five rows of examples/toy/seeds.lock:
+// four draw no invitation AT ALL and that is structural rather than lucky --
+// `[weights.default]` sets invite_user = 0 and only `[weights.profile.expiring]`
+// raises it, so walking and settling cannot draw one. Seed 3 under `expiring`
+// makes THREE calls by THREE inviters, two in the run (member_2, guest_1) and
+// one in the SHRUNK trace (admin_1), which replays on a clean world and so
+// reaches this server the way the run does.
+//
+// NO INVITER MAKES MORE THAN ONE in either stream, so a per-inviter limit of 2
+// keeps a 2x margin and every promoted seed draws what it drew before this
+// constant existed. A limit of 1 would move seed 3's world, which is the thing
+// R7.5 is not allowed to do.
+//
+// MY OWN FIRST FIGURE WAS "TWO BY TWO", and the defect was the instrument and
+// not the world: the run prints `run:` and `trace:` lines, my first grep
+// showed both, and the per-actor count I published was taken over `^run:`
+// alone. A narrowing applied between seeing the data and reporting it.
+//
+// IT LIVES HERE AND IN NO DECLARATION, for invitationLifetime's reason: a
+// limit in bindings.toml would be a second copy of this number and the engine
+// would judge against its copy rather than the one this server enforces.
+const invitationQuota = 2
+
+// quota is one user's invitation allowance for one local day.
+//
+// IT IS IN THE STATE FILE for the reason `state`'s own comment gives: nothing
+// about the application lives outside it, or the rollback provider's verify
+// would be lying.
+//
+// *** THIS IS WHERE R7.5's DEFECT IS PLANTED. *** `ResetAt` is the start of
+// the current LOCAL day plus twenty-four hours of WALL time, which is right on
+// every day of the year except the two a daylight-saving transition makes 23
+// or 25 hours long. On the spring day the reset lands an hour LATE, so a user
+// who has spent their allowance is still refused for an hour into the next
+// day; on the fall day an hour EARLY, so an allowance comes back while the day
+// it belongs to is still running. What a daily reset MEANS is the zone's own
+// next midnight, which is `AddDate(0, 0, 1)` and not `Add(24 * time.Hour)`.
+//
+// RE-ANCHORED DAILY, which is fable's ruling 2 at coop r7/90: every touch
+// recomputes `Day` and `ResetAt` from the CURRENT local date, so the error
+// does not accumulate and the plant is exactly ONE DAY wide. Without that one
+// transition would shift every reset for the rest of the run, and the finding
+// would be about the whole walk rather than about a day.
+type quota struct {
+	// Day is the local date this allowance was anchored on, as the zone read
+	// it at the time -- so a stale Day beside a later local date IS the
+	// disagreement a rule reads.
+	Day string `json:"day"`
+
+	Used int `json:"used"`
+
+	// ResetAt is the instant this server will next re-anchor, computed the
+	// wrong way on purpose. See this type's own comment.
+	ResetAt int64 `json:"reset_at"`
+}
+
 type session struct {
 	Token   string `json:"token"`
 	UserID  string `json:"user_id"`
@@ -178,6 +250,10 @@ type state struct {
 
 	// Invitations is invitation id -> the invitation.
 	Invitations map[string]*invitation `json:"invitations"`
+
+	// Quotas is user id -> that user's invitation allowance (R7.5). Keyed on
+	// the INVITER, which is the user whose allowance an invitation spends.
+	Quotas map[string]*quota `json:"quotas"`
 
 	// Recounts is recount id -> event id, and it exists so a RECOUNT has an
 	// identity of its own.
@@ -252,6 +328,7 @@ func newState() *state {
 		Sessions:    map[string]*session{},
 		Recounts:    map[string]string{},
 		Invitations: map[string]*invitation{},
+		Quotas:      map[string]*quota{},
 	}
 }
 
@@ -259,17 +336,52 @@ type server struct {
 	mu   sync.Mutex
 	st   *state
 	path string
+
+	// zone is the zone this application reads its own instants in, and it is
+	// CONFIGURATION and not world state -- it belongs beside `path` rather
+	// than in the state file, for the same reason the listen address does.
+	//
+	// IT IS THE SYSTEM'S OWN DECLARATION AND NOT THE PROJECT'S, which is
+	// fable's ruling at coop r7/114: `[clock].zone` is what the ENGINE reads
+	// the run's instants in and it never crosses the wire, so this is
+	// configured separately -- and the two disagreeing is then something a run
+	// can FIND rather than something the harness makes impossible.
+	//
+	// NEVER nil. An unconfigured toy anchors on UTC days, which is the
+	// compatibility property: UTC has no transitions, so the planted reset
+	// below is arithmetically correct on every day of the year and every
+	// profile committed before R7.5 draws exactly what it drew.
+	zone *time.Location
 }
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:0", "the address to serve on; :0 picks a free port and the chosen one is printed")
 	statePath := flag.String("state", "", "the file holding the whole world (required)")
+	zoneName := flag.String("zone", "", "the IANA zone this application reads its own instants in; empty means UTC")
 	flag.Parse()
 	if *statePath == "" {
 		fmt.Fprintln(os.Stderr, "toy: --state is required: the whole world lives in one file and nothing else holds it")
 		os.Exit(2)
 	}
-	srv, err := newServer(*statePath)
+	// THE ZONE IS REFUSED BY NAME AT STARTUP, not at the first invitation: a
+	// system that comes up and then fails one route is harder to diagnose than
+	// one that will not come up, and the adapter reads this process's stderr.
+	//
+	// AND THE EMPTY CASE IS SPELLED OUT rather than passed through. Measured
+	// twice in this child: `time.LoadLocation("")` SUCCEEDS with a real UTC, so
+	// forwarding it would work by accident and read as an oversight -- and the
+	// day someone wants an unconfigured toy to be an ERROR, the line to change
+	// is this one.
+	loc := time.UTC
+	if *zoneName != "" {
+		var zerr error
+		if loc, zerr = time.LoadLocation(*zoneName); zerr != nil {
+			fmt.Fprintf(os.Stderr, "toy: --zone %q: %v -- the name is an IANA zone this "+
+				"build's database holds\n", *zoneName, zerr)
+			os.Exit(2)
+		}
+	}
+	srv, err := newServerInZone(*statePath, loc)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "toy: %v\n", err)
 		os.Exit(1)
@@ -308,8 +420,25 @@ func main() {
 // every caller that built a server without main() had no worker at all. That
 // reasoning still holds -- it is why the drain now rides routes() rather than
 // the listener -- but a timer was never a thing a deterministic run could own.
-func newServer(path string) (*server, error) {
-	srv := &server{path: path, st: newState()}
+func newServer(path string) (*server, error) { return newServerInZone(path, time.UTC) }
+
+// newServerInZone is newServer with the zone this application reads its own
+// instants in (R7.5).
+//
+// newServer KEEPS ITS SIGNATURE deliberately: seven callers construct a server
+// and a second positional argument would have edited all of them to say "and
+// UTC" -- churn that reads as a change at each site while asserting nothing.
+// UTC is the default for the reason the field's own comment gives.
+func newServerInZone(path string, loc *time.Location) (*server, error) {
+	if loc == nil {
+		// nil IS NOT UTC HERE EITHER, and this is the guard rather than a
+		// cast: `(*time.Location)(nil).String()` is the string "UTC" while any
+		// read THROUGH a nil location panics, so a nil arriving here would be
+		// a server that looks UTC-configured in every message and dies on the
+		// first invitation.
+		loc = time.UTC
+	}
+	srv := &server{path: path, st: newState(), zone: loc}
 	if err := srv.load(); err != nil {
 		return nil, err
 	}
@@ -353,23 +482,26 @@ func (s *server) load() error {
 	// a write into a nil map panics. `recounts` had no guard before R7.4 and
 	// `invitations` would have shipped without one by copying its neighbors.
 	//
-	// FIVE MAPS AND FIVE GUARDS, which is the number this comment got wrong
-	// (ratchet, coop r7/65): it said "all four" with its own sentence adding
-	// two to three, and a figure that disagrees with the code beside it sends
-	// the next reader hunting for an exempt map. `state` declares users,
-	// events, sessions, invitations and recounts; the list below is complete
-	// rather than historical, and ratchet swept for a sibling before reporting
-	// -- no nested maps anywhere, and `event` carries only slices, where
-	// appending to a nil one is safe.
+	// SIX MAPS AND SIX GUARDS, and the figure moves with the code: it said
+	// "all four" once over five guards (ratchet, coop r7/65), and a figure
+	// that disagrees with the code beside it sends the next reader hunting for
+	// an exempt map. `state` declares users, events, sessions, invitations,
+	// recounts and -- as of R7.5 -- quotas; the list below is complete rather
+	// than historical, and the sweep for a sibling was run again when the
+	// sixth landed: no nested maps anywhere, and `event` carries only slices,
+	// where appending to a nil one is safe.
 	//
-	// ARMED FIVE FOR FIVE by TestAStateFileWhoseMapsAreNullReloadsAndStillWrites:
+	// ARMED SIX FOR SIX by TestAStateFileWhoseMapsAreNullReloadsAndStillWrites:
 	// each guard removed on its own kills it (ratchet drove all five, where I
-	// had driven the two I added).
+	// had driven the two I added; the sixth came with its own).
 	if st.Recounts == nil {
 		st.Recounts = map[string]string{}
 	}
 	if st.Invitations == nil {
 		st.Invitations = map[string]*invitation{}
+	}
+	if st.Quotas == nil {
+		st.Quotas = map[string]*quota{}
 	}
 	s.st = st
 	return nil
@@ -510,8 +642,58 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"depth": d, "idle": d == 0})
 }
 
+// handleUserPath answers what the world holds about ONE user, which is one
+// thing: their invitation allowance (R7.5).
+//
+// A GET AND IT MUTATES NOTHING, which is what makes it an observation rather
+// than a step. Where the world holds no record it reports the one the next
+// invitation WOULD be judged against -- computed, not stored -- so a rule
+// reading this field does not have to carry a case for "nobody has invited
+// yet" and cannot be satisfied by an absence.
+//
+// `reset_local` IS THE FIELD A STATUTE CAN JUDGE. A daily reset is at 00:00 by
+// definition, and rego cannot read an instant in a zone, so the application
+// reports the local clock FACE of its own next reset and the rule compares a
+// string. `day` is the other half: beside `input.clock.local.date` it says
+// whether this allowance is anchored on the day the run is actually in.
+func (s *server) handleUserPath(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		fail(w, http.StatusMethodNotAllowed, "only GET reads a user's allowance")
+		return
+	}
+	rest := strings.TrimPrefix(r.URL.Path, "/users/")
+	id, tail, ok := strings.Cut(rest, "/")
+	if !ok || tail != "invite-quota" {
+		fail(w, http.StatusNotFound, "this path answers only /users/<id>/invite-quota")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, found := s.st.Users[id]; !found {
+		fail(w, http.StatusNotFound, "no such user")
+		return
+	}
+	q, stored := s.st.Quotas[id], true
+	if q == nil {
+		fresh := s.anchorFor(s.st.Now)
+		q, stored = &fresh, false
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user":        id,
+		"day":         q.Day,
+		"used":        q.Used,
+		"limit":       invitationQuota,
+		"remaining":   invitationQuota - q.Used,
+		"reset_at":    q.ResetAt,
+		"reset_local": s.localFace(q.ResetAt),
+		"zone":        s.zone.String(),
+		"anchored":    stored,
+	})
+}
+
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/users/", s.handleUserPath)
 	mux.HandleFunc("/clock", s.handleClock)
 	mux.HandleFunc("/users", s.handleUsers)
 	mux.HandleFunc("/sessions", s.handleSessions)
@@ -885,6 +1067,51 @@ func (s *server) handleInvitationPath(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// anchorFor is the allowance this server WOULD give a user at the instant
+// `at`, computed and not stored.
+//
+// ONE ARITHMETIC SITE. The read route reports this where nothing is stored
+// yet, so the planted computation appears in exactly one place and a fix or a
+// mutant cannot reach the write path and miss the read.
+func (s *server) anchorFor(at int64) quota {
+	t := time.Unix(0, at).In(s.zone)
+	dayStart := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, s.zone)
+	return quota{
+		Day: t.Format("2006-01-02"),
+		// *** THE PLANT (R7.5, class api). *** Twenty-four hours of WALL time
+		// from the start of today, where a daily reset means the zone's own
+		// next midnight -- `dayStart.AddDate(0, 0, 1)`. The two agree on every
+		// day except the two a transition makes 23 or 25 hours long.
+		ResetAt: dayStart.Add(24 * time.Hour).UnixNano(),
+	}
+}
+
+// quotaFor is the inviter's allowance at the world's current instant,
+// RE-ANCHORING it when the world has passed the reset this server computed
+// (fable, coop r7/90 ruling 2: the plant is one day wide).
+//
+// THE STALE `Day` IS THE OBSERVABLE. On the spring day the reset is an hour
+// late, so for that hour this returns a record whose `Day` is YESTERDAY while
+// the zone has already moved on -- which is the disagreement a rule reads
+// against `input.clock.local.date`.
+func (s *server) quotaFor(userID string) *quota {
+	q := s.st.Quotas[userID]
+	if q == nil || s.st.Now >= q.ResetAt {
+		fresh := s.anchorFor(s.st.Now)
+		q = &fresh
+		s.st.Quotas[userID] = q
+	}
+	return q
+}
+
+// localFace is the local clock face of an instant in this server's zone,
+// "15:04". It is what makes the planted reset READABLE by a statute: a daily
+// reset is at 00:00 by definition, so a rule can test this field without zone
+// arithmetic a policy cannot do.
+func (s *server) localFace(at int64) string {
+	return time.Unix(0, at).In(s.zone).Format("15:04")
+}
+
 // inviteToEvent creates a standing offer for one user to join one event.
 //
 // THE EVENT'S ADMIN AND NOBODY ELSE. A member who could invite would make the
@@ -923,6 +1150,17 @@ func (s *server) inviteToEvent(w http.ResponseWriter, r *http.Request, id string
 		fail(w, http.StatusConflict, "that user is already a member")
 		return
 	}
+	// THE ALLOWANCE IS SPENT BY THE INVITER (R7.5), and an exhausted one is a
+	// REFUSAL: the answer does not match this action's declared `response`, so
+	// the walk records a refused step and the ledger gains no claim -- which
+	// is right, because the invitation did not happen in the world.
+	q := s.quotaFor(sess.UserID)
+	if q.Used >= invitationQuota {
+		fail(w, http.StatusTooManyRequests, fmt.Sprintf(
+			"%s has used %d of %d invitations for %s; the next reset is %s local",
+			sess.UserID, q.Used, invitationQuota, q.Day, s.localFace(q.ResetAt)))
+		return
+	}
 	inv := &invitation{
 		ID:      s.nextID("i"),
 		EventID: ev.ID,
@@ -933,6 +1171,10 @@ func (s *server) inviteToEvent(w http.ResponseWriter, r *http.Request, id string
 		ExpiresAt: s.st.Now + invitationLifetime,
 	}
 	s.st.Invitations[inv.ID] = inv
+	// SPENT BEFORE THE SAVE, so the allowance is in the same file write as the
+	// invitation it paid for: a count incremented after a failed save would
+	// charge a user for an invitation the world does not hold.
+	q.Used++
 	if err := s.save(); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return

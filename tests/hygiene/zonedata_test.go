@@ -19,10 +19,18 @@
 // ibis r7/94, fable's corrected ruling r7/95). A binary that read the host's
 // zoneinfo would make that version a property of whatever box ran it.
 //
+// TWO BINARIES AS OF R7.5 D4, and the import means a DIFFERENT thing in each.
+// `cmd/rumor` had the database linked in before its import was written, through
+// OPA's `v1/topdown`, so there the explicit line is belt-and-braces and this
+// arm guards the guarantee rather than the line. `cmd/toy` depends on no such
+// package -- 190 dependencies, all stdlib and first-party -- so there the
+// import IS the whole guarantee, and dropping it would leave the system under
+// test reading the HOST's zoneinfo while the engine read the binary's. That
+// disagreement would surface as a finding about the box.
+//
 // WHAT THIS DOES NOT PROVE: which VERSION of the database is linked, or that
-// the engine reads a zone at all. The version belongs to a promoted seed's own
-// row, which is this child's later work, and nothing consumes `[clock].zone`
-// yet.
+// either binary reads a zone at all. The version belongs to a promoted seed's
+// own row, which is this child's later work.
 package hygiene_test
 
 import (
@@ -37,39 +45,59 @@ import (
 // import is invisible to every search of first-party source, and that is how
 // two of us answered this question wrongly before driving it (coop r7/96, /97).
 func TestTheEngineCarriesAZoneDatabase(t *testing.T) {
-	// ONE NAME FOR THE SUBJECT, so a message cannot say it read a package the
-	// command did not: driving this arm at ./cmd/toy to prove it fires printed
-	// "./cmd/rumor's 189 dependencies", which is the subject and the claim
-	// disagreeing in the one line a reader acts on.
-	const pkg = "./cmd/rumor"
-	cmd := exec.Command(zoneGoBin(t), "list", "-deps", pkg)
-	cmd.Dir = "../.."
-	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("`go list -deps %s` failed, so the build's surface is UNMEASURED "+
-			"rather than clean: %v", pkg, err)
+	// EVERY MESSAGE NAMES ITS OWN SUBJECT, which is the trap this arm already
+	// paid for once: driving the single-subject version at ./cmd/toy printed
+	// "./cmd/rumor's 189 dependencies", the subject and the claim disagreeing
+	// in the one line a reader acts on. The subject is now a loop variable and
+	// every string below reads it.
+	//
+	// THE FLOOR IS PER-SUBJECT for the same reason the denominator exists at
+	// all: cmd/rumor's graph is 402 packages and the toy's is 190, so one
+	// shared floor would be either useless for the first or wrong for the
+	// second. Each is set well under its measured size -- the guard is against
+	// a listing that FAILED SHORT, not an assertion about the graph.
+	for _, subject := range []struct {
+		pkg   string
+		floor int
+		why   string
+	}{
+		{pkg: "./cmd/rumor", floor: 200,
+			why: "the engine resolves `[clock].zone` and derives a walk's transition " +
+				"landings from the BINARY's database rather than the host's"},
+		{pkg: "./cmd/toy", floor: 100,
+			why: "the system under test reads its own instants as local time (R7.5 D4) " +
+				"from the BINARY's database, and no other package in its graph carries one"},
+	} {
+		t.Run(subject.pkg, func(t *testing.T) {
+			cmd := exec.Command(zoneGoBin(t), "list", "-deps", subject.pkg)
+			cmd.Dir = "../.."
+			cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("`go list -deps %s` failed, so the build's surface is UNMEASURED "+
+					"rather than clean: %v", subject.pkg, err)
+			}
+			deps := strings.Split(strings.TrimSpace(string(out)), "\n")
+			// A DENOMINATOR FIRST: a failed walk and a walk that found nothing
+			// both print no tzdata, and only one is a finding about the build.
+			if len(deps) < subject.floor {
+				t.Fatalf("`go list -deps %s` named %d package(s), short of the %d this "+
+					"binary's graph holds: a short listing reports no zone database just as "+
+					"a stripped build would", subject.pkg, len(deps), subject.floor)
+			}
+			for _, d := range deps {
+				if d == "time/tzdata" {
+					t.Logf("PROOF `go list -deps %s` carries time/tzdata among %d "+
+						"package(s): %s", subject.pkg, len(deps), subject.why)
+					return
+				}
+			}
+			t.Errorf("time/tzdata is in none of %s's %d dependencies. The claim it carried "+
+				"was: %s -- so without a database linked in, that reading becomes a "+
+				"statement about the BOX, and a promoted seed's transition instants become "+
+				"a property of whatever host ran it", subject.pkg, len(deps), subject.why)
+		})
 	}
-	deps := strings.Split(strings.TrimSpace(string(out)), "\n")
-	// A DENOMINATOR FIRST: a failed walk and a walk that found nothing both
-	// print no tzdata, and only one of them is a finding about the build.
-	if len(deps) < 50 {
-		t.Fatalf("`go list -deps %s` named %d package(s), far short of this binary's "+
-			"graph: a short listing reports no zone database just as a stripped build would",
-			pkg, len(deps))
-	}
-	for _, d := range deps {
-		if d == "time/tzdata" {
-			t.Logf("PROOF `go list -deps %s` carries time/tzdata among %d package(s), so the "+
-				"engine resolves an IANA name without reading the host's zoneinfo",
-				pkg, len(deps))
-			return
-		}
-	}
-	t.Errorf("time/tzdata is in none of %s's %d dependencies: `[clock].zone` is "+
-		"refused when no database holds the name, so without one linked in that refusal "+
-		"becomes a statement about the BOX and a promoted seed's transition instants become "+
-		"a property of whatever host ran it", pkg, len(deps))
 }
 
 // zoneGoBin resolves the toolchain the way tests/licences and docs/cli.md's run
