@@ -280,6 +280,14 @@ func tryWalkProfile(t *testing.T, dir string, seed uint64, steps int, profile st
 	if err := os.Unsetenv("TOY_ADDR"); err != nil {
 		t.Fatal(err)
 	}
+	// AND THE SYSTEM IS TOLD WHAT ZONE THE PROJECT DECLARES, which is the
+	// verb's own behaviour around this spawn (R7.5 D4c) and the LAST of the
+	// four things this harness did not do. MEASURED: with the three Project
+	// fields restored the clock finally moved, and it landed one tick past
+	// MIDNIGHT UTC -- because the application was reading UTC days while
+	// the project declared America/Chicago, so the finding was the
+	// declared-against-configured disagreement rather than the plant.
+	zoneEnv(t, prep, brep)
 	sess, err := wire.Open(ctx, wire.Spawn{
 		Command: prep.Platform.Adapter.Command,
 		Cwd:     dir,
@@ -309,7 +317,40 @@ func tryWalkProfile(t *testing.T, dir string, seed uint64, steps int, profile st
 		// R7.2 refuses a clocked project that names no form, so a harness
 		// that dropped this would refuse every fixture in this package.
 		ClockForm: brep.Bindings.ClockForm,
-		Profile:   profile,
+		// AND THE ZONE AND THE START, which `rumor run` passes and this
+		// harness did not (R7.5). The omission is the shape the Observations
+		// comment records one phase earlier: a harness that drops a field
+		// walks a project no run of it can produce -- so every walk here ran
+		// UNZONED and at the EPOCH even for a project declaring both, and the
+		// replay arm meant to carry a clock through a TRANSITION could not
+		// reach one. BOTH literals in this file carry them, because a replay
+		// built from different parts than its walk is the very defect the
+		// replay arm exists to catch.
+		//
+		// READ THE WAY THE VERB READS THEM: the zone straight off the
+		// bindings, and the start through platform.ClockStartFor, which is
+		// the one resolver -- profile, then project, then epoch.
+		// AND THE THREE FIELDS THE VERB PASSES THAT THIS HARNESS DROPPED,
+		// enumerated rather than found one at a time: a diff of the two
+		// `schedule.Project` literals showed the verb passing fifteen fields
+		// and this twelve, missing DeadlineInstants, ReconcileEvery and
+		// Stage. Every one changes what a walk DOES, which is why they are
+		// here and not in a comment:
+		//
+		// DeadlineInstants IS WHY THE CLOCK NEVER MOVED. `advance` draws from
+		// the landings a declared instant produces, and with none declared it
+		// is never live -- MEASURED: 24 steps of `dst-spring` recorded 48
+		// clock facts and every one read the START, so a package named for
+		// the clock walked a world whose clock could not advance.
+		// ReconcileEvery leaves the periodic pass unreachable, and Stage
+		// leaves `[weights.stage.<name>]` unconsulted -- both the same shape.
+		DeadlineInstants: brep.Bindings.DeadlineInstants,
+		ReconcileEvery:   clockPeriodOf(prep.Platform, profile),
+		// THE WALK IS THE api STAGE, which is what the verb passes it as.
+		Stage:      "api",
+		ClockZone:  brep.Bindings.ClockZone,
+		ClockStart: clockStartOf(prep.Platform, profile, brep.Bindings.ClockStart),
+		Profile:    profile,
 	}), sess, seed, steps, 1)
 }
 
@@ -361,6 +402,14 @@ func replayed(t *testing.T, dir string, seed uint64, steps int, profile string) 
 	if err := os.Unsetenv("TOY_ADDR"); err != nil {
 		t.Fatal(err)
 	}
+	// AND THE SYSTEM IS TOLD WHAT ZONE THE PROJECT DECLARES, which is the
+	// verb's own behaviour around this spawn (R7.5 D4c) and the LAST of the
+	// four things this harness did not do. MEASURED: with the three Project
+	// fields restored the clock finally moved, and it landed one tick past
+	// MIDNIGHT UTC -- because the application was reading UTC days while
+	// the project declared America/Chicago, so the finding was the
+	// declared-against-configured disagreement rather than the plant.
+	zoneEnv(t, prep, brep)
 	sess, err := wire.Open(ctx, wire.Spawn{
 		Command: prep.Platform.Adapter.Command,
 		Cwd:     dir,
@@ -384,7 +433,40 @@ func replayed(t *testing.T, dir string, seed uint64, steps int, profile string) 
 		// R7.2 refuses a clocked project that names no form, so a harness
 		// that dropped this would refuse every fixture in this package.
 		ClockForm: brep.Bindings.ClockForm,
-		Profile:   profile,
+		// AND THE ZONE AND THE START, which `rumor run` passes and this
+		// harness did not (R7.5). The omission is the shape the Observations
+		// comment records one phase earlier: a harness that drops a field
+		// walks a project no run of it can produce -- so every walk here ran
+		// UNZONED and at the EPOCH even for a project declaring both, and the
+		// replay arm meant to carry a clock through a TRANSITION could not
+		// reach one. BOTH literals in this file carry them, because a replay
+		// built from different parts than its walk is the very defect the
+		// replay arm exists to catch.
+		//
+		// READ THE WAY THE VERB READS THEM: the zone straight off the
+		// bindings, and the start through platform.ClockStartFor, which is
+		// the one resolver -- profile, then project, then epoch.
+		// AND THE THREE FIELDS THE VERB PASSES THAT THIS HARNESS DROPPED,
+		// enumerated rather than found one at a time: a diff of the two
+		// `schedule.Project` literals showed the verb passing fifteen fields
+		// and this twelve, missing DeadlineInstants, ReconcileEvery and
+		// Stage. Every one changes what a walk DOES, which is why they are
+		// here and not in a comment:
+		//
+		// DeadlineInstants IS WHY THE CLOCK NEVER MOVED. `advance` draws from
+		// the landings a declared instant produces, and with none declared it
+		// is never live -- MEASURED: 24 steps of `dst-spring` recorded 48
+		// clock facts and every one read the START, so a package named for
+		// the clock walked a world whose clock could not advance.
+		// ReconcileEvery leaves the periodic pass unreachable, and Stage
+		// leaves `[weights.stage.<name>]` unconsulted -- both the same shape.
+		DeadlineInstants: brep.Bindings.DeadlineInstants,
+		ReconcileEvery:   clockPeriodOf(prep.Platform, profile),
+		// THE WALK IS THE api STAGE, which is what the verb passes it as.
+		Stage:      "api",
+		ClockZone:  brep.Bindings.ClockZone,
+		ClockStart: clockStartOf(prep.Platform, profile, brep.Bindings.ClockStart),
+		Profile:    profile,
 	}), sess, seed, 1, steps, nil)
 }
 
@@ -543,4 +625,46 @@ func TestDeclaringAClockAddsFactsAndChangesNothingElse(t *testing.T) {
 	if len(withClock.Steps) != len(without.Steps) {
 		t.Errorf("%d step(s) with a clock and %d without", len(withClock.Steps), len(without.Steps))
 	}
+}
+
+// clockStartOf is `rumor run`'s own resolution, kept to one line here so this
+// harness cannot grow a second precedence: the level is dropped because
+// nothing in this package reports it, and the instant is what a walk needs.
+func clockStartOf(p platform.Platform, profile string, declared int64) int64 {
+	at, _ := p.ClockStartFor(profile, declared)
+	return at
+}
+
+// clockPeriodOf is the verb's `periodFor`: the platform's own resolver, with
+// the level dropped because nothing here reports it.
+func clockPeriodOf(p platform.Platform, profile string) int {
+	every, _ := p.ReconcileEvery(profile)
+	return every
+}
+
+// zoneEnv is cmd/rumor's zone supply: the project names the variable in
+// `[adapter].zone_env` and the engine sets it from `[clock].zone`, so the
+// system under test reads its instants in the zone the project declares.
+//
+// t.Cleanup RATHER THAN A defer, because two functions here open a session and
+// the restore has to outlive the one that set it either way; a leaked variable
+// would reach every later spawn in this process, which is the hazard
+// cmd/rumor's own cell is about.
+func zoneEnv(t *testing.T, prep platform.Report, brep bindings.Report) {
+	t.Helper()
+	ze, zone := prep.Platform.Adapter.ZoneEnv, brep.Bindings.ClockZone
+	if ze == "" || zone == "" {
+		return
+	}
+	prior, had := os.LookupEnv(ze)
+	if err := os.Setenv(ze, zone); err != nil {
+		t.Fatalf("naming the project's zone in %s: %v", ze, err)
+	}
+	t.Cleanup(func() {
+		if had {
+			_ = os.Setenv(ze, prior)
+			return
+		}
+		_ = os.Unsetenv(ze)
+	})
 }
