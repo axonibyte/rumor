@@ -235,8 +235,35 @@ func toyWithPeriod(t *testing.T, every int) string {
 // declared where nothing reads it.
 func toyWithPeriodOn(t *testing.T, onStage string, every int) string {
 	t.Helper()
-	dir := t.TempDir()
 	anchor := onStage + " = { enabled = true }"
+	return toyCopy(t, func(t *testing.T, s string) string {
+		t.Helper()
+		if strings.Count(s, anchor) != 1 {
+			t.Fatalf("examples/toy does not declare %q exactly once, so this copy would "+
+				"carry no period and every arm would pass vacuously", anchor)
+		}
+		s = strings.Replace(s, anchor,
+			onStage+" = { enabled = true, reconcile_every = "+strconv.Itoa(every)+" }", 1)
+		if !strings.Contains(s, "reconcile_every = "+strconv.Itoa(every)) {
+			t.Fatal("the period did not land in the copy")
+		}
+		return s
+	})
+}
+
+// toyCopy is that copy with ONE edit to platform.toml, extracted because a
+// second child needed the same project with a different line changed and the
+// alternative was a second transcription of the file list -- where a copy that
+// quietly stopped carrying `cases/` would read as a refusal about roles.
+//
+// THE EDIT CHECKS ITS OWN ANCHOR, which is why it is a function and not a
+// pair of strings: an edit that silently does not apply is this child's most
+// expensive repeated mistake (three R8 mutation controls compared a tree
+// against an unmodified copy of itself and read the agreement as a result), so
+// each caller proves its own line landed.
+func toyCopy(t *testing.T, editPlatform func(*testing.T, string) string) string {
+	t.Helper()
+	dir := t.TempDir()
 	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego", "seeds.lock"} {
 		b, err := os.ReadFile(filepath.Join("../../examples/toy", f))
 		if err != nil {
@@ -244,15 +271,7 @@ func toyWithPeriodOn(t *testing.T, onStage string, every int) string {
 		}
 		s := string(b)
 		if f == "platform.toml" {
-			if strings.Count(s, anchor) != 1 {
-				t.Fatalf("examples/toy does not declare %q exactly once, so this copy would "+
-					"carry no period and every arm would pass vacuously", anchor)
-			}
-			s = strings.Replace(s, anchor,
-				onStage+" = { enabled = true, reconcile_every = "+strconv.Itoa(every)+" }", 1)
-			if !strings.Contains(s, "reconcile_every = "+strconv.Itoa(every)) {
-				t.Fatal("the period did not land in the copy")
-			}
+			s = editPlatform(t, s)
 		}
 		if err := os.WriteFile(filepath.Join(dir, f), []byte(s), 0o644); err != nil {
 			t.Fatalf("writing %s: %v", f, err)

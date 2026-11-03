@@ -2,6 +2,10 @@
 package run_test
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -249,5 +253,223 @@ func TestTheReportNamesTheLevelThePeriodCameFrom(t *testing.T) {
 	if out == uout {
 		t.Errorf("the profiled and unprofiled reports are byte-identical, so the level is "+
 			"not read:\n%s", out)
+	}
+}
+
+// AND WHERE A RUN OF THE SELECTED PROFILE STARTS ITS CLOCK, which is R7.5's
+// fourth level and the first whose OTHER half this verb cannot read (fable,
+// coop r7/111).
+//
+// THE RULING THIS ARM GUARDS IS A SUBTRACTION. The line was first asked for as
+// an effective start with its level, like the period's above; fable struck
+// that, because both of the period's levels are the platform's while this
+// one's other level is `[clock].start` in bindings.toml -- and this command
+// opens platform.toml ALONE, so that a report of what a profile DECLARES
+// still answers on a project whose bindings do not parse. So each sentence
+// names the level it cannot see, and the last arm here drives the reason:
+// broken bindings, and the line still comes.
+//
+// ALL THREE SENTENCES ARE DRIVEN. An arm on the declared case alone would pass
+// on a build that resolved a start from bindings and printed it -- the exact
+// thing the ruling removed.
+func TestTheReportNamesWhereAProfilesClockStarts(t *testing.T) {
+	const toy = "../../examples/toy"
+	const unread = "[clock].start, which this command does not read"
+
+	// NO PROFILE SELECTED. The epoch is named as the fallback and `[clock]`
+	// as the level that could supply one instead -- not as what a run will do,
+	// which this verb has not opened the file to find out.
+	uout, uerrb, ucode := run(t, "report", toy)
+	if ucode != 0 {
+		t.Fatalf("report exited %d\nstdout:\n%s\nstderr:\n%s", ucode, uout, uerrb)
+	}
+	uline := clockStartLine(t, uout)
+	if !strings.Contains(uline, "no profile selected") {
+		t.Errorf("an unprofiled read does not say no profile is selected: %q", uline)
+	}
+
+	// A PROFILE THAT DECLARES NONE IS A DIFFERENT SENTENCE, so a reader who
+	// selected one is answered about THEIR table rather than about selection.
+	pout, _, pcode := run(t, "report", toy, "--profile", "walking")
+	if pcode != 0 {
+		t.Fatalf("report --profile walking exited %d:\n%s", pcode, pout)
+	}
+	pline := clockStartLine(t, pout)
+	if !strings.Contains(pline, "[profiles.walking] declares none") {
+		t.Errorf("a profile declaring no start is not reported in its own words: %q", pline)
+	}
+	if pline == uline {
+		t.Errorf("selecting a profile changed nothing in the line, so the profile is not "+
+			"read: %q", pline)
+	}
+
+	// AND THE DECLARED CASE, on a copy, because no committed profile declares
+	// a start yet -- D4's two do, and this arm must hold before they exist.
+	const start int64 = 1772000000000000000
+	dir := toyWithClockStart(t, "walking", start)
+	dout, _, dcode := run(t, "report", dir, "--profile", "walking")
+	if dcode != 0 {
+		t.Fatalf("report on the declared copy exited %d:\n%s", dcode, dout)
+	}
+	dline := clockStartLine(t, dout)
+	if !strings.Contains(dline, "[profiles.walking].clock_start declares "+
+		strconv.FormatInt(start, 10)+"ns") {
+		t.Errorf("the declared start does not reach the report with its value: %q", dline)
+	}
+	if !strings.Contains(dline, "outranks "+unread) {
+		t.Errorf("the declared start is printed without saying what it beats, which is the "+
+			"whole of a reader's question: %q", dline)
+	}
+	// TWO STATES, TWO SENTENCES: the undeclared wording is gone rather than
+	// standing beside a number.
+	if strings.Contains(dline, "declares none") {
+		t.Errorf("a declared start still reads as undeclared: %q", dline)
+	}
+
+	// EVERY SENTENCE NAMES THE LEVEL IT CANNOT SEE. This is the clause fable
+	// kept when the effective value was struck.
+	for _, l := range []string{uline, pline, dline} {
+		if !strings.Contains(l, unread) {
+			t.Errorf("the line does not name the level this command cannot read: %q", l)
+		}
+	}
+
+	// AND THE REASON IT CANNOT: bindings.toml is not opened here. A project
+	// whose bindings are unparseable still reports what its platform declares,
+	// which is the second oracle on the subtraction above -- a build that
+	// resolved the start would have to read this file, and would fail.
+	//
+	// THE FIXTURE IS REFUSED BY THE PROJECT'S OWN PARSER, measured rather than
+	// assumed: these same bytes make `rumor validate` exit 2 with "cannot be
+	// read as a declaration: not TOML: toml: line 1", 0 of 24 arms evaluated.
+	// Without that the arm would be vacuous in the one way it cannot afford --
+	// a bindings.toml that happened to PARSE would be read by a resolving
+	// build without complaint, and this would still pass.
+	broken := toyWithClockStart(t, "walking", start)
+	if err := os.WriteFile(filepath.Join(broken, "bindings.toml"),
+		[]byte("this is not toml = = [\n"), 0o644); err != nil {
+		t.Fatalf("breaking the copy's bindings: %v", err)
+	}
+	bout, berrb, bcode := run(t, "report", broken, "--profile", "walking")
+	if bcode != 0 {
+		t.Fatalf("a report of what a profile declares failed on unparseable bindings, exit "+
+			"%d -- which is the failure the single-file read exists to prevent\nstdout:\n%s"+
+			"\nstderr:\n%s", bcode, bout, berrb)
+	}
+	if got := clockStartLine(t, bout); got != dline {
+		t.Errorf("breaking bindings.toml changed the clock start line, so this verb reads "+
+			"it after all:\n with: %q\nbroken: %q", dline, got)
+	}
+}
+
+// clockStartLine is the one clock start line, and it FATALS when the count is
+// not exactly one -- for settlingLine's reason: a helper answering "" for
+// absent turns a missing line into a mismatch whose message blames the words.
+func clockStartLine(t *testing.T, out string) string {
+	t.Helper()
+	var found []string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "report: clock start --") {
+			found = append(found, strings.TrimSpace(l))
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("want exactly one clock start line, got %d:\n%s", len(found), out)
+	}
+	return found[0]
+}
+
+// toyWithClockStart copies examples/toy and declares `clock_start` in a NAMED
+// profile's table, checking its own anchor landed.
+//
+// THE KEY GOES DIRECTLY UNDER THE HEADER, which is what puts it in that
+// profile's table and not in the one after it -- and the copy is then driven
+// through the real verb, so a key that landed in the wrong table would be read
+// by platform.toml's own parser rather than by this helper's hope.
+func toyWithClockStart(t *testing.T, profile string, start int64) string {
+	t.Helper()
+	header := "[profiles." + profile + "]\n"
+	decl := "clock_start = " + strconv.FormatInt(start, 10) + "\n"
+	return toyCopy(t, func(t *testing.T, s string) string {
+		t.Helper()
+		if strings.Count(s, header) != 1 {
+			t.Fatalf("examples/toy does not declare %q exactly once, so this copy would "+
+				"carry no start and every arm would pass vacuously", header)
+		}
+		if strings.Contains(s, "clock_start") {
+			t.Fatal("examples/toy already declares a clock_start, so this copy no longer " +
+				"builds the state it was written for")
+		}
+		s = strings.Replace(s, header, header+decl, 1)
+		if !strings.Contains(s, header+decl) {
+			t.Fatal("the clock start did not land in the copy")
+		}
+		return s
+	})
+}
+
+// AND THE DOCUMENTED REPORTS ARE THE BINARY'S REPORTS, which is the shape
+// TestTheDocumentedRunIsTheBinarysRun and tests/validate's two blocks already
+// hold their samples to -- and the one cli.md's `rumor report` blocks did not
+// have.
+//
+// FOUND BY EDITING THEM. This child adds a line to both blocks, and nothing in
+// the tree would have noticed if it had reached only one of them, or carried a
+// typo, or gone stale the next time a level is added -- "a documented sample
+// that cannot fail is decoration" (docs/testing-methodology.md), and these two
+// could not. D4 edits the same blocks again.
+//
+// THE WHOLE BLOCK, NOT THE NEW LINE. An arm asserting only the clock start
+// line would leave every other line of the sample exactly as unchecked as it
+// was, and the gap would be the same size with one more test in the count.
+//
+// RUN FROM THE REPOSITORY ROOT, so the path in the sample is the path the
+// binary is given: `rumor report examples/toy` as printed, rather than a
+// package-relative spelling that happens to produce the same output.
+func TestTheDocumentedReportsAreTheBinarysReports(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "cli.md"))
+	if err != nil {
+		t.Fatalf("reading docs/cli.md: %v", err)
+	}
+	for _, c := range []struct {
+		marker string
+		args   []string
+	}{
+		{"$ rumor report examples/toy\n", []string{"report", "examples/toy"}},
+		{"$ rumor report examples/toy --profile reconciling\n",
+			[]string{"report", "examples/toy", "--profile", "reconciling"}},
+	} {
+		// EXACTLY ONE, counted rather than found: Index takes the first of
+		// several silently, and a second copy of a block is how a sample gets
+		// edited in one place and read in the other. The unprofiled marker
+		// ends in a newline, so it cannot match the profiled line's prefix.
+		if n := strings.Count(string(raw), c.marker); n != 1 {
+			t.Fatalf("docs/cli.md holds %d copies of %q, want 1: either the block moved or "+
+				"this arm is checking a block nobody reads", n, c.marker)
+		}
+		i := strings.Index(string(raw), c.marker)
+		rest := string(raw)[i+len(c.marker):]
+		end := strings.Index(rest, "```")
+		if end < 0 {
+			t.Fatalf("the console block after %q is unterminated", c.marker)
+		}
+		want := strings.TrimRight(rest[:end], "\n")
+		// AND IT IS NOT EMPTY. A fence that moved to immediately after the
+		// command would leave want == "" and compare nothing, which is the
+		// fence-extraction trap R8.4 paid for: a loose fence splits a block
+		// and both halves still parse.
+		if want == "" {
+			t.Fatalf("the block after %q holds no output lines", c.marker)
+		}
+
+		cmd := exec.Command(rumorBin, c.args...)
+		cmd.Dir = filepath.Join("..", "..")
+		out, rerr := cmd.Output()
+		if rerr != nil {
+			t.Fatalf("running the documented command %v: %v", c.args, rerr)
+		}
+		if got := strings.TrimRight(string(out), "\n"); got != want {
+			t.Errorf("docs/cli.md claims:\n%s\n\nthe binary prints:\n%s", want, got)
+		}
 	}
 }

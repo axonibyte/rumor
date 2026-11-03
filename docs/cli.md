@@ -952,6 +952,7 @@ report: stage concurrency -- enabled, and declares nothing a run reads beyond th
 report: stage fuzz -- enabled, and declares nothing a run reads beyond that
 report: venire -- 1 admin, 2 member, 1 guest -- from [[venire]], with no profile selected
 report: observations -- no profile selected, so a run takes the observations no profile claims
+report: clock start -- no profile selected, so a run starts at [clock].start, which this command does not read, or the epoch
 ```
 
 **The api line names the LEVEL as well as the period**, because "4" and "where
@@ -967,6 +968,7 @@ report: stages skipped -- none
 report: stage api -- reconciles every 4 step(s) while the walk runs, and after the last step -- from [profiles.reconciling].reconcile_every
 report: venire -- 1 admin, 2 member, 1 guest -- from [[venire]]; [profiles.reconciling] appends none
 report: observations -- [profiles.reconciling] claims none, so a run of it takes the observations no profile claims
+report: clock start -- [profiles.reconciling] declares none, so a run of it starts at [clock].start, which this command does not read, or the epoch
 ```
 
 The table is named in the project's own words — a line a reader can go and
@@ -981,6 +983,18 @@ committed evidence is that the committed rows are untouched. A profile that
 adds nothing says `appends none` rather than being omitted, for the reason the
 skip list prints `none`: a line left out when there is nothing to say cannot be
 told from a build that never learned to print it.
+
+**The clock start line names the level it CANNOT read**, which is the one way
+it differs from the period's line above and the reason fable corrected the
+ruling that asked for an effective value (coop r7/111). Both of the period's
+levels are the platform's, so this command resolves it from the one file it
+opens; the clock start's other level is `[clock].start` in bindings.toml, and
+this verb reads platform.toml **alone** on purpose — loading bindings here
+would make a report of what a profile DECLARES fail on a project whose
+bindings do not parse. So the line answers "is MY line in force" for the
+profile's own declaration and names the other level rather than claiming a
+value from a file it never opened. The effective instant with its level
+belongs where the run resolves it, beside the `set` the first seal issues.
 
 **The observations line names the claims and what claiming does to every
 other profile.** `[profiles.<name>].observations` claims observation names for

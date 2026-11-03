@@ -112,7 +112,52 @@ func reportProject(dir, profile string, stdout, stderr io.Writer) int {
 	// reader sees it.
 	_, _ = fmt.Fprintf(stdout, "report: observations -- %s\n",
 		observationFacts(prep.Platform, profile))
+	// AND WHERE A RUN OF THIS PROFILE STARTS ITS CLOCK (R7.5; fable's ruling at
+	// coop r7/111). The fourth level, and the first whose OTHER half this
+	// command cannot read -- which is why it names what it can see rather than
+	// resolving.
+	_, _ = fmt.Fprintf(stdout, "report: clock start -- %s\n",
+		clockStartFacts(prep.Platform, profile))
 	return 0
+}
+
+// clockStartFacts is where a run of one profile starts its clock, in the
+// project's own words and WITHOUT RESOLVING -- which is the difference between
+// this line and the period's, and the whole of fable's correction at coop
+// r7/111.
+//
+// THE PERIOD CAN BE RESOLVED HERE AND THIS CANNOT. Both of the period's levels
+// are the platform's, so `ReconcileEvery` answers an effective value from the
+// one file this command reads. The clock start's other level is
+// `[clock].start` in bindings.toml, and this command reads platform.toml ALONE
+// on purpose -- the reason is the comment above the observations line: loading
+// bindings here would make a report of what a profile DECLARES fail on a
+// project whose bindings do not parse. So an "effective start" is not
+// available to this verb, and claiming one would be a sentence about a file
+// that was never opened.
+//
+// SO IT NAMES THE LEVEL IT CANNOT SEE, in observationFacts's voice: the reader
+// asking "is MY line in force" is answered for the profile's own line, and
+// told exactly which other declaration could outrank nothing or supply the
+// start instead. The effective instant with its level belongs where the run
+// resolves it -- the record line at the first seal, beside the `set` it issues
+// (fable, r7/111).
+//
+// ZERO IS ABSENT, as it is at every level of this one: a profile declaring
+// `clock_start = 0` has declared nothing, and this line says so in the same
+// words as a profile that omitted the key.
+func clockStartFacts(p platform.Platform, profile string) string {
+	const other = "[clock].start, which this command does not read"
+	if profile == "" {
+		return "no profile selected, so a run starts at " + other + ", or the epoch"
+	}
+	pr, ok := p.Profiles[profile]
+	if !ok || pr.ClockStart == 0 {
+		return fmt.Sprintf("[profiles.%s] declares none, so a run of it starts at %s, or the "+
+			"epoch", profile, other)
+	}
+	return fmt.Sprintf("[profiles.%s].clock_start declares %dns, which outranks %s",
+		profile, pr.ClockStart, other)
 }
 
 // observationFacts is what one profile claims to observe, in the project's own
