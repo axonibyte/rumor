@@ -92,6 +92,41 @@ Not yet written.
 calls `tools/release-gate.py`. The epic's list is the source of truth; this
 section is its canonical copy and the fixture-branch convention beside it.
 
+**The base must be one nobody can move under the run, and the gate now enforces
+that rather than trusting it.** `--base` is resolved before any arm is measured,
+and the three classes of ref get three answers:
+
+- **A local branch — refused**, `HEAD` included, since it resolves to the branch
+  it is on. Nothing in a gate run updates a local branch, and a fetch of some
+  other branch leaves it exactly where the last pull did. `main` fast-forwards at
+  every tag here, so the stale case is the normal one rather than the exotic one.
+
+  **A stale base makes the commit *range* wrong, which is a bigger fault than any
+  single arm.** Measured on 2026-11-03 against a checkout whose local `main` lay
+  232 commits behind `origin/main`: the range went from 1 commit to 233, and the
+  gate refused with `commit-after-bump` naming v0.1.46's *released* bump and
+  `changelog-date-wrong` naming its *released* changelog section. Neither finding
+  was about the run. `not-rebased` stayed silent — a lagging local branch is still
+  an ancestor, so merge-base equals its tip; that arm fires in the other case,
+  where the base has *diverged*. The refusal names `origin/<branch>` as the thing
+  to cite instead.
+- **A remote-tracking ref — fetched, then read.** This is the default
+  (`origin/main`) and the right citation, and it is also stale by default: a
+  branch-only fetch never refreshes it, so a reading can be stale in a checkout
+  that looks current. The fetch names its destination refspec explicitly,
+  because the short `git fetch <remote> <branch>` form updates the tracking ref
+  only *opportunistically* — where no fetch refspec is configured, as a bare
+  `git remote add` or a narrowed CI checkout leaves it, the short form moves
+  `FETCH_HEAD` and nothing else.
+- **A tag or a sha — taken as given**, with no fetch and no refusal. Annotated
+  tags are peeled to their commit, because `rev-parse` on one returns the tag
+  *object* and this project signs every tag it makes.
+
+A base the gate cannot vouch for — an unreachable remote, say — is `CannotRun`
+and rc 2: NO VERDICT, not a pass. The escape is to pass the immutable base you
+mean and own that choice. Every run prints the base it resolved and the commit
+it landed on, so a reading can be re-derived from its own log.
+
 **Nine bullets, twelve arms.** Two bullets carry more than one failure, so each
 arm has a stable id and a fixture branch names exactly one:
 

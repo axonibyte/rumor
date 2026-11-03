@@ -498,6 +498,104 @@ def run_doc_blocks(repo: Path, ref: str) -> list[str]:
     return failures
 
 
+# THE BASE A READING CITES MUST BE ONE NOBODY CAN MOVE UNDER IT, and this is the
+# arm fable asked for at rumor/1642.2. The defect is mine, published twice in one
+# evening: I gated with `--base main`, a LOCAL branch that no fetch updates, and
+# reported findings that were artefacts of my own stale checkout.
+#
+# WHAT A STALE BASE ACTUALLY DOES, measured rather than reasoned about -- and the
+# measurement corrected my own first draft of this paragraph, which named
+# `not-rebased` as the symptom. Driven 2026-11-03 on /home/rook/rumor, whose local
+# `main` sat at v0.1.31 while origin/main was v0.1.46, 232 commits apart, with the
+# PREVIOUS version of this file:
+#
+#   --base main  ->  REFUSED [commit-after-bump] 1 commit(s) follow the bump
+#                    commit 63ff22b5a4ca ...
+#                    REFUSED [changelog-date-wrong] CHANGELOG.md's 0.1.46 section
+#                    is dated 2026-11-02, not today (2026-11-03)
+#
+# Neither is about this run. The range went from 1 commit to 233, so the arms that
+# SCAN the range found v0.1.46's released bump inside it and reported a released
+# changelog section as misdated. `not-rebased` was SILENT, because a lagging local
+# branch is still an ANCESTOR -- merge-base equals its tip and arm 12 has nothing
+# to say. That arm fires in the other case, where the stale base has DIVERGED.
+#
+# So the general statement is about the RANGE and not about one arm: a wrong base
+# changes which commits the run is held to be, and every range-reading arm is then
+# answering a question nobody asked. Both inventions read exactly like real
+# findings.
+#
+# THREE CLASSES OF REF, THREE ANSWERS, because the question "can this move under
+# me" has three different answers:
+#   * a LOCAL BRANCH (or HEAD, which resolves to one) -- REFUSED. Nothing in a
+#     gate run updates it, it has no relationship to the remote except the one
+#     the last `git pull` left, and the gate cannot tell a stale one from a
+#     current one by looking.
+#   * a REMOTE-TRACKING ref -- FETCHED first, then read. It is the right thing to
+#     cite, and it is also stale by default: a branch-only fetch never refreshes
+#     it, which is how a reading can be stale in a checkout that looks current.
+#   * a TAG or a SHA -- taken as given, no fetch, no refusal. Those are the
+#     immutable citations, and the interim discipline I have been working under
+#     by hand since /1642 was exactly "cite one of these".
+#
+# WHY THIS IS NOT INSIDE evaluate(). evaluate() is the measurement and takes the
+# ref it is handed; the POLICY is about the invocation. The self-test's fixture
+# repos are built with no remote at all and their local `main` is the only truth
+# in them, so a refusal inside evaluate() would either break every case or need
+# an opt-out that the fixtures then exercise instead of production -- a fixture
+# distinguishable from production only by the bypass it takes. The refusal sits
+# in front of the work it prevents, where main() calls it.
+def resolve_base(repo: Path, base: str) -> tuple[str, str]:
+    """The ref to gate against, and the line saying why it is that one.
+
+    Raises CannotRun -- NO VERDICT, never a finding: a base the gate cannot
+    vouch for makes every arm's reading meaningless rather than wrong.
+    """
+    # --symbolic-full-name PRINTS NOTHING AND EXITS 0 FOR A SHA, so the status is
+    # not the discriminator here and git_ok would answer the wrong question. The
+    # emptiness is the signal.
+    full = git(repo, "rev-parse", "--symbolic-full-name", base).strip()
+
+    if full.startswith("refs/heads/"):
+        branch = full[len("refs/heads/"):]
+        raise CannotRun(
+            f"--base {base!r} names the LOCAL branch {branch}, and nothing "
+            f"updates a local branch: a fetch of another branch leaves it exactly "
+            f"where the last pull did. A base that LAGS makes the commit RANGE "
+            f"wrong, so every arm reading the range reports on commits that are "
+            f"not in this run; a base that has DIVERGED adds `not-rebased` on top. "
+            f"Cite something that cannot move under the run: a tag, a sha, or the "
+            f"tracking ref origin/{branch}"
+        )
+
+    if full.startswith("refs/remotes/"):
+        remote, _, branch = full[len("refs/remotes/"):].partition("/")
+        if not remote or not branch:
+            raise CannotRun(
+                f"--base {base!r} resolves to {full}, which this gate cannot split "
+                f"into a remote and a branch, so it cannot refresh it"
+            )
+        # AN EXPLICIT REFSPEC, NOT `git fetch <remote> <branch>`. The short form
+        # updates FETCH_HEAD and only OPPORTUNISTICALLY the tracking ref; naming
+        # the destination makes the refresh the thing that happened rather than a
+        # side effect that a configuration could switch off.
+        spec = f"+refs/heads/{branch}:refs/remotes/{remote}/{branch}"
+        if not git_ok(repo, "fetch", "--quiet", remote, spec):
+            raise CannotRun(
+                f"--base {base!r} is a tracking ref and `git fetch {remote} {spec}` "
+                f"failed, so the gate cannot tell whether it is current. This is NO "
+                f"VERDICT and not a pass: either make the remote reachable, or pass "
+                f"the immutable base you mean (a tag or a sha) and own that choice"
+            )
+        tip = git(repo, "rev-parse", f"{base}^{{commit}}").strip()
+        return base, (f"base {base} refreshed from {remote} and now at "
+                      f"{tip[:12]}")
+
+    kind = "tag" if full.startswith("refs/tags/") else "sha"
+    tip = git(repo, "rev-parse", f"{base}^{{commit}}").strip()
+    return base, f"base {base} taken as given ({kind}, {tip[:12]})"
+
+
 def evaluate(repo: Path, base: str, head: str, today: str | None = None) -> list[tuple[str, str]]:
     """Every arm, in id order. Returns [(arm, detail)] -- empty means clean."""
     findings: list[tuple[str, str]] = []
@@ -1572,6 +1670,159 @@ def _budget_battery() -> tuple[int, int]:
     return failures, EXPECT_BUDGET_CHECKS
 
 
+# 7, and it moves only with _base_battery: a local branch refused, HEAD refused
+# (the same class spelled differently), a tracking ref actually REFRESHED, a tag
+# and a sha taken as given, a tracking ref whose fetch FAILS refusing rather than
+# reading a ref it cannot vouch for, and the explicit refspec being load-bearing
+# where no fetch refspec is configured.
+EXPECT_BASE_CHECKS = 7
+
+
+def _base_battery() -> tuple[int, int]:
+    """Drive resolve_base over the three classes of ref, both ways on each.
+
+    IT CANNOT BE A `cases` ENTRY, and for the first of the three reasons ratchet
+    named at rumor/1620: the local-branch, HEAD and unreachable-remote cells all
+    expect a REFUSAL, and `cases` compares arm ids from a completed evaluate() --
+    a CannotRun reads there as FAIL, so no id-based expectation can tell a
+    correct refusal from a broken run. resolve_base also runs BEFORE evaluate(),
+    so there is no arm id for it to fire in the first place.
+
+    NO COUNT OF THE REFUSAL CELLS IS WRITTEN HERE ON PURPOSE. The first draft of
+    this paragraph said "four of these six", which was wrong when written (three
+    of six refuse) and would have rotted again at seven. A figure in prose that
+    cannot be re-derived from its own file is the defect even while it is
+    correct; the cells are named instead.
+
+    THE FETCH IS MEASURED BY CONSTRUCTION, NOT ASSERTED ABOUT. Cell 3 advances
+    the UPSTREAM after the clone, so the clone's origin/main is provably stale
+    before resolve_base runs and provably current after. An assertion that
+    merely re-read origin/main would agree with itself whether the fetch happened
+    or not -- which is the shape of my own `measure-the-dependency-by-killing-it`
+    note, and cell 6 is its other half: the remote is pointed at a path that does
+    not exist, so the dependency is killed rather than argued about.
+    """
+    failures = 0
+    today = "2026-01-01"
+
+    def fail(label: str, why: str) -> None:
+        nonlocal failures
+        print(f"\n  FAIL base ({label}): {why}")
+        failures += 1
+
+    def refuses(label: str, repo: Path, base: str, musts: tuple[str, ...]) -> None:
+        try:
+            got = resolve_base(repo, base)
+        except CannotRun as exc:
+            missing = [m for m in musts if m not in str(exc)]
+            if missing:
+                fail(label, f"refused, but the reason is missing {missing}: {exc}")
+            return
+        fail(label, f"returned {got!r} instead of refusing -- a base nobody "
+                    f"can vouch for was accepted")
+
+    def accepts(label: str, repo: Path, base: str, want_tip: str,
+                musts: tuple[str, ...]) -> None:
+        try:
+            ref, note = resolve_base(repo, base)
+        except CannotRun as exc:
+            fail(label, f"refused a base it should take: {exc}")
+            return
+        tip = git(repo, "rev-parse", f"{ref}^{{commit}}").strip()
+        if tip != want_tip:
+            fail(label, f"resolved {base} to {tip[:12]}, wanted {want_tip[:12]}")
+            return
+        missing = [m for m in musts if m not in note]
+        if missing:
+            fail(label, f"accepted, but the note is missing {missing}: {note!r}")
+
+    # 1 and 2. A LOCAL BRANCH, AND HEAD, WHICH IS ONE SPELLED DIFFERENTLY.
+    # Cell 2 exists because --symbolic-full-name is what collapses them, and a
+    # check keyed on the STRING "main" would pass cell 1 and miss `--base HEAD`
+    # entirely -- a mutable base under a different name.
+    with tempfile.TemporaryDirectory() as raw:
+        repo = _world(Path(raw), today)
+        refuses("a local branch is refused", repo, "main",
+                ("LOCAL branch main", "origin/main"))
+        refuses("HEAD is refused as the branch it is on", repo, "HEAD",
+                ("LOCAL branch main",))
+
+    # 3. A TRACKING REF IS FETCHED BEFORE IT IS READ. The upstream moves AFTER
+    # the clone, which is the exact situation a branch-only fetch leaves behind.
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        up = _world(tmp, today)
+        clone = tmp / "c"
+        git(tmp, "clone", "-q", str(up), str(clone))
+        stale = git(clone, "rev-parse", "origin/main^{commit}").strip()
+        _mk(up, "src/lib.rs", "// moved upstream after the clone\n")
+        _commit(up, "src: the upstream advances under the run")
+        ahead = git(up, "rev-parse", "HEAD").strip()
+        if stale == ahead:
+            fail("a tracking ref is refreshed",
+                 "the fixture did not move the upstream, so this cell could not "
+                 "tell a fetch from no fetch")
+        else:
+            accepts("a tracking ref is refreshed", clone, "origin/main", ahead,
+                    ("refreshed from origin", ahead[:12]))
+
+    # 4 and 5. THE IMMUTABLE CITATIONS, TAKEN AS GIVEN. The tag is ANNOTATED,
+    # because this project signs every tag it makes and `rev-parse` on an
+    # annotated tag returns the TAG OBJECT -- the peel that broke arm 12 once
+    # already, here in the resolver instead.
+    with tempfile.TemporaryDirectory() as raw:
+        repo = _world(Path(raw), today)
+        git(repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "tag", "-a", "-m", "annotated", "v0.1.9")
+        want = git(repo, "rev-list", "-n", "1", "v0.1.9").strip()
+        # THE NOTE'S SHA IS ASSERTED, not only the word "tag". Without it the
+        # resolver could report the TAG OBJECT's sha -- `rev-parse v0.1.9` on an
+        # annotated tag does exactly that, which is the peel that broke arm 12
+        # once already -- and this cell would still pass, because `accepts` peels
+        # the ref itself when it checks the tip. Measured: the unpeeled mutant
+        # survived every cell until this must was added.
+        accepts("an annotated tag is taken as given", repo, "v0.1.9", want,
+                ("taken as given", "tag", want[:12]))
+        sha = git(repo, "rev-parse", "HEAD~1").strip()
+        accepts("a sha is taken as given", repo, sha, sha,
+                ("taken as given", "sha"))
+
+    # 6. AND A TRACKING REF THE GATE CANNOT REFRESH IS NO VERDICT. Without this
+    # the fetch could fail silently and the gate would read the stale ref it was
+    # built to stop reading -- the failure mode being fixed, reintroduced one
+    # layer down.
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        up = _world(tmp, today)
+        clone = tmp / "c"
+        git(tmp, "clone", "-q", str(up), str(clone))
+        git(clone, "remote", "set-url", "origin", str(tmp / "no-such-upstream"))
+        refuses("an unreachable remote is NO VERDICT", clone, "origin/main",
+                ("failed", "NO VERDICT", "tag or a sha"))
+
+    # 7. AND THE EXPLICIT REFSPEC IS LOAD-BEARING. This cell exists because the
+    # mutant that swapped it for `git fetch <remote> <branch>` passed all six
+    # cells above: with `remote.origin.fetch` configured, as a clone leaves it,
+    # git updates the tracking ref opportunistically and the short form is
+    # indistinguishable. So my reason for the explicit destination was a sentence
+    # with no mechanism. Strip the configured refspec -- what a `git remote add`
+    # without one leaves, and what a CI checkout narrowing its refspec can leave
+    # -- and only naming the destination refreshes origin/main.
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        up = _world(tmp, today)
+        clone = tmp / "c"
+        git(tmp, "clone", "-q", str(up), str(clone))
+        git(clone, "config", "--unset-all", "remote.origin.fetch")
+        _mk(up, "src/lib.rs", "// moved with no refspec configured\n")
+        _commit(up, "src: the upstream advances with no refspec configured")
+        ahead = git(up, "rev-parse", "HEAD").strip()
+        accepts("a tracking ref refreshes with no configured refspec",
+                clone, "origin/main", ahead, ("refreshed from origin", ahead[:12]))
+
+    return failures, EXPECT_BASE_CHECKS
+
+
 def _trailer_battery() -> tuple[int, int]:
     """Drive docs_unchanged() over every shape a trailer arrives in.
 
@@ -1983,6 +2234,7 @@ def self_test() -> int:
     date_failures, date_checks = _changelog_date_battery()
     stream_failures, stream_checks = _stream_battery()
     budget_failures, budget_checks = _budget_battery()
+    base_failures, base_checks = _base_battery()
     failures = 0
     ran = 0
     for arm, label, build in cases:
@@ -2057,7 +2309,7 @@ def self_test() -> int:
     # defect this whole round is about.
     total = (failures + battery_failures + docs_failures + worktree_failures
              + date_failures + stream_failures + budget_failures
-             + size_failures)
+             + base_failures + size_failures)
     print(f"\n  {ran - failures} of {ran} cases ok, "
           f"{trailer_checks - battery_failures} of {trailer_checks} trailer "
           f"checks ok, {docs_checks - docs_failures} of {docs_checks} "
@@ -2069,7 +2321,9 @@ def self_test() -> int:
           f"{stream_checks - stream_failures} of {stream_checks} "
           f"stream checks ok, "
           f"{budget_checks - budget_failures} of {budget_checks} "
-          f"budget checks ok, {total} failed")
+          f"budget checks ok, "
+          f"{base_checks - base_failures} of {base_checks} "
+          f"base checks ok, {total} failed")
     return RC_FINDINGS if total else RC_CLEAN
 
 
@@ -2100,7 +2354,14 @@ def main(argv: list[str]) -> int:
         return self_test()
 
     try:
-        found = evaluate(Path(args.repo), args.base, args.head, today=args.today)
+        # BEFORE THE MEASUREMENT, so a base the gate cannot vouch for never
+        # reaches an arm. The note is PRINTED on every run, not only on a
+        # refusal: a reading whose base is named is one a reader can re-derive,
+        # and "which build did you gate" is the question I have had to withdraw
+        # figures over.
+        base, base_note = resolve_base(Path(args.repo), args.base)
+        print(f"release-gate: {base_note}")
+        found = evaluate(Path(args.repo), base, args.head, today=args.today)
     except CannotRun as exc:
         print(f"release-gate: CANNOT RUN -- {exc}", file=sys.stderr)
         print(

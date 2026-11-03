@@ -162,14 +162,14 @@ PATH.
 
 `tools/release-gate.py --self-test` drives twenty cases, fifteen trailer checks,
 seven docs-verdict checks, four worktree checks, three changelog-date checks,
-four stream checks and four budget checks, and asserts that **each arm fires
-alone**. Each count is declared as a constant and asserted in both
+four stream checks, four budget checks and seven base checks, and asserts that
+**each arm fires alone**. Each count is declared as a constant and asserted in both
 directions, because a case that silently stops running is invisible in a
 self-consistent total. The release-gate workflow runs that self-test before the
 gate judges a pull request, because a gate whose arms have stopped
 discriminating would otherwise refuse or admit a run with nobody the wiser.
 
-**Four of the six tallies are batteries, and not for tidiness.** The `cases`
+**Five of the eight tallies are batteries, and not for tidiness.** The `cases`
 runner compares arm *ids*: an entry either names one arm that must fire alone,
 or names none and must pass clean. Three kinds of check cannot be expressed in
 that shape, and each got a battery once a fix of its kind shipped with nothing
@@ -190,6 +190,17 @@ bytes and found that reverting either fix left the whole self-test green
 (`rumor/1620`). Both reverts are now killed, and by exactly one cell each: a
 mutant that survives every `cases` entry is the measurement that says a battery
 is owed, not an opinion about taste.
+
+The base checks are the expected-refusal shape again: `resolve_base` runs
+*before* `evaluate`, so there is no arm id for it to fire, and the refusals it
+does issue — on a local branch, on `HEAD`, and on a remote it cannot reach — are
+`CannotRun`, which the `cases` runner reads as a failure. Two of those seven cells exist only because a mutant
+said so, and both were comments rather than code: the explicit fetch refspec and
+the annotated-tag peel each had a paragraph explaining why they were
+load-bearing, and the mutant that removed each one passed every other cell. **A
+justification is a claim, and it takes a cell like any other** — the same
+measurement ibis made on `asInt64`'s `int(...)` conversion at `rumor/1759`,
+arrived at independently in the gate that judges those pull requests.
 
 **It is not one case per arm, and the gap is where a broken arm hid.** This
 section used to say "twelve cases — one per refusal arm plus a clean run", and
