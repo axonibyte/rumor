@@ -87,12 +87,26 @@ func NextTransition(loc *time.Location, from, to int64) (int64, bool) {
 // already refused one at the parse, so reaching here means a Project was built
 // by something other than `rumor run` -- a test, or a later caller -- and the
 // walk it gets is today's rather than a crash.
-// ONE LOOKUP SITE IN THE REPOSITORY, as of D5: the body is
+// ONE LOOKUP SITE IN THE ENGINE'S PACKAGES, as of D5: the body is
 // bindings.ZoneNamed, which is also what the parse refuses an unknown name
 // with and what the ledger is handed. Two spellings of the empty-name trap is
-// how one of them eventually loses the `if name == ""`; this keeps the
-// nil-for-none DECISION here, where the cells for it live, and the LOOKUP
-// there, where the name is declared.
+// how one of them eventually loses the `if name == ""`.
+//
+// THE SPLIT, STATED THE RIGHT WAY ROUND (ibis, coop rumor/1774, correcting
+// this comment): the empty-name DECISION and the lookup are BOTH bindings' --
+// `ZoneNamed` holds the `if name == ""` and returns the error. What this
+// function keeps is the walk's reading of them, nil for none and nil for
+// unresolvable, and what this package keeps is the CELLS: zone_test.go drives
+// an empty name, a declared UTC and a name no database holds against the
+// landings, where the consequence of each is visible.
+//
+// AND THE CLAIM IS ARMED, which it was not when it was written:
+// tests/hygiene's TestTheEnginesPackagesHoldOneZoneLookupSite parses for the
+// call, because a duplicate site is EQUIVALENT -- it answers what this answers
+// for every name -- so no cell in this package can reach the difference
+// (ibis measured the survivor). cmd/toy is out of that arm's scope on
+// purpose: the system under test resolves its OWN zone, and the two
+// disagreeing is a thing a run can find.
 func zoneOf(name string) *time.Location {
 	loc, err := bindings.ZoneNamed(name)
 	if err != nil {

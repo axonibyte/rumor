@@ -303,10 +303,18 @@ func TestTheReportNamesWhereAProfilesClockStarts(t *testing.T) {
 			"read: %q", pline)
 	}
 
-	// AND THE DECLARED CASE, on a copy, because no committed profile declares
-	// a start yet -- D4's two do, and this arm must hold before they exist.
+	// AND THE DECLARED CASE, ON A COPY DECLARING TWO, which is ibis's finding
+	// at coop rumor/1773 and the reason this is not one profile.
+	//
+	// ONE WOULD NOT SEE THE DEFECT. With a start declared in `walking` alone,
+	// "the start walking declares" and "the only start in the file" are the
+	// same number, so a reader that took ANY profile's nonzero start answered
+	// correctly here -- and the mutant that made `clockStartFacts` do exactly
+	// that SURVIVED. The second profile's value is what the arm below asserts
+	// is NOT printed.
 	const start int64 = 1772000000000000000
-	dir := toyWithClockStart(t, "walking", start)
+	const other int64 = 1793000000000000000
+	dir := toyWithClockStarts(t, map[string]int64{"walking": start, "settling": other})
 	dout, _, dcode := run(t, "report", dir, "--profile", "walking")
 	if dcode != 0 {
 		t.Fatalf("report on the declared copy exited %d:\n%s", dcode, dout)
@@ -324,6 +332,31 @@ func TestTheReportNamesWhereAProfilesClockStarts(t *testing.T) {
 	// standing beside a number.
 	if strings.Contains(dline, "declares none") {
 		t.Errorf("a declared start still reads as undeclared: %q", dline)
+	}
+	// AND NOT THE OTHER PROFILE'S, which is the half that kills the survivor:
+	// `[profiles.settling]` declares a start too, and a line that reported it
+	// under `--profile walking` would be answering "is SOME line in force"
+	// where a reader asked about their own.
+	if strings.Contains(dline, strconv.FormatInt(other, 10)) {
+		t.Errorf("the report names [profiles.settling]'s start under --profile walking, so "+
+			"the line answers about any declaration rather than the selected one: %q", dline)
+	}
+	// AND THE SAME PROJECT ANSWERS THE OTHER PROFILE WITH ITS OWN, which makes
+	// this a measurement of the SELECTION rather than of one string: identical
+	// lines for two profiles would satisfy the halves above on a build that
+	// read neither.
+	oout, _, ocode := run(t, "report", dir, "--profile", "settling")
+	if ocode != 0 {
+		t.Fatalf("report --profile settling exited %d:\n%s", ocode, oout)
+	}
+	oline := clockStartLine(t, oout)
+	if !strings.Contains(oline, strconv.FormatInt(other, 10)) {
+		t.Errorf("[profiles.settling] declares %d and its own report does not name it: %q",
+			other, oline)
+	}
+	if oline == dline {
+		t.Errorf("two profiles with two different starts report the same line, so the "+
+			"selection is not read: %q", oline)
 	}
 
 	// EVERY SENTENCE NAMES THE LEVEL IT CANNOT SEE. This is the clause fable
@@ -388,29 +421,73 @@ func clockStartLine(t *testing.T, out string) string {
 // by platform.toml's own parser rather than by this helper's hope.
 func toyWithClockStart(t *testing.T, profile string, start int64) string {
 	t.Helper()
-	header := "[profiles." + profile + "]\n"
-	decl := "clock_start = " + strconv.FormatInt(start, 10) + "\n"
+	return toyWithClockStarts(t, map[string]int64{profile: start})
+}
+
+// toyWithClockStarts declares `clock_start` in EVERY named profile, each with
+// its own value.
+//
+// ONE PROFILE COULD NOT SEE THE DEFECT, which is ibis's finding at coop
+// rumor/1773 against ba5c720. With a start declared in a single profile and
+// nowhere else, "the start the NAMED profile declares" and "the only start in
+// the file" are the same number -- so a reader that took ANY profile's nonzero
+// start answered correctly on every input this fixture could build, and the
+// mutant that made it do exactly that SURVIVED. Two profiles with two values
+// make the selection observable, which is what ibis asked for in those words:
+// "two profiles, two values, assert the named one's and not the other's".
+//
+// THE SIBLING WAS ALREADY ARMED and that is the tell: the identical mutant on
+// `observationFacts` dies, because its own fixture carries two profiles that
+// claim different observations. The gap was this fixture and not the pattern.
+func toyWithClockStarts(t *testing.T, starts map[string]int64) string {
+	t.Helper()
+	// THE VALUES MUST DIFFER, or two profiles are one number again and this
+	// helper's whole reason is gone.
+	seen := map[int64]string{}
+	for profile, start := range starts {
+		if start == 0 {
+			t.Fatalf("[profiles.%s] would declare a start of 0, which is the ABSENT case and "+
+				"not a value this fixture can select on", profile)
+		}
+		if other, dup := seen[start]; dup {
+			t.Fatalf("[profiles.%s] and [profiles.%s] would declare the same start %d, so the "+
+				"copy cannot tell a reader of the NAMED profile from a reader of any profile",
+				profile, other, start)
+		}
+		seen[start] = profile
+	}
 	return toyCopy(t, func(t *testing.T, s string) string {
 		t.Helper()
-		if strings.Count(s, header) != 1 {
-			t.Fatalf("examples/toy does not declare %q exactly once, so this copy would "+
-				"carry no start and every arm would pass vacuously", header)
-		}
-		// THE GUARD ASKS ABOUT THE TARGET PROFILE'S OWN TABLE, not the file.
-		// It asked about the file until R7.5 D4 declared `clock_start` on the
-		// two `dst-*` profiles, and then fatal'd on a project exactly as valid
-		// as before: the state this copy must build is "the NAMED profile
-		// declares none", and a declaration elsewhere is somebody else's.
-		if strings.Contains(tableAfter(s, header), "clock_start") {
-			t.Fatalf("[profiles.%s] already declares a clock_start, so this copy no longer "+
-				"builds the state it was written for", profile)
-		}
-		s = strings.Replace(s, header, header+decl, 1)
-		if !strings.Contains(s, header+decl) {
-			t.Fatal("the clock start did not land in the copy")
+		for profile, start := range starts {
+			s = declareClockStart(t, s, profile, start)
 		}
 		return s
 	})
+}
+
+// declareClockStart puts one `clock_start` under one profile's header.
+func declareClockStart(t *testing.T, s, profile string, start int64) string {
+	t.Helper()
+	header := "[profiles." + profile + "]\n"
+	decl := "clock_start = " + strconv.FormatInt(start, 10) + "\n"
+	if strings.Count(s, header) != 1 {
+		t.Fatalf("examples/toy does not declare %q exactly once, so this copy would "+
+			"carry no start and every arm would pass vacuously", header)
+	}
+	// THE GUARD ASKS ABOUT THE TARGET PROFILE'S OWN TABLE, not the file. It
+	// asked about the file until R7.5 D4 declared `clock_start` on the two
+	// `dst-*` profiles, and then fatal'd on a project exactly as valid as
+	// before: the state this copy must build is "the NAMED profile declares
+	// none", and a declaration elsewhere is somebody else's.
+	if strings.Contains(tableAfter(s, header), "clock_start") {
+		t.Fatalf("[profiles.%s] already declares a clock_start, so this copy no longer "+
+			"builds the state it was written for", profile)
+	}
+	s = strings.Replace(s, header, header+decl, 1)
+	if !strings.Contains(s, header+decl) {
+		t.Fatal("the clock start did not land in the copy")
+	}
+	return s
 }
 
 // AND THE DOCUMENTED REPORTS ARE THE BINARY'S REPORTS, which is the shape

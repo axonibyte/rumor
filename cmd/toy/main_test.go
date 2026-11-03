@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1874,4 +1875,90 @@ func TestTheInvitationAllowanceResetsAtLocalMidnightExceptWhenItDoesNot(t *testi
 			t.Errorf("an unconfigured world reports the zone %v", q["zone"])
 		}
 	})
+}
+
+// THE `--zone` REFUSAL, DRIVEN THROUGH THE BINARY.
+//
+// ibis's finding at coop rumor/1776 against 40a86d2: the refusal was armed by
+// nothing. `zonedHarness` builds a server through `newServerInZone`, so no
+// cell entered `main()` and no cell passed `--zone` to a BUILT toy -- and the
+// mutant that swallows LoadLocation's error, bringing a bad name up on UTC,
+// SURVIVED the whole package.
+//
+// WHAT THAT COSTS IS THE WHOLE COMPARISON. A typo'd TOY_ZONE would then start
+// a toy reading UTC days while the project declared America/Chicago, and a
+// walk would report the declared-against-configured disagreement as the
+// allowance's defect -- which is precisely the comparison fable's ruling (a)
+// at coop r7/114 chose this configuration to make visible. A refusal that does
+// not refuse turns a misconfiguration into a finding about the application.
+//
+// THREE DIRECTIONS AND ONE BUILD. A name no database holds must exit 2 and say
+// so; a name it holds must come up and serve; and no `--zone` at all must come
+// up too, because the refusal has to be about the NAME and not about the flag
+// being present.
+func TestTheBinaryRefusesAZoneNoDatabaseHolds(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "toy")
+	build := exec.Command("go", "build", "-o", bin, ".")
+	build.Env = append(os.Environ(), "GOTOOLCHAIN=local")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building the toy: %v\n%s", err, out)
+	}
+
+	// A NAME NO DATABASE HOLDS: exit 2, and the message names the value.
+	state := filepath.Join(t.TempDir(), "state.json")
+	bad := exec.Command(bin, "--addr", "127.0.0.1:0", "--state", state, "--zone", "Not/AZone")
+	out, err := bad.CombinedOutput()
+	code := bad.ProcessState.ExitCode()
+	if code != 2 {
+		t.Fatalf("a toy started with --zone Not/AZone exited %d (%v), want 2: a bad zone that "+
+			"comes UP reads its instants in UTC, and a walk then reports the project's "+
+			"declaration disagreeing with the system as the allowance's own defect\n%s",
+			code, err, out)
+	}
+	if !strings.Contains(string(out), "Not/AZone") {
+		t.Errorf("the refusal does not name the value it refused: %s", out)
+	}
+	if !strings.Contains(string(out), "zone") {
+		t.Errorf("the refusal does not name the flag: %s", out)
+	}
+
+	// A NAME IT HOLDS COMES UP AND SERVES, which is what makes the refusal
+	// above about the NAME: a toy that refused every `--zone` would pass the
+	// cell above and be useless.
+	for _, tc := range []struct{ what, zone string }{
+		{"a declared zone", "America/Chicago"},
+		// AND NO FLAG AT ALL, which is every toy started before R7.5: it comes
+		// up on UTC days by its own default, not by a guess made at a lookup.
+		{"no zone at all", ""},
+	} {
+		t.Run(tc.what, func(t *testing.T) {
+			args := []string{"--addr", "127.0.0.1:0", "--state",
+				filepath.Join(t.TempDir(), "state.json")}
+			if tc.zone != "" {
+				args = append(args, "--zone", tc.zone)
+			}
+			cmd := exec.Command(bin, args...)
+			stdout, perr := cmd.StdoutPipe()
+			if perr != nil {
+				t.Fatal(perr)
+			}
+			if serr := cmd.Start(); serr != nil {
+				t.Fatalf("starting the toy: %v", serr)
+			}
+			t.Cleanup(func() {
+				_ = cmd.Process.Kill()
+				_, _ = cmd.Process.Wait()
+			})
+			// IT PRINTS THE ADDRESS IT BOUND, which is the one line the
+			// adapter reads -- so reading it is reading "this toy came up".
+			line := make([]byte, 128)
+			n, rerr := stdout.Read(line)
+			if rerr != nil {
+				t.Fatalf("%s: the toy printed nothing before dying: %v", tc.what, rerr)
+			}
+			if !strings.Contains(string(line[:n]), "listening on") {
+				t.Errorf("%s: the toy's first line is not its address: %q", tc.what, line[:n])
+			}
+		})
+	}
 }

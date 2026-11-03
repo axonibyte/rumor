@@ -110,11 +110,24 @@ func ClockControlled(b Bindings) bool { return b.Clock != nil }
 // location it got back would report the name it could NOT find as UTC. Nothing
 // here formats it; the error carries the name.
 //
-// ONE LOOKUP SITE IN THE REPOSITORY, for ClockControlled's reason: Parse
-// refuses an unknown name with this function's own error, the walk resolves
-// the same name through internal/schedule's zoneOf, and the ledger is handed
-// what this returns -- so the name a project is refused for and the zone a run
-// reads cannot come apart.
+// ONE LOOKUP SITE IN THE ENGINE'S PACKAGES, for ClockControlled's reason:
+// Parse refuses an unknown name with this function's own error, the walk
+// resolves the same name through internal/schedule's zoneOf, and the ledger is
+// handed what this returns -- so the name a project is refused for and the
+// zone a run reads cannot come apart.
+//
+// "IN THE REPOSITORY" WAS TOO WIDE and the arm that checks this said so:
+// cmd/toy calls `time.LoadLocation` for its own `-zone`, and it is right to --
+// the system under test is configured separately from the project's
+// declaration, which is what makes a disagreement between them findable
+// (fable, coop r7/114). The scope is the engine.
+//
+// AND THE CLAIM IS ARMED AS OF D4c: tests/hygiene's
+// TestTheEnginesPackagesHoldOneZoneLookupSite parses the engine's non-test
+// source for the CALL. It is a source arm because a duplicate is EQUIVALENT --
+// it answers what this answers for every name -- so no cell can reach the
+// difference; ibis measured that survivor at coop rumor/1774 and named the
+// instrument.
 func ZoneNamed(name string) (*time.Location, error) {
 	if name == "" {
 		return nil, nil
