@@ -441,14 +441,38 @@ func TestTOMLRefusesWhatIsNotTOMLAndAcceptsAnEmptyDocument(t *testing.T) {
 // is larger than math.MaxInt32 by nine orders of magnitude.
 func TestInt64CarriesAnInstantThatIntWouldTruncate(t *testing.T) {
 	const spring = int64(1772956800000000000) // 2026-03-08T08:00:00Z
-	r := New(map[string]any{"start": spring, "small": int64(4), "words": "noon"})
+	// THE ACCEPTANCE SET IS HANDED ONE OF EACH, because a decoder may answer
+	// any of the three and this cell CLAIMED all three while exercising one
+	// (ibis, coop rumor/1752): with only an int64 here, dropping `case int`
+	// and `case int32` from asInt64 survived, and so did an int32 arm that
+	// sign-extended through uint32.
+	//
+	// THE int32 IS NEGATIVE FOR THAT SECOND MUTANT: -9 through uint32 is
+	// 4294967287, so the sign is what tells a correct conversion from a
+	// plausible one, and a positive value could not.
+	r := New(map[string]any{
+		"start": spring,
+		"small": int64(4),
+		"asint": 7,
+		"as32":  int32(-9),
+		"words": "noon",
+	})
 	if got := r.Int64("start", false); got != spring {
 		t.Errorf("Int64 read %d, want %d: an instant in nanoseconds does not survive a "+
 			"32-bit int, which is the whole reason this reader is not Int", got, spring)
 	}
-	// AN int AND AN int32 ARE INTEGERS TOO, since a decoder may hand either.
+	// AN int AND AN int32 ARE INTEGERS TOO, since a decoder may hand either,
+	// and each is ASKED FOR rather than asserted in prose.
 	if got := r.Int64("small", false); got != 4 {
-		t.Errorf("Int64 read %d for 4", got)
+		t.Errorf("Int64 read %d for an int64 4", got)
+	}
+	if got := r.Int64("asint", false); got != 7 {
+		t.Errorf("Int64 read %d for an int 7: a decoder handing Go's own `int` must not fall "+
+			"to the refusal path", got)
+	}
+	if got := r.Int64("as32", false); got != -9 {
+		t.Errorf("Int64 read %d for an int32 -9: 4294967287 is that value sign-extended "+
+			"through uint32, which is the conversion this key exists to tell apart", got)
 	}
 	// ABSENT IS ZERO AND NOT A REFUSAL, which is what makes the key optional:
 	// every project written before it declares nothing here.
@@ -470,7 +494,8 @@ func TestInt64CarriesAnInstantThatIntWouldTruncate(t *testing.T) {
 			"reader's own refusal and not a zero handed to a clock", r.Refusals())
 	}
 	if !t.Failed() {
-		t.Logf("PROOF Int64 carries %d unchanged, reads int and int32, answers 0 for an "+
-			"absent key and refuses a non-integer at its own path", spring)
+		t.Logf("PROOF Int64 carries %d unchanged, reads an int64, an int and a NEGATIVE "+
+			"int32 (-9, not 4294967287), answers 0 for an absent key and refuses a "+
+			"non-integer at its own path", spring)
 	}
 }
