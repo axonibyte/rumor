@@ -215,3 +215,65 @@ func TestOnlyTheNextTransitionJoinsTheBounds(t *testing.T) {
 			"and the caller's slice is left alone")
 	}
 }
+
+// AND THE COMPOSITION IS THE CLAIM 115 MAKES: "the landings list holds the
+// three transition instants in addition to the three deadline instants".
+//
+// WHY A CELL OVER BOTH FUNCTIONS AND NOT EACH. `untilsWithTransition` answers
+// BOUNDS and `Landings` turns each bound into three, and the cells above and
+// R7's own hold each half -- but the sentence the issue asks for is about what
+// a step may draw, which is the composition walk.go performs. Nothing asserted
+// it, so a change that produced a transition BOUND and lost one of its three
+// LANDINGS would have passed both halves.
+//
+// SIX INSTANTS AND NOT FIVE OR SEVEN: a deadline and a transition, three each,
+// and this names all six rather than counting them -- a count passes on three
+// of one and three of the other in the wrong places, which is the mutation
+// 115's test line asks for ("the three transition landings removed one at a
+// time").
+func TestTheLandingsHoldTheTransitionsThreeBesideTheDeadlinesThree(t *testing.T) {
+	spring, _ := chicagoTransitions2026(t)
+	// THE CLOCK SITS BEFORE BOTH and the deadline is past the transition, so
+	// every one of the six is ahead of now and none is dropped for being
+	// behind it -- the condition the issue states as "a bound past a
+	// transition".
+	now := time.Date(2026, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano()
+	deadline := time.Date(2026, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano()
+
+	got := Landings(untilsWithTransition("America/Chicago", []int64{deadline}, now), now)
+	held := map[int64]bool{}
+	for _, at := range got {
+		held[at] = true
+	}
+	for _, want := range []struct {
+		what string
+		at   int64
+	}{
+		{"one tick before the transition", spring - Tick},
+		{"the transition itself", spring},
+		{"one tick past the transition", spring + Tick},
+		{"one tick before the deadline", deadline - Tick},
+		{"the deadline itself", deadline},
+		{"one tick past the deadline", deadline + Tick},
+	} {
+		if !held[want.at] {
+			t.Errorf("the landings do not hold %s (%d): %v", want.what, want.at, got)
+		}
+	}
+	// AND NOTHING ELSE, because a landing nobody declared is an instant a step
+	// may put the clock on for no stated reason.
+	if len(got) != 6 {
+		t.Errorf("the landings hold %d instant(s), want exactly the six named above: %v",
+			len(got), got)
+	}
+	// AND WITHOUT THE ZONE THE SAME CALL HOLDS THREE, which is what makes the
+	// six a measurement about the transition rather than about Landings.
+	if bare := Landings(untilsWithTransition("", []int64{deadline}, now), now); len(bare) != 3 {
+		t.Errorf("with no zone the landings hold %d instant(s), want the deadline's three: %v",
+			len(bare), bare)
+	}
+	if !t.Failed() {
+		t.Logf("PROOF a declared zone and one bound past the transition give six landings -- "+
+			"%d±1 and %d±1 -- and no zone gives three", spring, deadline)
+	}
+}
