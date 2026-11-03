@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/cover"
@@ -352,12 +353,48 @@ func Input(l *ledger.Ledger, c Check) (map[string]any, error) {
 // position, a zone) without the key moving under every rule that reads it.
 // `now` is the spelling tests/validate's arm-8 fixture already used --
 // `input.clock.now > 0` -- which was a shape nobody evaluated until here.
+//
+// `local` IS THAT SECOND FIELD, and R7.5 D5 is what joined it: the run's
+// instant READ IN THE DECLARED ZONE, as `date`, `offset_s` and `is_dst`, so a
+// rule can write a local-midnight deadline without zone math of its own --
+// which rego cannot do at all, there being no tz database behind a policy.
+//
+// ABSENT WHERE NO ZONE IS DECLARED, structurally and for `clock`'s own reason
+// one level in: the ledger holds nil, not UTC, so the key is never built. A
+// rule reading `input.clock.local.date` on a project that declares no zone
+// goes UNDEFINED rather than reading 1970 in a zone nobody chose -- and a
+// project that declares `UTC` gets the key, because declaring UTC is a choice
+// and the two must not read alike.
+//
+// IT DESCRIBES `now` AND NOTHING ELSE. A rule needing the local reading of
+// some OTHER instant -- a deadline the system holds, say -- has no field here
+// for it, and this is the sentence that says so rather than a reader
+// discovering it: the offset in force at `now` is not the offset in force at
+// that instant, which is the whole subject of this child. What a rule CAN do
+// with these three is compare the system's own anchor DAY against the day the
+// run is in, which is how R7.5's quota row is read.
+//
+// THE READING IS ONLY AS MEANINGFUL AS THE RUN'S ANCHOR. `clock.t` is
+// nanoseconds from the run's epoch, so a run that declares no `[clock].start`
+// reads its instants near 1970 and `local` answers for 1970 -- correctly, and
+// uselessly. D3's `clock_start` is what puts a run in a year whose
+// transitions anyone cares about.
 func addClock(in map[string]any, l *ledger.Ledger, seal int) {
 	t, ok := timeAt(l.SealedPrefix(), seal)
 	if !ok {
 		return
 	}
-	in["clock"] = map[string]any{"now": t}
+	clock := map[string]any{"now": t}
+	if loc := l.Zone(); loc != nil {
+		at := time.Unix(0, t).In(loc)
+		_, offset := at.Zone()
+		clock["local"] = map[string]any{
+			"date":     at.Format("2006-01-02"),
+			"offset_s": offset,
+			"is_dst":   at.IsDST(),
+		}
+	}
+	in["clock"] = clock
 }
 
 // Evaluate judges one check against a sealed ledger under one statute.

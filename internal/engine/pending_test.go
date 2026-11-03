@@ -45,7 +45,15 @@ var countRules = []string{"believed", "finding"}
 // time is t0 -- which is how late the observation is.
 func timedLedger(t *testing.T, t0, t1 int64) *ledger.Ledger {
 	t.Helper()
-	l := ledger.New(true) // the run controls the clock: v1 refuses a clock fact otherwise
+	return timedLedgerIn(t, t0, t1)
+}
+
+// timedLedgerIn is the same ledger with the run's own declarations, which is
+// what R7.5's zone cells need: a ledger built with no options is the one every
+// caller before D5 built.
+func timedLedgerIn(t *testing.T, t0, t1 int64, opts ...ledger.Option) *ledger.Ledger {
+	t.Helper()
+	l := ledger.New(true, opts...) // the run controls the clock: v1 refuses a clock fact otherwise
 	must := func(f ledger.Fact) {
 		t.Helper()
 		if _, err := l.Append(f); err != nil {

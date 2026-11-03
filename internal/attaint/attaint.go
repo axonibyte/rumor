@@ -855,7 +855,15 @@ func withoutPlantedClaims(l *ledger.Ledger) (*ledger.Ledger, int, error) {
 				"it cannot be attributed", ref)
 		}
 	}
-	out := ledger.New(false)
+	// THE COUNTERFACTUAL CARRIES THE RUN'S OWN DECLARATIONS, which `New(false)`
+	// did not. Both halves are measured: without `ClockControl` a clocked
+	// ledger with one planted claim refuses its own clock facts on the way
+	// back in ("clock fact at position 3 with no clock control declared",
+	// removed=0, nothing attainted), and without the zone the counterfactual
+	// answers a statute reading `input.clock.local` UNDEFINED where the real
+	// prefix answers a date -- so the comparison attaint exists to make would
+	// be between two different projects.
+	out := ledger.New(l.ClockControl(), ledger.InZone(l.Zone()))
 	highest, removed := 0, 0
 	for _, f := range l.SealedPrefix() {
 		if f.Kind == ledger.KindClaim && f.Planted {
@@ -1017,7 +1025,11 @@ func loadCase(pdir, pkgName, cf string) (exCase, error) {
 	if err := rerr; err != nil {
 		return exCase{}, fmt.Errorf("%s/%s has no ledger file: %w", pkgName, name, err)
 	}
-	l, err := ledger.Load(strings.NewReader(string(lraw)), bindings.ClockControlledAt(pdir, decl.TOML))
+	// THE ZONE COMES WITH THE CONTROL (R7.5 D5), for the reason
+	// bindings.ClockZoneAt carries: a case loaded without it answers a rule
+	// reading `input.clock.local` UNDEFINED where the walk answers a date.
+	l, err := ledger.Load(strings.NewReader(string(lraw)), bindings.ClockControlledAt(pdir, decl.TOML),
+		ledger.InZone(bindings.ClockZoneAt(pdir, decl.TOML)))
 	if err != nil {
 		return exCase{}, fmt.Errorf("%s/%s: the committed ledger does not load: %w", pkgName, name, err)
 	}

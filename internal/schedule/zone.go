@@ -1,6 +1,10 @@
 package schedule
 
-import "time"
+import (
+	"time"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+)
 
 // transitionStep is how far NextTransition walks before bisecting. A zone's
 // offset changes at most twice a year, so a day is coarse enough to find the
@@ -83,11 +87,14 @@ func NextTransition(loc *time.Location, from, to int64) (int64, bool) {
 // already refused one at the parse, so reaching here means a Project was built
 // by something other than `rumor run` -- a test, or a later caller -- and the
 // walk it gets is today's rather than a crash.
+// ONE LOOKUP SITE IN THE REPOSITORY, as of D5: the body is
+// bindings.ZoneNamed, which is also what the parse refuses an unknown name
+// with and what the ledger is handed. Two spellings of the empty-name trap is
+// how one of them eventually loses the `if name == ""`; this keeps the
+// nil-for-none DECISION here, where the cells for it live, and the LOOKUP
+// there, where the name is declared.
 func zoneOf(name string) *time.Location {
-	if name == "" {
-		return nil
-	}
-	loc, err := time.LoadLocation(name)
+	loc, err := bindings.ZoneNamed(name)
 	if err != nil {
 		return nil
 	}

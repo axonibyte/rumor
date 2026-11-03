@@ -14,6 +14,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
 )
 
 // THE DRILLS DO NOT REACH THESE ARMS, which is why they are here rather than in
@@ -1061,5 +1064,73 @@ func TestEveryKillerIsNamedAndEveryMutantNamesWhatItMoves(t *testing.T) {
 					mid, rule, rule)
 			}
 		}
+	}
+}
+
+// THE COUNTERFACTUAL IS THE SAME PROJECT, WHICH IS THE WHOLE OF AN ATTAINT.
+//
+// withoutPlantedClaims rebuilds a sealed prefix with the planted claims gone,
+// and R7.5 found it rebuilding with `ledger.New(false)` -- dropping both
+// run-scoped declarations the ledger holds.
+//
+// THE FIRST HALF IS A PRE-EXISTING REFUSAL, measured on this cell's own
+// fixture before the fix: a clocked ledger carrying one planted claim answered
+// `clock fact at position 3 with no clock control declared (R4, R7)` with
+// removed=0, so nothing was attainted at all. Nothing in the committed tree
+// reached it because no clocked case carries a planted claim -- R7.5's own
+// profiles are the first that would have.
+//
+// THE SECOND IS D5's: without the zone the counterfactual answers a statute
+// reading `input.clock.local` UNDEFINED where the real prefix answers a date,
+// so the comparison an attaint exists to make would be between two different
+// projects, and the difference would be read as the planted claim's doing.
+func TestTheCounterfactualCarriesTheRunsClockDeclarations(t *testing.T) {
+	chicago, err := time.LoadLocation("America/Chicago")
+	if err != nil {
+		t.Fatalf("the zone database does not hold America/Chicago: %v", err)
+	}
+	at := time.Date(2026, 3, 8, 7, 0, 0, 0, time.UTC).UnixNano()
+	l := ledger.New(true, ledger.InZone(chicago))
+	for _, f := range []ledger.Fact{
+		{Position: 1, Kind: ledger.KindClaim, Actor: "alice", Ref: "r1", Type: "item.created", Planted: true},
+		{Position: 2, Kind: ledger.KindClaim, Actor: "alice", Ref: "r2", Type: "item.created"},
+		{Position: 3, Kind: ledger.KindClock, Actor: "run", T: &at},
+	} {
+		if aerr := l.AppendAt(f); aerr != nil {
+			t.Fatalf("building the clocked ledger: %v", aerr)
+		}
+	}
+	if serr := l.SealAt(3); serr != nil {
+		t.Fatalf("sealing: %v", serr)
+	}
+
+	out, removed, err := withoutPlantedClaims(l)
+	if err != nil {
+		t.Fatalf("the counterfactual of a CLOCKED ledger could not be built: %v\n"+
+			"-- this is the pre-existing refusal: the rebuild copies the clock fact it was "+
+			"handed, and a rebuild that does not carry clock control refuses it", err)
+	}
+	if removed != 1 {
+		t.Errorf("removed %d planted claims, want 1", removed)
+	}
+	// THE CLOCK FACT SURVIVED, which is the half the error message above
+	// cannot prove on its own: a build that silently dropped it would also
+	// return no error.
+	clocks := 0
+	for _, f := range out.Facts() {
+		if f.Kind == ledger.KindClock {
+			clocks++
+		}
+	}
+	if clocks != 1 {
+		t.Errorf("the counterfactual holds %d clock fact(s), want 1", clocks)
+	}
+	if !out.ClockControl() {
+		t.Error("the counterfactual declares no clock control, so a later append of the " +
+			"fact it already holds would be refused")
+	}
+	if out.Zone() == nil || out.Zone().String() != "America/Chicago" {
+		t.Errorf("the counterfactual's zone is %v (nil=%v), so `input.clock.local` is "+
+			"undefined on one side of the comparison", out.Zone(), out.Zone() == nil)
 	}
 }

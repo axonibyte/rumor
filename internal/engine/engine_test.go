@@ -3,12 +3,14 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/open-policy-agent/opa/v1/ast"
 
@@ -857,4 +859,204 @@ func sameNumber(got any, want int64) bool {
 		return err == nil && n == want
 	}
 	return false
+}
+
+// R7.5 D5: THE RUN'S INSTANT, READ IN THE DECLARED ZONE.
+//
+// `input.clock.local` is what lets a rule write a local-midnight deadline
+// without zone math of its own, which rego cannot do at all: there is no tz
+// database behind a policy. Three fields, and the subject of this child is
+// that two of them MOVE while the third does not.
+//
+// THE TWO PAIRS ARE THE TRANSITIONS THEMSELVES. Each is one hour apart and
+// lands on ONE local date, which is the whole reason a reset computed as
+// "previous local midnight plus twenty-four hours of wall time" is wrong: the
+// day that holds both offsets is 23 or 25 hours long, and nothing about the
+// DATE says so.
+//
+// THE CELL CHECKS ITS OWN PREMISE rather than trusting the instants. tzdata is
+// the toolchain's and a revision can move a transition (fable, issue 115
+// amendment 1), so each pair asserts that the offsets DIFFER, that `is_dst`
+// flips, that the dates are EQUAL, and that the instants are exactly an hour
+// apart. If a future database moves either transition out from under these
+// numbers, the arm fails loudly instead of comparing two readings of the same
+// side.
+func TestTheStatuteIsHandedTheRunsInstantInTheDeclaredZone(t *testing.T) {
+	chicago, err := time.LoadLocation("America/Chicago")
+	if err != nil {
+		t.Fatalf("the zone database does not hold America/Chicago: %v", err)
+	}
+	check := Check{Actor: "alice", Of: "item.created", Query: "q", Source: ledger.SourceAPI, Value: 1}
+
+	local := func(t *testing.T, at int64, opts ...ledger.Option) map[string]any {
+		t.Helper()
+		l := timedLedgerIn(t, at-1, at, opts...)
+		in, ierr := Input(l, check)
+		if ierr != nil {
+			t.Fatalf("building the input: %v", ierr)
+		}
+		clock, ok := in["clock"].(map[string]any)
+		if !ok {
+			t.Fatalf("the input carries no clock table: %v", in["clock"])
+		}
+		if clock["now"] != at {
+			t.Fatalf("the clock reads %v at the seal, want %d", clock["now"], at)
+		}
+		loc, present := clock["local"]
+		if !present {
+			return nil
+		}
+		m, ok := loc.(map[string]any)
+		if !ok {
+			t.Fatalf("`local` is not a table: %v", loc)
+		}
+		return m
+	}
+
+	for _, pair := range []struct {
+		name          string
+		before, after time.Time
+		wantDate      string
+	}{
+		{
+			// THE HOUR THAT VANISHES: 02:00 CST does not exist on this date.
+			name:     "spring forward",
+			before:   time.Date(2026, 3, 8, 7, 0, 0, 0, time.UTC),
+			after:    time.Date(2026, 3, 8, 8, 0, 0, 0, time.UTC),
+			wantDate: "2026-03-08",
+		},
+		{
+			// THE HOUR THAT REPEATS: 01:00 happens twice, once at each offset,
+			// and these two instants ARE those two readings.
+			name:     "fall back",
+			before:   time.Date(2026, 11, 1, 6, 0, 0, 0, time.UTC),
+			after:    time.Date(2026, 11, 1, 7, 0, 0, 0, time.UTC),
+			wantDate: "2026-11-01",
+		},
+	} {
+		t.Run(pair.name, func(t *testing.T) {
+			if d := pair.after.Sub(pair.before); d != time.Hour {
+				t.Fatalf("the pair is %v apart, want one hour: this cell is about one "+
+					"transition and not about two arbitrary instants", d)
+			}
+			b := local(t, pair.before.UnixNano(), ledger.InZone(chicago))
+			a := local(t, pair.after.UnixNano(), ledger.InZone(chicago))
+			if b == nil || a == nil {
+				t.Fatal("a declared zone produced no `local` table")
+			}
+			// THE DATE IS THE SAME ON BOTH SIDES, which is the fact a rule
+			// comparing its system's anchor DAY against the run's day depends
+			// on -- and the fact that makes the plant one day wide.
+			for side, m := range map[string]map[string]any{"before": b, "after": a} {
+				if m["date"] != pair.wantDate {
+					t.Errorf("%s the transition the local date is %v, want %s",
+						side, m["date"], pair.wantDate)
+				}
+			}
+			// AND THE OFFSET AND THE FLAG BOTH MOVE. Asserted as a DIFFERENCE
+			// rather than against two constants, so the cell is about the
+			// transition rather than about this database's numbers.
+			ob, oa := b["offset_s"], a["offset_s"]
+			if ob == oa {
+				t.Errorf("the offset is %v on both sides of %s, so this pair does not straddle "+
+					"a transition in this zone database", ob, pair.name)
+			}
+			if b["is_dst"] == a["is_dst"] {
+				t.Errorf("is_dst is %v on both sides of %s", b["is_dst"], pair.name)
+			}
+			obi, oai := ob.(int), oa.(int)
+			if d := oai - obi; d != 3600 && d != -3600 {
+				t.Errorf("the offset moves by %d seconds across %s, want one hour", d, pair.name)
+			}
+		})
+	}
+
+	// NO ZONE DECLARED, NO KEY -- and the clock table is still there, which is
+	// what makes this an arm about `local` rather than about the clock.
+	if m := local(t, time.Date(2026, 3, 8, 7, 0, 0, 0, time.UTC).UnixNano()); m != nil {
+		t.Errorf("a project that declares no zone was handed a local reading: %v", m)
+	}
+
+	// AND A DECLARED UTC IS NOT AN ABSENCE. `(*time.Location)(nil).String()`
+	// is the string "UTC", so nil-as-UTC is the one confusion this channel
+	// cannot afford: declaring UTC is a choice, and a rule written for it must
+	// be able to read the key.
+	utc := local(t, time.Date(2026, 3, 8, 7, 0, 0, 0, time.UTC).UnixNano(), ledger.InZone(time.UTC))
+	if utc == nil {
+		t.Fatal("a project that DECLARES UTC was handed no local reading, so it cannot be " +
+			"told from one that declared nothing")
+	}
+	if utc["offset_s"] != 0 || utc["is_dst"] != false || utc["date"] != "2026-03-08" {
+		t.Errorf("the UTC reading is %v", utc)
+	}
+}
+
+// AND A RULE READS IT, which the map above does not prove: a key in the input
+// and a key a statute can reach are different claims, and r7/63's whole lesson
+// was a channel that was written and reached nothing.
+//
+// THE CONTROL IS THE SAME RULE FORM OVER `input.clock.now`, in the input since
+// R7.4: if that reads its default too, the arm is measuring rego rather than
+// this key.
+func TestARuleReadsTheLocalReading(t *testing.T) {
+	const statute = `package rumor.statute
+
+default local_date := "none"
+
+local_date := input.clock.local.date
+
+default in_dst := "none"
+
+in_dst := sprintf("%v", [input.clock.local.is_dst])
+
+default sees_now := -1
+
+sees_now := input.clock.now
+`
+	rules := []string{"local_date", "in_dst", "sees_now"}
+	check := Check{Actor: "alice", Of: "item.created", Query: "q", Source: ledger.SourceAPI, Value: 1}
+	chicago, err := time.LoadLocation("America/Chicago")
+	if err != nil {
+		t.Fatalf("the zone database does not hold America/Chicago: %v", err)
+	}
+
+	// INSIDE DAYLIGHT TIME, so `in_dst` has a value to carry that is not the
+	// zero one: a false here would read the same as the default.
+	at := time.Date(2026, 7, 4, 17, 0, 0, 0, time.UTC).UnixNano()
+	l := timedLedgerIn(t, at-1, at, ledger.InZone(chicago))
+	got, err := Evaluate(context.Background(), statute, rules, l, check)
+	if err != nil {
+		t.Fatalf("evaluating: %v", err)
+	}
+	// THE CONTROL IS COMPARED AS TEXT, because a rule's value arrives through
+	// JSON and its Go type is the decoder's business, not this arm's: the
+	// first writing of this line compared against float64 and int64, failed,
+	// and printed the right digits while doing it.
+	if fmt.Sprintf("%v", got.Rules["sees_now"]) != fmt.Sprintf("%d", at) {
+		t.Fatalf("the control failed: a rule cannot read input.clock.now (%v), so this arm "+
+			"says nothing about `local`", got.Rules["sees_now"])
+	}
+	if got.Rules["local_date"] != "2026-07-04" {
+		t.Errorf("a rule reads the local date as %v, want 2026-07-04", got.Rules["local_date"])
+	}
+	if got.Rules["in_dst"] != "true" {
+		t.Errorf("a rule reads is_dst as %v in July in Chicago", got.Rules["in_dst"])
+	}
+
+	// AND UNDEFINED WHERE NO ZONE IS DECLARED, which is the half a present-key
+	// arm cannot see: the rule keeps its default, and `sees_now` still answers,
+	// so the clock channel is proven live in the same run.
+	un := timedLedgerIn(t, at-1, at)
+	gotUn, err := Evaluate(context.Background(), statute, rules, un, check)
+	if err != nil {
+		t.Fatalf("evaluating the unzoned run: %v", err)
+	}
+	if gotUn.Rules["local_date"] != "none" {
+		t.Errorf("a rule read a local date on a project that declares no zone: %v",
+			gotUn.Rules["local_date"])
+	}
+	if fmt.Sprintf("%v", gotUn.Rules["sees_now"]) == "-1" {
+		t.Error("the unzoned control cannot read the clock either, so the undefined above " +
+			"is not about the zone")
+	}
 }

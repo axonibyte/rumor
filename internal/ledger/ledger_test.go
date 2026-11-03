@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Every guard is driven in BOTH directions. A refusal arm that never sees the
@@ -361,5 +362,52 @@ func TestATellMustReferenceAClaimAlreadyHeld(t *testing.T) {
 	other := Fact{Kind: KindTold, Actor: "bob", To: "charlie", ClaimRef: "bob.user#1"}
 	if _, err := l.Append(other); err == nil {
 		t.Error("a tell of an unheld ref was accepted once any claim existed")
+	}
+}
+
+// R7.5 D5: THE RUN-SCOPED DECLARATIONS A REBUILD MUST CARRY.
+//
+// The ledger holds two: whether the run controls the clock, and the zone its
+// instants are read in. Both are here because `addClock`'s inputs are the
+// ledger and the seal, so a reader cannot be handed them separately -- and
+// because internal/attaint REBUILDS a sealed prefix, which is where a dropped
+// declaration shows up as a refusal of the facts being copied.
+func TestALedgerCarriesTheRunsClockDeclarations(t *testing.T) {
+	// THE DEFAULT IS ABSENT, which is what makes `input.clock.local` structural
+	// rather than promised: nil, and NOT UTC.
+	plain := New(true)
+	if plain.Zone() != nil {
+		t.Errorf("a ledger built with no options declares the zone %v", plain.Zone())
+	}
+	if !plain.ClockControl() {
+		t.Error("ClockControl does not report the control it was constructed with")
+	}
+	if New(false).ClockControl() {
+		t.Error("ClockControl reports control on a ledger built without it")
+	}
+
+	chicago, err := time.LoadLocation("America/Chicago")
+	if err != nil {
+		t.Fatalf("the zone database does not hold America/Chicago: %v", err)
+	}
+	zoned := New(true, InZone(chicago))
+	if zoned.Zone() == nil {
+		t.Fatal("InZone declared nothing")
+	}
+	if zoned.Zone().String() != "America/Chicago" {
+		t.Errorf("the declared zone reads back as %q", zoned.Zone().String())
+	}
+	// AND InZone(nil) IS AN ABSENCE AND NOT AN ERROR, which is what lets the
+	// walk pass `zoneOf(name)` through unconditionally: a project declaring no
+	// zone builds the ledger it built before this option existed.
+	if New(true, InZone(nil)).Zone() != nil {
+		t.Error("InZone(nil) declared a zone")
+	}
+	// A DECLARED UTC IS NOT AN ABSENCE. `(*time.Location)(nil).String()` is
+	// the string "UTC", so this pair is the one that cannot be read off the
+	// name: the test is the NIL-ness, never the text.
+	if u := New(true, InZone(time.UTC)); u.Zone() == nil {
+		t.Error("a declared UTC reads as no zone at all, which a rule written for UTC cannot " +
+			"tell from a project that declared nothing")
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"time"
 )
 
 // Kind is a fact kind. The vocabulary allows exactly these four.
@@ -77,14 +78,68 @@ type Fact struct {
 // Ledger is an append-only sequence of facts with a sealed prefix.
 type Ledger struct {
 	facts        []Fact
-	seal         int  // 0 means unsealed; otherwise the sealed prefix's last position
-	clockControl bool // declared by the run; a clock fact without it is a refusal
+	seal         int            // 0 means unsealed; otherwise the sealed prefix's last position
+	clockControl bool           // declared by the run; a clock fact without it is a refusal
+	zone         *time.Location // declared by the run; nil where the project declares none
 }
 
 // New returns an empty ledger. clockControl records whether the run controls the
 // clock, because the vocabulary makes a clock fact without it a validation
 // refusal rather than a silently accepted wall-clock reading.
-func New(clockControl bool) *Ledger { return &Ledger{clockControl: clockControl} }
+func New(clockControl bool, opts ...Option) *Ledger {
+	l := &Ledger{clockControl: clockControl}
+	for _, o := range opts {
+		o(l)
+	}
+	return l
+}
+
+// Option is a run-scoped declaration the ledger holds for its readers, as
+// clockControl is.
+//
+// VARIADIC AND NOT A SECOND PARAMETER, which is the one thing about this shape
+// worth defending: thirty-six sites construct a ledger, thirty-two of them in
+// tests, and a second positional argument would have edited every one of them
+// to say "and no zone" -- churn that reads as a change at each site while
+// asserting nothing. A site that declares nothing passes nothing.
+type Option func(*Ledger)
+
+// InZone records the zone the run reads its instants in, for R7.5's
+// `input.clock.local`.
+//
+// WHY THE LEDGER HOLDS IT, rather than the engine taking it as a parameter:
+// `clockControl` is already here for exactly this reason -- it is a run-scoped
+// declaration the ledger's readers must agree about -- and `addClock`'s inputs
+// are the ledger and the seal. One reader, so the statute and the `pending`
+// overlay cannot disagree about what time it is OR about what zone that time
+// is read in, which two readers of one declaration eventually would.
+//
+// A RESOLVED LOCATION AND NOT A NAME, because a lookup can fail and nothing
+// downstream of here has anywhere to say so: the engine builds a map and the
+// overlay judges. The name is refused at `[clock].zone` by
+// bindings.ZoneNamed's own error, and the caller that resolves it is the one
+// holding a refusal path. nil is "the project declares none", and it is the
+// same answer a failed lookup's caller passes -- which is why that caller must
+// report the failure rather than forward the nil.
+func InZone(loc *time.Location) Option { return func(l *Ledger) { l.zone = loc } }
+
+// ClockControl is whether the run declared control of the clock.
+//
+// IT EXISTS FOR THE COUNTERFACTUAL. internal/attaint rebuilds a sealed prefix
+// without its planted claims, and a rebuild that does not carry this REFUSES
+// the clock facts it is copying -- measured, not reasoned: a clocked ledger
+// with one planted claim answered "clock fact at position 3 with no clock
+// control declared", removed=0. Nothing in the committed tree reached it
+// because no clocked case carries a planted claim yet, which R7.5's own
+// profiles change.
+func (l *Ledger) ClockControl() bool { return l.clockControl }
+
+// Zone is the zone the run reads its instants in, or nil where the project
+// declares none. Readers must treat nil as ABSENT and never as UTC: a declared
+// `UTC` and an undeclared zone are different projects, and
+// `(*time.Location)(nil).String()` is the string "UTC", so a reader that
+// formatted this without checking would report them identically.
+func (l *Ledger) Zone() *time.Location { return l.zone }
 
 // Len is the number of facts.
 func (l *Ledger) Len() int { return len(l.facts) }
@@ -268,8 +323,8 @@ func (l *Ledger) Dump(w io.Writer) error {
 // Load reads a dump. It goes through AppendAt, so a dump that violates any rule
 // the writer enforces is refused on the way in rather than trusted because it
 // came from a file.
-func Load(r io.Reader, clockControl bool) (*Ledger, error) {
-	l := New(clockControl)
+func Load(r io.Reader, clockControl bool, opts ...Option) (*Ledger, error) {
+	l := New(clockControl, opts...)
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	line := 0

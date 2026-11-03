@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
@@ -1100,5 +1101,104 @@ func TestAClockMayDeclareWhereItStarts(t *testing.T) {
 	if !t.Failed() {
 		t.Logf("PROOF a nanosecond instant is carried whole, an absent key is 0, and a "+
 			"non-integer is refused at clock.start (%d)", spring)
+	}
+}
+
+// R7.5 D5: THE ONE LOOKUP SITE, AND THE TWO ANSWERS THAT LOOK ALIKE.
+//
+// ZoneNamed is what Parse refuses an unknown name with, what the walk resolves
+// a Project's zone through, and what the ledger is handed -- so it is driven
+// directly rather than only through its callers. Both confusions it exists to
+// prevent are MEASURED here and neither is reasoned:
+//
+//	`LoadLocation("")` SUCCEEDS with a real, non-nil UTC. A reader forwarding
+//	the undeclared case would give every project in the tree a zone.
+//
+//	A FAILED lookup answers a NIL *Location with the error, and
+//	`(*time.Location)(nil).String()` is "UTC" -- so a reader that printed what
+//	it got back would report the name it could not find as UTC.
+func TestZoneNamedIsNilForNoneAndErrorsForUnknown(t *testing.T) {
+	// THE PREMISE, DRIVEN: if this ever stops being true the empty-name guard
+	// below is unnecessary, and whoever reads this should know which.
+	if loc, err := time.LoadLocation(""); err != nil || loc == nil {
+		t.Fatalf(`LoadLocation("") answers (%v, %v): this cell's whole subject is that it `+
+			`SUCCEEDS, so the guard it tests may no longer be needed`, loc, err)
+	}
+
+	if loc, err := ZoneNamed(""); err != nil || loc != nil {
+		t.Errorf("an undeclared zone answers (%v, %v), want (nil, nil): a project that "+
+			"declares nothing must not gain UTC", loc, err)
+	}
+	loc, err := ZoneNamed("America/Chicago")
+	if err != nil || loc == nil {
+		t.Fatalf("a declared zone answers (%v, %v)", loc, err)
+	}
+	if loc.String() != "America/Chicago" {
+		t.Errorf("the resolved zone is %q", loc.String())
+	}
+	// A DECLARED UTC IS A ZONE, not an absence -- the pair that makes the
+	// nil-for-none decision observable.
+	if u, uerr := ZoneNamed("UTC"); uerr != nil || u == nil {
+		t.Errorf("declared UTC answers (%v, %v), want a real location", u, uerr)
+	}
+	bad, berr := ZoneNamed("Not/AZone")
+	if berr == nil {
+		t.Error("a name no database holds resolved clean")
+	}
+	if bad != nil {
+		t.Errorf("a failed lookup answers a non-nil location %v, so a caller could use it", bad)
+	}
+}
+
+// AND THE PROJECT-DIRECTORY READER, which is how a committed CASE is loaded
+// under the same declaration its runs are walked under.
+//
+// THE THREE ABSENCES ARE ONE ANSWER and each is driven: no bindings.toml at
+// all (three committed examples are statute fixtures), a bindings.toml
+// declaring no zone, and -- the one a reader cannot get through Parse -- a
+// file whose zone name no database holds.
+func TestClockZoneAtReadsTheProjectsDeclaration(t *testing.T) {
+	write := func(t *testing.T, body string) string {
+		t.Helper()
+		dir := t.TempDir()
+		if body != "" {
+			if err := os.WriteFile(filepath.Join(dir, "bindings.toml"), []byte(body), 0o644); err != nil {
+				t.Fatalf("writing the fixture: %v", err)
+			}
+		}
+		return dir
+	}
+	// THE MINIMUM A PROJECT MUST SAY TO PARSE AT ALL, copied from
+	// TestClockControlledAtReadsTheProjectAndNotAGuess: a project the parser
+	// refuses answers nil here for a different reason, which is a fourth
+	// answer and not this cell's subject. The first writing of this cell used
+	// a shorter fixture, got nil, and printed it as "UTC" -- which is this
+	// child's own trap, `(*time.Location)(nil).String()`, caught by the cell
+	// it was written for.
+	const base = `[[action]]
+name = "do"
+context = "none"
+emits = ["thing.done"]
+requires = ["may_do"]
+
+[claim."thing.done"]
+timing = "immediate"
+`
+
+	if loc := ClockZoneAt(write(t, base+"[clock]\nform = \"faked\"\nzone = \"America/Chicago\"\n"),
+		decl.TOML); loc == nil || loc.String() != "America/Chicago" {
+		t.Errorf("a declared zone reads as %v (nil=%v)", loc, loc == nil)
+	}
+	if loc := ClockZoneAt(write(t, base+"[clock]\nform = \"faked\"\n"), decl.TOML); loc != nil {
+		t.Errorf("a clock with no zone reads as %v, want nil", loc)
+	}
+	if loc := ClockZoneAt(write(t, ""), decl.TOML); loc != nil {
+		t.Errorf("a project with no bindings.toml reads as %v, want nil", loc)
+	}
+	// AND A FILE THE PARSE WOULD REFUSE IS nil AND NOT A PANIC: this reader is
+	// not the verb that refuses a project for its declarations.
+	if loc := ClockZoneAt(write(t, base+"[clock]\nform = \"faked\"\nzone = \"Not/AZone\"\n"),
+		decl.TOML); loc != nil {
+		t.Errorf("a zone no database holds reads as %v, want nil", loc)
 	}
 }

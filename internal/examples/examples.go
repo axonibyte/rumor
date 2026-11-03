@@ -147,7 +147,10 @@ func one(ctx context.Context, pdir, pkgName, caseName, statute string, rules []s
 	if err != nil {
 		return "", false, fmt.Errorf("case %s/%s has no ledger file: %w", pkgName, caseName, err)
 	}
-	l, err := ledger.Load(strings.NewReader(string(lraw)), bindings.ClockControlledAt(pdir, decl.TOML))
+	// THE ZONE COMES WITH THE CONTROL (R7.5 D5), so a case is judged under the
+	// declaration its project is walked under -- see bindings.ClockZoneAt.
+	l, err := ledger.Load(strings.NewReader(string(lraw)), bindings.ClockControlledAt(pdir, decl.TOML),
+		ledger.InZone(bindings.ClockZoneAt(pdir, decl.TOML)))
 	if err != nil {
 		return "", false, fmt.Errorf("%s/%s: the committed ledger does not load: %w", pkgName, caseName, err)
 	}

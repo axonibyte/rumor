@@ -853,7 +853,12 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		return rec, err
 	}
 	src := New(seed)
-	l := ledger.New(p.ClockControl)
+	// THE ZONE RIDES WITH THE LEDGER, so the statute's `input.clock.local` and
+	// the landings above read ONE declaration (R7.5 D5). `zoneOf` answers nil
+	// for a project that declares none, and ledger.InZone(nil) declares
+	// nothing -- so an unzoned run builds the ledger it built before this line
+	// existed.
+	l := ledger.New(p.ClockControl, ledger.InZone(zoneOf(p.ClockZone)))
 	clk := &runClock{control: p.ClockControl, form: p.ClockForm}
 	table, err := handle.New(attempt)
 	if err != nil {

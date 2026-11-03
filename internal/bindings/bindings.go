@@ -92,6 +92,36 @@ const (
 // default form would put the two against each other on a real project.
 func ClockControlled(b Bindings) bool { return b.Clock != nil }
 
+// ZoneNamed is the zone a declared name names: nil where the project declares
+// none, the location where the database holds it, and an error where it does
+// not.
+//
+// THE EMPTY NAME IS NOT UTC, which is the whole reason this is a function and
+// not a `time.LoadLocation` at each reader. Measured: `LoadLocation("")`
+// SUCCEEDS and answers a real, non-nil UTC -- so a reader that forwarded the
+// undeclared case would give every project in the tree a zone, and
+// `input.clock.local` would be PRESENT on a project that declares nothing,
+// indistinguishable from one that declared UTC. nil-for-none is what makes the
+// absence structural, the way an unclocked run's missing `clock` key is.
+//
+// AND A FAILED LOOKUP ANSWERS nil WITH THE ERROR, which is the other half of
+// the same measurement: `LoadLocation` returns a nil *Location on failure, and
+// `(*time.Location)(nil).String()` is "UTC" -- so a reader that printed the
+// location it got back would report the name it could NOT find as UTC. Nothing
+// here formats it; the error carries the name.
+//
+// ONE LOOKUP SITE IN THE REPOSITORY, for ClockControlled's reason: Parse
+// refuses an unknown name with this function's own error, the walk resolves
+// the same name through internal/schedule's zoneOf, and the ledger is handed
+// what this returns -- so the name a project is refused for and the zone a run
+// reads cannot come apart.
+func ZoneNamed(name string) (*time.Location, error) {
+	if name == "" {
+		return nil, nil
+	}
+	return time.LoadLocation(name)
+}
+
 // ClockControlledAt is ClockControlled for a project DIRECTORY, which is what
 // `rumor check` and `rumor attaint` need (R7.4): they decide whether a
 // project's COMMITTED ledgers may carry clock facts, and ledger.Load refuses
@@ -118,6 +148,36 @@ func ClockControlledAt(dir string, dec decl.Decoder) bool {
 		return false
 	}
 	return ClockControlled(rep.Bindings)
+}
+
+// ClockZoneAt is the zone a project DIRECTORY declares, resolved, for the
+// readers that load a committed ledger: `rumor check` and `rumor attaint` hand
+// it to ledger.InZone so a CASE is judged under the same declaration a run of
+// that project is walked under.
+//
+// WITHOUT IT A CASE AND A RUN ARE DIFFERENT PROJECTS. `input.clock.local` is
+// built from the ledger's zone, so a case loaded without one answers a rule
+// reading it UNDEFINED while the walk answers a date -- and the rule a project
+// commits for its own clocked row would be unreachable from its cases. That is
+// ClockControlledAt's own lesson one child later: "a project's cases must load
+// the way its runs are walked".
+//
+// nil FOR EVERY ABSENCE, and the three are deliberately one answer here: no
+// readable bindings.toml, no `[clock].zone`, and a name the database does not
+// hold. The first is ClockControlledAt's reason -- three committed examples
+// declare no bindings at all -- and the third cannot arrive through Parse,
+// which refuses it. `rumor validate` is the verb that refuses a project for
+// its declarations; these readers are not it.
+func ClockZoneAt(dir string, dec decl.Decoder) *time.Location {
+	rep, err := Load(filepath.Join(dir, "bindings.toml"), dec)
+	if err != nil || !rep.OK() {
+		return nil
+	}
+	loc, zerr := ZoneNamed(rep.Bindings.ClockZone)
+	if zerr != nil {
+		return nil
+	}
+	return loc
 }
 
 // Quiesce is the bound meaning "until the system settles", as opposed to a
@@ -768,7 +828,7 @@ func Parse(doc map[string]any) Report {
 				// is the reader that knows what it was about to set.
 				b.ClockStart = t.Int64("start", false)
 				if zone := t.Str("zone", false); zone != "" {
-					if _, err := time.LoadLocation(zone); err != nil {
+					if _, err := ZoneNamed(zone); err != nil {
 						t.Refuse("zone", fmt.Sprintf("%q: %v -- `zone` is the IANA name the "+
 							"engine reads the run's instant in, and a name no zone database "+
 							"holds is this phase's own field spelled wrong", zone, err))
