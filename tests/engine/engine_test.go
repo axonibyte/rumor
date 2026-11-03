@@ -67,7 +67,10 @@ const (
 	// These match tests/statute's own declarations, as the comment above says.
 	// 37 -> 40 AND 39 -> 41 AT R8/111's SECOND PLANT: R8/111's second plant adds three cases for one role-shaped rule (the finding, the admin control, the empty list) and two mutants for the rules they arm (m17 the role check dropped, m18 the count judgement unscoped).
 	// 40 -> 41 AND 41 -> 42: R8/111's action half: `may_list_attendees` is a tracked rule with its own mutant (m19, its sole killer), and the attendee reading of a page that is not served is the case a viewing walk on seed 29 proved missing.
-	wantCases   = 41
+	// 41 -> 45 WITH R7.5's ALLOWANCE (D4): two readings of one subject and
+	// two verdicts each -- a reset at local midnight and one an hour late, an
+	// anchor on the run's own day and one on yesterday.
+	wantCases   = 45
 	wantMutants = 42
 )
 
@@ -201,8 +204,18 @@ func (c kase) sealed(t *testing.T) *ledger.Ledger {
 	// fact, so a clocked project's cases could not be read here at all, and
 	// R7.4's ledger row is one. Asked through bindings.ClockControlledAt, the
 	// one expression cmd/rumor/run.go uses.
+	// AND IN THE PROJECT'S OWN ZONE (R7.5 D5), through ClockZoneAt for
+	// ClockControlledAt's reason one child later: `input.clock.local` is built
+	// from the ledger's zone, so a case loaded without one answers a rule
+	// reading it UNDEFINED where the walk answers a date -- and R7.5's own
+	// cases are two such rules. Measured: without this line
+	// `the-allowance-is-anchored-on-the-runs-own-day` read `bug` from its
+	// ledger and `consistent` through `rumor check`, which is the two paths
+	// disagreeing about the project rather than about the case.
+	pdir := filepath.Dir(filepath.Dir(c.ledgerPath))
 	l, err := ledger.Load(strings.NewReader(c.raw),
-		bindings.ClockControlledAt(filepath.Dir(filepath.Dir(c.ledgerPath)), decl.TOML))
+		bindings.ClockControlledAt(pdir, decl.TOML),
+		ledger.InZone(bindings.ClockZoneAt(pdir, decl.TOML)))
 	if err != nil {
 		t.Fatalf("%s: the committed ledger does not load: %v", c.name, err)
 	}

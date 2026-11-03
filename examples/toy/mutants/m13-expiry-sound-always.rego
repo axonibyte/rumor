@@ -349,7 +349,28 @@ knows_of_invitation if {
 # shape as the adapter's "the value is the COUNT, not the body that carries
 # it": a judgement written for one kind of observation cannot be handed a
 # second kind.
-expiry_observation if input.observation.of == "invitation.sent"
+# KEYED ON THE QUERY AND NOT ON `of`, which is page_observation's own
+# correction made one child later and for a measured reason (R7.5 D4).
+#
+# `of` IS NOT A UNIQUE KEY AND NEVER WAS. It names the claim type an
+# observation is ABOUT, and R7.5 declares two more readings about the same one:
+# `invite_quota_reset` and `invite_quota_day` are both `of =
+# "invitation.sent"`, because an allowance is spent on exactly those claims.
+# With this rule keyed on `of`, both were taken by the expiry judgement.
+#
+# AND IT CALLED THEM CONSISTENT, which is why this is a correctness fix rather
+# than a tidy-up. `expiry_sound` requires `input.observation.value > 0`, and
+# rego compares ACROSS types by a total order in which every number sorts below
+# every string -- so `"01:00" > 0` is TRUE. A reset of 01:00, which is the
+# planted defect this child exists to catch, read as a sound expiry that was
+# not honored late: `consistent`, from a rule about a different question.
+# Measured by the two cases below it, which disagreed before this line changed.
+#
+# THE QUERY NAMES THE ONE OBSERVATION THIS IS ABOUT, which is the whole of
+# page_observation's reason: "`missing` is answerable through ANY source, so
+# `source == browser` would claim this rule for a second browser observation
+# ... The query names the one observation this is about."
+expiry_observation if input.observation.query == "invitation_expiry"
 
 # WHAT CAN BE SAID ABOUT AN EXPIRY TODAY, AND IT IS LESS THAN THE ROW NEEDS:
 # the instant is after the run's epoch, and the invitation it is about is in
@@ -546,4 +567,53 @@ rests_on_planted if {
 	finding == "bug"
 	some c in held_claims
 	c.planted
+}
+
+# THE DAILY ALLOWANCE'S TWO READINGS (R7.5 D4), AND NEITHER IS A COUNT.
+#
+# NO EXCLUSION CLAUSE, AND THAT IS MEASURED RATHER THAN AN OMISSION. The
+# judgements above compare the observation's value with `believed` and with
+# `visible_truth`, both join counts, and these two values are STRINGS -- a
+# local clock face and a local date. A string never equals a count, so neither
+# can be taken by a judgement written for a number. `page_attendees` needed
+# `attendee_observation` for the opposite reason: an honest attendee count
+# equals the join count EXACTLY, so there the coincidence was the hazard. The
+# guard belongs where the collision is possible and nowhere else.
+#
+# A DAILY RESET IS AT LOCAL MIDNIGHT, which is the whole of the first oracle.
+# The application reports the local clock face of its own next reset, and
+# "00:00" is the only answer a reset that happens daily can have. Anything else
+# is the application's own arithmetic disagreeing with what it claims to do:
+# R7.5's plant computes it as twenty-four hours of WALL time from the start of
+# the local day, which reads 01:00 on the day a transition makes 23 hours long
+# and 23:00 on the day it makes 25.
+#
+# THE LEDGER IS NOT CONSULTED, deliberately. This is a reading of ONE field
+# against a constant the vocabulary of a daily reset fixes, so there is no
+# prefix to project and no claim to hold -- which is also what makes it
+# reachable from a case carrying nothing but the observation.
+finding := "consistent" if {
+	input.observation.query == "invite_quota_reset"
+	input.observation.value == "00:00"
+}
+
+# AND THE DAY IT IS ANCHORED ON IS THE DAY THE RUN IS IN, which is the second
+# oracle and the one that reads the ENGINE's zone rather than the
+# application's.
+#
+# TWO ORACLES BECAUSE THEY FAIL DIFFERENTLY. The reset face is wrong on BOTH
+# transition days. This one is wrong only in the window AFTER a late reset --
+# the spring hour where the application is still anchored on yesterday while
+# the zone has moved on -- and it is the reading that would also catch a system
+# configured for a DIFFERENT zone than the project declares, which the engine's
+# own `[clock].zone` cannot see from the inside.
+#
+# `input.clock.local.date` IS THE RUN'S INSTANT READ IN THE DECLARED ZONE
+# (R7.5 D5, docs/vocabulary.md v6). It is ABSENT where no zone is declared, so
+# this clause is undefined there and the reading falls to the default -- which
+# is correct and worth saying: a project that declares no zone has not said
+# what day it is in, and this rule cannot invent one.
+finding := "consistent" if {
+	input.observation.query == "invite_quota_day"
+	input.observation.value == input.clock.local.date
 }

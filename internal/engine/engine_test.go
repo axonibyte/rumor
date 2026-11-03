@@ -48,8 +48,13 @@ func fixture(t *testing.T, pkg, name string) (*ledger.Ledger, seal, string) {
 	// ledger row needs one. The question is asked through
 	// bindings.ClockControlledAt, the ONE expression cmd/rumor/run.go uses, so a
 	// project's cases load the way its runs are walked.
+	// AND IN ITS OWN PROJECT'S ZONE (R7.5 D5), for the same reason and through
+	// the same kind of reader: `input.clock.local` comes from the ledger, so a
+	// case loaded without the zone cannot reach a rule that reads it.
+	pdir := filepath.Join(examplesDir, pkg)
 	l, err := ledger.Load(strings.NewReader(string(raw)),
-		bindings.ClockControlledAt(filepath.Join(examplesDir, pkg), decl.TOML))
+		bindings.ClockControlledAt(pdir, decl.TOML),
+		ledger.InZone(bindings.ClockZoneAt(pdir, decl.TOML)))
 	if err != nil {
 		t.Fatalf("the committed ledger does not load: %v", err)
 	}
@@ -427,8 +432,11 @@ func allFixtures(t *testing.T) [][2]string {
 	// pass; it is re-read when a case lands, never widened to what was found.
 	// 37 -> 40: R8/111's second plant adds three cases for one role-shaped rule (the finding, the admin control, the empty list) and two mutants for the rules they arm (m17 the role check dropped, m18 the count judgement unscoped).
 	// 40 -> 41: R8/111's action half: `may_list_attendees` is a tracked rule with its own mutant (m19, its sole killer), and the attendee reading of a page that is not served is the case a viewing walk on seed 29 proved missing.
-	if len(out) != 41 {
-		t.Fatalf("expected the 41 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
+	// 41 -> 45 WITH R7.5's ALLOWANCE (D4): two readings of one subject and
+	// two verdicts each -- a reset at local midnight and one an hour late, an
+	// anchor on the run's own day and one on yesterday.
+	if len(out) != 45 {
+		t.Fatalf("expected the 45 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
 	}
 	return out
 }

@@ -373,6 +373,35 @@ source = "api"
 of = "invitation.sent"
 args = ["invitation"]
 
+# THE ALLOWANCE, TWO READINGS OF ONE SUBJECT (R7.5 D4). Both are of the
+# OBSERVING ACTOR's own allowance and neither declares `args`: an observation
+# carries the actor that makes it, and there is no handle for an actor's own id
+# -- so a declaration naming one could only ask about somebody else. The
+# precedent is the probe queries, whose "NO SUBJECT ... IS NOT AN OMISSION" is
+# cmd/toy-adapter's own comment.
+#
+# `of` IS invitation.sent, THE CLAIM TYPE THE ALLOWANCE IS SPENT ON, which is
+# the same reason invitation_expiry declares it: these are not counts OF that
+# type, they are readings about it, and the statute excludes them from the
+# join-count judgement by name beside its own clause.
+#
+# TWO AND NOT ONE, BECAUSE THEY FAIL DIFFERENTLY. `invite_quota_reset` is the
+# local clock face of the application's next reset, wrong on BOTH transition
+# days -- 01:00 in spring, 23:00 in fall, where a daily reset means 00:00.
+# `invite_quota_day` is the local date it is anchored on, wrong only in the
+# spring window, and it is the one a rule compares against the ENGINE's
+# `input.clock.local.date`: one oracle is the application's arithmetic and the
+# other is the two zones agreeing.
+[[observation]]
+name = "invite_quota_reset"
+source = "api"
+of = "invitation.sent"
+
+[[observation]]
+name = "invite_quota_day"
+source = "api"
+of = "invitation.sent"
+
 [[observation]]
 name = "store_event_count"
 source = "direct"
@@ -579,6 +608,28 @@ contexts = ["browser"]
 # of rumor/1039 against the live toy: what HAPPENED does not move.
 [clock]
 form = "adapter"
+
+# THE ZONE THIS PROJECT'S INSTANTS ARE READ IN (R7.5 D1, issue 115: "an IANA
+# zone name, America/Chicago on the toy").
+#
+# WHAT IT CHANGES FOR THE ENGINE: the next daylight-saving transition between
+# the run's clock and the furthest live bound joins the landings a step may
+# draw, and a statute gains `input.clock.local` -- the run's instant read HERE,
+# as a date, an offset and a DST flag.
+#
+# AND WHAT IT DOES NOT CHANGE, measured rather than promised: the five rows of
+# seeds.lock draw byte-identical runs with and without this line. A transition
+# joins the landings only when one falls between the clock and the furthest
+# bound, and a profile that declares no `clock_start` runs near the epoch with
+# bounds seconds wide -- so the nearest transition is decades outside the range
+# and nothing joins. The profiles this line is FOR are the two that place their
+# clock inside the day before a transition.
+#
+# IT IS NOT THE SYSTEM'S CONFIGURATION. cmd/toy reads its own instants in the
+# zone its `-zone` flag names, and the adapter passes TOY_ZONE (fable, coop
+# r7/114). The two agreeing is what a run can check; declaring one here does
+# not configure the other.
+zone = "America/Chicago"
 
 # WHERE THIS PROJECT'S DEADLINES ARE READ (R7.4, fable r7/42 ruling 2).
 #

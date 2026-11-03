@@ -153,7 +153,10 @@ func TestEveryDrillTripsItsOwnArm(t *testing.T) {
 			// count moves for the first time here, because `may_list_attendees`
 			// is a PRECONDITION and rules.json declares it -- unlike the two
 			// helpers, which this corpus keeps out by the statute's own rule.
-			if rep.Packages != 5 || rep.Cases != 41 || rep.Mutants != 42 || rep.Rules != 31 {
+			// 41 -> 45 WITH R7.5's ALLOWANCE (D4): two readings of one subject and
+			// two verdicts each -- a reset at local midnight and one an hour late, an
+			// anchor on the run's own day and one on yesterday.
+			if rep.Packages != 5 || rep.Cases != 45 || rep.Mutants != 42 || rep.Rules != 31 {
 				t.Fatalf("%s examined %d package(s), %d case(s), %d rule(s), %d mutant(s); every drill is a damaged copy of the whole tree",
 					d.id, rep.Packages, rep.Cases, rep.Rules, rep.Mutants)
 			}

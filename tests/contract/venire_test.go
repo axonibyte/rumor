@@ -132,7 +132,15 @@ func poolOf(ms []platform.Member) string {
 // WHY THE SET AND NOT A COUNT, for appendingProfiles' reason: this line moving
 // is what makes a commit say WHICH profile took an observation out of the
 // project's set, because a claim does both at once.
-var claimingProfiles = []string{"toy/viewing"}
+// AND R7.5's TWO (D4), which is this line doing its job: both `dst-*` profiles
+// claim the allowance readings, and the claim is load-bearing rather than
+// tidy. Those two observations declare no `args`, so unclaimed they are
+// makeable on every step of every walk -- measured against an extraction of
+// the previous commit, where seed 12 under `settling` ended at STEP 1 with a
+// `bug` because the toy reads UTC days while the project declares
+// America/Chicago. The claim scopes them to the two profiles that are about a
+// zone.
+var claimingProfiles = []string{"toy/dst-fall", "toy/dst-spring", "toy/viewing"}
 
 // committedObservations is the observations each committed platform's PROJECT
 // declares -- the set every profile of that package observes -- stated per

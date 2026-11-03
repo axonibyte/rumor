@@ -396,9 +396,14 @@ func toyWithClockStart(t *testing.T, profile string, start int64) string {
 			t.Fatalf("examples/toy does not declare %q exactly once, so this copy would "+
 				"carry no start and every arm would pass vacuously", header)
 		}
-		if strings.Contains(s, "clock_start") {
-			t.Fatal("examples/toy already declares a clock_start, so this copy no longer " +
-				"builds the state it was written for")
+		// THE GUARD ASKS ABOUT THE TARGET PROFILE'S OWN TABLE, not the file.
+		// It asked about the file until R7.5 D4 declared `clock_start` on the
+		// two `dst-*` profiles, and then fatal'd on a project exactly as valid
+		// as before: the state this copy must build is "the NAMED profile
+		// declares none", and a declaration elsewhere is somebody else's.
+		if strings.Contains(tableAfter(s, header), "clock_start") {
+			t.Fatalf("[profiles.%s] already declares a clock_start, so this copy no longer "+
+				"builds the state it was written for", profile)
 		}
 		s = strings.Replace(s, header, header+decl, 1)
 		if !strings.Contains(s, header+decl) {
@@ -472,4 +477,24 @@ func TestTheDocumentedReportsAreTheBinarysReports(t *testing.T) {
 			t.Errorf("docs/cli.md claims:\n%s\n\nthe binary prints:\n%s", want, got)
 		}
 	}
+}
+
+// tableAfter is one TOML table's body: everything from `header` to the next
+// table header at column 0.
+//
+// IT EXISTS SO A GUARD CAN BE SCOPED. A whole-file `strings.Contains` cannot
+// tell "this profile declares a key" from "some profile does", and the
+// difference is the premise of every copy helper in this file.
+func tableAfter(doc, header string) string {
+	i := strings.Index(doc, header)
+	if i < 0 {
+		return ""
+	}
+	rest := doc[i+len(header):]
+	for j := 1; j < len(rest); j++ {
+		if rest[j] == '[' && rest[j-1] == '\n' {
+			return rest[:j]
+		}
+	}
+	return rest
 }

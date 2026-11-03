@@ -76,6 +76,21 @@ var (
 		// observation in this adapter that answers a time. `api`, because an
 		// actor reads it through its own session the way it reads a count.
 		{Name: "invitation_expiry", Source: wire.SourceAPI},
+		// THE ALLOWANCE, TWO READINGS OF ONE SUBJECT (R7.5 D4). Both are of
+		// the observing actor's OWN allowance -- read through its session,
+		// because an observation carries no handle for the actor's own id --
+		// and both are STRINGS rather than counts: a local clock face and a
+		// local date.
+		//
+		// TWO AND NOT ONE, because they fail differently. `reset` is wrong on
+		// BOTH transition days, since a reset computed in wall time lands at
+		// 01:00 or 23:00 where a daily reset means 00:00. `day` is wrong only
+		// in the spring window, where the late reset leaves the application
+		// anchored on YESTERDAY -- and it is the reading a statute compares
+		// against `input.clock.local.date`, so the two oracles are the
+		// application's own arithmetic and the engine's zone reading.
+		{Name: "invite_quota_reset", Source: wire.SourceAPI},
+		{Name: "invite_quota_day", Source: wire.SourceAPI},
 	}
 	contexts = []string{"api", "browser"}
 	// THE STORE IS STATEFUL AND THE API IS NOT, which is the distinction
@@ -204,7 +219,21 @@ func open(toyBin, state string) (*adapter, error) {
 		a.stateDir = dir
 		state = filepath.Join(dir, "state.json")
 	}
-	cmd := exec.Command(toyBin, "--addr", "127.0.0.1:0", "--state", state)
+	// THE ZONE THE SYSTEM IS CONFIGURED WITH TRAVELS AS AN ENV VAR (fable's
+	// ruling (a), coop r7/114), beside TOY_ADDR and for the same reason: this
+	// is the SUT's own configuration, not the project's declaration.
+	//
+	// `[clock].zone` NEVER CROSSES THE WIRE (issue 115), so the adapter cannot
+	// learn it from the engine and does not try. An operator sets TOY_ZONE to
+	// whatever the system under test is configured with, which is exactly what
+	// makes a disagreement with the project's declaration FINDABLE -- and
+	// unset means the toy anchors on UTC days, which is its own default and
+	// not a guess made here.
+	args := []string{"--addr", "127.0.0.1:0", "--state", state}
+	if zone := os.Getenv("TOY_ZONE"); zone != "" {
+		args = append(args, "--zone", zone)
+	}
+	cmd := exec.Command(toyBin, args...)
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("piping %s: %w", toyBin, err)
@@ -608,7 +637,10 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 	// says so rather than substituting one.
 	var want wire.Source
 	switch name {
-	case "event_count", "event_tally", "invitation_expiry":
+	case "event_count", "event_tally", "invitation_expiry",
+		// THE ALLOWANCE IS READ THROUGH AN ACTOR'S SESSION, which is what api
+		// means here, and the same channel invitation_expiry uses.
+		"invite_quota_reset", "invite_quota_day":
 		want = wire.SourceAPI
 	case "store_event_count":
 		want = wire.SourceDirect
@@ -738,6 +770,11 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 	// system does not have. A quiesce probe asks whether the SYSTEM settled.
 	case "queue_depth", "worker_idle":
 		path = "/store/queue"
+	// NO SUBJECT, AND FOR A DIFFERENT REASON THAN THE QUEUE'S: the subject is
+	// the OBSERVING ACTOR, which travels as the session token rather than as
+	// an argument. The toy answers this path for whoever asks.
+	case "invite_quota_reset", "invite_quota_day":
+		path = "/invite-quota"
 	}
 
 	// THE VALUE IS THE COUNT, NOT THE BODY THAT CARRIES IT, and this is the
@@ -769,6 +806,13 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 		// int: the unit is docs/contract.md's for `clock.t`, and a 32-bit int
 		// would overflow at a little over two seconds of run time.
 		ExpiresAt int64 `json:"expires_at"`
+		// THE ALLOWANCE'S TWO READINGS, both strings: a local clock face
+		// ("00:00") and a local date ("2026-03-08"). Strings and not numbers
+		// because a statute cannot read an instant in a zone -- there is no
+		// database behind a policy -- so the application reports what it
+		// believes in the form a rule can compare.
+		ResetLocal string `json:"reset_local"`
+		Day        string `json:"day"`
 	}
 	code, err := a.call(http.MethodGet, path, m.Token, nil, &body)
 	if err != nil {
@@ -793,6 +837,10 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 		value = body.Idle
 	case "invitation_expiry":
 		value = body.ExpiresAt
+	case "invite_quota_reset":
+		value = body.ResetLocal
+	case "invite_quota_day":
+		value = body.Day
 	}
 	return wire.ObserveResponse{
 		Envelope: wire.Envelope{Kind: wire.KindObserve, Contract: wire.ContractVersion, ID: id},

@@ -219,8 +219,14 @@ func TestTheSuiteExaminesSomething(t *testing.T) {
 	// rumor/1682): the finding, the admin control one field away from it, and
 	// the empty list that tells the plant's absence from an unjoined event.
 	// 40 -> 41: R8/111's action half: `may_list_attendees` is a tracked rule with its own mutant (m19, its sole killer), and the attendee reading of a page that is not served is the case a viewing walk on seed 29 proved missing.
-	if totalCases != 41 {
-		t.Errorf("expected 41 cases across the five packages, counted %d", totalCases)
+	// 41 -> 45 WITH R7.5's ALLOWANCE (D4): two readings of one subject and two
+	// verdicts each -- a reset at local midnight and one an hour late, an
+	// anchor on the run's own day and one on yesterday. The count is RAISED to
+	// match a corpus that grew, which is the opposite of relaxing it: this
+	// line is what refuses a case added without a reason, and all four of
+	// these carry theirs in their own `why`.
+	if totalCases != 45 {
+		t.Errorf("expected 45 cases across the five packages, counted %d", totalCases)
 	}
 	// 19, NOT 20, and the shortfall is documented rather than accidental: I
 	// declared 20 from a guess and this assertion caught it. planted-lie has
@@ -535,8 +541,11 @@ func TestNoStatuteCallsPrint(t *testing.T) {
 	// corpus holds was EVALUATED under the hook, so a case the loader skipped
 	// would leave this number short while the corpus count stayed right.
 	// 40 -> 41 for the same case.
-	if evaluations != 41 {
-		t.Errorf("evaluated %d cases under the print hook, expected 41", evaluations)
+	// 41 -> 45 WITH R7.5's ALLOWANCE (D4): two readings of one subject and
+	// two verdicts each -- a reset at local midnight and one an hour late, an
+	// anchor on the run's own day and one on yesterday.
+	if evaluations != 45 {
+		t.Errorf("evaluated %d cases under the print hook, expected 45", evaluations)
 	}
 	// The proof line states the count it MEASURED. Printing "0 prints"
 	// unconditionally put a contradiction one line under the finding when this

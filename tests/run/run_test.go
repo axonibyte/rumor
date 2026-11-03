@@ -945,12 +945,14 @@ func TestADurationBoundIsRefusedNamingTheDuration(t *testing.T) {
 			// anywhere. It is asserted rather than assumed for the reason the
 			// premise above is: an edit that silently missed would leave this
 			// arm passing against a project it is not about.
-			const clocked = "[clock]\nform = \"adapter\"\n"
-			if !strings.Contains(string(b), clocked) {
-				t.Fatalf("examples/toy's bindings do not hold %q, so the copy below is not the "+
-					"unclocked project this arm's refusal needs", clocked)
-			}
-			b = []byte(strings.Replace(string(b), clocked, "", 1))
+			// THE WHOLE TABLE GOES, header to the next header at column 0.
+			// A literal two-line replace stood here until R7.5 and broke the
+			// moment `zone` joined `[clock]`: the header and `form` went, the
+			// rest of the table stayed, and a key with no header above it
+			// belongs to whatever table precedes it -- so this fixture's own
+			// file refused with `role[3].zone: unknown key`, which says
+			// nothing about the project this arm is about.
+			b = []byte(withoutTheClockTable(t, string(b)))
 		}
 		if err := os.WriteFile(filepath.Join(dir, f), b, 0o600); err != nil {
 			t.Fatalf("writing %s: %v", f, err)
@@ -1449,12 +1451,27 @@ func TestASurfaceRefusalReachesStdoutAndKeepsTheFindingsStatus(t *testing.T) {
 			t.Fatalf("reading %s: %v", e.Name(), rerr)
 		}
 		if e.Name() == "platform.toml" {
-			const was = `env = ["TOY_ADDR"]`
-			if !strings.Contains(string(b), was) {
+			// THE WHOLE `env` LIST GOES, matched by its KEY rather than by
+			// its current contents: R7.5 added TOY_ZONE beside TOY_ADDR and a
+			// literal `env = ["TOY_ADDR"]` stopped matching, so this arm
+			// fatal'd about the project instead of removing anything. What it
+			// needs is an adapter that passes NOTHING through; which names are
+			// in the list it empties is not this arm's subject.
+			const key = "\nenv = ["
+			i := strings.Index(string(b), key)
+			if i < 0 {
+				t.Fatal("examples/toy's adapter declares no `env` list, so emptying it cannot " +
+					"be what this arm removes")
+			}
+			end := strings.Index(string(b)[i:], "]")
+			if end < 0 {
+				t.Fatal("examples/toy's `env` list is unterminated")
+			}
+			if !strings.Contains(string(b)[i:i+end], "TOY_ADDR") {
 				t.Fatal("examples/toy's adapter no longer passes TOY_ADDR through, so removing " +
 					"it cannot be what this arm removes")
 			}
-			b = []byte(strings.Replace(string(b), was, `env = []`, 1))
+			b = []byte(string(b)[:i] + "\nenv = []" + string(b)[i+end+1:])
 		}
 		if werr := os.WriteFile(filepath.Join(dir, e.Name()), b, 0o600); werr != nil {
 			t.Fatalf("writing %s: %v", e.Name(), werr)
@@ -1909,4 +1926,46 @@ func TestAPalterOfARefusedActionPlantsNothing(t *testing.T) {
 	if !strings.Contains(rout, "REFUSED") {
 		t.Errorf("no step is marked REFUSED where every create_event was answered 500:\n%s", rout)
 	}
+}
+
+// withoutTheClockTable removes the WHOLE `[clock]` table from a bindings
+// document: its header through to the next table header at column 0, so
+// everything below it stays.
+//
+// DUPLICATED FROM tests/clock's `unclock` DELIBERATELY. These are two packages
+// and a shared helper would make one suite's fixture depend on the other's; the
+// duplication is the thing my own testing rule asks for where a mapping has to
+// exist twice.
+func withoutTheClockTable(t *testing.T, doc string) string {
+	t.Helper()
+	i := strings.Index(doc, "\n[clock]\n")
+	if i < 0 {
+		t.Fatal("examples/toy's bindings hold no `[clock]` table, so this copy is not the " +
+			"unclocked project this arm's refusal needs")
+	}
+	rest := doc[i+1:]
+	end := len(rest)
+	for j := 1; j < len(rest); j++ {
+		if rest[j] == '[' && rest[j-1] == '\n' {
+			end = j
+			break
+		}
+	}
+	out := doc[:i+1] + rest[end:]
+	// THE HEADER AT COLUMN 0 AND NOT THE WORD. This file's comments SAY
+	// "[clock]" in prose several times -- including the one explaining that
+	// `[clock].zone` is the engine's -- so a bare Contains fires on a copy
+	// that is correctly unclocked. Measured: three arms failed that way after
+	// the table-cut above was already right.
+	if strings.Contains(out, "\n[clock]\n") {
+		t.Fatal("a `[clock]` table survives in the unclocked copy")
+	}
+	for _, key := range []string{"\nform = ", "\nzone = ", "\nstart = "} {
+		if strings.Contains(out, key) {
+			t.Fatalf("the unclocked copy still carries %q, so a key of the removed table was "+
+				"left behind and now belongs to whatever table precedes it",
+				strings.TrimSpace(key))
+		}
+	}
+	return out
 }

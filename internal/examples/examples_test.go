@@ -41,7 +41,10 @@ const (
 	// deleted-event control for the second browser observation, which a viewing
 	// walk on seed 29 found missing by reporting `bug` on a 404 the application
 	// was right to answer.
-	wantCases = 41
+	// 41 -> 45 WITH R7.5's ALLOWANCE (D4): two readings of one subject and
+	// two verdicts each -- a reset at local midnight and one an hour late, an
+	// anchor on the run's own day and one on yesterday.
+	wantCases = 45
 )
 
 func TestRunOverTheCommittedTree(t *testing.T) {

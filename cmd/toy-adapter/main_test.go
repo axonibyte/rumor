@@ -1019,8 +1019,15 @@ func TestAToyThatStartsAndNeverPrintsIsRefusedNotWaitedFor(t *testing.T) {
 // #attendees element is a page this observation cannot read, and answering 0
 // would make a removed element look like an event nobody has joined -- the
 // honest reading the plant's finding has to be told apart from. The statute
-// rests on that distinction at examples/toy/statute.rego:474, where an empty
+// rests on that distinction at examples/toy/statute.rego:495, where an empty
 // list is `consistent` for every role.
+//
+// THE CITATION WAS 474 AND R7.5's OWN EDIT MOVED IT, which is worth leaving on
+// the page: a line number in another file is a claim nothing checks, and it
+// goes stale silently whenever that file grows above it. Verified against the
+// clause and not counted -- `git show HEAD:examples/toy/statute.rego` holds the
+// same four-line comment and `finding := "consistent"` at 474 that this tree
+// now holds at 495.
 func TestThePageReadersAreTheElementsAndNotThePage(t *testing.T) {
 	const twoLists = `<!doctype html>
 <h1 id="title">a page with two lists</h1>

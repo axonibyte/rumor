@@ -673,12 +673,23 @@ func (s *server) handleUserPath(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "no such user")
 		return
 	}
+	writeJSON(w, http.StatusOK, s.quotaBody(id))
+}
+
+// quotaBody is what both allowance routes answer, so the one an ACTOR reads
+// through its own session and the one addressed by id cannot drift apart.
+//
+// IT MUTATES NOTHING. Where the world holds no record it reports the one the
+// next invitation WOULD be judged against -- `anchorFor`, computed and not
+// stored -- so a rule reading these fields needs no case for "nobody has
+// invited yet" and cannot be satisfied by an absence.
+func (s *server) quotaBody(id string) map[string]any {
 	q, stored := s.st.Quotas[id], true
 	if q == nil {
 		fresh := s.anchorFor(s.st.Now)
 		q, stored = &fresh, false
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	return map[string]any{
 		"user":        id,
 		"day":         q.Day,
 		"used":        q.Used,
@@ -688,12 +699,36 @@ func (s *server) handleUserPath(w http.ResponseWriter, r *http.Request) {
 		"reset_local": s.localFace(q.ResetAt),
 		"zone":        s.zone.String(),
 		"anchored":    stored,
-	})
+	}
+}
+
+// handleOwnQuota answers the SESSION's own allowance, which is the shape an
+// observation can ask for: an observation carries the observing actor and no
+// handle for that actor's own id, so a route addressed by id could only be
+// asked about somebody else.
+//
+// THE ACTOR'S OWN ALLOWANCE IS THE SUBJECT, and that is also what makes the
+// reading honest: the allowance an invitation spends belongs to the INVITER,
+// so the user who would be refused is the one being read.
+func (s *server) handleOwnQuota(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		fail(w, http.StatusMethodNotAllowed, "only GET reads an allowance")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := s.session(r)
+	if sess == nil {
+		fail(w, http.StatusUnauthorized, "reading your own allowance needs a session")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.quotaBody(sess.UserID))
 }
 
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/users/", s.handleUserPath)
+	mux.HandleFunc("/invite-quota", s.handleOwnQuota)
 	mux.HandleFunc("/clock", s.handleClock)
 	mux.HandleFunc("/users", s.handleUsers)
 	mux.HandleFunc("/sessions", s.handleSessions)

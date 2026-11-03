@@ -1,0 +1,78 @@
+{
+  "why": "R7.5 D4's PLANT, read through the application's own report. A reset computed as twenty-four hours of WALL time from the start of a local day lands at 01:00 on the day a spring transition makes 23 hours long -- so for that hour a user whose allowance should have come back is still refused. `01:00` is not a reset that happens daily, and nothing makes it consistent: the finding is the default. THE SAME VALUE WITH THE OPPOSITE SIGN IS THE FALL CASE -- 23:00, an allowance returning before its day is over -- and it is the same one expression wrong in two directions, so one case per direction would be two cases about one defect.\n\nTHE `input` BLOCK IS CHECKED, which is not obvious from the runner: internal/examples reads ONLY the observation from this file and builds the clock, the known handles and the claims from the LEDGER -- but tests/engine's TestTheEngineInputMatchesTheCaseInput then requires this block to agree with what it built, field for field, the clock included: \"a case that omits it cannot tell a rule reading it from one that does not\". So the block is a second, independent transcription of the ledger and the disagreement is the finding. These four were written without a clock and with the seal's `known_in_prefix` rather than the observer's own knowledge, and that arm is what said so. AND THE `local` TABLE IS IN THE BLOCK because two suites need it from different directions: tests/statute evaluates this block DIRECTLY, so a rule reading `input.clock.local` is undefined without it, while tests/engine requires the block to equal what the engine builds from the ledger -- and the engine builds `local` from the project's `[clock].zone`. 2026-03-09T05:30:00Z read in America/Chicago is 00:30 on 2026-03-09 at -18000s with DST in force.",
+  "expect": {
+    "finding": "bug"
+  },
+  "input": {
+    "observation": {
+      "actor": "alice",
+      "of": "invitation.sent",
+      "query": "invite_quota_reset",
+      "source": "api",
+      "value": "01:00",
+      "role": "admin",
+      "position": 7
+    },
+    "known": [
+      "alice.event#1",
+      "alice.invitation#1",
+      "alice.user#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 2,
+        "handles": [
+          "alice.user#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 3,
+        "handles": [
+          "bob.user#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 4,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "alice.invitation#1",
+        "actor": "alice",
+        "type": "invitation.sent",
+        "position": 5,
+        "handles": [
+          "alice.invitation#1",
+          "alice.event#1"
+        ],
+        "t": 0
+      }
+    ],
+    "clock": {
+      "now": 1773034200000000000,
+      "local": {
+        "date": "2026-03-09",
+        "offset_s": -18000,
+        "is_dst": true
+      }
+    }
+  }
+}

@@ -142,15 +142,71 @@ func reform(t *testing.T, raw string, form bindings.ClockForm) string {
 	return out
 }
 
+// unclock removes the WHOLE `[clock]` table, header to the next table header.
+//
+// IT REMOVED TWO LITERAL LINES UNTIL R7.5 AND THAT BROKE THE MOMENT THE TABLE
+// GREW. `zone` joined `[clock]` in D4, so the literal replace took the header
+// and `form` away and left the rest of the table behind -- re-parented to the
+// `[[role]]` above it, because a key with no header above it belongs to
+// whatever table precedes it. The refusal read `role[3].zone: unknown key`: a
+// true statement about a file this fixture built, and nothing at all about the
+// project. Three arms in two packages failed that way.
+//
+// THE OLD GUARD COULD NOT SEE IT. `strings.Contains(out, "\n[clock]")` asks
+// whether the HEADER survives, and the header was exactly what the literal
+// replace did remove -- so the check passed over a copy carrying orphaned
+// keys. The cure is to cut the table rather than to look for its name, and the
+// guard below asks about the KEYS instead.
 func unclock(t *testing.T, raw string) string {
 	t.Helper()
-	out := strings.Replace(raw, toyClock, "", 1)
-	if out == raw {
-		t.Fatalf("the committed toy's bindings do not hold %q, so nothing was removed and the "+
-			"unclocked control would be a clocked run", toyClock)
+	i := strings.Index(raw, "\n[clock]\n")
+	if i < 0 {
+		t.Fatal("the committed toy's bindings hold no `[clock]` table, so nothing was removed " +
+			"and the unclocked control would be a clocked run")
 	}
-	if strings.Contains(out, "\n[clock]") {
+	// THE TABLE ENDS AT THE NEXT HEADER AT COLUMN 0, which is what makes this
+	// a removal rather than a truncation: everything below the clock stays.
+	rest := raw[i+1:]
+	end := len(rest)
+	for _, m := range tableHeaderStarts(rest) {
+		if m > 0 {
+			end = m
+			break
+		}
+	}
+	out := raw[:i+1] + rest[end:]
+	// THE HEADER AT COLUMN 0 AND NOT THE WORD. This file's comments SAY
+	// "[clock]" in prose several times -- including the one explaining that
+	// `[clock].zone` is the engine's -- so a bare Contains fires on a copy
+	// that is correctly unclocked. Measured: three arms failed that way after
+	// the table-cut above was already right.
+	if strings.Contains(out, "\n[clock]\n") {
 		t.Fatal("a `[clock]` table survives in the unclocked copy")
+	}
+	// AND NO KEY OF IT SURVIVES EITHER, which is the half the header check
+	// could not see.
+	for _, key := range []string{"\nform = ", "\nzone = ", "\nstart = "} {
+		if strings.Contains(out, key) {
+			t.Fatalf("the unclocked copy still carries %q, so a key of the removed table was "+
+				"left behind and belongs to whatever table precedes it now", strings.TrimSpace(key))
+		}
+	}
+	return out
+}
+
+// tableHeaderStarts is the offsets of every TOML table header at column 0 in
+// doc, each relative to doc's start. Duplicated in tests/run for the same
+// reason the clock fixtures are duplicated: these are two packages and a
+// shared helper would make one suite's fixture depend on the other's.
+func tableHeaderStarts(doc string) []int {
+	var out []int
+	for i := 0; i < len(doc); i++ {
+		if doc[i] != '[' {
+			continue
+		}
+		if i == 0 || doc[i-1] == '\n' {
+			out = append(out, i)
+		}
 	}
 	return out
 }

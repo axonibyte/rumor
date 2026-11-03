@@ -18,7 +18,18 @@ command = ["toy-adapter"]
 # would restore one world while the adapter talked to another. Measured
 # 2026-10-24 by driving R5.3's third: the name was absent and the composition
 # the provider documents was unreachable for this project.
-env = ["TOY_ADDR"]
+# TOY_ZONE JOINS IT (R7.5 D4): the zone the SYSTEM is configured to read its
+# own instants in, which the adapter passes to the toy as `--zone`. It is the
+# system's configuration and not this project's declaration -- `[clock].zone`
+# in bindings.toml is the engine's, and it never crosses the wire -- so the two
+# DISAGREEING is a thing a run can find rather than something the harness makes
+# impossible (fable, coop r7/114).
+#
+# UNSET MEANS THE TOY ANCHORS ON UTC DAYS. A run of the `dst-*` profiles with
+# TOY_ZONE unset therefore finds that disagreement instead of the quota's
+# arithmetic, which is correct and is why seeds.lock's rows for those profiles
+# name the variable.
+env = ["TOY_ADDR", "TOY_ZONE"]
 
 [[venire]]
 role = "admin"
@@ -460,6 +471,73 @@ delete_event = 0
 # `join_event`'s `contended = { limit = "create_event.capacity", held =
 # "store_event_count" }` and fans out requests against one world. Whatever it
 # finds, it found without a walk -- so a verdict here cannot be the walk's.
+# R7.5's TWO PROFILES, ONE PER DIRECTION (fable's ruling at coop r7/110: "two
+# rows and two worlds, not one row drawn twice"). One start in the day before
+# March cannot reach November in a walk any budget allows, so the direction is
+# the profile's rather than the seed's.
+#
+# EACH STARTS IN THE DAY BEFORE ITS TRANSITION, which is what `clock_start`
+# is for (R7.5 D3): `[clock].start` is the project's default and this overrides
+# it for runs of this profile, resolved profile then clock then epoch in one
+# place (internal/platform.ClockStartFor). Both instants are verified readings
+# and not arithmetic: 1772906400000000000 is 2026-03-07 12:00:00-06:00 and
+# 1793466000000000000 is 2026-10-31 12:00:00-05:00, each the midday before the
+# transition that follows it.
+#
+# THEY CLAIM THE ALLOWANCE OBSERVATIONS, and that claim is load-bearing rather
+# than tidy. An observation no profile claims is taken by EVERY profile
+# (`rumor report`'s observations line says so in the project's own words), and
+# both of these are declared with no `args` -- so unclaimed they are makeable
+# on every step of every walk. MEASURED: with them unclaimed, seed 12 under
+# `settling` ended at step 1 with a `bug`, because the toy was reading UTC days
+# while this project declares America/Chicago and `invite_quota_day` found
+# exactly that disagreement. Correct of the reading, wrong of the walk: that
+# run is not about a zone. The claim scopes them to the two profiles that are.
+#
+# WHAT THEY DO NOT YET DO: no seed is promoted for either. The window the
+# plant is wrong in is the hour AFTER a late reset, and a walk has no reason to
+# land there until the reset instant is a deadline the engine targets -- R7's
+# `[deadline].instants` machinery, which is the next head. These profiles are
+# the scope and the world; the seed that reaches the window comes with it.
+[profiles.dst-spring]
+stages = ["api"]
+seeds = 1
+budget = "1m"
+clock_start = 1772906400000000000
+observations = ["invite_quota_reset", "invite_quota_day"]
+
+# THE WEIGHTS ARE `expiring`'s SHAPE, for its reason: an allowance is spent by
+# INVITING, and the clock moves by `advance`. Both have to be drawn often for a
+# walk to hold a stale record across a local midnight, and everything that
+# competes for a step without serving that is zeroed rather than merely
+# lowered -- absent is not zero (arm 19), so each is named.
+[weights.profile.dst-spring]
+invite_user = 24
+advance = 24
+create_event = 6
+accept_invitation = 6
+join_event = 0
+leave_event = 0
+delete_event = 0
+recount_event = 0
+
+[profiles.dst-fall]
+stages = ["api"]
+seeds = 1
+budget = "1m"
+clock_start = 1793466000000000000
+observations = ["invite_quota_reset", "invite_quota_day"]
+
+[weights.profile.dst-fall]
+invite_user = 24
+advance = 24
+create_event = 6
+accept_invitation = 6
+join_event = 0
+leave_event = 0
+delete_event = 0
+recount_event = 0
+
 [profiles.racing]
 stages = ["concurrency"]
 seeds = 1

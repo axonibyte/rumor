@@ -28,7 +28,12 @@
       "position": 8
     },
     "clock": {
-      "now": 30000000001
+      "now": 30000000001,
+      "local": {
+        "date": "1969-12-31",
+        "offset_s": -21600,
+        "is_dst": false
+      }
     },
     "known": [
       "bob.user#1",
