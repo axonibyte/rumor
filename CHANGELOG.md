@@ -3,6 +3,179 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.47 — 2026-11-03
+
+**A walk that reaches the two instants a local clock misbehaves at, and a
+system under test whose daily arithmetic is wrong on exactly those two days** —
+issue 115, R7.5, cut off R8's last bump and landing before R9 opens.
+
+- **A RUN MAY DECLARE THE ZONE ITS INSTANTS ARE READ IN.** `[clock].zone` is an
+  IANA name, refused at the parse when no zone database holds it, and the
+  engine embeds the database in both binaries so a refusal means "not a zone"
+  on every box rather than "not on this one". The version a promoted seed was
+  measured against is then the BINARY's and not whatever the host carried —
+  which matters because a landing is an index into a slice derived from tzdata
+  at walk time, so a database revision moves a committed trace.
+- **THE NEXT TRANSITION IS A BOUND, so the landings are the ones that already
+  exist.** R7 gave `advance` three landings per declared deadline — one tick
+  before, on, one tick past — and a transition joins that one list rather than
+  getting a mechanism of its own, which is what keeps the gate and the draw
+  quantifying over the same thing. Only the NEXT transition in range joins, so
+  the list stays bounded by the bounds; a project declaring no zone draws
+  exactly the walk it drew before, measured byte-for-byte over the five seeds
+  that predate this child.
+- **A PROJECT AND A PROFILE MAY DECLARE WHERE THE CLOCK STARTS**, resolved
+  profile then project then epoch in ONE place, and refused by name where the
+  profile selects no stage that walks. `rumor report` prints the profile's own
+  declaration and names `[clock].start` as the level it cannot read — the verb
+  opens platform.toml alone on purpose, so a report of what a profile DECLARES
+  still answers on a project whose bindings do not parse.
+- **AND THE RUN'S FIRST SEAL SETS IT, which three heads of declaration did
+  not.** The key parsed, the resolver answered and the report printed it while
+  every walk still began at the epoch: twelve seeds of `dst-spring` at 40 steps
+  found nothing, correctly, because 1969 holds no transition this project cares
+  about. Found by measuring a search that should have succeeded rather than by
+  reading the code that was missing.
+- **THE STATUTE READS THE RUN'S INSTANT IN THAT ZONE**, as `input.clock.local`
+  — a date, an offset and a DST flag, vocabulary v6. It exists because rego has
+  no zone database behind it: a rule could do arithmetic on an instant, and a
+  local midnight is not an arithmetic fact about one. ABSENT where no zone is
+  declared, and reading it there is refused as a cell of `rumor validate`'s arm
+  8, which has said since R4 that a statute may not read what the project does
+  not control.
+- **nil IS NOT UTC, and three projects would otherwise read alike.**
+  `time.LoadLocation("")` SUCCEEDS with a real UTC, and a FAILED lookup answers
+  a nil `*Location` whose `.String()` is also "UTC" — so a reader that
+  defaulted, or that printed what it got back, could not tell a project
+  declaring UTC from one declaring nothing from one whose name no database
+  holds. The ledger holds a resolved location or nil, one lookup site answers
+  for the module's engine packages, and a source arm holds that claim because a
+  duplicate site is EQUIVALENT and no cell can reach it.
+- **THE TOY GREW A DAILY ALLOWANCE WHOSE RESET IS COMPUTED IN WALL TIME**, which
+  is R7.5's planted row. Its next reset is the start of the current local day
+  plus twenty-four hours — right on every day of the year except the two a
+  transition makes 23 or 25 hours long, so it lands an hour LATE in spring and
+  an hour EARLY in autumn. Re-anchored from the current local date each day, so
+  the plant is one day wide and each direction gives its own finding from its
+  own seed.
+- **THE RULE READS THE ZONE'S MIDNIGHT AND NOT THE TOY'S.** The application
+  reports the local clock face of its own next reset, and a daily reset is at
+  `00:00` by definition — so the statute compares a string against a constant
+  the vocabulary of a daily reset fixes, and never recomputes the instant. A
+  second reading, the allowance's anchor DAY against `input.clock.local.date`,
+  is the two zones agreeing. Two oracles because they fail differently: the
+  face is wrong on both transition days, the day only in the window after a
+  late reset.
+- **AND THE RESET INSTANT IS A DECLARED DEADLINE**, which is what gives a walk a
+  reason to arrive: without it the only landings in range are the transition's
+  own and an invitation's thirty-second expiry, and neither falls in the hour
+  where the arithmetic is wrong. Spring's discriminating landing is the tick
+  BEFORE the declared reset and autumn's are ON it and one tick PAST, so a cell
+  written from one direction arms one direction.
+- **TWO PROFILES AND TWO SEEDS, ONE PER DIRECTION.** One start in the day before
+  March cannot reach November in a walk any budget allows, so the direction is
+  the profile's and not the seed's. `1 profile=dst-spring` reads a next reset of
+  01:00 local in the 23-hour day and `2 profile=dst-fall` reads 23:00 in the
+  25-hour one, each in three steps, each measured against the running
+  application.
+- **THE ZONE RIDES THE PROFILE, NOT THE ROW.** seeds.lock's grammar carries
+  `profile=`, `steps=` and `witness=` and nothing else, so a row cannot name an
+  environment variable — and a row replayed from the file alone would have
+  started a system configured for whatever zone the operator happened to have,
+  with the walk reporting THAT disagreement rather than the defect the row
+  names. `[adapter].zone_env` names the variable and the engine supplies the
+  value from `[clock].zone`, the way a rollback provider's address is set, and
+  refused when the name is not also in `env`. Both rows then run
+  byte-identically with the variable unset, set correctly, and set WRONG.
+- **A SYSTEM UNDER TEST CAN HAVE TWO SPAWNERS.** Under a rollback provider the
+  adapter does not start the toy — the provider does, and the adapter is handed
+  its address — so a configuration wired into the adapter alone never reached
+  the application, and every walk of the new profiles found a misconfiguration
+  rather than the plant.
+- **A JUDGEMENT KEYED ON A CLAIM TYPE TOOK TWO READINGS IT WAS NOT WRITTEN
+  FOR**, and called the planted defect CONSISTENT. `expiry_observation` keyed on
+  `of == "invitation.sent"`, which the allowance's readings also declare, and
+  `expiry_sound` tests `value > 0` — rego compares across types by a total order
+  in which every number sorts below every string, so `"01:00" > 0` is TRUE. Keyed
+  on the query now, which is the correction `page_observation` had already made
+  one child earlier for the same shape.
+- **AN ARM CANNOT COMPARE WHAT THE PRODUCT CANNOT SAY.** Three mutants of the
+  zone derivation survived an arm that ran one seed in three environments and
+  asserted the runs were identical: `rumor run` prints a finding's RULE, and a
+  zone disagreement and the allowance's arithmetic both arrive at the same
+  default clause. The cure was an observable — the application now reports the
+  zone it reads — and the restore needed an in-process cell, its only consumer
+  being the shrink's repeated spawns.
+- **WHAT IS STILL NOT OBSERVABLE, carried rather than quietly dropped:** which
+  observation produced a finding. The promoted rows guarantee that no
+  environment can produce the other defect through the verb, and the arithmetic
+  is proven by four committed cases and the application's own suite — but the
+  run cannot say which reading disagreed, and that would close the gap
+  properly.
+
+- **AND THE ISSUE'S OWN TEST LIST HAD TWO LINES NOBODY HAD BUILT**, found by
+  reading it against the tree rather than against a status that said the
+  deliverables were cut — they were; these were tests. The first seal's `set`
+  reaching the ledger, and a replay crossing the day a transition reshapes. The
+  harness could reach neither: a diff of the two `schedule.Project` literals
+  showed the verb passing fifteen fields and `tests/clock` twelve, and without
+  the project's declared deadline instants 24 steps recorded 48 clock facts ALL
+  READING THE START — a package named for the clock walking a world whose clock
+  could not move. The replay cell counts DISTINCT instants for that reason: a
+  run seals twice a step, so "two clock facts" passes over a clock that never
+  advanced.
+- **AND THE LANDINGS' COMPOSITION, which neither half covered.**
+  `untilsWithTransition` answers bounds and `Landings` makes three of each, so a
+  change that produced a transition bound while losing one of its three
+  landings passed both halves. Six instants are NAMED rather than counted, and
+  the same call with no zone holding three is what makes six a measurement
+  about the transition rather than about `Landings`.
+
+- **AND THE RESTART PROVIDER READS THE DECLARED NAME, WHICH THIS CHILD GOT WRONG
+  ONCE.** `rollback.Options` carries `ZoneEnv` -- the NAME `[adapter].zone_env`
+  declares, as `cmd/rumor/run.go` resolves it -- because the provider had read a
+  literal `TOY_ZONE` while the engine read the declaration. A project declaring
+  any other name would have had the adapter carry the zone and the restart drop
+  it: the same one-spawner-of-two defect the zone work exists to fix, one level
+  down, found by re-driving this child's own prose against its code. Both
+  construction sites hand it over, `run.go` and `shrink.go`.
+- **THE GATE GAINED THREE ARMS OF ITS OWN**, which a release is the right time to
+  record: it refuses a base nobody can vouch for (a stale local `main` made the
+  commit RANGE wrong, measured at 232 commits behind and 1 commit becoming 233),
+  the budget's default branch gets the cell its docstring was owed, and
+  `.gitignore` is not an exemption from `docs --check`.
+
+**THE TWENTY-FIVE HEADS THIS TAG SPANS**, oldest first, all on `r7.5-dst` with no
+merges:
+
+| head | what it did |
+|---|---|
+| `8d61ebd` | a clock may declare its zone, and the engine carries the database |
+| `bf5ecf0` | the zone's two reasons are corrected, and one of them was false |
+| `c676d01` | the next zone transition is a bound, so the landings are the ones that already exist |
+| `3a9d307` | the window's two ends get the cells that can tell them apart |
+| `4df4c1f` | a project and a profile may declare where the clock starts |
+| `d1cb1d5` | the negative that was argued three times gets its cells |
+| `f0b824c` | `Int64`'s acceptance set is asked for rather than asserted |
+| `a2733c4` | the `int` arm's value discriminates too, and the first fix for it did not |
+| `ba5c720` | where a profile's clock starts, naming the level the verb cannot read |
+| `9f43356` | the run's instant read in the declared zone, as `input.clock.local` |
+| `40a86d2` | a daily invitation allowance whose reset is computed in wall time |
+| `b185cbe` | the allowance is observable and judged, scoped to two profiles |
+| `574d639` | reading `input.clock.local` without declaring a zone is refused |
+| `6577665` | three claims found unarmed on the first five heads get their arms |
+| `048a12d` | a walk reaches the hour the allowance's arithmetic is wrong |
+| `c7947f5` | the engine supplies the system's zone, so a promoted row replays its own world |
+| `e8a9eb6` | the one-lookup arm resolves the import's local name, not the word |
+| `a147dab` | the clock harness walks the project a run walks, and the replay crosses a transition day |
+| `a1eae00` | the landings hold the transition's three beside the deadline's three |
+| `b9f9f80` | the restart provider's doc says it restarts the toy into the same world |
+| `e6cc1e0` | R7.5's lesson: an arm cannot compare what the product cannot say |
+| `1dfe874` | the restart provider reads the zone env name the project declared |
+| `d8297df` | the gate refuses a base nobody can vouch for |
+| `accfc0b` | the budget's DEFAULT branch gets the cell its docstring was owed |
+| `2e58269` | `.gitignore` is not an exemption from `docs --check` |
+
 ## 0.1.46 — 2026-11-02
 
 **Two defects planted in a user interface and found by the walk, an observation
