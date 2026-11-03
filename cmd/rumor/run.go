@@ -1008,7 +1008,7 @@ func concurrencyStage(ctx context.Context, dir string, prep platform.Report,
 		_, _ = fmt.Fprintf(stdout, "concurrency: REFUSED %s\n", refusal)
 		return 1
 	}
-	prov, err := rollback.Open(name, rollback.Options{Dir: dir, Env: prep.Platform.Adapter.Env})
+	prov, err := rollback.Open(name, rollback.Options{Dir: dir, Env: prep.Platform.Adapter.Env, ZoneEnv: prep.Platform.Adapter.ZoneEnv})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "run: could not run: opening the rollback provider %q to own "+
 			"the contended world: %v\n", name, err)

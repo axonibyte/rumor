@@ -66,7 +66,7 @@ func shrinkFound(ctx context.Context, dir string, prep platform.Report, p schedu
 		return 1, err
 	}
 
-	prov, err := rollback.Open(name, rollback.Options{Dir: dir, Env: prep.Platform.Adapter.Env})
+	prov, err := rollback.Open(name, rollback.Options{Dir: dir, Env: prep.Platform.Adapter.Env, ZoneEnv: prep.Platform.Adapter.ZoneEnv})
 	if err != nil {
 		// COULD-NOT-RUN: the provider IS registered and declared, and opening
 		// it failed, which is the machine and not the document.

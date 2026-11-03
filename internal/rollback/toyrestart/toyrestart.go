@@ -65,10 +65,12 @@ type provider struct {
 	dir   string // where the state file and the checkpoints live
 	bin   string // the toy binary
 	state string // the live world
-	cmd   *exec.Cmd
-	addr  string
-	saved map[string]string // checkpoint id -> the file holding it
-	seq   int
+	// zoneEnv is the DECLARED name, not a literal -- see start().
+	zoneEnv string
+	cmd     *exec.Cmd
+	addr    string
+	saved   map[string]string // checkpoint id -> the file holding it
+	seq     int
 }
 
 func open(o rollback.Options) (rollback.Provider, error) {
@@ -88,10 +90,11 @@ func open(o rollback.Options) (rollback.Provider, error) {
 		bin = "toy"
 	}
 	p := &provider{
-		dir:   work,
-		bin:   bin,
-		state: filepath.Join(work, "state.json"),
-		saved: map[string]string{},
+		dir:     work,
+		bin:     bin,
+		state:   filepath.Join(work, "state.json"),
+		saved:   map[string]string{},
+		zoneEnv: o.ZoneEnv,
 	}
 	if err := p.start(); err != nil {
 		return nil, err
@@ -164,9 +167,19 @@ func (p *provider) start() error {
 	// provider that dropped the zone on restore would hand the walk a
 	// different system halfway through, which is the defect this provider's
 	// own verify exists to make impossible.
+	// THE DECLARED NAME, NOT A LITERAL, and the literal was this head's own
+	// defect (rook coop rumor/1808, ruled fable /1809). cmd/rumor/run.go sets
+	// `[adapter].zone_env` by the name the project DECLARES; reading
+	// os.Getenv("TOY_ZONE") here meant a project declaring any other name had
+	// the adapter carry the zone and the restart drop it -- the same
+	// one-spawner-of-two defect this block exists to fix, reintroduced one
+	// level down. Empty is a project that declared no zone, and then nothing
+	// is passed.
 	args := []string{"--addr", "127.0.0.1:0", "--state", p.state}
-	if zone := os.Getenv("TOY_ZONE"); zone != "" {
-		args = append(args, "--zone", zone)
+	if p.zoneEnv != "" {
+		if zone := os.Getenv(p.zoneEnv); zone != "" {
+			args = append(args, "--zone", zone)
+		}
 	}
 	cmd := exec.Command(p.bin, args...)
 	out, err := cmd.StdoutPipe()

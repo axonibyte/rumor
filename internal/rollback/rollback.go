@@ -85,6 +85,15 @@ var ErrUnknownCheckpoint = errors.New("rollback: no such checkpoint")
 type Options struct {
 	Dir string
 	Env []string
+	// ZoneEnv is the NAME `[adapter].zone_env` declares, handed through so a
+	// provider that restarts the application configures the same world the
+	// engine configured for the adapter. Empty is a project that declared
+	// none, and a provider then passes no zone at all.
+	//
+	// IT IS A NAME AND NOT A VALUE for the same reason Env is: the engine sets
+	// the variable in its own environment (cmd/rumor/run.go), a provider runs
+	// in that process, and a value copied in here is a second copy to drift.
+	ZoneEnv string
 }
 
 // Factory opens a provider. A provider is named in platform.toml's

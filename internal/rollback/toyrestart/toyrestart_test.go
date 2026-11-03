@@ -9,6 +9,7 @@ package toyrestart
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -503,5 +504,116 @@ func TestTwoCheckpointsAreIndependent(t *testing.T) {
 	// independent rather than a stack.
 	if err := p.Verify(ctx, second); !errors.Is(err, rollback.ErrDirty) {
 		t.Errorf("verify the newer after restoring the older: %v, want ErrDirty", err)
+	}
+}
+
+// openProviderZoned is openProvider with a DECLARED zone env name, which is
+// what cmd/rumor hands through from `[adapter].zone_env`. "" is a project that
+// declared none.
+func openProviderZoned(t *testing.T, zoneEnv string) *provider {
+	t.Helper()
+	p, err := rollback.Open(Name, rollback.Options{Dir: t.TempDir(), ZoneEnv: zoneEnv})
+	if err != nil {
+		t.Fatalf("opening %s with zone_env %q: %v", Name, zoneEnv, err)
+	}
+	tp, ok := p.(*provider)
+	if !ok {
+		t.Fatalf("Open returned %T, want *provider", p)
+	}
+	t.Cleanup(tp.RemoveWorld)
+	return tp
+}
+
+// zoneTheToyReads asks the APPLICATION, not the provider's argv. The quota body
+// carries the zone the toy reads its own instants in, so this proves the
+// restarted process is configured -- an assertion over the arguments would pass
+// on a toy that ignored them.
+func zoneTheToyReads(t *testing.T, p *provider) string {
+	t.Helper()
+	cl := &http.Client{Timeout: testClientBudget}
+	post := func(path, token string, body any) map[string]any {
+		t.Helper()
+		raw, merr := json.Marshal(body)
+		if merr != nil {
+			t.Fatal(merr)
+		}
+		req, rerr := http.NewRequest(http.MethodPost, "http://"+p.Addr()+path, bytes.NewReader(raw))
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		resp, derr := cl.Do(req)
+		if derr != nil {
+			t.Fatalf("POST %s: %v -- the TEST CLIENT's budget, not the toy failing", path, derr)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("POST %s: status %d", path, resp.StatusCode)
+		}
+		var out map[string]any
+		if jerr := json.NewDecoder(resp.Body).Decode(&out); jerr != nil {
+			t.Fatalf("POST %s: decoding: %v", path, jerr)
+		}
+		return out
+	}
+	post("/users", "", map[string]any{"name": "zoneprobe"})
+	tok, _ := post("/sessions", "", map[string]any{"actor": "zoneprobe", "context": "api"})["token"].(string)
+	if tok == "" {
+		t.Fatal("the session carried no token, so the allowance cannot be read")
+	}
+	req, err := http.NewRequest(http.MethodGet, "http://"+p.Addr()+"/invite-quota", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := cl.Do(req)
+	if err != nil {
+		t.Fatalf("GET /invite-quota: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /invite-quota: status %d", resp.StatusCode)
+	}
+	var out map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("GET /invite-quota: decoding: %v", err)
+	}
+	zone, _ := out["zone"].(string)
+	if zone == "" {
+		t.Fatalf("the allowance carries no zone, so this arm cannot see one: %v", out)
+	}
+	return zone
+}
+
+// THE DECLARED NAME IS WHAT THE RESTART READS, and the two cells below are each
+// way round because the defect they close (rook coop rumor/1808) read a LITERAL
+// `TOY_ZONE`: a cell that only set the declared name would have passed on the
+// old code whenever the two names agreed, which in this project they do.
+//
+// SO TOY_ZONE IS SET TO A DIFFERENT ZONE IN BOTH. The old code answers
+// America/Chicago to both arms -- a wrong ANSWER in each, not a missing one,
+// which is what makes the pair discriminating rather than reassuring.
+func TestTheRestartReadsTheZoneEnvTheProjectDeclared(t *testing.T) {
+	t.Setenv("TOY_ZONE", "America/Chicago")
+	t.Setenv("ZZ_DECLARED_ZONE", "Pacific/Kiritimati")
+	if os.Getenv("TOY_ZONE") != "America/Chicago" {
+		t.Fatal("the literal's variable is not set, so a provider reading it could not be caught")
+	}
+	p := openProviderZoned(t, "ZZ_DECLARED_ZONE")
+	if got := zoneTheToyReads(t, p); got != "Pacific/Kiritimati" {
+		t.Errorf("the toy reads instants in %q, want Pacific/Kiritimati -- %s", got,
+			"America/Chicago is the literal TOY_ZONE, so that answer is the defect")
+	}
+}
+
+func TestTheRestartPassesNoZoneWhereNoneIsDeclared(t *testing.T) {
+	t.Setenv("TOY_ZONE", "America/Chicago")
+	p := openProviderZoned(t, "")
+	if got := zoneTheToyReads(t, p); got != "UTC" {
+		t.Errorf("with no zone_env declared the toy reads instants in %q, want UTC -- "+
+			"a provider reaching for TOY_ZONE configures a world the project never asked for", got)
 	}
 }
