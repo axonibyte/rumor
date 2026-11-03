@@ -162,7 +162,7 @@ PATH.
 
 `tools/release-gate.py --self-test` drives twenty cases, fifteen trailer checks,
 seven docs-verdict checks, four worktree checks, three changelog-date checks,
-four stream checks, four budget checks and seven base checks, and asserts that
+four stream checks, five budget checks and seven base checks, and asserts that
 **each arm fires alone**. Each count is declared as a constant and asserted in both
 directions, because a case that silently stops running is invisible in a
 self-consistent total. The release-gate workflow runs that self-test before the
@@ -190,6 +190,18 @@ bytes and found that reverting either fix left the whole self-test green
 (`rumor/1620`). Both reverts are now killed, and by exactly one cell each: a
 mutant that survives every `cases` entry is the measurement that says a battery
 is owed, not an opinion about taste.
+
+The budget battery's fifth check is the one that closes a gap its own docstring
+used to concede. The timeout message names where the budget came from — `declared
+in the fence` or `the default` — and those two phrases are all that separate a
+fence's own number from the fallback, which a reader acts on differently: edit
+the fence, or edit the tool. Only the *declared* phrase was driven, because
+driving the default meant sleeping past sixty seconds. Patching
+`DEFAULT_BLOCK_BUDGET_S` low costs three seconds instead, and the mutant that
+makes the message say `declared in the fence` unconditionally now dies — as does
+its opposite, which kills the declared cell instead, so the two phrases
+discriminate in both directions. What remains undriven is only the constant's
+*value* (`rumor/1714`).
 
 The base checks are the expected-refusal shape again: `resolve_base` runs
 *before* `evaluate`, so there is no arm id for it to fire, and the refusals it

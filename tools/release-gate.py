@@ -1583,21 +1583,22 @@ def _stream_battery() -> tuple[int, int]:
     return failures, EXPECT_STREAM_CHECKS
 
 
-# 4, and it moves only with _budget_battery: the declared budget refusing, the
-# declared budget ALLOWING, an undeclared fence still parsing, and TWO blocks
-# over at once naming DIFFERENT ordinals (fable rumor/1707).
-EXPECT_BUDGET_CHECKS = 4
+# 5, and it moves only with _budget_battery: the declared budget refusing, the
+# declared budget ALLOWING, an undeclared fence still parsing, TWO blocks over at
+# once naming DIFFERENT ordinals (fable rumor/1707), and the DEFAULT's wording
+# saying so rather than claiming a fence declared it (ratchet rumor/1714).
+EXPECT_BUDGET_CHECKS = 5
 
 
 def _budget_battery() -> tuple[int, int]:
     """Drive the per-block budget both ways, and the fence's optional group.
 
-    WHAT THIS DOES NOT PROVE, said here rather than implied: the DEFAULT's value.
-    Driving it would need a block that sleeps past 60s, which is a minute of wall
-    clock in a unit battery for one integer. Cell 3 proves an undeclared fence
-    still PARSES and is still gated -- that the number it then gets is 60 rests on
-    DEFAULT_BLOCK_BUDGET_S being the only expression in that branch, read not
-    driven.
+    WHAT THIS DOES NOT PROVE, narrowed once this battery grew cell 5: the LITERAL
+    60. Cell 5 patches DEFAULT_BLOCK_BUDGET_S low and drives an undeclared block
+    over it, so the default BRANCH and the message naming it are driven now; what
+    still rests on reading rather than driving is only the constant's VALUE, which
+    sleeping past 60s is the only way to observe and which costs a minute of wall
+    clock in a unit battery for one integer.
     """
     failures = 0
     today = "2026-01-01"
@@ -1667,6 +1668,64 @@ def _budget_battery() -> tuple[int, int]:
                   f"different ordinals, which is ratchet /1703's unreconcilable "
                   f"count: {got}")
             failures += 1
+
+    # 5. THE DEFAULT'S OWN WORDING, which this battery's docstring used to concede
+    #    was undriven. ratchet asked for it at rumor/1714, and the reason is that
+    #    those two phrases are the ONLY thing separating a fence's own number from
+    #    the fallback -- and a reader acts differently on each: edit the fence, or
+    #    edit the tool. A message that said "declared in the fence" unconditionally
+    #    would satisfy every other cell in this battery, because cell 1 is the only
+    #    one that reads the phrase and cell 1 DOES declare a budget.
+    #
+    #    THE CONSTANT IS PATCHED LOW RATHER THAN SLEPT THROUGH: driving the real 60
+    #    costs a minute of wall clock for one integer, which is exactly why it went
+    #    undriven. 1s costs three.
+    #
+    #    AND IT IS RESTORED IN A finally, THEN CHECKED. A patched production
+    #    constant leaking into the cells after this one would make them pass for
+    #    the wrong reason -- the subject supplying its own fixture, one module
+    #    global over. The check is not tautological: the try block really does
+    #    assign 1, so a restore that did not take is visible.
+    global DEFAULT_BLOCK_BUDGET_S
+    _saved_budget = DEFAULT_BLOCK_BUDGET_S
+    try:
+        DEFAULT_BLOCK_BUDGET_S = 1
+        with tempfile.TemporaryDirectory() as raw:
+            try:
+                repo = _world(Path(raw), today)
+                git(repo, "checkout", "-q", "-b", "run")
+                _mk(repo, "docs/d.md", "# d\n\n```sh run\nsleep 3\n```\n")
+                _commit(repo, "docs: an undeclared block over a patched default")
+                got = run_doc_blocks(repo, "run")
+            except CannotRun as exc:
+                print(f"\n  FAIL budget (the default's wording): the gate could "
+                      f"not run: {exc}")
+                got = None
+                failures += 1
+            if got is not None:
+                if len(got) != 1:
+                    print(f"\n  FAIL budget (the default's wording): {len(got)} "
+                          f"failure(s), wanted 1: {got}")
+                    failures += 1
+                else:
+                    line = got[0]
+                    missing = [m for m in ("block 1", "1s budget", "the default")
+                               if m not in line]
+                    wrong = "declared in the fence" in line
+                    if missing or wrong:
+                        print(f"\n  FAIL budget (the default's wording): {line!r}"
+                              + (f"; missing {missing}" if missing else "")
+                              + ("; claims a fence declared it when none did"
+                                 if wrong else ""))
+                        failures += 1
+    finally:
+        DEFAULT_BLOCK_BUDGET_S = _saved_budget
+    if DEFAULT_BLOCK_BUDGET_S != _saved_budget:
+        print(f"\n  FAIL budget (the default's wording): the patched constant was "
+              f"NOT restored -- it reads {DEFAULT_BLOCK_BUDGET_S}, not "
+              f"{_saved_budget}, so every later reading is against a fixture")
+        failures += 1
+
     return failures, EXPECT_BUDGET_CHECKS
 
 
