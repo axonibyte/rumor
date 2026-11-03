@@ -435,8 +435,11 @@ func allFixtures(t *testing.T) [][2]string {
 	// 41 -> 45 WITH R7.5's ALLOWANCE (D4): two readings of one subject and
 	// two verdicts each -- a reset at local midnight and one an hour late, an
 	// anchor on the run's own day and one on yesterday.
-	if len(out) != 45 {
-		t.Fatalf("expected the 45 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
+	// 45 -> 47 WITH D4c's INSTANT READING: the reset as nanoseconds, which
+	// `[deadline].instants` names so a walk can land on it -- one case for
+	// an instant reported and one for an application reporting none.
+	if len(out) != 47 {
+		t.Fatalf("expected the 47 committed fixtures, found %d: an empty or short walk is not a pass", len(out))
 	}
 	return out
 }

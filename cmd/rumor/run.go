@@ -134,6 +134,13 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		return 2
 	}
 
+	// WHERE THIS RUN'S CLOCK BEGINS, resolved once (R7.5 D3's second half,
+	// fable's ruling at coop r7/109 for the precedence and /111 for where the
+	// effective value belongs). The level is kept because the record line below
+	// names it: a reader who declared `[clock].start` and is watching a profile
+	// override it cannot tell the two apart from the instant alone.
+	clockStart, clockStartLevel := prep.Platform.ClockStartFor(profile, brep.Bindings.ClockStart)
+
 	p := schedule.Project{
 		Statute: string(statute),
 		Actions: brep.Bindings.Actions,
@@ -199,6 +206,13 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		// no zone database holds, and an absent or empty key is no zone, which
 		// internal/schedule's resolver reads rather than this site.
 		ClockZone: brep.Bindings.ClockZone,
+		// AND THE INSTANT IT BEGINS AT (R7.5 D3's second half). Resolved HERE
+		// and once, through the platform's own resolver -- profile, then
+		// `[clock].start`, then the epoch -- so the walk is handed an
+		// effective value and never a precedence to re-spell. That is
+		// `ReconcileEvery`'s shape above and for its reason: a knob resolved
+		// in two places is a knob that silently does nothing in one of them.
+		ClockStart: clockStart,
 		// AND R7.2's TYPED `form` SAYS HOW. It is carried straight through:
 		// the parser has already refused a word that is neither form, and a
 		// table that names NO form is refused by the walk, which is the reader
@@ -303,7 +317,8 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 	// would have said is unknown", which is exactly the state.
 	runners := map[string]func() int{
 		stage.API: func() int {
-			return walkStage(ctx, dir, prep, brep.Bindings.Probes, p, seed, steps, stdout, stderr)
+			return walkStage(ctx, dir, prep, brep.Bindings.Probes, p, clockStartLevel,
+				seed, steps, stdout, stderr)
 		},
 		stage.Concurrency: func() int {
 			return concurrencyStage(ctx, dir, prep, brep.Bindings, seed, profile, stdout, stderr)
@@ -398,8 +413,15 @@ func missingRunners(stages []string, runners map[string]func() int) []string {
 // changed when it moved: the same output on the same seeds, which is the
 // property the refactor is answerable for and the one measured before it was
 // committed.
+// clockStartLevel TRAVELS WITH THE INSTANT rather than being re-derived here
+// (R7.5 D4c). `p.ClockStart` is the effective value and the level is the
+// precedence's other half; deriving it from the value would be a second
+// resolver, which is the thing internal/platform.ClockStartFor exists to
+// prevent -- and the shape this file warns about one field up, where a knob
+// resolved in two places silently does nothing in one of them.
 func walkStage(ctx context.Context, dir string, prep platform.Report, probes []bindings.Probe,
-	p schedule.Project, seed uint64, steps int, stdout, stderr io.Writer) int {
+	p schedule.Project, clockStartLevel platform.ClockStartLevel,
+	seed uint64, steps int, stdout, stderr io.Writer) int {
 
 	sess, err := wire.Open(ctx, wire.Spawn{
 		Command: prep.Platform.Adapter.Command,
@@ -606,6 +628,30 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 		rec.Sessions, rec.Observations, len(rollback.Registered())); err != nil {
 		_, _ = fmt.Fprintf(stderr, "run: writing the verdict: %v\n", err)
 		return 2
+	}
+	// AND WHERE ITS CLOCK BEGAN, beside the `set` the first seal issued
+	// (fable, coop r7/111: "the effective value with its level belongs where
+	// the run resolves it -- the record line at the first seal").
+	//
+	// PRINTED ONLY WHERE A START IS DECLARED, and that narrowing is deliberate
+	// and bounded: a run whose start resolves to the EPOCH is every run this
+	// tool made before R7.5, and a line saying so on each of them would move
+	// every recorded figure taken from a clocked run's stdout while telling a
+	// reader nothing. It would also contradict tests/clock's own subject --
+	// "declaring a clock adds facts and changes nothing else" -- for a project
+	// that declares `[clock]` and no start. So the line appears exactly where
+	// there is an instant to report.
+	if clockStartLevel != platform.ClockStartEpoch {
+		where := "[clock].start"
+		if clockStartLevel == platform.ClockStartFromProfile {
+			where = "[profiles." + p.Profile + "].clock_start"
+		}
+		if _, err := fmt.Fprintf(stdout,
+			"run:   clock -- starts at %dns from %s, which the first seal set\n",
+			p.ClockStart, where); err != nil {
+			_, _ = fmt.Fprintf(stderr, "run: writing the clock line: %v\n", err)
+			return 2
+		}
 	}
 	// AND WHAT THE RUN DID WITH ITS PENDINGS, which fable ruled a line of the
 	// product at coop r6/92 on rook's rumor/1071: clause 3 of the control is

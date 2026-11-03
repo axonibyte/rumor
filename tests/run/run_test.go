@@ -64,6 +64,33 @@ func TestMain(m *testing.M) {
 			die(1)
 		}
 	}
+	// AND THE SYSTEM UNDER TEST IS CONFIGURED FOR THE ZONE THIS PROJECT
+	// DECLARES (R7.5 D4c). `examples/toy/bindings.toml` says
+	// `[clock].zone = "America/Chicago"` and that is the ENGINE's reading; the
+	// toy's own zone is its configuration, passed as TOY_ZONE and named in
+	// `[adapter].env` (fable's ruling at coop r7/114). This TestMain is the
+	// operator for every run in this package, so it sets it.
+	//
+	// WITHOUT IT A PROMOTED dst ROW REPRODUCES THE WRONG DEFECT. The toy would
+	// anchor on UTC days while the project declared Chicago, the allowance's
+	// day would disagree with `input.clock.local.date` on every step, and
+	// `TestEveryPromotedToySeedStillFindsItsBug` -- which reads exit 3 -- would
+	// pass without the row's own defect ever being reached. A promotion that
+	// "reproduces" for another reason is the shape that arm exists to refuse.
+	//
+	// AND IT IS INERT FOR EVERY ROW THAT CAME BEFORE, measured and not
+	// assumed: the allowance readings are the only thing in the toy that reads
+	// its zone, the two `dst-*` profiles CLAIM them, and a claimed observation
+	// is taken by no other profile -- so seeds 2, 40, 12, 66 and 3 walk
+	// byte-identically with this set and unset.
+	//
+	// seeds.lock's GRAMMAR IS UNCHANGED, which is fable's ruling at r7/110: a
+	// row names its profile and nothing else, so the configuration belongs
+	// here rather than in a new token on the line.
+	if err := os.Setenv("TOY_ZONE", "America/Chicago"); err != nil {
+		fmt.Fprintf(os.Stderr, "TestMain: %v\n", err)
+		die(1)
+	}
 	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH")); err != nil {
 		fmt.Fprintf(os.Stderr, "TestMain: %v\n", err)
 		die(1)

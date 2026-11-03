@@ -1,0 +1,78 @@
+{
+  "why": "R7.5 D4c's THIRD READING, which is a TARGET and not a verdict. `[deadline].instants` names it, so the engine lands a step one tick before this instant, on it, and one tick past it -- and those landings are the only way a walk arrives in the hour where the application's arithmetic and the zone's own midnight disagree. The value here is 2026-03-09T01:00:00-05:00, which is what the toy computes as the next reset on the 23-hour day: an hour LATE. THIS CASE DOES NOT JUDGE THAT. Whether a reset instant is right depends on where it falls in the zone's day and rego has no database to read it with, so the verdict belongs to `invite_quota_reset`'s clock face and this clause asks only that an instant was reported at all.",
+  "expect": {
+    "finding": "consistent"
+  },
+  "input": {
+    "observation": {
+      "actor": "alice",
+      "of": "invitation.sent",
+      "query": "invite_quota_reset_at",
+      "source": "api",
+      "value": 1773036000000000000,
+      "role": "admin",
+      "position": 7
+    },
+    "known": [
+      "alice.event#1",
+      "alice.invitation#1",
+      "alice.user#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 2,
+        "handles": [
+          "alice.user#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 3,
+        "handles": [
+          "bob.user#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 4,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "alice.invitation#1",
+        "actor": "alice",
+        "type": "invitation.sent",
+        "position": 5,
+        "handles": [
+          "alice.invitation#1",
+          "alice.event#1"
+        ],
+        "t": 0
+      }
+    ],
+    "clock": {
+      "now": 1773034200000000000,
+      "local": {
+        "date": "2026-03-09",
+        "offset_s": -18000,
+        "is_dst": true
+      }
+    }
+  }
+}

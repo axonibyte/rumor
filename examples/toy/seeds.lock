@@ -151,3 +151,56 @@
 # the application's own defect and not a lie the run told.
 # Measured 2026-10-29 at 8d42087.
 3 profile=expiring steps=24
+
+# R7.5's TWO ROWS, ONE PER DIRECTION (issue 115; fable's ruling at coop r7/110,
+# "two rows and two worlds, not one row drawn twice"). One start in the day
+# before March cannot reach November in a walk any budget allows, so the
+# direction is the profile's and not the seed's.
+#
+# THE DEFECT BOTH NAME is the toy's daily invitation allowance, whose next
+# reset it computes as twenty-four hours of WALL time from the start of the
+# current local day. That is right on every day of the year except the two a
+# daylight-saving transition makes 23 or 25 hours long, and the application
+# reports the instant itself -- so the finding is the local clock face of a
+# DAILY reset reading something other than 00:00.
+#
+# 1 profile=dst-spring -- THE RESET AN HOUR LATE. The clock starts midday on
+# 2026-03-07, an `advance` lands it in the 23-hour day that follows, and the
+# allowance's next reset reads 01:00 local: measured against the running toy at
+# one tick past 2026-03-08T06:00:00Z, which is 00:00 CST. Three steps:
+# create_user, advance, create_user.
+#
+# 2 profile=dst-fall -- THE RESET AN HOUR EARLY, which is the same one
+# expression wrong in the other direction. The clock starts midday on
+# 2026-10-31 and an advance lands it in the 25-hour day, where the reset reads
+# 23:00 local -- so an allowance comes back while the day it belongs to is
+# still running. Measured at one tick past 2026-11-01T05:00:00Z, which is 00:00
+# CDT. Three steps: create_user, advance, advance.
+#
+# BOTH NEED THE SYSTEM CONFIGURED FOR THE ZONE, which is TOY_ZONE in
+# `[adapter].env` and the toy's own `--zone` (fable, r7/114). tests/run's
+# TestMain sets it for the same reason it builds the toy and puts it on PATH,
+# and that is measured inert for every row above: seeds 2, 40, 12, 66 and 3
+# walk byte-identically with it set and unset. The grammar of this file is
+# UNCHANGED (r7/110): a row names its profile.
+#
+# WHAT THESE TWO ROWS DO NOT PROVE, and it is worth the lines because the
+# obvious reading is wrong. With TOY_ZONE UNSET the toy anchors on UTC days
+# while this project declares America/Chicago, and the allowance's day then
+# disagrees with `input.clock.local.date` -- a TRUE finding about a
+# misconfigured world and not the arithmetic these rows are for. MEASURED: with
+# the variable unset both rows still exit 3, still in three steps, still with
+# an `advance` in the shrunk trace. So the trace shape does not tell the two
+# apart, and neither does anything else a reader of `rumor run` can see: the
+# verb prints the finding's RULE and its line, and both arrive at `default
+# finding := "bug"`.
+#
+# SO THE ROWS PROVE A FINDING IS REACHED in each direction's world, and what
+# proves it is the allowance's own arithmetic lives where it can be read: the
+# four `the-allowance-*` cases in this package, and cmd/toy's
+# TestTheInvitationAllowanceResetsAtLocalMidnightExceptWhenItDoesNot, which
+# asserts 01:00 on the 23-hour day and 23:00 on the 25-hour one against the
+# running application. An observation's NAME reaching the run's output would
+# close the gap; that is a product change and not a row's business.
+1 profile=dst-spring steps=24
+2 profile=dst-fall steps=24

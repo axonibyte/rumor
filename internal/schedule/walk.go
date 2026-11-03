@@ -144,6 +144,25 @@ type Project struct {
 	// passed "" through would make such a project silently declare UTC and
 	// gain every transition landing that follows from one.
 	ClockZone string
+
+	// ClockStart is the instant the run's clock BEGINS at, already resolved
+	// (R7.5 D3/D4c). internal/platform.ClockStartFor is the one resolver --
+	// profile, then `[clock].start`, then the epoch -- and cmd/rumor calls it,
+	// so this field is an effective value and never a declaration.
+	//
+	// ZERO IS THE EPOCH AND THAT IS NOT A SENTINEL: a run that starts at the
+	// epoch is every run before this field existed, and the resolver answers
+	// zero for exactly that case.
+	//
+	// IT IS THE FIRST SEAL'S `set`. The clock this seeds is what `seal` writes
+	// into the ledger and, under `form = "adapter"`, what it asks the system
+	// under test to adopt -- so a project declaring a start walks a world whose
+	// application agrees about the date from its first observation onward.
+	// Without it the declaration parsed, `rumor report` printed it, and the
+	// WALK still began at the epoch: measured on twelve seeds of `dst-spring`
+	// at 40 steps, every one of which found nothing because 1969 holds no
+	// daylight-saving transition this project cares about.
+	ClockStart int64
 }
 
 // Prober answers whether the system under test has gone quiet.
@@ -859,7 +878,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	// nothing -- so an unzoned run builds the ledger it built before this line
 	// existed.
 	l := ledger.New(p.ClockControl, ledger.InZone(zoneOf(p.ClockZone)))
-	clk := &runClock{control: p.ClockControl, form: p.ClockForm}
+	clk := &runClock{control: p.ClockControl, form: p.ClockForm, t: p.ClockStart}
 	table, err := handle.New(attempt)
 	if err != nil {
 		return rec, fmt.Errorf("schedule: the attempt's handle table: %w", err)

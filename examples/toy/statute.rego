@@ -423,6 +423,7 @@ default finding := "bug"
 finding := "consistent" if {
 	not deleted
 	not attendee_observation
+	not quota_instant_observation
 	input.observation.value == believed
 }
 
@@ -617,4 +618,46 @@ finding := "consistent" if {
 finding := "consistent" if {
 	input.observation.query == "invite_quota_day"
 	input.observation.value == input.clock.local.date
+}
+
+# AND THE SAME RESET AS AN INSTANT (R7.5 D4c), WHICH IS A TARGET AND NOT A
+# VERDICT.
+#
+# WHY IT NEEDS A CLAUSE AT ALL: without one it falls to `default finding :=
+# "bug"`, because its value is a number and the judgements above compare
+# against join counts -- measured on seed 1 under `dst-spring`, which ended at
+# step 1 with a finding about an observation nothing had ruled on. That is this
+# file's own direction applied to a third reading: "a future observation that
+# is not about the join count must exclude itself, and the clause it adds to do
+# that sits beside its own judgement".
+#
+# WHAT THIS CLAUSE DOES NOT CLAIM, and the reason is a limit of policy rather
+# than a choice: whether a reset instant is RIGHT depends on where it falls in
+# the zone's own day, and rego has no zone database to read it with. That
+# judgement is `invite_quota_reset`'s, which compares the application's own
+# local clock face against the 00:00 a daily reset means. This reading exists
+# so the WALK can arrive -- `[deadline].instants` names it, and the engine
+# lands a step one tick before it, on it, and one tick past it, which is how a
+# run reaches the hour where the two disagree.
+#
+# SO WHAT IS LEFT IS AN EXISTENCE CHECK, and it is falsifiable rather than
+# decorative: an application reporting no reset at all answers zero, and a
+# zero instant is a defect by the default below. A reset in the PAST is NOT
+# one -- the allowance re-anchors when it is next spent, so a stored reset the
+# clock has already passed is an application that has not been asked yet.
+# AND THIS READING EXCLUDES ITSELF FROM THE COUNT JUDGEMENT, which the two
+# string readings did not need and this one does.
+#
+# MEASURED RATHER THAN FORESEEN: the case for an application reporting NO reset
+# answers zero, `believed` is `count(joined) - count(left)` and is zero in a
+# world with no joins, and zero equals zero -- so the count clause called a
+# missing reset `consistent` and the case disagreed. That is exactly
+# `page_attendees`' hazard, where an honest attendee count equals the join
+# count: a NUMERIC coincidence, which is why the guard belongs here and not
+# beside the strings.
+quota_instant_observation if input.observation.query == "invite_quota_reset_at"
+
+finding := "consistent" if {
+	quota_instant_observation
+	input.observation.value > 0
 }

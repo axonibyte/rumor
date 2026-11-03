@@ -1,0 +1,78 @@
+{
+  "why": "AND THE EXISTENCE CHECK IS FALSIFIABLE, which is what keeps the clause above from being decoration. An application that reports no reset instant answers zero, a walk given zero has nothing to land on, and nothing makes that consistent -- the finding is the default. A reset in the PAST is deliberately NOT a defect: this allowance re-anchors when it is next spent, so a stored reset the clock has passed is an application that has not been asked yet, and a rule refusing it would report every quiet moment after midnight.",
+  "expect": {
+    "finding": "bug"
+  },
+  "input": {
+    "observation": {
+      "actor": "alice",
+      "of": "invitation.sent",
+      "query": "invite_quota_reset_at",
+      "source": "api",
+      "value": 0,
+      "role": "admin",
+      "position": 7
+    },
+    "known": [
+      "alice.event#1",
+      "alice.invitation#1",
+      "alice.user#1"
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 2,
+        "handles": [
+          "alice.user#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 3,
+        "handles": [
+          "bob.user#1"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 4,
+        "handles": [
+          "alice.event#1"
+        ],
+        "visible_to": [
+          "admin",
+          "member",
+          "guest"
+        ],
+        "t": 0
+      },
+      {
+        "ref": "alice.invitation#1",
+        "actor": "alice",
+        "type": "invitation.sent",
+        "position": 5,
+        "handles": [
+          "alice.invitation#1",
+          "alice.event#1"
+        ],
+        "t": 0
+      }
+    ],
+    "clock": {
+      "now": 1773034200000000000,
+      "local": {
+        "date": "2026-03-09",
+        "offset_s": -18000,
+        "is_dst": true
+      }
+    }
+  }
+}

@@ -91,6 +91,13 @@ var (
 		// application's own arithmetic and the engine's zone reading.
 		{Name: "invite_quota_reset", Source: wire.SourceAPI},
 		{Name: "invite_quota_day", Source: wire.SourceAPI},
+		// AND THE SAME RESET AS AN INSTANT (R7.5 D4c), which is the reading a
+		// WALK needs rather than a rule: `[deadline].instants` names an
+		// observation whose value IS an instant, and the engine then lands a
+		// step one tick before it, on it, and one tick past it. The clock face
+		// above is what a statute can judge; this is what makes the walk
+		// arrive at the hour where the judgement differs.
+		{Name: "invite_quota_reset_at", Source: wire.SourceAPI},
 	}
 	contexts = []string{"api", "browser"}
 	// THE STORE IS STATEFUL AND THE API IS NOT, which is the distinction
@@ -640,7 +647,7 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 	case "event_count", "event_tally", "invitation_expiry",
 		// THE ALLOWANCE IS READ THROUGH AN ACTOR'S SESSION, which is what api
 		// means here, and the same channel invitation_expiry uses.
-		"invite_quota_reset", "invite_quota_day":
+		"invite_quota_reset", "invite_quota_day", "invite_quota_reset_at":
 		want = wire.SourceAPI
 	case "store_event_count":
 		want = wire.SourceDirect
@@ -773,7 +780,7 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 	// NO SUBJECT, AND FOR A DIFFERENT REASON THAN THE QUEUE'S: the subject is
 	// the OBSERVING ACTOR, which travels as the session token rather than as
 	// an argument. The toy answers this path for whoever asks.
-	case "invite_quota_reset", "invite_quota_day":
+	case "invite_quota_reset", "invite_quota_day", "invite_quota_reset_at":
 		path = "/invite-quota"
 	}
 
@@ -813,6 +820,7 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 		// believes in the form a rule can compare.
 		ResetLocal string `json:"reset_local"`
 		Day        string `json:"day"`
+		ResetAt    int64  `json:"reset_at"`
 	}
 	code, err := a.call(http.MethodGet, path, m.Token, nil, &body)
 	if err != nil {
@@ -841,6 +849,11 @@ func (a *adapter) observe(id string, m wire.ObserveRequest) any {
 		value = body.ResetLocal
 	case "invite_quota_day":
 		value = body.Day
+	case "invite_quota_reset_at":
+		// AN int64 FOR invitation_expiry's REASON: the unit is
+		// docs/contract.md's for `clock.t` and a 32-bit int overflows a little
+		// over two seconds into a run, let alone at a 2026 instant.
+		value = body.ResetAt
 	}
 	return wire.ObserveResponse{
 		Envelope: wire.Envelope{Kind: wire.KindObserve, Contract: wire.ContractVersion, ID: id},

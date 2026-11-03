@@ -684,8 +684,24 @@ func (s *server) handleUserPath(w http.ResponseWriter, r *http.Request) {
 // stored -- so a rule reading these fields needs no case for "nobody has
 // invited yet" and cannot be satisfied by an absence.
 func (s *server) quotaBody(id string) map[string]any {
+	// WHAT THE NEXT INVITATION WOULD BE JUDGED AGAINST, which is the same
+	// freshness test `quotaFor` applies -- not the stored record as stored.
+	//
+	// THIS IS A CORRECTION FOUND BY DRIVING (R7.5 D4c). Reporting the stored
+	// record made the reading wrong one nanosecond past EVERY local midnight:
+	// this application re-anchors an allowance when it is next SPENT, so a
+	// stored day of "yesterday" an instant after midnight is correct
+	// behaviour, and a rule comparing it against the run's local date would
+	// have reported a defect at every day boundary in the walk. The subject is
+	// the day the application BELIEVES it is in, and that is this expression.
+	//
+	// AND IT LEAVES THE PLANT VISIBLE, which is the whole point: in the spring
+	// window the planted reset has NOT been reached -- it lands an hour late --
+	// so the stored record is still what the next invitation would use, its day
+	// is genuinely yesterday, and the disagreement is the defect rather than
+	// the bookkeeping.
 	q, stored := s.st.Quotas[id], true
-	if q == nil {
+	if q == nil || s.st.Now >= q.ResetAt {
 		fresh := s.anchorFor(s.st.Now)
 		q, stored = &fresh, false
 	}

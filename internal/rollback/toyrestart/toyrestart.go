@@ -146,7 +146,29 @@ func (p *provider) Describe() rollback.Description {
 // start launches the toy and reads the address it bound. Called on open and on
 // every restore.
 func (p *provider) start() error {
-	cmd := exec.Command(p.bin, "--addr", "127.0.0.1:0", "--state", p.state)
+	// THE ZONE THE SYSTEM IS CONFIGURED WITH TRAVELS HERE TOO (R7.5 D4c), and
+	// this is the second of the toy's TWO spawners. cmd/toy-adapter passes
+	// `--zone` when it starts the toy itself; under a rollback provider IT
+	// does not start one -- this does, and the adapter is handed TOY_ADDR --
+	// so a zone wired only into the adapter never reaches the application.
+	//
+	// MEASURED, which is how it was found: with the zone passed in the
+	// adapter alone, `rumor run examples/toy --profile dst-spring` found a
+	// `bug` on EVERY step and shrank to one `create_user`. The toy was reading
+	// UTC days while the project declared America/Chicago, so the allowance's
+	// anchor day disagreed with `input.clock.local.date` for a reason that had
+	// nothing to do with the planted arithmetic. A true finding about a
+	// misconfigured world, and not the one the profile exists for.
+	//
+	// RESTORE PASSES IT AGAIN, because every restart comes through here: a
+	// provider that dropped the zone on restore would hand the walk a
+	// different system halfway through, which is the defect this provider's
+	// own verify exists to make impossible.
+	args := []string{"--addr", "127.0.0.1:0", "--state", p.state}
+	if zone := os.Getenv("TOY_ZONE"); zone != "" {
+		args = append(args, "--zone", zone)
+	}
+	cmd := exec.Command(p.bin, args...)
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("toyrestart: piping %s: %w", p.bin, err)

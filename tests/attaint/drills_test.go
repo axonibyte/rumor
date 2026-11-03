@@ -156,7 +156,10 @@ func TestEveryDrillTripsItsOwnArm(t *testing.T) {
 			// 41 -> 45 WITH R7.5's ALLOWANCE (D4): two readings of one subject and
 			// two verdicts each -- a reset at local midnight and one an hour late, an
 			// anchor on the run's own day and one on yesterday.
-			if rep.Packages != 5 || rep.Cases != 45 || rep.Mutants != 42 || rep.Rules != 31 {
+			// 45 -> 47 WITH D4c's INSTANT READING: the reset as nanoseconds, which
+			// `[deadline].instants` names so a walk can land on it -- one case for
+			// an instant reported and one for an application reporting none.
+			if rep.Packages != 5 || rep.Cases != 47 || rep.Mutants != 42 || rep.Rules != 31 {
 				t.Fatalf("%s examined %d package(s), %d case(s), %d rule(s), %d mutant(s); every drill is a damaged copy of the whole tree",
 					d.id, rep.Packages, rep.Cases, rep.Rules, rep.Mutants)
 			}

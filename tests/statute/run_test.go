@@ -225,8 +225,11 @@ func TestTheSuiteExaminesSomething(t *testing.T) {
 	// match a corpus that grew, which is the opposite of relaxing it: this
 	// line is what refuses a case added without a reason, and all four of
 	// these carry theirs in their own `why`.
-	if totalCases != 45 {
-		t.Errorf("expected 45 cases across the five packages, counted %d", totalCases)
+	// 45 -> 47 WITH D4c's INSTANT READING: the reset as nanoseconds, which
+	// `[deadline].instants` names so a walk can land on it -- one case for
+	// an instant reported and one for an application reporting none.
+	if totalCases != 47 {
+		t.Errorf("expected 47 cases across the five packages, counted %d", totalCases)
 	}
 	// 19, NOT 20, and the shortfall is documented rather than accidental: I
 	// declared 20 from a guess and this assertion caught it. planted-lie has
@@ -544,8 +547,11 @@ func TestNoStatuteCallsPrint(t *testing.T) {
 	// 41 -> 45 WITH R7.5's ALLOWANCE (D4): two readings of one subject and
 	// two verdicts each -- a reset at local midnight and one an hour late, an
 	// anchor on the run's own day and one on yesterday.
-	if evaluations != 45 {
-		t.Errorf("evaluated %d cases under the print hook, expected 45", evaluations)
+	// 45 -> 47 WITH D4c's INSTANT READING: the reset as nanoseconds, which
+	// `[deadline].instants` names so a walk can land on it -- one case for
+	// an instant reported and one for an application reporting none.
+	if evaluations != 47 {
+		t.Errorf("evaluated %d cases under the print hook, expected 47", evaluations)
 	}
 	// The proof line states the count it MEASURED. Printing "0 prints"
 	// unconditionally put a contradiction one line under the finding when this

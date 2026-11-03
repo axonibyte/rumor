@@ -44,7 +44,10 @@ const (
 	// 41 -> 45 WITH R7.5's ALLOWANCE (D4): two readings of one subject and
 	// two verdicts each -- a reset at local midnight and one an hour late, an
 	// anchor on the run's own day and one on yesterday.
-	wantCases = 45
+	// 45 -> 47 WITH D4c's INSTANT READING: the reset as nanoseconds, which
+	// `[deadline].instants` names so a walk can land on it -- one case for
+	// an instant reported and one for an application reporting none.
+	wantCases = 47
 )
 
 func TestRunOverTheCommittedTree(t *testing.T) {

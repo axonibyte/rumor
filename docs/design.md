@@ -1206,6 +1206,63 @@ an actor**: v1 gives a `clock` fact's actor as "the run", which controls time
 rather than holding beliefs, so clock facts contribute no one to reconcile
 against.
 
+## A zone transition is a landing, and the toy's clock arithmetic is the bug
+
+R7 gave `advance` the three landings of a declared deadline: one tick before
+it, on it, and one tick past it. R7.5 gives it the same three at a **zone
+transition**, and the reason is that a transition is where a system's own
+arithmetic about time stops agreeing with the calendar. The hour that vanishes
+in spring and the hour that repeats in autumn are the two instants a day is not
+twenty-four hours long, and a walk that never lands there cannot find a system
+that assumed it was.
+
+**The project declares the zone and the engine reads the run's instant in it.**
+`[clock].zone` is an IANA name; the engine resolves it once, hands the resolved
+location to the ledger, and builds `input.clock.local` — a date, an offset and
+a DST flag — so a statute can ask what local day the run is in without zone
+arithmetic a policy cannot do. The zone never crosses the wire: the adapter
+exchange is unchanged and `clock.t` stays nanoseconds.
+
+**Only the NEXT transition joins the landings**, between the run's clock and
+the furthest live bound, which keeps the list bounded by the bounds (fable,
+issue 115 amendment 3). A project that declares no zone draws exactly the walk
+it drew before, which is measured rather than promised: the five rows of
+`examples/toy/seeds.lock` that predate this phase walk byte-identically with
+the toy's zone declared and undeclared.
+
+### What the toy gets wrong, and why the rule reads the zone's midnight
+
+The toy gains a per-user daily invitation allowance whose next reset it
+computes as **the start of the current local day plus twenty-four hours of wall
+time**. On an ordinary day that is the zone's own next midnight. On the day a
+spring transition shortens to 23 hours it lands an hour LATE, so a user who has
+spent an allowance is still refused for an hour into the next day; on the
+25-hour autumn day it lands an hour EARLY, so an allowance returns while the
+day it belongs to is still running. The error is one expression — `Add(24 *
+time.Hour)` where `AddDate(0, 0, 1)` is meant — and it is **re-anchored
+daily**, recomputed from the current local date each time the allowance is
+touched, so the plant is exactly one day wide and each transition gives its own
+finding from its own seed.
+
+**The rule reads the zone's midnight rather than the toy's**, and that is the
+whole point of the pairing. The application reports the local clock face of its
+own next reset, and a daily reset is at `00:00` by definition — so the statute
+compares a string it can read against a constant the vocabulary of a daily
+reset fixes, and never recomputes the instant. A second reading, the allowance's
+anchor DAY, is compared against `input.clock.local.date`: that one is the two
+zones agreeing, and it catches a system configured for a different zone than
+the project declares. Two oracles, because they fail differently — the reset
+face is wrong on both transition days, and the anchor day only in the window
+after a late reset.
+
+**And the reset instant itself is a declared deadline**, named in
+`[deadline].instants`, which is what gives a walk a REASON to arrive: without
+it the only landings in range are the transition's own and an invitation's
+thirty-second expiry, and neither falls in the hour where the arithmetic is
+wrong. Spring's discriminating landing is the tick BEFORE the declared reset
+and autumn's are ON it and one tick PAST (ibis, coop r7/119) — so a cell
+written from one direction alone arms one direction alone.
+
 ## The hostile corpus is derived from the declarations
 
 **A corpus that is written by hand tests whatever its author remembered.** The

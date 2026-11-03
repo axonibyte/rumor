@@ -504,7 +504,7 @@ stages = ["api"]
 seeds = 1
 budget = "1m"
 clock_start = 1772906400000000000
-observations = ["invite_quota_reset", "invite_quota_day"]
+observations = ["invite_quota_reset", "invite_quota_day", "invite_quota_reset_at"]
 
 # THE WEIGHTS ARE `expiring`'s SHAPE, for its reason: an allowance is spent by
 # INVITING, and the clock moves by `advance`. Both have to be drawn often for a
@@ -526,7 +526,7 @@ stages = ["api"]
 seeds = 1
 budget = "1m"
 clock_start = 1793466000000000000
-observations = ["invite_quota_reset", "invite_quota_day"]
+observations = ["invite_quota_reset", "invite_quota_day", "invite_quota_reset_at"]
 
 [weights.profile.dst-fall]
 invite_user = 24

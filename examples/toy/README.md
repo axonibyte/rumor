@@ -36,6 +36,36 @@ ships from C1 with a by-hand concurrent test that shows two boundary joins both
 landing, and R8 inherits a bug rather than a promise (fable, coop
 `breakout-r5/1`, after ratchet found the gap in `rumor/853`).
 
+## The daily allowance, and the two profiles that reach it (R7.5)
+
+A fourth planted row: a per-user daily invitation allowance whose next reset
+this application computes as **the start of the current local day plus
+twenty-four hours of wall time**. That is the zone's own next midnight on every
+day of the year except the two a daylight-saving transition makes 23 or 25
+hours long — so the reset lands an hour LATE in spring and an hour EARLY in
+autumn, and a user is refused for an hour into a new day or allowed one before
+the old day ends. It is re-anchored from the current local date each day, so
+the plant is exactly one day wide.
+
+| profile | the world it places | what a run finds |
+|---|---|---|
+| `dst-spring` | midday 2026-03-07, the day before the 23-hour day | the allowance's next reset reads `01:00` local |
+| `dst-fall` | midday 2026-10-31, the day before the 25-hour day | it reads `23:00` local |
+
+**Two committed seeds, one per direction**: `1 profile=dst-spring steps=24` and
+`2 profile=dst-fall steps=24`, each finding its row in three steps. One start
+in the day before March cannot reach November in a walk any budget allows,
+which is why the direction is the profile's and not the seed's (fable, coop
+`r7/110`).
+
+**THE SYSTEM'S ZONE IS ITS OWN CONFIGURATION.** `toy --zone` names the zone
+this application reads its own instants in, passed as `TOY_ZONE` and declared
+in `[adapter].env`; `[clock].zone` in `bindings.toml` is what the ENGINE reads
+the run's instants in. They are separate on purpose — the two disagreeing is a
+thing a run can find — so a walk of either profile wants `TOY_ZONE` set to the
+zone the project declares, and with it unset these seeds find that
+disagreement instead of the arithmetic. `seeds.lock` says so beside the rows.
+
 ## What the ledger could not express, and what that cost
 
 Two rules are NOT in `statute.rego`, and the reasons are recorded there rather

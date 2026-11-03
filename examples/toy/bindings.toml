@@ -402,6 +402,29 @@ name = "invite_quota_day"
 source = "api"
 of = "invitation.sent"
 
+# AND THE SAME RESET AS AN INSTANT (R7.5 D4c), which is the reading a WALK
+# needs rather than a rule. `[deadline].instants` below names it, so the engine
+# targets it with `advance` and lands one tick before it, on it, and one tick
+# past it -- and those three landings are where the planted arithmetic and the
+# zone's own midnight disagree:
+#
+#   SPRING, where the reset lands an hour LATE, the window is
+#   [true midnight, declared reset) and the discriminating landing is the one
+#   ONE TICK BEFORE -- the allowance still spent, the anchor still yesterday.
+#
+#   FALL, where it lands an hour EARLY, the window is
+#   [declared reset, true midnight) and the discriminating landings are the one
+#   ON the instant and the one ONE TICK PAST -- the allowance fresh while the
+#   day it belongs to is still running.
+#
+# ibis's correction at coop r7/119, accepted by fable at /120: a cell written
+# from "the tick before" alone arms SPRING only, so each direction names its
+# own landing.
+[[observation]]
+name = "invite_quota_reset_at"
+source = "api"
+of = "invitation.sent"
+
 [[observation]]
 name = "store_event_count"
 source = "direct"
@@ -650,7 +673,18 @@ zone = "America/Chicago"
 # names is unmakeable until `invite_user` is drawn, and that action's weight is
 # zero in `[weights.default]`.
 [deadline]
-instants = ["invitation_expiry"]
+# THE SECOND DECLARED DEADLINE (R7.5 D4c). An entry here is an observation
+# whose value IS an instant the engine may target, and the allowance's reset is
+# one: the application computes it itself, in wall-clock arithmetic, which is
+# the whole subject of this child. Declaring it is what gives a walk a REASON
+# to land in the hour where that arithmetic is wrong -- without it the only
+# landings in range are the transition's own and an invitation's 30s expiry,
+# and neither falls inside the stale hour.
+#
+# THE PROJECT SAYS WHERE ITS DEADLINE CAN BE READ AND THE RUN ASKS, which is
+# this key's own rule: no lifetime is declared here, because a declared one
+# would be a second copy of a number the application already holds.
+instants = ["invitation_expiry", "invite_quota_reset_at"]
 
 # WHERE A REFUSAL's TEXT LIVES, AS A PATH AND NOT A VALUE.
 #

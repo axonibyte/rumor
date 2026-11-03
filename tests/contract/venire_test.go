@@ -289,8 +289,16 @@ func TestNoCommittedProfileQuietlyChangesWhatItObserves(t *testing.T) {
 // the weights tables instead and immediately failed on `viewing`, which gained a
 // row in this same series for the action it draws. That row changes no committed
 // reading; the absence of a seed naming the profile is what does.
+//
+// AND R7.5 PROMOTED TWO (D4c): `dst-spring` and `dst-fall`, one row each,
+// which is this line doing what its own comment says -- "a promotion that
+// names a new profile is a new world a committed reading replays, and this arm
+// has to judge it". Both worlds place the run's clock in the day before a
+// daylight-saving transition and find the toy's allowance computing its next
+// reset in wall time: 01:00 local on the 23-hour day, 23:00 on the 25-hour
+// one.
 var committedProfiles = map[string][]string{
-	"toy":  {"expiring", "settling", "walking"},
+	"toy":  {"dst-fall", "dst-spring", "expiring", "settling", "walking"},
 	"twin": {},
 }
 

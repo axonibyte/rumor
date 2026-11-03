@@ -24,7 +24,7 @@ offered as the check. One line per case, then a tally:
 ```
 planted-lie      honest-only                consistent  statute.rego:55            72 trace event(s)  agrees
 transitive-count charlie-explained          explained   statute.rego:61           284 trace event(s)  agrees
-check: 45 case(s) over 5 package(s) from ledger files, 45 agreed, 0 disagreed
+check: 47 case(s) over 5 package(s) from ledger files, 47 agreed, 0 disagreed
 ```
 
 Each line carries the finding, **the definition that produced it** — module and
@@ -213,7 +213,7 @@ against the released tree and not adjusted by arithmetic.
 
 ```sh run budget_s=180
 # THE BUDGET IS DECLARED BECAUSE THIS BLOCK KNOWS WHAT IT MEASURES AND THE GATE
-# DOES NOT. It walks 42 mutants over 45 cases, so it grows with every child, and
+# DOES NOT. It walks 42 mutants over 47 cases, so it grows with every child, and
 # on 2026-11-02 it grew onto the gate's old 60s literal: PR 117's release gate
 # refused v0.1.46 for a TIMING rather than for anything in the release (rook
 # rumor/1701, ibis /1702, ruled at /1699).
@@ -289,7 +289,7 @@ planted-lie      m1-ignores-position        alive from the cases only (the seal 
 planted-lie      bug                        reached by stripped-tag
 planted-lie      with-planted               cleared by removing 1 planted claim(s)
 transitive-count charlie-own-lie            planted but not a control: the strip clause is not applied
-attaint: 5 package(s), 45 case(s), 31 rule(s), 42 mutant(s); 3 planted lie(s) corroborated of 6, 3 cleared by removal, 3 planted-not-control; 31 rule(s) killed, 0 unmutated; 0 refusal(s)
+attaint: 5 package(s), 47 case(s), 31 rule(s), 42 mutant(s); 3 planted lie(s) corroborated of 6, 3 cleared by removal, 3 planted-not-control; 31 rule(s) killed, 0 unmutated; 0 refusal(s)
 LINES
 
 # BOTH GUARDS BELOW ARE UNCONDITIONAL, which the first cut got wrong: the total
