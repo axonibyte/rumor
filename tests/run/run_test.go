@@ -64,33 +64,15 @@ func TestMain(m *testing.M) {
 			die(1)
 		}
 	}
-	// AND THE SYSTEM UNDER TEST IS CONFIGURED FOR THE ZONE THIS PROJECT
-	// DECLARES (R7.5 D4c). `examples/toy/bindings.toml` says
-	// `[clock].zone = "America/Chicago"` and that is the ENGINE's reading; the
-	// toy's own zone is its configuration, passed as TOY_ZONE and named in
-	// `[adapter].env` (fable's ruling at coop r7/114). This TestMain is the
-	// operator for every run in this package, so it sets it.
-	//
-	// WITHOUT IT A PROMOTED dst ROW REPRODUCES THE WRONG DEFECT. The toy would
-	// anchor on UTC days while the project declared Chicago, the allowance's
-	// day would disagree with `input.clock.local.date` on every step, and
-	// `TestEveryPromotedToySeedStillFindsItsBug` -- which reads exit 3 -- would
-	// pass without the row's own defect ever being reached. A promotion that
-	// "reproduces" for another reason is the shape that arm exists to refuse.
-	//
-	// AND IT IS INERT FOR EVERY ROW THAT CAME BEFORE, measured and not
-	// assumed: the allowance readings are the only thing in the toy that reads
-	// its zone, the two `dst-*` profiles CLAIM them, and a claimed observation
-	// is taken by no other profile -- so seeds 2, 40, 12, 66 and 3 walk
-	// byte-identically with this set and unset.
-	//
-	// seeds.lock's GRAMMAR IS UNCHANGED, which is fable's ruling at r7/110: a
-	// row names its profile and nothing else, so the configuration belongs
-	// here rather than in a new token on the line.
-	if err := os.Setenv("TOY_ZONE", "America/Chicago"); err != nil {
-		fmt.Fprintf(os.Stderr, "TestMain: %v\n", err)
-		die(1)
-	}
+	// THE SUITE DOES NOT CONFIGURE THE SYSTEM'S ZONE, and it did for one
+	// commit. TestMain set TOY_ZONE here so a promoted `dst-*` row would
+	// replay against a toy reading the zone its project declares; fable ruled
+	// at coop rumor/1780 that the zone rides the PROFILE instead -- the engine
+	// sets `[adapter].zone_env` from `[clock].zone` when it opens the adapter,
+	// so a row naming only `profile=` and `steps=` replays the world its own
+	// declarations describe. An operator's environment is no longer part of
+	// whether a promotion reproduces, which is what makes seeds.lock readable
+	// on its own.
 	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH")); err != nil {
 		fmt.Fprintf(os.Stderr, "TestMain: %v\n", err)
 		die(1)
@@ -1499,6 +1481,24 @@ func TestASurfaceRefusalReachesStdoutAndKeepsTheFindingsStatus(t *testing.T) {
 					"it cannot be what this arm removes")
 			}
 			b = []byte(string(b)[:i] + "\nenv = []" + string(b)[i+end+1:])
+			// AND `zone_env` GOES WITH IT (R7.5 D4c). It names a variable the
+			// engine sets and `env` passes through, so a project emptying one
+			// and keeping the other is refused by internal/platform for THAT
+			// pairing -- which is a different invalid project from the one
+			// this arm is about, and it masked the refusal under test: "exit
+			// 1, want 3" with `REFUSED adapter.zone_env` on stdout. An adapter
+			// that passes nothing through declares no zone variable either.
+			if zi := strings.Index(string(b), "\nzone_env = "); zi >= 0 {
+				zend := strings.Index(string(b)[zi+1:], "\n")
+				if zend < 0 {
+					t.Fatal("examples/toy's zone_env line is unterminated")
+				}
+				b = []byte(string(b)[:zi] + string(b)[zi+1+zend:])
+			}
+			if strings.Contains(string(b), "zone_env") {
+				t.Fatal("a zone_env declaration survives in the copy, so the refusal this arm " +
+					"drives is not the one it is about")
+			}
 		}
 		if werr := os.WriteFile(filepath.Join(dir, e.Name()), b, 0o600); werr != nil {
 			t.Fatalf("writing %s: %v", e.Name(), werr)

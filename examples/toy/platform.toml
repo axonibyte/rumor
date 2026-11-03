@@ -19,17 +19,30 @@ command = ["toy-adapter"]
 # 2026-10-24 by driving R5.3's third: the name was absent and the composition
 # the provider documents was unreachable for this project.
 # TOY_ZONE JOINS IT (R7.5 D4): the zone the SYSTEM is configured to read its
-# own instants in, which the adapter passes to the toy as `--zone`. It is the
-# system's configuration and not this project's declaration -- `[clock].zone`
-# in bindings.toml is the engine's, and it never crosses the wire -- so the two
-# DISAGREEING is a thing a run can find rather than something the harness makes
-# impossible (fable, coop r7/114).
-#
-# UNSET MEANS THE TOY ANCHORS ON UTC DAYS. A run of the `dst-*` profiles with
-# TOY_ZONE unset therefore finds that disagreement instead of the quota's
-# arithmetic, which is correct and is why seeds.lock's rows for those profiles
-# name the variable.
+# own instants in, which the adapter passes to the toy as `--zone` and which
+# the rollback provider passes when IT starts the toy. It is the system's
+# configuration and not this project's declaration -- `[clock].zone` in
+# bindings.toml is the engine's, and it never crosses the wire.
 env = ["TOY_ADDR", "TOY_ZONE"]
+
+# AND THE ENGINE SUPPLIES ITS VALUE, from `[clock].zone` (R7.5 D4c; fable's
+# ruling at coop rumor/1780, "the zone rides the PROFILE, not the row").
+#
+# WHY IT IS DECLARED RATHER THAN CONVENTIONAL: `TOY_ZONE` is this system's own
+# spelling, and an engine that knew the string would hold system-under-test
+# knowledge the engine deliberately does not -- the same reason the concurrency
+# stage reads its subject from a declaration. The name must also appear in
+# `env` above, or the engine would set a variable the adapter never receives;
+# internal/platform refuses that pairing by name.
+#
+# WHAT IT REPLACED: a comment here used to say seeds.lock's rows for the `dst-*`
+# profiles "name the variable", and ibis measured that they CANNOT -- the file's
+# grammar carries `profile=`, `steps=` and `witness=` and nothing else (coop
+# rumor/1777, and r7/109 keeps that grammar). A row replayed from the file alone
+# would have started a system configured for some other zone, and the walk would
+# have reported THAT disagreement rather than the defect the row names. The
+# value now comes from the same declarations the row already names.
+zone_env = "TOY_ZONE"
 
 [[venire]]
 role = "admin"

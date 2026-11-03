@@ -287,6 +287,17 @@ func TestWhatCanRunNothingIsRefused(t *testing.T) {
 		{"an empty argv", "adapter.command", "nothing to spawn", func(doc map[string]any) {
 			doc["adapter"].(map[string]any)["command"] = []any{}
 		}},
+		// AND A ZONE VARIABLE `env` DOES NOT PASS THROUGH (R7.5 D4c): the
+		// engine would set a name the adapter never receives, which is a
+		// declaration with no effect -- the shape this package refuses
+		// elsewhere. `env` is the list of names passed through, so the pairing
+		// is what makes `zone_env` reach anything at all.
+		{"a zone_env outside env", "adapter.zone_env", "not in [adapter].env",
+			func(doc map[string]any) {
+				a := doc["adapter"].(map[string]any)
+				a["env"] = []any{"OTHER"}
+				a["zone_env"] = "TOY_ZONE"
+			}},
 		{"a profile with no seeds", "profiles.nightly.seeds", "runs nothing", func(doc map[string]any) {
 			doc["profiles"].(map[string]any)["nightly"].(map[string]any)["seeds"] = int64(0)
 		}},
@@ -939,5 +950,38 @@ func TestAStartOnAProfileThatCannotWalkIsRefused(t *testing.T) {
 	if !t.Failed() {
 		t.Logf("PROOF a start is carried where the profile walks, refused by name with its " +
 			"stages where it does not, and absent or zero is refused neither way")
+	}
+}
+
+// THE NAME THAT CARRIES THE SYSTEM'S ZONE IS READ (R7.5 D4c; fable's ruling at
+// coop rumor/1780).
+//
+// IT IS OPTIONAL AND ITS ABSENCE IS NOT A ZERO: a project whose system under
+// test takes no zone declares none, and that is every project written before
+// this phase. The pairing with `env` is refused above; this cell is the value
+// reaching the struct at all, which nothing else asserts.
+func TestAnAdapterMayNameTheVariableThatCarriesTheZone(t *testing.T) {
+	doc := wellFormed()
+	a := doc["adapter"].(map[string]any)
+	a["env"] = []any{"TOY_ADDR", "TOY_ZONE"}
+	a["zone_env"] = "TOY_ZONE"
+	rep := Parse(doc)
+	if !rep.OK() {
+		t.Fatalf("a declared zone_env is refused: %v", rep.Refusals)
+	}
+	if got := rep.Platform.Adapter.ZoneEnv; got != "TOY_ZONE" {
+		t.Errorf("ZoneEnv is %q, want TOY_ZONE", got)
+	}
+
+	// AND A PROJECT THAT DECLARES NONE CARRIES THE EMPTY STRING, which is what
+	// cmd/rumor reads as "this system takes no zone" -- so an engine that set
+	// a variable named "" would be setting one nobody declared.
+	plain := wellFormed()
+	prep := Parse(plain)
+	if !prep.OK() {
+		t.Fatalf("the well-formed platform is refused: %v", prep.Refusals)
+	}
+	if got := prep.Platform.Adapter.ZoneEnv; got != "" {
+		t.Errorf("a platform declaring no zone_env carries %q", got)
 	}
 }

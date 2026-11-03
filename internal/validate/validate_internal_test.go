@@ -200,6 +200,20 @@ func TestArms8And20ReadTheTablesCONTENTSAndABareOneDeclaresNothing(t *testing.T)
 			if got := rep.Refusals[0].Detail; !strings.Contains(got, tc.names) {
 				t.Errorf("arm 8, %s: %q does not name %s", tc.name, got, tc.names)
 			}
+			// AND IT IS ARM 8 AND NOT A NEW ARM, which is the ruling itself
+			// (fable, coop r7/117: "a cell of arm 8 and not a new arm") and
+			// was armed by nothing until ibis measured it at rumor/1779:
+			// `rep.refuse("8", ...) -> rep.refuse("25", ...)` SURVIVED TWICE,
+			// because this cell asserted a COUNT and a DETAIL substring and
+			// never the Arm -- and `refuse` appends whatever string it is
+			// handed. So a refusal could cite an arm that does not exist, and
+			// the change the ruling DECLINED was one character away with the
+			// suite green.
+			if got := rep.Refusals[0].Arm; got != "8" {
+				t.Errorf("arm 8, %s: the refusal cites arm %q, want 8 -- a cell of arm 8 and "+
+					"not a new arm is the ruling, and an arm number nothing holds is how a "+
+					"new one arrives unnoticed", tc.name, got)
+			}
 		}
 	}
 

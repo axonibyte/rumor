@@ -177,30 +177,30 @@
 # still running. Measured at one tick past 2026-11-01T05:00:00Z, which is 00:00
 # CDT. Three steps: create_user, advance, advance.
 #
-# BOTH NEED THE SYSTEM CONFIGURED FOR THE ZONE, which is TOY_ZONE in
-# `[adapter].env` and the toy's own `--zone` (fable, r7/114). tests/run's
-# TestMain sets it for the same reason it builds the toy and puts it on PATH,
-# and that is measured inert for every row above: seeds 2, 40, 12, 66 and 3
-# walk byte-identically with it set and unset. The grammar of this file is
-# UNCHANGED (r7/110): a row names its profile.
+# THE ZONE RIDES THE PROFILE, NOT THE ROW (fable, coop rumor/1780). These rows
+# name a profile and a step count, as every row does -- this file's grammar
+# carries nothing else and r7/109 keeps it that way -- and the engine derives
+# the system's zone from the same declarations: `[clock].zone` supplies the
+# value and `[adapter].zone_env` names the variable it travels in. So a replay
+# from this file alone walks the world these rows describe, and the operator's
+# environment is not part of whether they reproduce. MEASURED: both rows run
+# byte-identically with TOY_ZONE unset, set to the declared zone, and set to a
+# WRONG one, and the toy reports America/Chicago in all three.
 #
-# WHAT THESE TWO ROWS DO NOT PROVE, and it is worth the lines because the
-# obvious reading is wrong. With TOY_ZONE UNSET the toy anchors on UTC days
-# while this project declares America/Chicago, and the allowance's day then
-# disagrees with `input.clock.local.date` -- a TRUE finding about a
-# misconfigured world and not the arithmetic these rows are for. MEASURED: with
-# the variable unset both rows still exit 3, still in three steps, still with
-# an `advance` in the shrunk trace. So the trace shape does not tell the two
-# apart, and neither does anything else a reader of `rumor run` can see: the
-# verb prints the finding's RULE and its line, and both arrive at `default
-# finding := "bug"`.
+# IT WAS NOT ALWAYS SO. A comment in platform.toml once said these rows "name
+# the variable", and ibis measured that they cannot (rumor/1777): a row
+# replayed from the file alone would have started a system configured for
+# whatever zone the operator happened to have, and the walk would have reported
+# THAT disagreement rather than the defect named here.
 #
-# SO THE ROWS PROVE A FINDING IS REACHED in each direction's world, and what
-# proves it is the allowance's own arithmetic lives where it can be read: the
-# four `the-allowance-*` cases in this package, and cmd/toy's
+# WHAT THESE ROWS STILL DO NOT PROVE: which observation produced the finding.
+# `rumor run` prints the finding's RULE, and the allowance's arithmetic and a
+# zone disagreement both arrive at the same default clause -- so the exit
+# status and the trace cannot tell them apart. What the rows now guarantee is
+# that no environment can produce the other one through this verb. What proves
+# the arithmetic is the four `the-allowance-*` cases here and cmd/toy's
 # TestTheInvitationAllowanceResetsAtLocalMidnightExceptWhenItDoesNot, which
 # asserts 01:00 on the 23-hour day and 23:00 on the 25-hour one against the
-# running application. An observation's NAME reaching the run's output would
-# close the gap; that is a product change and not a row's business.
+# running application.
 1 profile=dst-spring steps=24
 2 profile=dst-fall steps=24

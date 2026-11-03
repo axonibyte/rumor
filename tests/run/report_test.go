@@ -8,6 +8,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
+	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
 )
 
 // `rumor report` IS WHERE A READER SEES THE STAGE FACTS, and this file replaces
@@ -574,4 +578,139 @@ func tableAfter(doc, header string) string {
 		}
 	}
 	return rest
+}
+
+// A PROMOTED ROW REPLAYS ITS OWN WORLD, WHATEVER THE OPERATOR'S ENVIRONMENT
+// SAYS (R7.5 D4c; fable's ruling at coop rumor/1780).
+//
+// THE DEFECT THIS CLOSES IS ibis's AT rumor/1777. seeds.lock's grammar carries
+// `profile=`, `steps=` and `witness=` and nothing else, and r7/109 keeps it
+// that way -- so a row cannot name an environment variable, and a `dst-*` row
+// replayed from the file alone would have started a system configured for
+// whatever zone the operator happened to have. The walk would then report THAT
+// disagreement rather than the defect the row names, and
+// TestEveryPromotedToySeedStillFindsItsBug -- which reads exit 3 -- could not
+// tell the two apart.
+//
+// SO THE ENGINE DERIVES IT: the project names the variable in
+// `[adapter].zone_env` and cmd/rumor sets it from `[clock].zone`, the way a
+// rollback provider's address is set. THE ENGINE'S VALUE WINS, which is the
+// property asserted here and the reason this is a cell rather than a comment:
+// three environments -- unset, the declared zone, and a WRONG one -- must
+// produce the same run, or the operator is still part of whether a promotion
+// reproduces.
+func TestAPromotedRowsZoneComesFromTheProjectAndNotTheEnvironment(t *testing.T) {
+	// THE ROW ITSELF, read from the lock rather than spelled here: a cell that
+	// named its own seed would stop being about a promotion the moment the
+	// file changed.
+	raw, err := os.ReadFile("../../examples/toy/seeds.lock")
+	if err != nil {
+		t.Fatalf("reading seeds.lock: %v", err)
+	}
+	var row struct {
+		seed, profile string
+		steps         int
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		parsed, isSeed, perr := platform.ParseSeedLine(line)
+		if !isSeed || perr != nil {
+			continue
+		}
+		if strings.HasPrefix(parsed.Profile, "dst-") {
+			row.seed, row.profile, row.steps = parsed.Seed, parsed.Profile, parsed.Steps
+			break
+		}
+	}
+	if row.seed == "" {
+		t.Fatal("seeds.lock promotes no `dst-*` row, so this arm is checking nothing: the " +
+			"zone-derivation it exists for is only observable on a profile whose world " +
+			"depends on the zone")
+	}
+
+	// THE ZONE THE PROJECT DECLARES, read from the project rather than spelled
+	// here: a cell naming America/Chicago itself would pass on a tree whose
+	// bindings said something else.
+	brep, berr := bindings.Load("../../examples/toy/bindings.toml", decl.TOML)
+	if berr != nil || !brep.OK() {
+		t.Fatalf("reading the toy's bindings: %v %v", berr, brep.Refusals)
+	}
+	declared := brep.Bindings.ClockZone
+	if declared == "" {
+		t.Fatal("examples/toy declares no [clock].zone, so there is no value for the engine " +
+			"to derive and this arm is checking nothing")
+	}
+
+	args := []string{"run", "../../examples/toy", "--seed", row.seed,
+		"--profile", row.profile, "--steps", strconv.Itoa(row.steps)}
+	// THE WRONG ZONE IS UTC, deliberately: it is a real zone with no
+	// transitions, so a toy that took it would compute a CORRECT reset on
+	// every day of the year and the run would find something else entirely.
+	// A name no database holds would make the toy refuse to start, which is a
+	// different arm (cmd/toy's).
+	out := map[string]string{}
+	for _, env := range []struct {
+		what, value string
+		set         bool
+	}{
+		{what: "unset"},
+		{what: "the declared zone", value: "America/Chicago", set: true},
+		{what: "a WRONG zone", value: "UTC", set: true},
+	} {
+		cmd := exec.Command(rumorBin, args...)
+		cmd.Env = withoutZone(os.Environ())
+		if env.set {
+			cmd.Env = append(cmd.Env, "TOY_ZONE="+env.value)
+		}
+		var errb strings.Builder
+		cmd.Stderr = &errb
+		got, rerr := cmd.Output()
+		// EXIT 3 IS THE ROW'S OWN FINDING and anything else is a different
+		// measurement, so it is read rather than ignored.
+		if ee, ok := rerr.(*exec.ExitError); ok && ee.ExitCode() != 3 {
+			t.Fatalf("with TOY_ZONE %s the row exited %d, want 3:\n%s", env.what,
+				ee.ExitCode(), got)
+		} else if rerr != nil && !ok {
+			t.Fatalf("with TOY_ZONE %s: %v", env.what, rerr)
+		}
+		out[env.what] = string(got)
+		// THE SYSTEM UNDER TEST SAYS WHICH ZONE IT READS, and this is the
+		// assertion that has teeth. Comparing whole runs across environments
+		// does NOT: three mutants of the derivation -- the engine not
+		// supplying the zone at all, supplying one of its own choosing, and
+		// never restoring the prior value -- all survived that comparison,
+		// because `rumor run` prints a finding's RULE and both the
+		// declared-against-configured disagreement and the allowance's own
+		// arithmetic arrive at the same default clause. The toy's own startup
+		// line is the observable the product did not have.
+		if want := "reading instants in " + declared; !strings.Contains(errb.String(), want) {
+			t.Errorf("with TOY_ZONE %s the system under test does not report %q, so the "+
+				"engine did not supply the project's declared zone and this row is walking "+
+				"a world its declarations do not describe:\n%s", env.what, want, errb.String())
+		}
+	}
+	for _, what := range []string{"the declared zone", "a WRONG zone"} {
+		if out[what] != out["unset"] {
+			t.Errorf("TOY_ZONE %s produced a different run from TOY_ZONE unset, so the "+
+				"operator's environment is part of whether this promotion reproduces:\n"+
+				"unset:\n%s\n%s:\n%s", what, out["unset"], what, out[what])
+		}
+	}
+	if !t.Failed() {
+		t.Logf("PROOF %s/%s at %d steps runs identically with TOY_ZONE unset, set to %s, and "+
+			"set to a wrong one -- and the toy reports %s in all three",
+			row.profile, row.seed, row.steps, declared, declared)
+	}
+}
+
+// withoutZone is the environment with TOY_ZONE removed, so each case below
+// sets exactly what it means to set.
+func withoutZone(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "TOY_ZONE=") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }

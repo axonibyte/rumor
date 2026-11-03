@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -314,5 +316,102 @@ func TestTheDispatchNamesEveryStageItCannotRun(t *testing.T) {
 	}
 	if got := missingRunners([]string{"api"}, runners); len(got) != 0 {
 		t.Errorf("the pass named %v over a selection every runner covers", got)
+	}
+}
+
+// THE ENGINE SUPPLIES THE SYSTEM'S ZONE AND PUTS THE ENVIRONMENT BACK (R7.5
+// D4c; fable's ruling at coop rumor/1780).
+//
+// IN-PROCESS AND WITH AN ADAPTER THAT REPORTS ITS OWN ENVIRONMENT, which is
+// what makes both halves observable. The supply is visible from outside -- the
+// toy prints the zone it reads -- but the RESTORE is a property of this
+// process: the variable is set before a spawn and put back when the verb
+// returns, and its only consumer is the shrink, which spawns many adapters in
+// one run. An arm that forked a binary could not see it, and a mutant that
+// dropped the restore survived one that tried.
+//
+// THE ADAPTER IS A SHELL THAT WRITES WHAT IT SAW AND FAILS. `wire.Open` then
+// reports could-not-run, which is exit 2 and not a refusal -- so this cell
+// asserts the engine's BEHAVIOUR BEFORE the spawn without needing a walkable
+// world or a real system under test.
+func TestTheEngineSuppliesTheSystemsZoneAndRestoresTheEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	seen := filepath.Join(dir, "seen")
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("platform.toml", `contract = "2"
+
+[adapter]
+command = ["sh", "-c", "printf '%s' \"$RUMOR_TEST_ZONE\" > `+seen+`; exit 1"]
+env = ["RUMOR_TEST_ZONE"]
+zone_env = "RUMOR_TEST_ZONE"
+
+[[venire]]
+role = "member"
+count = 1
+
+[stages]
+api = { enabled = true }
+
+[weights.default]
+do = 1
+canard = 0
+palter = 0
+suborn = 0
+essoin = 0
+`)
+	write("bindings.toml", `[[action]]
+name = "do"
+context = "api"
+emits = ["thing.done"]
+requires = ["may_do"]
+
+[claim."thing.done"]
+timing = "immediate"
+
+[clock]
+form = "faked"
+zone = "America/Chicago"
+`)
+	write("statute.rego", "package rumor.statute\n\ndefault may_do := true\n")
+
+	// THE PRIOR VALUE IS A SENTINEL, so "restored" is distinguishable from
+	// "unset" and from "left at the project's zone".
+	const sentinel = "a-value-nobody-derived"
+	t.Setenv("RUMOR_TEST_ZONE", sentinel)
+
+	var out, errb bytes.Buffer
+	rc := run([]string{"run", dir, "--seed", "1", "--steps", "1"}, bytes.NewReader(nil), &out, &errb)
+	// COULD-NOT-RUN, because the adapter exits: the project is not wrong and
+	// this is not a refusal (docs/contract.md:57).
+	if rc != 2 {
+		t.Fatalf("exit %d, want 2 (could-not-run: the fixture's adapter fails on purpose)\n%s\n%s",
+			rc, out.String(), errb.String())
+	}
+
+	// THE ADAPTER SAW THE PROJECT'S DECLARED ZONE, not the sentinel: the
+	// engine resolved `[clock].zone` and set the variable the project named.
+	raw, rerr := os.ReadFile(seen)
+	if rerr != nil {
+		t.Fatalf("the adapter recorded nothing, so it never ran and this cell measures "+
+			"neither half: %v", rerr)
+	}
+	if got := string(raw); got != "America/Chicago" {
+		t.Errorf("the adapter saw RUMOR_TEST_ZONE=%q, want America/Chicago: the engine did not "+
+			"supply the zone the project declares, so a promoted row would walk a world its "+
+			"own declarations do not describe", got)
+	}
+
+	// AND THE ENVIRONMENT IS BACK, which is the half no out-of-process arm can
+	// see. Left set, every later spawn in this process -- every candidate the
+	// shrink replays -- would inherit a zone from a verb that has returned.
+	if got := os.Getenv("RUMOR_TEST_ZONE"); got != sentinel {
+		t.Errorf("RUMOR_TEST_ZONE is %q after the verb returned, want the sentinel %q: a "+
+			"process-wide variable the engine set and did not put back reaches every later "+
+			"spawn", got, sentinel)
 	}
 }

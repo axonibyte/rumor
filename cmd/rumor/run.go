@@ -141,6 +141,43 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 	// override it cannot tell the two apart from the instant alone.
 	clockStart, clockStartLevel := prep.Platform.ClockStartFor(profile, brep.Bindings.ClockStart)
 
+	// AND THE SYSTEM UNDER TEST IS TOLD WHAT ZONE THE PROJECT DECLARES (R7.5
+	// D4c; fable's ruling at coop rumor/1780, "the zone rides the PROFILE, not
+	// the row"). The project names the variable in `[adapter].zone_env` and
+	// this supplies the value from `[clock].zone` -- the shape a rollback
+	// provider's address already has, where the provider names TOY_ADDR and
+	// this file sets it with `os.Setenv(ae.AddrEnv(), at.Addr())`.
+	//
+	// WHY THE ENGINE AND NOT THE OPERATOR: a promoted seed names a profile and
+	// a step count and nothing else, because seeds.lock's grammar carries no
+	// env token and r7/109 keeps it that way. A row replayed from the file
+	// alone would start a system configured for some other zone, and the walk
+	// would report THAT disagreement rather than the defect the row names
+	// (ibis, rumor/1777). Deriving the value from the same declarations the row
+	// already names is what makes a replay reproduce the row.
+	//
+	// SET ONCE FOR THE VERB AND NOT PER SPAWN, which is the one way this
+	// differs from the address: four sites in this command open an adapter --
+	// the walk, the stage dispatch, the provider path and the shrink -- and the
+	// project's zone is the same declaration for all of them. The address is
+	// not: it changes with every world a restore starts.
+	//
+	// THE PRIOR VALUE IS RESTORED for the address's reason: a process-wide
+	// variable left behind would reach every later spawn in this process.
+	if ze := prep.Platform.Adapter.ZoneEnv; ze != "" && brep.Bindings.ClockZone != "" {
+		prior, had := os.LookupEnv(ze)
+		if serr := os.Setenv(ze, brep.Bindings.ClockZone); serr != nil {
+			_, _ = fmt.Fprintf(stderr, "run: could not run: naming the project's zone in %s: %v\n",
+				ze, serr)
+			return 2
+		}
+		if had {
+			defer func() { _ = os.Setenv(ze, prior) }()
+		} else {
+			defer func() { _ = os.Unsetenv(ze) }()
+		}
+	}
+
 	p := schedule.Project{
 		Statute: string(statute),
 		Actions: brep.Bindings.Actions,

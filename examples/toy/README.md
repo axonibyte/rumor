@@ -58,13 +58,16 @@ in the day before March cannot reach November in a walk any budget allows,
 which is why the direction is the profile's and not the seed's (fable, coop
 `r7/110`).
 
-**THE SYSTEM'S ZONE IS ITS OWN CONFIGURATION.** `toy --zone` names the zone
-this application reads its own instants in, passed as `TOY_ZONE` and declared
-in `[adapter].env`; `[clock].zone` in `bindings.toml` is what the ENGINE reads
-the run's instants in. They are separate on purpose — the two disagreeing is a
-thing a run can find — so a walk of either profile wants `TOY_ZONE` set to the
-zone the project declares, and with it unset these seeds find that
-disagreement instead of the arithmetic. `seeds.lock` says so beside the rows.
+**THE SYSTEM'S ZONE IS ITS OWN CONFIGURATION, AND THE ENGINE SUPPLIES IT.**
+`toy --zone` names the zone this application reads its own instants in, and it
+arrives as `TOY_ZONE` — passed to the toy by the adapter, and by the rollback
+provider when that starts it. `[clock].zone` in `bindings.toml` is what the
+ENGINE reads the run's instants in, and `[adapter].zone_env` names the variable
+the engine puts it in, the way a rollback provider names the one its address
+travels in. So a run of either profile configures the system from the project's
+own declarations and needs nothing from the operator's environment (fable, coop
+`rumor/1780`); the two CAN still disagree, because a system configured by hand
+is configured by hand, and that disagreement is a finding a run can make.
 
 ## What the ledger could not express, and what that cost
 

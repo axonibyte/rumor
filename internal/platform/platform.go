@@ -53,6 +53,27 @@ type Adapter struct {
 	Command []string
 	Cwd     string
 	Env     []string
+
+	// ZoneEnv is the NAME of the environment variable through which the
+	// engine tells the adapter what zone the system under test is configured
+	// for (R7.5 D4c; fable's ruling at coop rumor/1780, "the zone rides the
+	// PROFILE, not the row").
+	//
+	// THE PROJECT NAMES IT AND THE PLATFORM SUPPLIES THE VALUE, which is the
+	// shape a rollback provider's `AddrEnv` already has: the provider names
+	// TOY_ADDR and cmd/rumor sets it to the world it started. Here the project
+	// names the variable and the engine sets it from `[clock].zone`, so a
+	// promoted seed replays the world its own declarations describe -- without
+	// it the row would need a token seeds.lock's grammar does not carry
+	// (ibis's finding at rumor/1777, and r7/109 keeps that grammar).
+	//
+	// WHY A NAME AND NOT A CONVENTION: "TOY_ZONE" is the toy's spelling, and
+	// an engine that knew it would hold the kind of system-under-test
+	// knowledge this project keeps out of the engine -- the same reason the
+	// concurrency stage reads its subject from a declaration rather than
+	// deriving it. OPTIONAL, because a project whose system takes no zone
+	// declares none.
+	ZoneEnv string
 }
 
 // Member is one entry in the venire: a role the statute speaks and how many
@@ -438,6 +459,25 @@ func Parse(doc map[string]any) Report {
 		}
 		p.Adapter.Cwd = a.Str("cwd", false)
 		p.Adapter.Env = a.Strings("env", false)
+		// AND THE NAME THAT CARRIES THE ZONE, refused when `env` does not
+		// pass it through: a variable the engine sets and the adapter never
+		// receives is a declaration with no effect, which is the
+		// declared-and-read-by-nothing shape this file refuses elsewhere.
+		p.Adapter.ZoneEnv = a.Str("zone_env", false)
+		if p.Adapter.ZoneEnv != "" {
+			var passed bool
+			for _, name := range p.Adapter.Env {
+				if name == p.Adapter.ZoneEnv {
+					passed = true
+					break
+				}
+			}
+			if !passed {
+				r.Refuse("adapter.zone_env", fmt.Sprintf("%q is not in [adapter].env, so the "+
+					"engine would set a variable the adapter never receives: `env` is the list "+
+					"of names passed through to it", p.Adapter.ZoneEnv))
+			}
+		}
 		a.Done()
 	}
 

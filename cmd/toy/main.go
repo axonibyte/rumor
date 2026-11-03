@@ -399,6 +399,27 @@ func main() {
 	// adapter reading this from a pipe gets the line as it is written. The
 	// buffering trap this project has been bitten by is Python's.
 	fmt.Printf("toy: listening on %s state=%s\n", ln.Addr().String(), *statePath)
+	// AND THE ZONE IT READS ITS OWN INSTANTS IN, on STDERR (R7.5 D4c).
+	//
+	// WHY IT IS PRINTED AT ALL: the configuration was unobservable from
+	// outside. The engine derives this from `[clock].zone` and sets the
+	// variable the project names, and whether it actually did so could not be
+	// seen in a run -- `rumor run` prints a finding's RULE, and the
+	// declared-against-configured disagreement and the allowance's own
+	// arithmetic both arrive at the same default clause. Three mutants of the
+	// derivation survived an arm that compared whole runs across three
+	// environments, because the outputs were identical either way.
+	//
+	// STDERR AND NOT STDOUT, for the line above's reason inverted: the adapter
+	// and the rollback provider READ stdout to learn the port, so a second
+	// line there would have to be parsed by both. stderr is forwarded to the
+	// engine's own stderr, where a reader and an arm can both see it.
+	//
+	// IT NAMES THE ZONE AND NOT THE FLAG, so an unconfigured toy says UTC
+	// rather than saying nothing: "no line" and "UTC" would otherwise be the
+	// same observation, which is the absence-is-not-evidence shape this
+	// project keeps finding.
+	fmt.Fprintf(os.Stderr, "toy: reading instants in %s\n", srv.zone)
 
 	if err := http.Serve(ln, srv.routes()); err != nil {
 		fmt.Fprintf(os.Stderr, "toy: serving: %v\n", err)
