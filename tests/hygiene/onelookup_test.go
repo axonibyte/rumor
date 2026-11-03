@@ -32,6 +32,11 @@
 // quote `time.LoadLocation` to explain why one site exists. go/parser sees
 // calls.
 //
+// AND IT RESOLVES THE IMPORT'S LOCAL NAME rather than matching the word
+// `time`, which is ibis's limit at coop rumor/1782: this tree aliases stdlib
+// imports (`cryptorand "crypto/rand"`), so a second site written `t "time"`
+// ... `t.LoadLocation(name)` would have survived an arm keyed on the literal.
+//
 // WHAT THIS DOES NOT PROVE: that the site BEHAVES, which
 // internal/bindings.TestZoneNamedIsNilForNoneAndErrorsForUnknown drives, nor
 // that a caller cannot read a zone some other way -- `time.Time.In` is not a
@@ -84,6 +89,38 @@ func TestTheEnginesPackagesHoldOneZoneLookupSite(t *testing.T) {
 		}
 		scanned++
 		rel, _ := filepath.Rel(root, path)
+		// THE LOCAL NAME "time" IS BOUND TO, not the literal word (ibis's
+		// limit at coop rumor/1782). A file may alias a stdlib import, and
+		// this tree does -- `cryptorand "crypto/rand"` in internal/schedule --
+		// so an arm matching `time.LoadLocation` by its text would miss a
+		// second site written as `t "time"` ... `t.LoadLocation(name)`. The
+		// import specs say which identifier names the package in THIS file,
+		// and a dot-import binds no identifier at all, which is reported
+		// rather than skipped: it would make every bare `LoadLocation(` a
+		// candidate and this arm cannot see those.
+		local := ""
+		for _, spec := range f.Imports {
+			if spec.Path == nil || spec.Path.Value != `"time"` {
+				continue
+			}
+			switch {
+			case spec.Name == nil:
+				local = "time"
+			case spec.Name.Name == ".":
+				t.Errorf("%s dot-imports \"time\", so a call to LoadLocation there carries no "+
+					"package name and this arm cannot see it", rel)
+			case spec.Name.Name == "_":
+				// A BLANK IMPORT CALLS NOTHING, which is how cmd/rumor and
+				// cmd/toy carry `time/tzdata`.
+			default:
+				local = spec.Name.Name
+			}
+		}
+		if local == "" {
+			// A FILE THAT DOES NOT IMPORT `time` CANNOT CALL INTO IT, so there
+			// is nothing here to find and the walk moves on.
+			return nil
+		}
 		ast.Inspect(f, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -94,7 +131,7 @@ func TestTheEnginesPackagesHoldOneZoneLookupSite(t *testing.T) {
 				return true
 			}
 			pkg, ok := sel.X.(*ast.Ident)
-			if !ok || pkg.Name != "time" {
+			if !ok || pkg.Name != local {
 				return true
 			}
 			found[filepath.ToSlash(rel)]++
