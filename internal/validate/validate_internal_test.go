@@ -157,6 +157,52 @@ func TestArms8And20ReadTheTablesCONTENTSAndABareOneDeclaresNothing(t *testing.T)
 			}
 		}
 	}
+	// AND `.local` HAS ITS OWN CONTROL (R7.5; fable's ruling at coop r7/117),
+	// which is a CELL of this arm and not a new one: `input.clock.local` is
+	// the run's instant read in `[clock].zone`, and the engine builds the key
+	// only from a declared zone -- so a statute reading it on a project with
+	// none is undefined at every seal.
+	//
+	// THE FOUR DIRECTIONS, and the third is the one that makes this a cell
+	// about the ZONE rather than about the clock: a project that declares a
+	// clock AND a zone is clean, while the same statute beside a clock with no
+	// zone is refused. Without that pair the cell would pass on an arm that
+	// refused every `.local` reader.
+	const readsLocal = "package rumor\nallow { input.clock.local.date == \"x\" }\n"
+	for _, tc := range []struct {
+		name  string
+		src   string
+		clock map[string]any
+		zone  string
+		want  int
+		names string
+	}{
+		{"`.local` with a clock and a zone", readsLocal, clockd, "America/Chicago", 0, ""},
+		{"`.local` with a clock and NO zone", readsLocal, clockd, "", 1, "`[clock].zone`"},
+		// AND NO CLOCK AT ALL IS THE CLOCK'S REFUSAL AND NOT THE ZONE'S, which
+		// is one refusal rather than two: a project with no table has already
+		// been told the thing it must fix, and a second sentence naming the
+		// zone would send its reader after a key that cannot help yet.
+		{"`.local` with no clock table", readsLocal, absent, "", 1, "no clock control"},
+		{"a plain clock reader with a zone declared", reads, clockd, "America/Chicago", 0, ""},
+	} {
+		if err := os.WriteFile(filepath.Join(dir, "statute.rego"), []byte(tc.src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		rep := &Report{}
+		arm8(rep, dir, bindings.Bindings{Clock: tc.clock, ClockZone: tc.zone})
+		if len(rep.Refusals) != tc.want {
+			t.Errorf("arm 8, %s: %d refusal(s), want %d: %v",
+				tc.name, len(rep.Refusals), tc.want, rep.Refusals)
+			continue
+		}
+		if tc.want == 1 {
+			if got := rep.Refusals[0].Detail; !strings.Contains(got, tc.names) {
+				t.Errorf("arm 8, %s: %q does not name %s", tc.name, got, tc.names)
+			}
+		}
+	}
+
 	// AND THE SKIP IS NOT A PASS: with no statute at all the arm reports that
 	// the question was unasked, which must not be confused with "evaluated and
 	// clean" -- a cell above would read the same either way.

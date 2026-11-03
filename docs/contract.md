@@ -539,6 +539,7 @@ and this paragraph said otherwise until it did:
 | in a project with no `[clock]` | refused by | as of |
 |---|---|---|
 | a rule reading `clock` | `rumor validate`'s arm 8 | R4, kept |
+| a rule reading `input.clock.local` in a project with no `[clock].zone` -- a CELL of arm 8 and not a new arm, which is fable's ruling at coop r7/117: the key is the run's instant read in that zone and the engine builds it only from a declared one, so the rule is UNDEFINED at every seal rather than wrong at one. The refusal names the zone key as the row above names the clock, and a project with no `[clock]` at all gets that row's refusal alone -- one sentence about the thing to fix, not two | `rumor validate`'s arm 8 | R7.5 |
 | an eventual type bounded by a duration | the engine, at run time, naming the bound it cannot measure | R2.3, kept |
 | a `[deadline]` table **with a field in it** -- its CONTENTS are the condition, so a bare `[deadline]` declares nothing and is not refused (fable's ruling, coop rumor/1359), and `instants` counts as a field like any other: R7.4 types that key and the table still carries it, so what arm 20 reads does not depend on which half of the split a key fell on | `rumor validate`'s arm 20 | R7.2 |
 

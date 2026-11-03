@@ -259,6 +259,33 @@ func arm8(rep *Report, dir string, b bindings.Bindings) {
 		rep.refuse("8", "the statute reads input.clock and bindings.toml declares no clock "+
 			"control: the rule would read whatever the host clock said, which no seed can "+
 			"reproduce. A `[clock]` table with no fields in it declares nothing")
+		// AND NOTHING MORE IS SAID ABOUT THE ZONE, because the cell below is
+		// the same sentence one level in: a project with no clock control at
+		// all has already been told the thing it must fix, and a second
+		// refusal naming `[clock].zone` would send its reader after a key that
+		// cannot help until the table exists.
+		return
+	}
+	// `.local` HAS ITS OWN CONTROL, AND IT IS THE ZONE (R7.5; fable's ruling at
+	// coop r7/117, on my question at /115).
+	//
+	// IT IS A CELL OF THIS ARM AND NOT A NEW ONE, which is the ruling's own
+	// words: "arm 8 already says a statute may not read what the project does
+	// not control, and `.local` is the same clause with the zone as the
+	// control". `input.clock.local` is the run's instant READ IN
+	// `[clock].zone`, and internal/engine builds the key only where the ledger
+	// carries a resolved zone -- so on a project that declares none the rule
+	// is UNDEFINED at every seal rather than wrong at one, which is the
+	// declared-and-read-by-nothing shape this arm exists for.
+	//
+	// THE REFUSAL NAMES THE ZONE KEY, as the one above names the clock: a
+	// reader of either has to be told which declaration is missing, not that
+	// something is.
+	if strings.Contains(string(src), "input.clock.local") && b.ClockZone == "" {
+		rep.refuse("8", "the statute reads input.clock.local and bindings.toml declares no "+
+			"`[clock].zone`: the engine builds that key only from a declared zone, so the "+
+			"rule is undefined at every seal rather than wrong at one. A `[clock]` table "+
+			"with a form and no zone declares a clock and no zone")
 	}
 }
 
