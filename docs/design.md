@@ -306,8 +306,12 @@ lie an actor tells about its own action -- so their precondition is THE HONEST
 ACTION'S OWN: an applicable action that emits something to lie about. An
 unconditioned `suborn` would lie about an action the actor could not take,
 which is a lie of a kind the vocabulary does not have. `essoin` is
-INAPPLICABLE until R9: abandoning mid-flow needs flow state the engine does not
-carry yet, so it keeps a declared weight and is never drawn.
+INAPPLICABLE until the engine carries flow state to abandon, so it keeps a
+declared weight and is never drawn. R9.1 gives the walk a PENDING FLOW — a
+browser flow stopped at a wait, carried across one step boundary — and that is
+not yet the state `essoin` needs: abandoning is a drawn kind with its own
+record, and a pending flow is the engine's own retry in progress. The refusal
+stays by name rather than being widened to fit the nearest available state.
 
 **What a drawn kind DOES, ruled at coop r5/58.** A lie is about acting, and the
 three differ in whether the system moved. `canard` appends a `told` from the
@@ -444,7 +448,12 @@ mechanism: it holds only handles something bound to an id, so "resolves" and "is
 in the table" are one question. There are TWO ways an action names a handle and
 both count: an argument declared with `source = "handle"`, whose kind the
 request cannot be written without, and a `{kind}` in a UI flow, which the flow
-cannot be navigated without. The argument is reported first where both are
+cannot be navigated without. AS OF R9.1 THE FLOW'S PLACEHOLDER IS ALSO
+SUBSTITUTED before the steps go out, to the id the action's OWN ARGUMENT chose —
+so nothing is drawn for it and the page cannot be pointed at one entity while
+the request named another. Until a flow was actually sent, nothing filled them
+in: the kinds were read for applicability and the literal would have reached the
+adapter. The argument is reported first where both are
 missing, because an unwritable request stops the step sooner than an
 unnavigable page.
 
@@ -1375,9 +1384,9 @@ capability set belongs to whatever can RUN a stage, so the refusal lives with
 the dispatcher and happens before a walk whose stage list was already wrong.
 
 **KNOWN AND RUNNABLE ARE TWO FACTS.** `browser` is declared ENABLED by
-thirty-five of those files and no build can run it before R9; refusing them
-would be refusing a declaration the contract invites. So a known name this
-build cannot run yet is neither an error nor a run — it is absent from the
+thirty-five of those files and no build could run it before R9; refusing them
+would be refusing a declaration the contract invites. So a known name a build
+cannot run yet is neither an error nor a run — it is absent from the
 stages that ran, which is what makes "ran" different from "declared". That
 difference is the drill's point: a record naming every declared stage
 unconditionally satisfies "the record names the stages that ran" and is the
@@ -1389,6 +1398,66 @@ hand-written corpus wearing a different hat (rook, coop r8/14).
 with its reason, so `browser` reads as DECLARED-BUT-UNRUNNABLE rather than as a
 stage that quietly did not appear — which is the distinction rook's D13 partner
 turns on, and the one a reader cannot make from an absence.
+
+**AND `browser` IS RUNNABLE AS OF R9.1, so the paragraphs above are history and
+not the present tense.** The stage is dispatched under its one name, selected
+and reported like every other, and where no driver is on the box it SKIPS BY
+NAME carrying how it looked — the six candidate binaries, `RUMOR_BROWSER`, and
+how many actions declare a flow. A skip is not an absence, which is the whole
+point of the two sentences before this one: what changed is that `browser` now
+reaches the dispatcher, so "declared but unrunnable" is a reading the report
+makes rather than one a reader derives.
+
+**THE STAGE AND THE WALK ARE TWO COUNTS, and the report says whose is whose.** A
+browser-context action's flow is driven by the WALK, through the adapter, and
+needs no driver on this box at all; the STAGE is what a real browser would ride.
+So a run can report steps through `flow` in its summary and a skipped browser
+stage three lines later, both true — and the stage's line says "THIS STAGE drove
+none" for exactly that reason. The earlier wording said "none was driven", which
+was true of the stage and read as true of the run.
+
+**A BROWSER-CONTEXT ACTION IS CARRIED BY `flow` AND NOT `execute`**, decided by
+the action's CONTEXT and nothing else: `docs/contract.md` says such an action
+"declares a flow instead of a response", so the two operations are not
+alternatives for one action and there is no fallback when a driver is absent. A
+fallback chosen by box state would be two paths for one declaration, which is
+the silent-substitution class this tree refuses by name.
+
+**AND THE ENGINE RETRIES THE WAIT, WHICH IS WHY THE RETRIER IS NOT THE ADAPTER.**
+A wait is bounded in the engine's time — checked at each seal and after each
+clock advance the engine makes — so an adapter re-checking inside one call has
+nothing advance between its two looks and reads the same world twice. The walk
+therefore resumes a stopped flow at the TOP of the next step, after the seal and
+the clock write and BEFORE any draw: no generator entropy is consumed, no step
+slot is taken, and none of the steps before the stopped position are re-sent, so
+a seed's world does not move. The SECOND failure of the SAME wait is a
+`ui_timeout`; a flow that got further and stopped at a later wait has made
+progress, which is why the POSITION decides it and not the word.
+
+**A KIND AN ADAPTER DOES NOT SERVE IS REFUSED FROM ONE SITE**, and that site is
+load-bearing for the contract version rather than a tidiness. The version stays
+`"2"` through R9.1's `flow` because a version is one string three places compare
+EXACTLY with no compatibility window: a bump would refuse an adapter built before
+the request AT THE HANDSHAKE, and then an adapter that merely LACKS `flow` would
+be refused for its VERSION and never for the thing it lacks. An unmoved version
+is what keeps that by-name refusal reachable — so the refusal's own wording is
+part of the argument, and a sentence each adapter spelled for itself is one that
+can drift out from under it one adapter at a time. It was two sites saying two
+things, with only one of them able to satisfy the arm that holds the argument up.
+
+**AND THE WITNESS FOR IT HAS TO BE AN ADAPTER THAT LACKS A KIND ON PURPOSE.** It
+used to be `cmd/toy-adapter`'s fall-through, which genuinely lacked `flow` — and
+R9.1 ended that, because `examples/toy` declares an action with a flow and a
+declaration the walk honors is one the toy must honor too. With it served, no
+adapter in this tree lacks the kind by accident, so the live case is the fake
+under a lacks-a-kind knob, in the same family as the contract-bump and
+missing-field knobs: a NAMED misbehavior and not a mock written for the arm. The
+distinction matters because a subject invented to make an arm pass would make the
+kind fabricated, which is the objection that shaped this choice rather than one
+it ignores. With every request kind served, the toy's own fall-through is
+unreachable — and that claim is driven over the table of kinds rather than left
+in a comment, because the last default in this tree to carry an unreachability
+comment had a false one.
 
 **A READER ASKS FOR IT, AND NEITHER STREAM IS FREE.** The first attempt printed
 the selection and the skips on stderr unconditionally, reasoning that stdout was
