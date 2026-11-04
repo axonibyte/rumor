@@ -367,7 +367,7 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		// the absence of one. It takes no ctx and no dir because it starts no
 		// process yet; both arrive with the driver.
 		stage.Browser: func() int {
-			return browserStage(brep.Bindings, stdout)
+			return browserStage(brep.Bindings, stdout, stderr)
 		},
 	}
 	if noRunner := missingRunners(stages, runners); len(noRunner) > 0 {
