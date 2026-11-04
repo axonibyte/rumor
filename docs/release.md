@@ -830,10 +830,21 @@ why. Three checks: every job declares `timeout-minutes`; every invocation of a
 network or build tool carries a bound (`timeout`, or `curl -m` — *not*
 `--connect-timeout`, which bounds only the handshake); and no bare `rc=$?`.
 
-Run it before committing a workflow change, with its own self-test:
+Run it before committing a workflow change, with its own self-test — which
+prints its own arm count, so this page does not carry a second copy of it:
 
-    python3 tools/check-workflows.py --self-test      # 25 arms
+    python3 tools/check-workflows.py --self-test
     python3 tools/check-workflows.py .forgejo/workflows
+
+**AND THE COUNT IS NOT WRITTEN HERE ON PURPOSE** (rook, coop r9/62). It said
+`# 25 arms`, and before that `# 10 arms`, which was wrong by fifteen until R9.1
+corrected it — a figure nobody could have checked without running the very
+command it annotates, which prints `self-test: 25/25 arms green` one second
+later. A present-tense count that cannot be re-derived from its own file is the
+defect EVEN WHILE CORRECT, exempt only where a checking oracle sits beside it or
+the heading is frozen; this page is a how-to and neither applies. The earlier
+instinct was to build an oracle for the number, and the cheaper fix is to stop
+making the claim.
 
 The self-test's primary fixture is `probe-pkg.yml` **as it actually shipped** —
 the file that wedged the runner. A checker that does not refuse that
