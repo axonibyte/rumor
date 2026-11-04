@@ -59,9 +59,17 @@ func flowsDeclared(b bindings.Bindings) int {
 	return n
 }
 
-// apiTokens is the only way anything inside this stage could obtain an API
-// session token. The stage is handed a REFUSING implementation and never a
-// working one.
+// refusedTokens is the only way anything inside this stage could obtain an API
+// session token, and it refuses every ask.
+//
+// THERE IS NO INTERFACE HERE, DELIBERATELY. An `apiTokens` interface stood here
+// and nothing consumed it: the stage holds the concrete refuser, so the
+// abstraction had exactly one implementation and no caller that varied. It was
+// an unused unexported type, which `go build` and `go vet` accept and
+// golangci-lint's `unused` does not -- so it passed every local suite and
+// failed CI in the lint step, which is how 9884fad went red with its parent
+// green (rook's sort at coop rumor/1863, the duration argument at /1866).
+// Re-introduce an interface when a second implementation exists, not before.
 //
 // THIS IS DELIVERABLE 3's CONDUCT HALF (fable, coop r9/5, amending 120): the
 // property is that the browser stage acquires no API session OVER ITS RUN,
@@ -96,10 +104,6 @@ func flowsDeclared(b bindings.Bindings) int {
 // would bypass this seam entirely. This enforces the rule against the stage's
 // own token source; it is not a proof that no API traffic can leave the stage,
 // and the driver's head owes that separately.
-type apiTokens interface {
-	Token(actor, ctxName string) (string, error)
-}
-
 // refusedTokens answers every ask with the rule and remembers it was asked.
 type refusedTokens struct {
 	asked []string
