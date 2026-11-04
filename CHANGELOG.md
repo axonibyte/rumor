@@ -3,6 +3,121 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.48 — 2026-11-04
+
+**The browser stage exists, is dispatched, and drives a declared UI flow through
+the adapter — with no browser on the box** — issue 120, R9.1, cut off v0.1.47 and
+shipping what is REACHABLE while naming the remainder. The clauses of 120's
+done-when that need a real browser become R9.1b, opened the day cal's install
+lands (fable, coop rumor/1885).
+
+- **THE STAGE IS DISPATCHED UNDER ITS ONE NAME**, selected and reported as every
+  other stage is, and a missing driver is a SKIP BY NAME carrying how it looked:
+  the six candidate binaries, `RUMOR_BROWSER`, and how many actions declare a
+  flow. The stage's own count is labelled as the STAGE's, because the walk now
+  drives flows the stage did not and a line reading "none was driven" beside a
+  summary counting them is a contradiction a reader has to resolve.
+- **THE STAGE HOLDS NO API SESSION, asserted over its LIFETIME** rather than at
+  startup — "at startup" had no subject — with a token source that REFUSES and
+  records who asked. Beside it, the declaration-time refusal bindings already
+  makes of a browser role with an api context.
+- **A BROWSER-CONTEXT ACTION GOES OUT AS `flow` AND NOT `execute`**, which the
+  action's CONTEXT decides. The steps travel as declared except that their
+  `{kind}` placeholders arrive RESOLVED — to the id the action's own argument
+  chose, so nothing is drawn for them and the page cannot be pointed at one
+  entity while the request named another.
+- **THE ENGINE RETRIES THE WAIT, NOT THE ACTION**, and the retrier is the ENGINE
+  because a wait is bounded in its time: the resume happens after the seal and
+  the clock write and BEFORE any draw, so it consumes no generator entropy, takes
+  no step slot, and re-sends none of the steps before `reached`. A seed's world
+  does not move. The SECOND failure of the SAME wait is a `ui_timeout`; a flow
+  that got further and stopped at a later wait has made progress and gets its own
+  re-check, because the POSITION decides it and not the word.
+- **`ui_timeout` IS THE SIXTH FINDING AND IT COST AN AMENDMENT.** v1 reserved one
+  finding beside the four and `quiesce_timeout` spent it at v3, so the vocabulary
+  moves to v7 by rewriting that sentence with its reason: a kind narrows a `bug`,
+  a `bug` is a verdict on VALUE AGREEMENT, and a wait that never came true is not
+  one. The amendment is BOUNDED so a seventh word cannot borrow it, and
+  `trespass` is stated as not such a case.
+- **ARM 22 REFUSES `creates` ON A BROWSER-CONTEXT ACTION**, failing closed until a
+  flow can carry an id, and naming the action, its context and the handle it would
+  have declared. Validate's count moves to twenty-five.
+- **ONE REFUSAL SITE FOR A KIND AN ADAPTER DOES NOT SERVE.** It was two sites
+  saying two things, and only one of them could ever have satisfied the arm the
+  contract version's own note rests on. With `cmd/toy-adapter` now serving `flow`
+  — because `examples/toy` declares an action with one, and a declaration the walk
+  honors is one the toy must honor too — the live witness for that refusal is the
+  fake under `--lacks KIND`, an adapter at version 2 refusing by name on purpose.
+- **THE CONTRACT VERSION STAYS `"2"`.** `flow` is additive, `from` and `stopped`
+  are optional, and an adapter that completes every flow in one call cannot tell
+  this version from the one before it. An unmoved version is what keeps "refused
+  for the thing it lacks" reachable instead of refusing at the handshake.
+- **THE ARM COUNT'S PROSE COPIES GAINED TWO ORACLES AND THEN A THIRD.** A figure
+  written with its noun has its DENOMINATOR pinned; a spelled count written onto
+  the noun must be possessive or half of a pair, refused otherwise, which carries
+  no number and so cannot rot. That last one found `docs/cli.md` already stale by
+  two, in the very sentence explaining why it had been left unpinned.
+
+**THE FOURTEEN HEADS THIS TAG SPANS**, oldest first. Thirteen are on
+`r9.1-browser-2`; `cd7bde2` was cut on `ci-watchdog-matches-budget` and this
+branch carries it (fable, coop rumor/1885), and none of the fourteen is on
+`main` yet.
+
+| head | what it did |
+|---|---|
+| `cd7bde2` | the CI watchdog rises to the step own budget, so a kill is the budget and not a default |
+| `11921a6` | the browser stage is dispatched, and a missing driver is a named skip |
+| `ac580ae` | the stage holds no API session over its lifetime, and its token source refuses |
+| `3bd90a0` | the declaration guard the stage rests on is named, and a false reason corrected |
+| `1a94ed0` | an unused interface goes, which is what the lint saw and the suites could not |
+| `fdfc6e3` | the `flow` operation, answered by a fake driver, with the version unmoved |
+| `1bfadf2` | arm 22 refuses `creates` on a browser-context action |
+| `e2505c3` | the arm count prose copies, and the two oracles that missed them |
+| `cfa3d42` | the flow resume position and its stop reason, and three defects fdfc6e3 shipped green |
+| `b3e3f18` | second oracles for arm 22, and the browser scan present direction |
+| `bdf72c6` | the walk routes a browser action through `flow`, and the engine retries its wait |
+| `120fb1e` | Step.Flow comment stated the rule the code had stopped following |
+| `17abb52` | the witness reads what the ADAPTER was asked, so M1+M2 dies on the far side of the wire |
+| `c91c72d` | that arm claims a DECODE, which is what its record witnesses |
+
+**THE CONTROL, measured on this bump's own tree** -- `rumor run examples/toy
+--seed N --steps 10`, stdout only, sha256 truncated to 16:
+
+| seed | digest |
+|---|---|
+| 2 | ce2b5eb3409bea30 |
+| 40 | 549bbb8a3ef97b94 |
+| 1 | d0d6d796e3bc395f |
+
+**AND ALL THREE MOVED, which this tag OWES A READER A REASON FOR.** The run's
+summary now reports how many steps went through `flow`, AT ZERO as well --
+because a count omitted when there is nothing to say cannot be told from a build
+that never learned to count, which is the shape that let `fuzz` ship known,
+unrunnable and declared by nobody (rook, coop r9/50; the tree's own
+`TestTheReportSaysNoneRatherThanNothing`). The browser stage's line also says
+whose count it is, since the walk now drives flows the stage did not. Nothing in
+the tree pins these digests -- no gate, no lock file, and `tools/d4control.py`
+compares two trees relatively rather than against a constant -- so the cost of
+moving them is this paragraph, and the cost of not moving them was a summary
+that could not say its own zero.
+
+**VALIDATE'S THREE FIGURES**, measured rather than computed, as that document
+insists: **25 of 25** arms on the permitted twin and on the toy, **22 of 25**
+with the browser stage off (arm 22 joining 4 and 5), and **20 of 25** with no
+adapter reachable. Arm 22 is the first addition in that series not to move all
+three, because it skips exactly where arms 4 and 5 already skip.
+
+**WHAT R9.1 DOES NOT SHIP, named rather than left to be discovered.** Issue
+120's done-when wants a walk under a committed seed running the browser stage end
+to end with one context per actor and a `browser` observation read from a
+rendered page. Every clause of that but the last needs a real browser, and there
+is none in the agent jails or on the CI runner -- measured, six candidate
+binaries absent. Those clauses become R9.1b, opened the day cal's install lands,
+and its first head replaces the fake behind the seam with the driver. What ships
+here is the seam, the dispatch, the refusals and the retry -- drivable, and
+driven, with no browser on the box.
+
+
 ## 0.1.47 — 2026-11-03
 
 **A walk that reaches the two instants a local clock misbehaves at, and a
