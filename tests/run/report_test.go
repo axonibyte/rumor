@@ -50,9 +50,15 @@ func TestTheReportVerbNamesTheSelectionAndEverySkip(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("report exited %d, want 0\nstdout:\n%s\nstderr:\n%s", code, out, errb)
 	}
+	// R9.1 MADE browser RUNNABLE, so the toy -- which enables every stage this
+	// build knows -- now skips NOTHING, so the empty-skip wording is all the toy
+	// can still show. The skip-beside-its-reason half of this arm moved to a fixture
+	// below rather than being dropped: it used to rest on browser being the one
+	// stage nobody could run, which is exactly the subject a stage landing takes
+	// away, and the next stage to land would have taken it again.
 	for _, want := range []string{
-		"report: stages selected -- api, concurrency, fuzz",
-		"report: stages skipped -- browser (enabled and this build cannot run it yet)",
+		"report: stages selected -- api, browser, concurrency, fuzz",
+		"report: stages skipped -- none",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the report does not carry %q:\n%s", want, out)
@@ -119,6 +125,55 @@ func TestTheReportRefusesWalkFlagsByName(t *testing.T) {
 	}
 }
 
+// AND THE SKIP IS NAMED BESIDE ITS REASON, on a fixture rather than on whichever
+// stage this build happens not to run.
+//
+// THIS ARM EXISTS BECAUSE R9.1 TOOK THE OLD ONE'S SUBJECT. The claim used to ride
+// on the toy skipping `browser` with "enabled and this build cannot run it yet";
+// making browser runnable left the toy skipping nothing, and the next stage to land
+// would have done the same to any replacement picked from real data. A fixture that
+// DECLARES a stage disabled cannot be overtaken that way: `enabled = false` is a
+// project's own word and no build can make it run.
+func TestTheReportNamesASkippedStageBesideItsReason(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"platform.toml", "bindings.toml", "statute.rego"} {
+		b, err := os.ReadFile(filepath.Join(fixture, f))
+		if err != nil {
+			t.Fatalf("reading the fixture's %s: %v", f, err)
+		}
+		if f == "platform.toml" {
+			b = []byte(strings.Replace(string(b), "[stages]\napi = { enabled = true }",
+				"[stages]\napi = { enabled = true }\nbrowser = { enabled = false }", 1))
+			// THE EDIT IS PROVEN TO HAVE TAKEN, for the reason the missing-adapter
+			// arm above proves its own: a replacement that silently missed would
+			// leave this testing a project with nothing to skip, and the arm would
+			// pass by having no subject.
+			if !strings.Contains(string(b), "browser = { enabled = false }") {
+				t.Fatal("could not declare a disabled stage in the fixture, so this arm would be " +
+					"reading a project that skips nothing")
+			}
+		}
+		if err := os.WriteFile(filepath.Join(dir, f), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, errb, code := run(t, "report", dir)
+	if code != 0 {
+		t.Fatalf("report exited %d, want 0\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	}
+	if want := "report: stages skipped -- browser (declared with enabled = false)"; !strings.Contains(out, want) {
+		t.Errorf("the report does not name the skip beside its reason, wanted %q:\n%s", want, out)
+	}
+	// BOTH WAYS: a skipped stage is also absent from the selection, which is the
+	// half a skip line alone would not prove.
+	if strings.Contains(out, "report: stages selected -- api, browser") {
+		t.Errorf("a stage declared disabled was selected anyway:\n%s", out)
+	}
+	if strings.Contains(out, "report: stage browser --") {
+		t.Errorf("the report describes the facts of a stage it skipped:\n%s", out)
+	}
+}
+
 // AND EACH SELECTED STAGE'S DECLARED FACTS, which is fable's third clause at
 // coop rumor/1614 -- the answer to r8/121's question about where a settling
 // declaration belongs when the verb makes no run.
@@ -126,14 +181,18 @@ func TestTheReportRefusesWalkFlagsByName(t *testing.T) {
 // THE SET OF FACT LINES IS THE SELECTION EXACTLY, asserted both ways. A line
 // for a stage that was SKIPPED would be the report describing something no run
 // will do, and a selected stage with no line would be the omission the skip
-// list's own `none` rule exists to refuse.
+// list's own `none` wording exists to refuse.
 func TestTheReportNamesEachSelectedStagesDeclaredFacts(t *testing.T) {
 	out, errb, code := run(t, "report", "../../examples/toy")
 	if code != 0 {
 		t.Fatalf("report exited %d, want 0\nstdout:\n%s\nstderr:\n%s", code, out, errb)
 	}
+	// browser IS SELECTED FROM R9.1 ON, so its facts line is required here
+	// rather than forbidden: the set of fact lines is the selection exactly, and
+	// the direction this clause reads in flips with the stage becoming runnable.
 	for _, want := range []string{
 		"report: stage api --",
+		"report: stage browser --",
 		"report: stage concurrency --",
 		"report: stage fuzz --",
 	} {
@@ -141,15 +200,10 @@ func TestTheReportNamesEachSelectedStagesDeclaredFacts(t *testing.T) {
 			t.Errorf("the report carries no facts line for %q:\n%s", want, out)
 		}
 	}
-	// browser IS SKIPPED ON THIS BUILD, and the skip line above already says
-	// so -- so a facts line for it would describe a stage that will not run.
-	if strings.Contains(out, "report: stage browser --") {
-		t.Errorf("the report describes a SKIPPED stage's facts:\n%s", out)
-	}
-	// AND THE COUNT MATCHES, so a fourth line nobody named cannot slip in
-	// behind three that were asserted present.
-	if n := strings.Count(out, "report: stage "); n != 3 {
-		t.Errorf("want one facts line per selected stage, 3 selected, got %d:\n%s", n, out)
+	// AND THE COUNT MATCHES, so a fifth line nobody named cannot slip in behind
+	// four that were asserted present.
+	if n := strings.Count(out, "report: stage "); n != 4 {
+		t.Errorf("want one facts line per selected stage, 4 selected, got %d:\n%s", n, out)
 	}
 	// THE api STAGE'S FACT IS ITS PERIOD, and the committed toy declares none.
 	if !strings.Contains(out, "report: stage api -- reconciles only after the last step") {

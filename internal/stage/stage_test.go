@@ -39,15 +39,38 @@ func toyPlatform(t *testing.T) platform.Platform {
 // computed from Known and `browser` is asserted present-and-enabled-and-absent
 // by name: the arm now fails when a stage that cannot run is selected, or when
 // one that can is dropped, and not when the toy declares one more.
+// armOnlyUnrunnable registers a stage name this package will never ship, known
+// and NOT runnable, and declares it enabled on p.
+//
+// WHY IT IS FABRICATED: three arms leaned on `browser` being enabled-and-
+// unrunnable, and R9.1 made it runnable -- so each of them lost its subject in
+// the same commit, and each said so by failing. The property they test (a known
+// stage this build cannot run is refused, or absent from a selection) outlives
+// every real stage becoming runnable, so it is armed on a name that cannot.
+func armOnlyUnrunnable(t *testing.T, p platform.Platform) string {
+	t.Helper()
+	const name = "zz-arm-only-unrunnable"
+	if _, taken := Known[name]; taken {
+		t.Fatalf("%s is a real stage now, so it cannot stand in for one nobody runs", name)
+	}
+	Known[name] = false
+	t.Cleanup(func() { delete(Known, name) })
+	p.Stages[name] = platform.Stage{Enabled: true}
+	return name
+}
+
 func TestSelectReturnsWhatRunsAndNotWhatIsDeclared(t *testing.T) {
 	p := toyPlatform(t)
-	if st, ok := p.Stages["browser"]; !ok || !st.Enabled {
-		t.Fatal("the toy no longer declares browser as enabled, so this arm cannot tell ran from declared")
-	}
-	if Known["browser"] {
-		t.Fatal("this build now runs browser, so the toy's declarations no longer hold a stage " +
-			"that is enabled and unrunnable -- which is the only thing this arm can read")
-	}
+	// THE DISCRIMINATOR IS FABRICATED, AND THAT IS WHY THIS ARM SURVIVES R9.
+	// It used to lean on `browser` being enabled by the toy and unrunnable by
+	// this build, and said so: "this build now runs browser, so the toy's
+	// declarations no longer hold a stage that is enabled and unrunnable --
+	// which is the only thing this arm can read". R9.1 made browser runnable,
+	// so the property (an enabled stage nobody can run is ABSENT from the
+	// selection) had no subject left in real data -- and would have none again
+	// for every later stage. A name this package will never ship keeps it
+	// armed, whatever Known holds.
+	unrunnable := armOnlyUnrunnable(t, p)
 	var want []string
 	for _, name := range knownNames() {
 		st, declared := p.Stages[name]
@@ -63,13 +86,13 @@ func TestSelectReturnsWhatRunsAndNotWhatIsDeclared(t *testing.T) {
 		t.Fatalf("Select: %v", err)
 	}
 	if !slices.Equal(got, want) {
-		t.Errorf("Select returned %v and the toy enables %v of the stages this build runs: "+
-			"browser is declared and enabled and this build cannot run it, so it must not appear",
-			got, want)
+		t.Errorf("Select returned %v and the platform enables %v of the stages this build runs: "+
+			"%s is declared and enabled and unrunnable, so it must not appear",
+			got, want, unrunnable)
 	}
 	for _, name := range got {
-		if name == "browser" {
-			t.Errorf("browser was selected and no build can run it: %v", got)
+		if name == unrunnable {
+			t.Errorf("%s was selected and this build marks it unrunnable: %v", unrunnable, got)
 		}
 	}
 	t.Logf("PROOF declared %d stage(s), ran %v", len(p.Stages), got)
@@ -144,15 +167,16 @@ func TestAnEmptySelectionRefusesWithTheReason(t *testing.T) {
 	})
 	t.Run("known but not runnable yet", func(t *testing.T) {
 		p := toyPlatform(t)
+		unrunnable := armOnlyUnrunnable(t, p)
 		prof := p.Profiles["expiring"]
-		prof.Stages = []string{"browser"}
+		prof.Stages = []string{unrunnable}
 		p.Profiles["expiring"] = prof
 		_, err := Select(p, "expiring")
 		if err == nil {
 			t.Fatal("a profile selecting only an unrunnable stage returned a selection")
 		}
 		// THE WHOLE CLAUSE, for the arm above's reason.
-		if !strings.Contains(err.Error(), "browser is enabled and this build cannot run it yet") {
+		if !strings.Contains(err.Error(), unrunnable+" is enabled and this build cannot run it yet") {
 			t.Errorf("the refusal does not name the stage beside its reason: %v", err)
 		}
 		t.Logf("PROOF %v", err)
@@ -172,8 +196,20 @@ func TestTheRefusalNamesTheProfilesOwnSelectionAndNotTheDeclarations(t *testing.
 	if err == nil {
 		t.Fatal("expected a refusal")
 	}
-	if strings.Contains(err.Error(), "browser") {
-		t.Errorf("the refusal names browser, which the profile does not select: %v", err)
+	// THE CHECK IS BOUNDED TO THE HALF IT MEANS. The refusal has two halves --
+	// what was SELECTED, and what this build could have run -- and `browser`
+	// belongs in the second from R9.1 on, so a substring over the whole message
+	// now passes or fails for the wrong reason. The subject is the selection.
+	msg := err.Error()
+	selection := msg
+	if cut := strings.Index(msg, "This build runs"); cut >= 0 {
+		selection = msg[:cut]
+	} else {
+		t.Fatalf("the refusal no longer separates the selection from the runnable list, so this "+
+			"arm cannot bound its check to the selection: %v", err)
+	}
+	if strings.Contains(selection, Browser) {
+		t.Errorf("the refusal's SELECTION half names %s, which the profile does not select: %v", Browser, err)
 	}
 }
 
@@ -232,8 +268,11 @@ func TestTheOrderIsCanonicalAcrossPasses(t *testing.T) {
 func TestEverySelectableStageHasADispatcherThatConsumesIt(t *testing.T) {
 	// The cases in cmd/rumor/run.go's dispatch loop: `stage.API` runs
 	// walkStage, `stage.Concurrency` runs concurrencyStage, `stage.Fuzz` runs
-	// fuzzStage.
-	consumed := []string{API, Concurrency, Fuzz}
+	// fuzzStage, `stage.Browser` runs browserStage. IN Known's CANONICAL ORDER,
+	// because the comparison below is order-sensitive and Select returns that
+	// order -- a list in dispatch order fails here for a reason that is not the
+	// drift this arm is about, which is how I first wrote it.
+	consumed := []string{API, Browser, Concurrency, Fuzz}
 
 	// The strongest declaration a project can make: every name this
 	// dispatcher knows, all enabled.

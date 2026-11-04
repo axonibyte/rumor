@@ -50,6 +50,21 @@ const Concurrency = "concurrency"
 // and precedes anything of 110's own.
 const Fuzz = "fuzz"
 
+// Browser is R9's stage: actors act through a browser and speak only through
+// tells, one isolated context each.
+//
+// IT IS A CONSTANT FOR THE REASON Concurrency IS -- the dispatch branches on
+// it, and a literal in cmd/rumor's map beside another in Known is one name in
+// two places, which is the drift the tripwire is about.
+//
+// RUNNABLE MEANS THIS BUILD DISPATCHES IT, NOT THAT A BROWSER IS INSTALLED.
+// A browser binary in the jails is shared system state and cal's to install
+// (fable, coop r9/1), so a run that finds no driver SKIPS BY NAME with that
+// reason. "this build cannot run the stage" and "this box has no browser" are
+// two different observations and the stage reports which one it met -- the
+// first is skipReason's, from the declaration; the second is the run's.
+const Browser = "browser"
+
 // Known is every stage name the dispatcher recognises, with whether it can
 // run one today.
 //
@@ -60,10 +75,10 @@ const Fuzz = "fuzz"
 // either -- it simply does not appear among the stages that ran, and D13's skip
 // reasons are 111's to report.
 var Known = map[string]bool{
-	API:         true,  // the main loop, runnable now
-	Concurrency: true,  // 109's fan-out, runnable now
-	Fuzz:        true,  // 108's stage, wired by 110 -- see the comment above
-	"browser":   false, // R9
+	API:         true, // the main loop, runnable now
+	Concurrency: true, // 109's fan-out, runnable now
+	Fuzz:        true, // 108's stage, wired by 110 -- see the comment above
+	Browser:     true, // R9.1's dispatch; a driver this box lacks is a skip, not an unrunnable stage
 }
 
 // Select is the stages a run will take, in a fixed order, and the refusal for

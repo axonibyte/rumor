@@ -363,6 +363,12 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		stage.Fuzz: func() int {
 			return fuzzStage(ctx, dir, prep, brep.Bindings, profile, stdout, stderr)
 		},
+		// R9.1's first head: dispatched, and it reports the driver it met or
+		// the absence of one. It takes no ctx and no dir because it starts no
+		// process yet; both arrive with the driver.
+		stage.Browser: func() int {
+			return browserStage(brep.Bindings, stdout)
+		},
 	}
 	if noRunner := missingRunners(stages, runners); len(noRunner) > 0 {
 		_, _ = fmt.Fprintf(stderr, "run: could not run: the stage(s) %s are marked runnable and "+

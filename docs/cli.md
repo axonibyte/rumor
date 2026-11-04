@@ -945,9 +945,10 @@ where the fixture does.
 
 ```
 $ rumor report examples/toy
-report: stages selected -- api, concurrency, fuzz
-report: stages skipped -- browser (enabled and this build cannot run it yet)
+report: stages selected -- api, browser, concurrency, fuzz
+report: stages skipped -- none
 report: stage api -- reconciles only after the last step, which is every run before R8/110 -- no period at any level (absent)
+report: stage browser -- enabled, and declares nothing a run reads beyond that
 report: stage concurrency -- enabled, and declares nothing a run reads beyond that
 report: stage fuzz -- enabled, and declares nothing a run reads beyond that
 report: venire -- 1 admin, 2 member, 1 guest -- from [[venire]], with no profile selected
