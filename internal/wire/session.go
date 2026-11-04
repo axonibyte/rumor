@@ -172,6 +172,24 @@ func (s *Session) Execute(req ExecuteRequest) (ExecuteResponse, error) {
 	return resp, nil
 }
 
+// Flow asks the adapter to drive one action's declared UI steps (R9.1).
+//
+// IT IS A SIBLING OF Execute AND NOT A MODE OF IT, for the reason the kind is
+// separate: a caller reading this method knows it is driving a browser, and a
+// caller reading Execute knows it is not.
+func (s *Session) Flow(req FlowRequest) (FlowResponse, error) {
+	var zero FlowResponse
+	msg, err := s.exchange(req, KindFlow)
+	if err != nil {
+		return zero, err
+	}
+	resp, ok := msg.(FlowResponse)
+	if !ok {
+		return zero, s.poison(fmt.Errorf("the adapter answered %q where a flow was asked", msg.Env().Kind))
+	}
+	return resp, nil
+}
+
 // Observe asks the adapter what it sees.
 func (s *Session) Observe(req ObserveRequest) (ObserveResponse, error) {
 	var zero ObserveResponse

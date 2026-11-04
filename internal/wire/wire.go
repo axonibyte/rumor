@@ -40,6 +40,17 @@ import (
 // 2 since 2026-10-19: `observe` gained `args`, so an observation can name its
 // subject in a typed field instead of folding it into the query string (fable,
 // coop r5.toy/8). docs/contract.md's Revisions carries the entry.
+//
+// IT STAYS "2" THROUGH R9.1's `flow`, which is R7.2's shape and not an
+// oversight: the version is one string compared exactly with no compatibility
+// window, so a bump refuses an adapter built before the request AT THE
+// HANDSHAKE -- and then an adapter that merely lacks `flow` is refused for its
+// VERSION and never for the thing it lacks. An unmoved version is what keeps
+// that by-name refusal reachable, and cmd/toy-adapter's fall-through already
+// gives it ("%q is a kind this adapter does not serve"), armed by
+// TestAKindThisAdapterDoesNotServeIsAFaultNamingTheKind. rook's reason at coop
+// rumor/1348, their condition at r9/13, fable's ruling at r9/15 correcting
+// r9/11. docs/contract.md's Revisions carries the row.
 const ContractVersion = "2"
 
 // Kind is a message's kind, which the decoder reads off the message rather than
@@ -52,7 +63,17 @@ const (
 	KindObserve  Kind = "observe"
 	KindClock    Kind = "clock"
 	KindSession  Kind = "session"
-	KindError    Kind = "error"
+
+	// KindFlow is R9's UI flow: the steps a browser driver executes for one
+	// action, sent because the STEPS ARE THE PROJECT'S and the driver is the
+	// adapter's. bindings declares them, the engine carries them, the adapter
+	// drives them -- so neither side keeps a second copy of the other's.
+	//
+	// A SEPARATE OPERATION AND NOT A FIELD ON `execute` (fable, coop r9/11):
+	// one message meaning either "perform this action" or "replay these steps"
+	// would make every reader of `execute` ask which it was holding.
+	KindFlow  Kind = "flow"
+	KindError Kind = "error"
 )
 
 // Source is an observation source. The three are docs/vocabulary.md's, and this
@@ -130,6 +151,38 @@ type ExecuteRequest struct {
 	Action string         `json:"action"`
 	Token  string         `json:"token,omitempty"`
 	Args   map[string]any `json:"args"`
+}
+
+// FlowRequest asks the adapter to drive one action's declared UI flow (R9.1,
+// issue 120 deliverable 2; fable's ruling at coop r9/11).
+//
+// Token IS THE BROWSER'S AND NEVER THE API's, which is the same rule
+// ObserveResponse's row states for a `browser` source: reusing an actor's api
+// token here would put one actor in two worlds and retire the one-isolated-
+// context-per-actor property the stage rests on.
+//
+// Steps ARE CARRIED OPAQUE at this layer. internal/bindings has already parsed
+// and refused them -- a `wait` whose condition parses as a duration never
+// reaches here -- so re-typing them in the transport would be a second reader
+// of one declaration, which is the drift docs/contract.md's own sibling rule
+// warns about. The adapter refuses a step it does not know, by name.
+type FlowRequest struct {
+	Envelope
+	Action string           `json:"action"`
+	Token  string           `json:"token,omitempty"`
+	Steps  []map[string]any `json:"steps"`
+}
+
+// FlowResponse is how far the flow got and what the page then answered.
+//
+// Reached IS AN INDEX AND NOT A BOOLEAN, because the retry policy needs to know
+// WHERE a flow stopped: fable ruled at coop r9/1 that a failed wait re-checks
+// its condition at the same position and never re-sends the step before it, so
+// "it failed" is not enough to act on and "it failed at step k" is.
+type FlowResponse struct {
+	Envelope
+	Reached  int `json:"reached"`
+	Response any `json:"response"`
 }
 
 // ObserveRequest reads one named observation. Token is present exactly when
@@ -363,6 +416,10 @@ var requests = map[Kind]shape{
 	},
 	KindClock:   {required: []string{"kind", "contract", "id", "op", "t"}},
 	KindSession: {required: []string{"kind", "contract", "id", "actor", "context"}},
+	KindFlow: {
+		required: []string{"kind", "contract", "id", "action", "steps"},
+		optional: []string{"token"},
+	},
 }
 
 var responses = map[Kind]shape{
@@ -370,6 +427,7 @@ var responses = map[Kind]shape{
 		required: []string{"kind", "contract", "id", "actions", "observations", "contexts", "components", "capabilities"},
 	},
 	KindExecute: {required: []string{"kind", "contract", "id", "ids", "response"}},
+	KindFlow:    {required: []string{"kind", "contract", "id", "reached", "response"}},
 	// `missing` IS OPTIONAL AND `value` STAYS REQUIRED, which is what keeps this
 	// additive: an adapter that never answers `missing` is unchanged, and one
 	// that does still sends `value` (null). THE TABLE IS THE SECOND INSTRUMENT
@@ -479,6 +537,8 @@ func into(kind Kind, isResponse bool, line []byte, allowed map[string]bool) (Mes
 		msg = &ClockResponse{}
 	case isResponse && kind == KindSession:
 		msg = &SessionResponse{}
+	case isResponse && kind == KindFlow:
+		msg = &FlowResponse{}
 	case isResponse && kind == KindError:
 		msg = &ErrorResponse{}
 	case kind == KindDescribe:
@@ -491,6 +551,8 @@ func into(kind Kind, isResponse bool, line []byte, allowed map[string]bool) (Mes
 		msg = &ClockRequest{}
 	case kind == KindSession:
 		msg = &SessionRequest{}
+	case kind == KindFlow:
+		msg = &FlowRequest{}
 	default:
 		return nil, Refusal{Kind: kind, Reason: "unknown kind for this direction"}
 	}
@@ -575,7 +637,11 @@ func deref(msg Message) Message {
 		return *m
 	case *SessionRequest:
 		return *m
+	case *FlowRequest:
+		return *m
 	case *DescribeResponse:
+		return *m
+	case *FlowResponse:
 		return *m
 	case *ExecuteResponse:
 		return *m

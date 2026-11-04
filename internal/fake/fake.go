@@ -283,8 +283,33 @@ func (cfg Config) answer(contract string, line []byte, calls map[string]int, clo
 			Envelope: wire.Envelope{Kind: wire.KindSession, Contract: contract, ID: env.ID},
 			Token:    cfg.Surface.Token,
 		}
+	case wire.FlowRequest:
+		// R9.1's FAKE DRIVER (fable, coop r9/11): this is what lets every head
+		// of the child drive a flow with no browser on the box. It answers that
+		// it REACHED EVERY STEP, which is the only honest thing a fake can say
+		// about a page it never rendered -- and it is why the arms that care
+		// whether a flow was truly driven cannot be satisfied by this answer.
+		//
+		// THE STEPS ARE COUNTED AND NOT INSPECTED. A fake that validated them
+		// would be a second reader of a declaration internal/bindings has
+		// already parsed and refused, and the two would drift; what it DOES
+		// check is that there is at least one, because a flow of no steps is a
+		// caller's fault and silently answering `reached: 0` would read as a
+		// driver that stopped at the first step.
+		if len(m.Steps) == 0 {
+			return envelope(contract, env.ID, wire.Fault{
+				Kind:   wire.FaultAction,
+				Field:  "steps",
+				Detail: fmt.Sprintf("a flow for %q carried no steps, so there is nothing to drive", m.Action),
+			})
+		}
+		typed = wire.FlowResponse{
+			Envelope: wire.Envelope{Kind: wire.KindFlow, Contract: contract, ID: env.ID},
+			Reached:  len(m.Steps),
+			Response: cfg.Surface.Execute[m.Action].Response,
+		}
 	default:
-		// UNREACHABLE WHILE wire's REQUEST KINDS ARE THE FOUR ABOVE, and it
+		// UNREACHABLE WHILE wire's REQUEST KINDS ARE THE FIVE ABOVE, and it
 		// answers rather than panicking: a kind added to the protocol without
 		// a case here is this adapter's gap, and the run should say so and
 		// carry on rather than taking the engine down.

@@ -42,6 +42,15 @@ func wellFormed(direction string, kind Kind) map[string]any {
 			return add(map[string]any{"op": "advance", "t": 30000000000})
 		case KindSession:
 			return add(map[string]any{"actor": "alice", "context": "api"})
+		case KindFlow:
+			// THE STEPS ARE A REAL FLOW, not an empty list: a fixture whose
+			// steps were `[]` would decode on a transport that dropped the
+			// field entirely, and the battery below reads this one as its
+			// well-formed control.
+			return add(map[string]any{"action": "create_doc", "token": "t", "steps": []any{
+				map[string]any{"step": "navigate", "to": "/docs/new"},
+				map[string]any{"step": "wait", "until": "doc-created"},
+			}})
 		}
 		return nil
 	}
@@ -66,6 +75,8 @@ func wellFormed(direction string, kind Kind) map[string]any {
 		return add(map[string]any{"t": 30000000000})
 	case KindSession:
 		return add(map[string]any{"token": "t"})
+	case KindFlow:
+		return add(map[string]any{"reached": 2, "response": map[string]any{"title": "quarterly"}})
 	case KindError:
 		return add(map[string]any{"error": map[string]any{"kind": "source", "detail": "no browser here"}})
 	}
@@ -108,8 +119,8 @@ func TestEveryWellFormedMessageDecodes(t *testing.T) {
 	// 4 request kinds + 5 response kinds. A literal, because the point of the
 	// number is to fail when a kind is ADDED to the protocol and not to this
 	// file -- deriving it from Kinds() would make it agree with itself.
-	if n != 11 {
-		t.Errorf("drove %d message kinds, want 11: a kind was added or removed without this file moving", n)
+	if n != 13 {
+		t.Errorf("drove %d message kinds, want 13: a kind was added or removed without this file moving", n)
 	}
 }
 
@@ -183,8 +194,12 @@ func TestUnknownFieldIsRefusedByName(t *testing.T) {
 			cases++
 		}
 	}
-	if cases != 11 {
-		t.Errorf("drove %d kinds, want 11", cases)
+	// 11 -> 13 WITH R9.1's `flow`, one case per direction. The count is
+	// declared rather than derived for the reason every count in this tree is:
+	// a kind added without a fixture would otherwise widen the loop and the
+	// battery would report more passes, not a gap.
+	if cases != 13 {
+		t.Errorf("drove %d kinds, want 13", cases)
 	}
 }
 

@@ -129,6 +129,7 @@ func TestTheDocumentAndTheDecoderDescribeTheSameMessages(t *testing.T) {
 		wire.KindObserve:  "`observe`",
 		wire.KindClock:    "`clock`",
 		wire.KindSession:  "`session`",
+		wire.KindFlow:     "`flow`",
 		wire.KindError:    "The error envelope",
 	}
 

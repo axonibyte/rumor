@@ -47,6 +47,9 @@ func TestEveryAnswerSatisfiesTheRealDecoder(t *testing.T) {
 		request(wire.KindObserve, map[string]any{"query": "event", "source": "api", "token": "t"}),
 		request(wire.KindClock, map[string]any{"op": "advance", "t": 30000000000}),
 		request(wire.KindSession, map[string]any{"actor": "alice", "context": "api"}),
+		request(wire.KindFlow, map[string]any{"action": "create_event", "token": "t", "steps": []any{
+			map[string]any{"step": "navigate", "to": "/events/new"},
+		}}),
 	}
 	if len(cases) != len(wire.Kinds("request")) {
 		t.Fatalf("%d requests driven, %d request kinds exist", len(cases), len(wire.Kinds("request")))
@@ -590,5 +593,47 @@ func TestARecordedMissingIsTheOutcomeAndNotAValue(t *testing.T) {
 			}
 			t.Logf("PROOF %s: %q came back as the value", c.what, c.recorded)
 		})
+	}
+}
+
+// R9.1's FAKE DRIVER, BOTH WAYS. It is what makes every head of this child
+// drivable with no browser on the box, so what it answers has to be exact.
+func TestTheFakeDriverReachesEveryStepItWasGiven(t *testing.T) {
+	line := drive(t, dflt(), request(wire.KindFlow, map[string]any{
+		"action": "create_event", "token": "t", "steps": []any{
+			map[string]any{"step": "navigate", "to": "/events/new"},
+			map[string]any{"step": "fill", "field": "title", "value": "x"},
+			map[string]any{"step": "click", "target": "submit"},
+		}}))
+	msg, err := wire.DecodeResponse(line)
+	if err != nil {
+		t.Fatalf("the fake's flow answer is not on the protocol: %v", err)
+	}
+	resp, ok := msg.(wire.FlowResponse)
+	if !ok {
+		t.Fatalf("the fake answered %T where a flow response was asked", msg)
+	}
+	if resp.Reached != 3 {
+		t.Errorf("reached %d of 3 steps: a fake that cannot count its own steps hands the retry "+
+			"policy a position it must not trust", resp.Reached)
+	}
+}
+
+// A FLOW OF NO STEPS IS A REFUSAL AND NOT `reached: 0`, because zero is also
+// what a driver that stopped at the first step would report, and the two are
+// different events.
+func TestAFlowWithNoStepsIsRefusedRatherThanAnsweredZero(t *testing.T) {
+	line := drive(t, dflt(), request(wire.KindFlow, map[string]any{
+		"action": "create_event", "token": "t", "steps": []any{}}))
+	msg, err := wire.DecodeResponse(line)
+	if err != nil {
+		t.Fatalf("the refusal is not on the protocol: %v", err)
+	}
+	resp, ok := msg.(wire.ErrorResponse)
+	if !ok {
+		t.Fatalf("a flow of no steps answered %T, want an error", msg)
+	}
+	if resp.Error.Field != "steps" {
+		t.Errorf("the refusal names %q, want steps: %+v", resp.Error.Field, resp.Error)
 	}
 }

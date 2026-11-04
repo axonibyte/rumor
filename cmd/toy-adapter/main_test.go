@@ -1106,3 +1106,40 @@ func TestThePageReadersAreTheElementsAndNotThePage(t *testing.T) {
 			"and a `#count` without a capacity is not read at all")
 	}
 }
+
+// R9.1's BY-NAME REFUSAL FOR A KIND THIS ADAPTER DOES NOT SERVE, which is the
+// armature under holding the contract version rather than bumping it.
+//
+// WHY IT IS AN ARM AND NOT A COMMENT. rook's reason for R7.2 keeping the version
+// at "2" (coop rumor/1348, and their condition at r9/13) is instrumental: a bump
+// refuses an older adapter FOR ITS VERSION at the handshake, so the refusal that
+// names the missing request can never fire. That argument only holds while such a
+// refusal EXISTS and fires, and until this arm nothing drove it -- the path at
+// main.go's fall-through was reachable and unobserved, which is the shape this
+// tree calls a guard nobody has seen refuse.
+//
+// IT DRIVES `flow` DELIBERATELY: that is the kind R9.1 adds and the one an adapter
+// built before it lacks, so this is the live case and not a fabricated kind.
+func TestAKindThisAdapterDoesNotServeIsAFaultNamingTheKind(t *testing.T) {
+	a, log := stub(t, nil)
+	kind, detail := faultOf(t, ask(t, a, map[string]any{
+		"kind": "flow", "action": "join_event_ui", "token": "t1",
+		"steps": []any{map[string]any{"step": "navigate", "to": "/ui/events/1"}},
+	}))
+	if kind != string(wire.FaultInternal) {
+		t.Errorf("an unserved kind is fault %q, want %q", kind, wire.FaultInternal)
+	}
+	if !strings.Contains(detail, "flow") {
+		t.Errorf("the fault does not name the kind it could not serve: %q", detail)
+	}
+	if !strings.Contains(detail, "does not serve") {
+		t.Errorf("the fault does not say it is unserved, so a reader cannot tell it from a "+
+			"malformed request: %q", detail)
+	}
+	// AND NOTHING REACHED THE TOY, which is the half the fault alone cannot show:
+	// an adapter that half-drove a flow before refusing it would have moved the
+	// system under test.
+	if len(*log) != 0 {
+		t.Errorf("an unserved kind reached the toy %d time(s)", len(*log))
+	}
+}
