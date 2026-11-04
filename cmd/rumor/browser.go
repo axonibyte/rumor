@@ -77,6 +77,21 @@ func flowsDeclared(b bindings.Bindings) int {
 // that asks for a token gets an error naming the rule IN A REAL RUN, and the arm
 // reads that same refusal.
 //
+// THE DECLARATION HALF IS NOT HERE AND IS NOT MISSING. The other side of this
+// rule -- that a project may not DECLARE a role holding a browser context which
+// also reaches non-browser actions -- is refused by internal/validate's arm 5
+// ("browser-stage actor(s) reaching a non-browser action"), driven in-tree by
+// tests/validate/fixtures/5-browser-reaches-api, kept reachable by
+// internal/bindings' own cell requiring such a role to PARSE, and accounted for
+// in tests/validate's arm list. Four tiers, none of them here, and this pointer
+// is what says which guard this stage rests on rather than a fifth assertion.
+//
+// 9884fad's MESSAGE SAYS THAT HALF "DOES NOT EXIST", AND IT IS WRONG. I searched
+// for it through a `head -8` and arms_platform.go sorts last of validate's arms
+// files, so the decisive line was in the tail I discarded; I then published the
+// absence. Corrected at coop r9/7 and r9/8, and recorded here because the commit
+// is pushed and its message cannot be.
+//
 // WHAT IT DOES NOT PROVE: a driver that opened its own `wire.Session` directly
 // would bypass this seam entirely. This enforces the rule against the stage's
 // own token source; it is not a proof that no API traffic can leave the stage,
