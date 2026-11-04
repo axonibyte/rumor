@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -91,6 +92,102 @@ func TestTheBrowserStageNamesTheDriverItFound(t *testing.T) {
 	}
 	if strings.Contains(got, "SKIPPED") {
 		t.Errorf("a driver was found and the stage still reported a skip: %q", got)
+	}
+}
+
+// TestEveryCandidateNameIsFoundOnPath IS THE GAP ROOK NAMED IN ITS OWN CLEAR
+// (coop rumor/1884): "the PRESENT driver path is exercised only by PATH-denying
+// fixtures". Every present-driver arm above goes through `RUMOR_BROWSER`, so the
+// CANDIDATE SCAN -- the loop over `browserCandidates` -- has only ever been
+// driven in its failing direction, where it reports "none of ... on PATH". An
+// empty candidate list, a misspelled entry, or a loop that never returned would
+// pass every arm in this file.
+//
+// ONE CASE PER MEMBER, derived from `browserCandidates` rather than from a list
+// here: a name added to the slice and not to a test is the thing a hand-written
+// list cannot see, and a name MISSPELLED in the slice is what this catches --
+// the operator's box has the binary, the scan does not find it, and the stage
+// reports a skip that is false.
+func TestEveryCandidateNameIsFoundOnPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake driver is a shell script")
+	}
+	if len(browserCandidates) == 0 {
+		t.Fatal("browserCandidates is empty, so this arm asserts nothing and the scan can never " +
+			"find a driver")
+	}
+
+	// THE LIST IS DUPLICATED HERE ON PURPOSE, and a MUTANT is why. Deriving the
+	// planted filenames from `browserCandidates` makes the scan's half of this
+	// arm agree with the code NO MATTER WHAT: misspelling one entry to
+	// "chromiumm" SURVIVED, because the arm then planted a "chromiumm" and the
+	// scan duly found it. A typo there is the defect that matters most -- the
+	// operator's box holds the binary, the scan misses it, and the stage reports
+	// a skip that is FALSE -- and only a second, independently written list can
+	// see it. The derivation above is still what catches a name added to the
+	// slice and not tested; the duplication below is what catches a name
+	// MISSPELLED in it. Neither alone is enough, which is the point of both.
+	want := []string{"chrome", "chromium", "chromium-browser", "firefox", "google-chrome", "headless_shell"}
+	if !slices.Equal(slices.Sorted(slices.Values(browserCandidates)), slices.Sorted(slices.Values(want))) {
+		t.Errorf("browserCandidates is %v and this arm expects %v: a name added here needs a line "+
+			"in the other list, and a name that differs by a letter is a browser this project "+
+			"cannot find on a box that has it", browserCandidates, want)
+	}
+
+	for _, name := range browserCandidates {
+		t.Run(name, func(t *testing.T) {
+			dir := emptyPath(t)
+			planted := filepath.Join(dir, name)
+			if err := os.WriteFile(planted, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			// RUMOR_BROWSER STAYS EMPTY, which emptyPath has already set: this
+			// arm is about the scan and not about the named-command branch.
+			path, how := browserDriver()
+			if path != planted {
+				t.Errorf("a %q on PATH resolved to %q, want %q: the scan did not find a binary "+
+					"under a name it carries", name, path, planted)
+			}
+			if !strings.Contains(how, name) || !strings.Contains(how, "on PATH") {
+				t.Errorf("the how is %q and does not say that %q was found on PATH, which is what "+
+					"an operator reads when the answer is a surprise", how, name)
+			}
+		})
+	}
+}
+
+// AND THE NAMED COMMAND WINS OVER A CANDIDATE ON PATH, which is the precedence
+// `browserDriver` is written in and nothing asserted. Driven with BOTH present,
+// because with only one of them either order passes.
+func TestANamedDriverBeatsACandidateOnPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake driver is a shell script")
+	}
+	dir := emptyPath(t)
+	candidate := filepath.Join(dir, browserCandidates[0])
+	named := filepath.Join(dir, "zz-named-browser")
+	for _, f := range []string{candidate, named} {
+		if err := os.WriteFile(f, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// THE PRECONDITION FIRST: with the variable unset the candidate is what the
+	// scan finds, so the switch below is about precedence and not about the
+	// candidate being unfindable.
+	if path, _ := browserDriver(); path != candidate {
+		t.Fatalf("with %s unset the scan found %q, want the candidate %q", browserDriverEnv, path, candidate)
+	}
+
+	t.Setenv(browserDriverEnv, "zz-named-browser")
+	path, how := browserDriver()
+	if path != named {
+		t.Errorf("%s names a driver and the scan's candidate won anyway (%q): an operator naming a "+
+			"command is overriding the list, not adding to it", browserDriverEnv, path)
+	}
+	if !strings.Contains(how, browserDriverEnv) {
+		t.Errorf("the how is %q and does not name %s, so a reader cannot tell which branch answered",
+			how, browserDriverEnv)
 	}
 }
 

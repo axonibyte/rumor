@@ -12,11 +12,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/validate"
 )
 
@@ -263,6 +266,185 @@ func TestThePermittedTwinPasses(t *testing.T) {
 	}
 	t.Logf("PROOF twin passes over %d action(s), %d observation(s), %d case(s), %d rule(s), %d mutant(s)",
 		rep.Actions, rep.Observations, rep.Cases, rep.Rules, rep.Mutants)
+}
+
+// --- arm 22's second oracles (rook, coop rumor/1884) ----------------------
+//
+// ROOK NAMED THE GAP IN ITS OWN CLEAR: arm 22's mutants M3 and M4 each die by
+// ONE cell, because `TestArm22NamesTheActionItsContextAndTheHandle` is the sole
+// oracle for the refusal's WORDING and for SKIP-vs-REFUSE at once. Two claims
+// resting on one test means deleting or weakening that test takes both, and the
+// wording is a RULING (fable, coop r9/17: the message names the action, its
+// context and the handle it would have declared) rather than a convenience.
+//
+// BOTH ARMS BELOW ARE THE OTHER TIER, deliberately: that cell drives `arm22`
+// over a hand-built `bindings.Bindings`, and these run `validate.Run` over FILES
+// on disk. A fixture that stopped reaching the arm, or a loader that dropped
+// `creates` on the way in, is invisible to the first and fails here.
+
+// TestArm22sRefusalNamesTheThreeEndToEnd is the wording's second witness, taken
+// off the fixture rather than off a struct literal. TestEveryFixtureTripsExactly
+// ItsOwnArm already proves this fixture trips 22 and nothing else; it says
+// nothing about what the refusal SAYS, which is the half R9.1 was ruled on.
+func TestArm22sRefusalNamesTheThreeEndToEnd(t *testing.T) {
+	const fixture = "22-creates-on-a-browser-action"
+	dir := filepath.Join(fixturesDir(t), fixture)
+	rep := validate.Run(dir)
+	if len(rep.CouldNotRun) != 0 {
+		t.Fatalf("%s could not be read: %v", fixture, rep.CouldNotRun)
+	}
+	var detail string
+	for _, r := range rep.Refusals {
+		if r.Arm == "22" {
+			detail = r.Detail
+		}
+	}
+	if detail == "" {
+		t.Fatalf("%s did not refuse on arm 22, so there is no wording to check: %+v", fixture, rep.Refusals)
+	}
+
+	// THE EXPECTED NAMES COME FROM THE REAL PARSER over the fixture's own
+	// bytes, not from literals here and not from a hand-rolled scan of the
+	// TOML. My first cut did scan it by hand and was WORSE THAN NOTHING: this
+	// fixture declares `creates` TWICE -- `["doc"]` on an api action and
+	// `["published_doc"]` on the browser one -- so it asserted that the arm-22
+	// refusal names the api action's handle too, which it must not, and the
+	// assertion passed anyway because "doc" is a SUBSTRING of "published_doc".
+	// A second reader of a declaration and a substring match, in one cell.
+	brep, err := bindings.Load(filepath.Join(dir, "bindings.toml"), decl.TOML)
+	if err != nil {
+		t.Fatalf("loading the fixture's bindings: %v", err)
+	}
+	var subject bindings.Action
+	for _, a := range brep.Bindings.Actions {
+		if a.Context == "browser" && len(a.Creates) > 0 {
+			if subject.Name != "" {
+				t.Fatalf("the fixture declares two browser actions with `creates` (%s and %s); "+
+					"this arm reads one", subject.Name, a.Name)
+			}
+			subject = a
+		}
+	}
+	if subject.Name == "" {
+		t.Fatal("the fixture declares no browser-context action with `creates`, so this test " +
+			"asserted nothing: a scan that finds nothing agrees with every wording")
+	}
+
+	// WHOLE WORDS, for the substring reason above.
+	whole := func(hay, word string) bool {
+		return regexp.MustCompile(`\b` + regexp.QuoteMeta(word) + `\b`).MatchString(hay)
+	}
+	for _, want := range append([]string{subject.Name}, subject.Creates...) {
+		if !whole(detail, want) {
+			t.Errorf("the end-to-end refusal does not name %q, which fable's r9/17 ruling requires: %q",
+				want, detail)
+		}
+	}
+
+	// THE CONTEXT IS ASSERTED INSIDE THE ACTION'S OWN CLAUSE, not anywhere in
+	// the detail, and a MUTANT is why. Dropping `a.Context` from the arm's
+	// message SURVIVED a whole-detail match, because the arm's own boilerplate
+	// opens with "browser-context action(s) declaring `creates`" -- so the word
+	// was there whether or not the action's context was reported. Keying on a
+	// word the message itself writes is keying on nothing.
+	//
+	// THE SEGMENT IS BOUNDED from the action's name to its first handle name,
+	// which is the clause this arm composes per action. That pins the ORDER
+	// name -> context -> handle without pinning the punctuation between them;
+	// an arm that reorders them deliberately moves this bound with it.
+	start := strings.Index(detail, subject.Name)
+	end := strings.Index(detail[start:], subject.Creates[0])
+	if start < 0 || end < 0 {
+		t.Fatalf("cannot bound %q's clause in %q", subject.Name, detail)
+	}
+	clause := detail[start : start+end]
+	if !whole(clause, subject.Context) {
+		t.Errorf("the refusal names %q and %q but not the context %q between them (%q in %q): a "+
+			"reader is told which handle is unmintable and not which world the action acts in",
+			subject.Name, subject.Creates[0], subject.Context, clause, detail)
+	}
+
+	// AND IT NAMES NOTHING OF THE API ACTION'S, which is the arm's SCOPE and
+	// the half the positive assertions cannot see. Driven as whole words, since
+	// the api handle here is a substring of the browser one.
+	for _, a := range brep.Bindings.Actions {
+		if a.Context == "browser" {
+			continue
+		}
+		for _, name := range append([]string{a.Name}, a.Creates...) {
+			if name == subject.Name || slices.Contains(subject.Creates, name) {
+				continue
+			}
+			if whole(detail, name) {
+				t.Errorf("the refusal names %q, which belongs to the %s-context action %q: arm 22 "+
+					"is about browser-context actions and a reader would go and change the wrong one: %q",
+					name, a.Context, a.Name, detail)
+			}
+		}
+	}
+	t.Logf("PROOF refusal names %s, %s and %v, and nothing of the api action's",
+		subject.Name, subject.Context, subject.Creates)
+}
+
+// TestArm22SkipsRatherThanPassesWithTheStageOff is skip-vs-refuse's second
+// witness, and it is the ACCOUNTING claim rather than the arm's: with the stage
+// off the twin must report arm 22 SKIPPED with a reason, never evaluated and
+// never refused. A project that reported it as evaluated would be counting an
+// arm whose precondition is absent, which is the distinction
+// internal/validate's own Report comment exists for.
+//
+// AND THE CONTROL IS THE SAME TWIN UNTOUCHED, asserted first: arm 22 evaluated
+// there. Without it, a build where arm 22 never ran at all would satisfy every
+// assertion below.
+func TestArm22SkipsRatherThanPassesWithTheStageOff(t *testing.T) {
+	twin := filepath.Join("..", "..", "examples", "twin")
+
+	on := validate.Run(twin)
+	if _, skipped := on.Skipped["22"]; skipped {
+		t.Fatalf("arm 22 skipped on the untouched twin, which declares the browser stage: %q",
+			on.Skipped["22"])
+	}
+	if !slices.Contains(on.Evaluated, "22") {
+		t.Fatalf("arm 22 did not evaluate on the untouched twin, so the stage-off case below "+
+			"would pass for a reason that is not the stage: %v", on.Evaluated)
+	}
+
+	dir := filepath.Join(t.TempDir(), "twin")
+	if out, err := exec.Command("cp", "-r", twin, dir).CombinedOutput(); err != nil {
+		t.Fatalf("copying the twin: %v %s", err, out)
+	}
+	path := filepath.Join(dir, "platform.toml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const was = "browser = { enabled = true }"
+	if !strings.Contains(string(raw), was) {
+		t.Fatalf("%s does not declare %q, so this test cannot turn the stage off", path, was)
+	}
+	off := strings.Replace(string(raw), was, "browser = { enabled = false }", 1)
+	if err := os.WriteFile(path, []byte(off), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rep := validate.Run(dir)
+	if len(rep.CouldNotRun) != 0 {
+		t.Fatalf("the stage-off twin could not be read: %v", rep.CouldNotRun)
+	}
+	if why, skipped := rep.Skipped["22"]; !skipped {
+		t.Errorf("arm 22 did not skip with the browser stage off: evaluated %v", rep.Evaluated)
+	} else if !strings.Contains(why, "browser") {
+		t.Errorf("arm 22 skipped without naming the stage: %q", why)
+	}
+	if slices.Contains(rep.Evaluated, "22") {
+		t.Error("arm 22 is reported as EVALUATED with the stage off, so the run counts an arm " +
+			"whose precondition is absent")
+	}
+	for _, r := range rep.Refusals {
+		if r.Arm == "22" {
+			t.Errorf("arm 22 REFUSED with the stage off, where it is vacuous: %q", r.Detail)
+		}
+	}
 }
 
 // TestEveryFixtureTripsExactlyItsOwnArm is fable's invariant over the eighteen
