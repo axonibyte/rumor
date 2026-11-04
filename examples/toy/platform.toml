@@ -23,7 +23,18 @@ command = ["toy-adapter"]
 # the rollback provider passes when IT starts the toy. It is the system's
 # configuration and not this project's declaration -- `[clock].zone` in
 # bindings.toml is the engine's, and it never crosses the wire.
-env = ["TOY_ADDR", "TOY_ZONE"]
+# AND TOY_ADAPTER_RECORD (R9.1 H2): the file the adapter appends one line to
+# per request it decodes -- the KIND, and the action where there is one. It is
+# a NAME passed through and nothing is written unless something sets it, so
+# every run that does not ask for it is byte-identical.
+#
+# WHY A PROJECT DECLARES AN OBSERVATION SURFACE AT ALL: `flow` and `execute`
+# post to this toy's UI route IDENTICALLY by design, so the kind the adapter
+# decoded is the only thing on the far side of the wire that tells the two
+# apart -- and the arm proving R9.1 routes a browser action cannot rest on the
+# run's own summary alone, which a two-line change leaves true with the
+# routing off (rook, coop rumor/1896; fable, r9/57).
+env = ["TOY_ADDR", "TOY_ZONE", "TOY_ADAPTER_RECORD"]
 
 # AND THE ENGINE SUPPLIES ITS VALUE, from `[clock].zone` (R7.5 D4c; fable's
 # ruling at coop rumor/1780, "the zone rides the PROFILE, not the row").

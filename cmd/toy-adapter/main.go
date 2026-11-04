@@ -407,12 +407,54 @@ func fault(id string, kind wire.FaultKind, field, detail string) any {
 	}
 }
 
+// recordPath names a file this adapter appends one line to per request it
+// decodes: the KIND, and the action where the request carries one.
+//
+// WHY IT EXISTS, and it is not a debugging aid. R9.1's H2 routes a
+// browser-context action through `flow`, and the arm that proves that happened
+// read only the run's own summary -- which a two-line change defeats, because
+// the field behind that summary can be set from the action's CONTEXT and then
+// says "flow" with the routing off (rook's M1+M2, coop rumor/1896). An arm on
+// THIS side of the wire cannot be fooled that way: the adapter either decoded a
+// `flow` or it did not, and the toy's UI route is posted to identically by both
+// operations, so the KIND is the only thing that tells them apart out here
+// (fable, coop r9/57 item two).
+//
+// OFF UNLESS ASKED, append-only, and a write failure is SILENT by design: this
+// is an observation surface for an arm, and an adapter that died because a test
+// harness could not open a file would turn a missing witness into a failed run.
+const recordPath = "TOY_ADAPTER_RECORD"
+
+func (a *adapter) note(env wire.Envelope, action string) {
+	path := os.Getenv(recordPath)
+	if path == "" {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer func() { _ = f.Close() }()
+	_, _ = fmt.Fprintf(f, "%s %s\n", env.Kind, action)
+}
+
 func (a *adapter) answer(line []byte) any {
 	msg, err := wire.DecodeRequest(line)
 	if err != nil {
 		return fault(idOf(line), wire.FaultField, "", err.Error())
 	}
 	env := msg.Env()
+	// RECORDED ON ARRIVAL, before anything is served: what the arm asks is what
+	// REACHED this side, and a line written only on success would make a
+	// refusal look like a request that never came.
+	switch m := msg.(type) {
+	case wire.ExecuteRequest:
+		a.note(env, m.Action)
+	case wire.FlowRequest:
+		a.note(env, m.Action)
+	default:
+		a.note(env, "")
+	}
 	switch m := msg.(type) {
 	case wire.DescribeRequest:
 		return wire.DescribeResponse{

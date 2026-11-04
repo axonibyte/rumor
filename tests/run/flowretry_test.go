@@ -160,6 +160,12 @@ func TestAFlowThatNeverCompletesIsAUITimeout(t *testing.T) {
 // not because it does the work: if a weight moves and the draw stops happening,
 // this arm says so.
 func TestTheToyWalkDrawsItsBrowserActionAndGoesThroughFlow(t *testing.T) {
+	// THE ADAPTER'S OWN RECORD, asked for by env so it is off for every other
+	// run. `t.Setenv` reaches the child because `run` inherits this process's
+	// environment.
+	record := filepath.Join(t.TempDir(), "asked")
+	t.Setenv("TOY_ADAPTER_RECORD", record)
+
 	out, errb, code := run(t, "run", filepath.Join("..", "..", "examples", "toy"),
 		"--profile", "clicking", "--seed", "3", "--steps", "30")
 
@@ -196,6 +202,32 @@ func TestTheToyWalkDrawsItsBrowserActionAndGoesThroughFlow(t *testing.T) {
 	n, err := strconv.Atoi(m[1])
 	if err != nil || n < 1 {
 		t.Errorf("the summary reports %q step(s) through `flow`", m[1])
+	}
+
+	// AND THE FAR SIDE OF THE WIRE SAYS SO TOO, which is the half the summary
+	// cannot carry (fable, coop r9/57 item two, on rook's M1+M2 at rumor/1896).
+	// The summary reads a field, and that field can be set from the action's
+	// CONTEXT -- a two-line change that leaves it true with the routing OFF, so
+	// an arm reading only this run's output is fooled by it. The ADAPTER either
+	// decoded a `flow` or it did not.
+	//
+	// THE KIND IS THE ONLY DISCRIMINATOR OUT THERE: both operations post to the
+	// toy's same UI route by design, so a request log of paths would show the
+	// identical line either way.
+	kinds, rerr := os.ReadFile(record)
+	if rerr != nil {
+		t.Fatalf("the adapter wrote no request record at %s: %v", record, rerr)
+	}
+	got := string(kinds)
+	if !strings.Contains(got, "flow join_event_ui") {
+		t.Errorf("the adapter never decoded a `flow` for join_event_ui, so nothing crossed the "+
+			"wire as one however the summary reads\nrecord:\n%s", got)
+	}
+	// THE CONTROL, so the assertion above is not satisfied by an empty file or a
+	// record of everything: the same walk must also have sent EXECUTEs, which is
+	// what every api-context action is.
+	if !strings.Contains(got, "execute ") {
+		t.Errorf("the record holds no execute at all, so it is not a record of this walk\n%s", got)
 	}
 }
 
