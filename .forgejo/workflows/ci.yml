@@ -250,13 +250,39 @@ jobs:
           # break between those runs; it grew past a bound nobody had declared.
           #
           # WHY RAISING IT IS NOT WEAKENING A CHECK. The watchdog exists to turn
-          # a HUNG test into stacks instead of silence, and it still does: 20m
-          # is strictly inside the outer 1800s, so a package that truly hangs
-          # panics with its stacks and the step still reports them, where the
-          # outer `timeout` kills the whole run and prints nothing about where
-          # it was. What changes is that a package taking 607s on a slow runner
-          # is no longer treated as hung -- the thing the measurement above
-          # shows it is not.
+          # a HUNG test into stacks instead of silence. What changes is that a
+          # package taking 607s on a slow runner is no longer treated as hung --
+          # the thing the measurement above shows it is not.
+          #
+          # 20m -> 30m, AND THE ORDER INVERTS: THE INNER BOUND NOW EQUALS THE
+          # OUTER, so the step's own budget is the only one that can fire. fable
+          # ruled it at coop thread:rumor/1835 on run 987, and the run is the
+          # argument: 892d0308 PASSED this workflow on r7.5-dst in 1237s and
+          # FAILED it on main in 1220s. Same sha, same file, no `if:` anywhere
+          # in it -- 1200s of per-binary watchdog plus a ~20s pre-test phase
+          # (measured: a warm-cache build of that sha is 7.477s at load 4.27,
+          # and task 1070's FULL clone plus a dozen git steps took 16s wall).
+          # A green release's own sha went red on main for contention.
+          #
+          # AND NO INNER BOUND BELOW THE OUTER IS SAFE, which is the half I got
+          # wrong first (thread:rumor/1836, corrected at /1837). The only
+          # contended figure anyone here holds is CENSORED: tests/attaint was
+          # KILLED at 1200.035s under load 16, where alone it is 717.898s. So
+          # ">1200s" is all that datum says, nothing bounds a contended package
+          # from above, and a watchdog chosen to clear it is a number chosen
+          # against a truncation. The per-binary bound cannot be the contention
+          # guard at all; the outer budget is, and it answers rc 124 with the
+          # diagnostic below instead of a red that names a test.
+          #
+          # WHAT THIS TRADES, stated because it is a capability and not a
+          # detail: with the two equal, a package that TRULY hangs no longer
+          # panics with its goroutine stacks -- the outer `timeout` reaches it
+          # first and prints nothing about where it stopped. The rc-124 branch
+          # below is what carries the diagnosis now, and it names the packages
+          # that never reported rather than the line that hung. Narrowing the
+          # inner bound again to recover the stacks re-arms exactly the failure
+          # run 987 is, so the stacks are the price and this comment is where it
+          # is recorded. `tests/hygiene` holds the relation as an arm.
           #
           # AND THE WATCHDOG PANIC IS WHY A HUNG RUN LOOKED LIKE A CLEAN ONE: a
           # binary killed by it never runs its cleanup, so the toy descendants
@@ -264,7 +290,7 @@ jobs:
           # waits on a pipe that cannot reach EOF -- every package reported, and
           # the process does not exit. That is the shape the rc-124 diagnostic
           # below reports as "the work finished and the run did not exit".
-          timeout 1800 "$GO" test -count=1 -timeout 20m -v ./... > ../test.log 2>&1 || rc=$?
+          timeout 1800 "$GO" test -count=1 -timeout 30m -v ./... > ../test.log 2>&1 || rc=$?
           # THE FAILURE VIEW IS MINED AND NOT ONLY TAILED, because -v moved what
           # the last 20 lines contain: under -v a tail is the verbose output of
           # whichever package finished last, so a FAIL twenty packages earlier

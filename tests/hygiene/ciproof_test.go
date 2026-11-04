@@ -405,6 +405,14 @@ func TestTheFailureViewActuallySearchesTheLog(t *testing.T) {
 // 600s is known to fire on a package that is not hung, and this floor is that
 // figure with room for the growth that crossed it in the first place -- half
 // again, not a round number for its own sake.
+//
+// AND IT STAYS 900 THROUGH THE 2026-11-04 CHANGE, which is worth saying because
+// the obvious move was to raise it. Run 987 killed a package at 1200.035s under
+// contention and the same package runs 717.898s alone -- but 1200.035 is where
+// the watchdog KILLED it, not how long it takes, so that datum says ">1200s" and
+// nothing more. A floor derived from it would be a number chosen against a
+// truncation (rook, coop thread:rumor/1836 and the correction at /1837). The
+// floor keeps the figure it was measured from; what moved is the relation below.
 const floorSeconds = 900
 
 // TestTheTwoTestBudgetsAgree holds the test step's two timeouts against each
@@ -417,12 +425,33 @@ const floorSeconds = 900
 // outer one moved the cap a reader could see and left the cap that was actually
 // in force where it was.
 //
-// THE ORDER IS THE POINT, not either number: floor < inner < outer. Below the
-// floor the watchdog kills a package that merely runs long, which is the
-// measurement above. Above the outer budget it can never fire at all, and a
-// hung package then dies by `timeout` with no stacks and nothing naming where
-// it stopped -- the diagnostic can say every package reported, and not which
-// one is holding the process open.
+// THE RELATION IS floor < inner AND inner == outer, and the equality is the
+// half that changed on 2026-11-04. It used to be floor < inner < outer, on the
+// argument that an inner bound strictly inside the outer turns a HUNG package
+// into goroutine stacks where the outer `timeout` prints nothing about where it
+// stopped. RUN 987 IS WHAT RETIRED THAT: 892d0308 passed this workflow on
+// r7.5-dst in 1237s and failed it on main in 1220s -- the same sha, the same
+// file, no `if:` in it -- because the 1200s inner bound fired on a package that
+// contention had slowed, and a released sha went red on main for it.
+//
+// NO INNER BOUND BELOW THE OUTER IS SAFE, and the reason is in floorSeconds
+// above: the only contended figure anyone holds is censored at the very bound
+// under discussion, so nothing bounds a contended package from above. A
+// watchdog that can fire before the step's own budget will eventually fire on
+// contention, whatever number it holds. So the per-binary bound stops being the
+// contention guard, the outer budget becomes the only thing that can fire, and
+// rc 124 with the step's diagnostic replaces a red that names a test.
+//
+// WHAT THE EQUALITY COSTS, recorded because it is a capability: a package that
+// truly hangs now dies by `timeout` with no stacks. ci.yml says the same beside
+// the number. fable ruled it at coop thread:rumor/1835.
+//
+// WHY EQUALITY AND NOT inner >= outer. Any inner above the outer behaves
+// identically -- it can never fire -- so behaviour alone cannot choose between
+// them. Equality is what ties the two numbers together: coop rumor/1665 raised
+// the outer 900 -> 1800 and left the inner at the toolchain's silent 10m, which
+// is the whole reason this arm exists. Under equality that same raise reddens
+// here instead of passing.
 //
 // AND IT IS AN ARM BECAUSE THE DEFAULT IS SILENT. A missing `-timeout` is not a
 // visible value to review; it is 10m arriving from the toolchain, which is how
@@ -469,18 +498,45 @@ func TestTheTwoTestBudgetsAgree(t *testing.T) {
 	}
 	inner := int(d.Seconds())
 
-	if inner >= outer {
-		t.Errorf("the per-package watchdog is %ds and the step's whole budget is %ds: a watchdog "+
-			"that cannot fire before the outer kill never prints a stack, so a hung package "+
-			"ends the run with nothing naming it", inner, outer)
+	// THE ARM RUN 987 WOULD HAVE REDDENED. At 892d0308 this read inner 1200,
+	// outer 1800, and the old assertion was satisfied by exactly that pair.
+	if inner != outer {
+		which := "SMALLER than"
+		why := "so contention can kill a package the step's own budget would have let finish, " +
+			"which is run 987: 892d0308 passed on r7.5-dst in 1237s and failed on main in 1220s"
+		if inner > outer {
+			which = "LARGER than"
+			why = "so it can never fire, and a budget raise that leaves it behind is invisible " +
+				"-- the shape coop rumor/1665 left here when the outer went 900 -> 1800"
+		}
+		t.Errorf("the per-package watchdog is %ds, %s the step's whole budget of %ds: %s",
+			inner, which, outer, why)
 	}
 	if inner <= floorSeconds {
 		t.Errorf("the per-package watchdog is %ds, at or below the %ds floor: tests/run has "+
 			"already reported 607.591s and 607.258s in the ci jail, so a bound this low kills a "+
 			"package that is running and not hung", inner, floorSeconds)
 	}
-	t.Logf("PROOF floor %ds < watchdog %ds < budget %ds, all three read out of %s",
-		floorSeconds, inner, outer, filepath.Base(path))
+	// THE PROOF LINE DERIVES ITS SYMBOLS instead of spelling the relation it
+	// hopes for. Written as `< ... ==` it printed "watchdog 1200s == budget
+	// 1800s" under the very mutant that reddened the arm above -- a false
+	// sentence in the evidence line, and the one a reader quotes.
+	t.Logf("PROOF floor %ds %s watchdog %ds %s budget %ds, all three read out of %s",
+		floorSeconds, relSymbol(floorSeconds, inner), inner, relSymbol(inner, outer), outer,
+		filepath.Base(path))
+}
+
+// relSymbol spells the relation that HOLDS between two figures, so a PROOF line
+// cannot assert one that does not.
+func relSymbol(a, b int) string {
+	switch {
+	case a < b:
+		return "<"
+	case a > b:
+		return ">"
+	default:
+		return "=="
+	}
 }
 
 // TestTheFailureViewSurvivesTheRunnersErrFlag RUNS the failure-view fragment
