@@ -664,11 +664,35 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 	// walk that observed NOTHING and a walk whose observations all agreed are
 	// the same five lines of trace, and the first has asked the system no
 	// question at all. A reader cannot tell them apart without this number.
+	// AND HOW MANY STEPS WENT THROUGH `flow` (R9.1's H2), PRINTED AT ZERO TOO.
+	// The clause is the observable the part-four arm needs -- a flow that
+	// completed first time is otherwise indistinguishable from an execute here.
+	//
+	// IT WAS OMITTED AT ZERO FOR ONE DRAFT, to hold the toy's three control
+	// digests still, and rook named that as the shape THIS TREE ALREADY
+	// REFUSES three files away (coop r9/50): tests/run's
+	// TestTheReportSaysNoneRatherThanNothing exists because "a skip list
+	// omitted when there is nothing to say cannot be told from a build that
+	// never learned to report one, which is the shape that let `fuzz` ship
+	// known, unrunnable and declared by nobody". `0 step(s) through flow`
+	// omitted reads identically to a build that never counted them.
+	//
+	// THE DIGESTS MOVE AND THAT IS THE CHEAPER HALF: nothing in this tree pins
+	// them -- no gate, no lock file, and tools/d4control.py compares two trees
+	// relatively rather than against a constant -- so the cost is republishing
+	// three figures, against permanently losing the difference between a zero
+	// and a build that cannot count.
+	flows := 0
+	for _, st := range rec.Steps {
+		if st.Flow {
+			flows++
+		}
+	}
 	if _, err := fmt.Fprintf(stdout,
 		"run: %s -- seed %d, %d step(s), %d handle(s), %d session(s), "+
-			"%d observation(s); %d rollback provider(s) registered\n",
+			"%d observation(s), %d step(s) through `flow`; %d rollback provider(s) registered\n",
 		filepath.Base(dir), rec.Seed, len(rec.Steps), len(rec.HandleSequence()),
-		rec.Sessions, rec.Observations, len(rollback.Registered())); err != nil {
+		rec.Sessions, rec.Observations, flows, len(rollback.Registered())); err != nil {
 		_, _ = fmt.Fprintf(stderr, "run: writing the verdict: %v\n", err)
 		return 2
 	}

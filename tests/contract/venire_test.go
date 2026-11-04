@@ -41,11 +41,24 @@ import (
 // gained a pool, so a reviewer does not have to take the commit message's word
 // for it.
 //
-// WHAT IT STILL GUARANTEES, with an entry in it: every OTHER committed profile
-// draws exactly the pool it always drew, and `viewing`'s own pool still BEGINS
-// with the committed rows. A seed recorded against any other profile is
-// untouched by construction, and this is the oracle over that claim.
-var appendingProfiles = []string{"toy/viewing"}
+// WHAT IT STILL GUARANTEES, with entries in it: every OTHER committed profile
+// draws exactly the pool it always drew, and an appending profile's own pool
+// still BEGINS with the committed rows. A seed recorded against any other
+// profile is untouched by construction, and this is the oracle over that claim.
+//
+// `toy/clicking` JOINED AT R9.1's H2, and this line is where that is said: it
+// appends the same `viewer` row for a different purpose -- `viewing` is the
+// browser OBSERVATIONS' world and `clicking` is the browser ACTION's, the one
+// world in which `join_event_ui` can be DRAWN. Measured: thirty unprofiled seeds
+// drew it none of the time, because every unprofiled walk halts on a finding at
+// step 7 to 12 and the action competes with that halt rather than only with its
+// weight (rook, coop r9/42), and under `viewing` the viewer acts while the
+// action is still never applicable -- it needs a bound `event` handle the viewer
+// KNOWS. The three unprofiled control digests are byte-identical with the
+// profile present, which is this test's own guarantee read off the tree:
+// 3428487f265ed469, 6285bfb9093d538c and 568aaa6cf989981a at seeds 2, 40 and 1,
+// `--steps 10`, stdout only.
+var appendingProfiles = []string{"toy/clicking", "toy/viewing"}
 
 func TestNoCommittedProfileQuietlyChangesItsActorPool(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join(examplesDir, "*", "platform.toml"))

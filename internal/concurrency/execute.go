@@ -335,7 +335,7 @@ func (w *world) fanOut(s schedule.Step) (Try, string, error) {
 		// one reading of it: `[[action]].response` is an equality contract for
 		// exactly this question, and a 2xx range here would be a second answer
 		// about one transport that could disagree with the first.
-		if _, refused := schedule.Refusal(w.sub.Action, att.Response); !refused {
+		if _, refused := schedule.Refusal(w.sub.Action, att.Response.Response); !refused {
 			accepted++
 		}
 	}
@@ -379,7 +379,7 @@ func (w *world) step(a bindings.Action, s schedule.Step, sess *wire.Session,
 	if err != nil {
 		return nil, "", fmt.Errorf("%s as %s: %w", a.Name, s.Actor, err)
 	}
-	if why, refused := schedule.Refusal(a, resp); refused {
+	if why, refused := schedule.Refusal(a, resp.Response); refused {
 		return nil, fmt.Sprintf("the setup step %s was refused, so the world the fan-out would "+
 			"contend in was not built: %s", a.Name, why), nil
 	}

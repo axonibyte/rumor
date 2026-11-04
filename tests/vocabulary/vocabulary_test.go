@@ -248,7 +248,12 @@ const root = "../.."
 // 66 -> 68 AT THE ACTION HALF: m19 is a nineteenth mutant and every mutant is a
 // copy of the statute, which carries two attributed quotes. One file times two
 // again, and not a word of new prose. 0 absent.
-const declaredQuotes = 68
+// 68 -> 69 AT R9.1's `ui_timeout`: ONE new quote and it is prose this time, not
+// a copied file -- `internal/engine.FindingUITimedOut`'s comment quotes the
+// sentence it had to amend, "one finding beside these four", because a constant
+// that took an amendment to exist should say which words it moved. 0 absent, and
+// the sweep found it before this count did.
+const declaredQuotes = 69
 
 // knownChainGaps are the places where this file's warrant chain does NOT join,
 // each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which

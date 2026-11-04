@@ -1107,39 +1107,131 @@ func TestThePageReadersAreTheElementsAndNotThePage(t *testing.T) {
 	}
 }
 
-// R9.1's BY-NAME REFUSAL FOR A KIND THIS ADAPTER DOES NOT SERVE, which is the
-// armature under holding the contract version rather than bumping it.
+// TestEveryRequestKindWireCanSendHasACaseHere IS WHAT THE OLD ARM BECAME, and
+// the move is fable's ruling at coop r9/40 part three.
 //
-// WHY IT IS AN ARM AND NOT A COMMENT. rook's reason for R7.2 keeping the version
-// at "2" (coop rumor/1348, and their condition at r9/13) is instrumental: a bump
-// refuses an older adapter FOR ITS VERSION at the handshake, so the refusal that
-// names the missing request can never fire. That argument only holds while such a
-// refusal EXISTS and fires, and until this arm nothing drove it -- the path at
-// main.go's fall-through was reachable and unobserved, which is the shape this
-// tree calls a guard nobody has seen refuse.
+// WHAT WAS HERE: TestAKindThisAdapterDoesNotServeIsAFaultNamingTheKind, driving
+// `flow` at this adapter and asserting the fall-through refused it by name.
+// That was the live case for the contract version's own argument -- an adapter
+// that merely LACKS a request is refused for the thing it lacks and not for its
+// version -- and R9.1's H2 ENDED it: this adapter serves `flow` now, because
+// examples/toy declares an action with one and a declaration the walk honors is
+// one the toy must honor too. The arm lives in internal/fake under the
+// lacks-a-kind knob, where an adapter refuses a kind ON PURPOSE.
 //
-// IT DRIVES `flow` DELIBERATELY: that is the kind R9.1 adds and the one an adapter
-// built before it lacks, so this is the live case and not a fabricated kind.
-func TestAKindThisAdapterDoesNotServeIsAFaultNamingTheKind(t *testing.T) {
+// AND THIS IS THE ARM THAT REPLACES IT, rather than nothing: with every request
+// kind served, the fall-through below is UNREACHABLE -- and the last time a
+// package in this tree carried a default under a comment claiming that, the
+// comment was FALSE and rook found it (internal/fake, coop r9/39). So the claim
+// is not left to a comment. The kinds come from `wire.Kinds("request")` and not
+// from a list here, so a kind added to the protocol and not to the switch fails
+// HERE, which is the only way the fall-through's unreachability can keep being
+// true rather than having been true once.
+func TestEveryRequestKindWireCanSendHasACaseHere(t *testing.T) {
+	kinds := wire.Kinds("request")
+	if len(kinds) == 0 {
+		t.Fatal("wire reports no request kinds, so this arm asserts nothing")
+	}
+	wellFormed := map[wire.Kind]map[string]any{
+		wire.KindDescribe: {},
+		wire.KindSession:  {"actor": "alice", "context": "api"},
+		wire.KindExecute:  {"action": "create_user", "args": map[string]any{}, "token": "t1"},
+		wire.KindObserve:  {"query": "attendance", "source": "direct"},
+		wire.KindClock:    {"op": "advance", "t": 1000},
+		wire.KindFlow: {"action": "join_event_ui", "token": "t1",
+			"steps": []any{map[string]any{"step": "navigate", "to": "/ui/events/1"}}},
+	}
+	if len(wellFormed) != len(kinds) {
+		t.Fatalf("this arm knows %d kind(s) and wire sends %d (%v): a kind added to the "+
+			"protocol needs a well-formed request here before it can be driven",
+			len(wellFormed), len(kinds), kinds)
+	}
+	for _, k := range kinds {
+		body, ok := wellFormed[k]
+		if !ok {
+			t.Errorf("wire sends %q and this arm has no request for it", k)
+			continue
+		}
+		a, _ := stub(t, nil)
+		req := map[string]any{"kind": string(k)}
+		for f, v := range body {
+			req[f] = v
+		}
+		answer := ask(t, a, req)
+		got, _ := answer["kind"].(string)
+		if got != string(wire.KindError) {
+			continue // an answer of its own kind: the case exists, which is the claim
+		}
+		e, _ := answer["error"].(map[string]any)
+		detail, _ := e["detail"].(string)
+		if strings.Contains(detail, "does not serve") {
+			t.Errorf("%q reached the fall-through: %q -- the comment there says it is "+
+				"unreachable, and a default under a false comment is one nobody checks", k, detail)
+		}
+	}
+}
+
+// AN UNRESOLVED PLACEHOLDER IS THE ENGINE'S FAULT AND SAYS SO, rather than being
+// posted and answered 404.
+//
+// WHY IT MATTERS MORE THAN THE STATUS: the walk substitutes a flow's `{kind}`
+// from the handle its own argument chose, so a literal arriving here means the
+// ENGINE sent one -- and a 404 from /ui/events/%7Bevent%7D would reach a reader
+// as the system under test refusing, which is the wrong half of the tree to go
+// looking in. The fault names the step and quotes what it was given.
+func TestAnUnresolvedFlowPlaceholderIsRefusedAndNothingIsPosted(t *testing.T) {
 	a, log := stub(t, nil)
 	kind, detail := faultOf(t, ask(t, a, map[string]any{
 		"kind": "flow", "action": "join_event_ui", "token": "t1",
-		"steps": []any{map[string]any{"step": "navigate", "to": "/ui/events/1"}},
+		"steps": []any{
+			map[string]any{"step": "navigate", "to": "/ui/events/{event}"},
+			map[string]any{"step": "click", "target": "join"},
+		},
 	}))
-	if kind != string(wire.FaultInternal) {
-		t.Errorf("an unserved kind is fault %q, want %q", kind, wire.FaultInternal)
+	if kind != string(wire.FaultField) {
+		t.Errorf("an unresolved placeholder is fault %q, want %q: the message's own field is "+
+			"wrong, which is not this adapter's internal trouble", kind, wire.FaultField)
 	}
-	if !strings.Contains(detail, "flow") {
-		t.Errorf("the fault does not name the kind it could not serve: %q", detail)
+	if !strings.Contains(detail, "placeholder") {
+		t.Errorf("the fault does not say what is wrong with the step: %q", detail)
 	}
-	if !strings.Contains(detail, "does not serve") {
-		t.Errorf("the fault does not say it is unserved, so a reader cannot tell it from a "+
-			"malformed request: %q", detail)
+	if !strings.Contains(detail, "{event}") {
+		t.Errorf("the fault does not quote what it was given, so a reader cannot see which "+
+			"placeholder survived: %q", detail)
 	}
-	// AND NOTHING REACHED THE TOY, which is the half the fault alone cannot show:
-	// an adapter that half-drove a flow before refusing it would have moved the
+	// AND NOTHING REACHED THE TOY, which is the half the fault cannot show: an
+	// adapter that posted first and complained after would have moved the
 	// system under test.
 	if len(*log) != 0 {
-		t.Errorf("an unserved kind reached the toy %d time(s)", len(*log))
+		t.Errorf("an unresolved placeholder reached the toy %d time(s)", len(*log))
+	}
+}
+
+// A FLOW THAT ASKS THE SYSTEM NOTHING REPORTS NO STATUS, which is the narrower
+// half of the same honesty: this adapter's only acting step is the click, so a
+// flow of navigates and waits opens a page and asks nothing. It answered
+// `{"status":0,"body":null}` before -- a non-status dressed as one, and measured
+// off a failing arm rather than reasoned about.
+func TestAFlowThatAsksNothingReportsNoStatus(t *testing.T) {
+	a, log := stub(t, nil)
+	answer := ask(t, a, map[string]any{
+		"kind": "flow", "action": "join_event_ui", "token": "t1",
+		"steps": []any{
+			map[string]any{"step": "navigate", "to": "/ui/events/e-1"},
+			map[string]any{"step": "wait", "until": "count-changed"},
+		},
+	})
+	if got, _ := answer["kind"].(string); got != string(wire.KindFlow) {
+		t.Fatalf("a navigate-and-wait flow answered %q: %v", got, answer)
+	}
+	if r, present := answer["response"]; present && r != nil {
+		t.Errorf("a flow that asked the system nothing reported %v, where there is no status to "+
+			"report", r)
+	}
+	if got, _ := answer["reached"].(float64); int(got) != 2 {
+		t.Errorf("reached %v of 2 steps", answer["reached"])
+	}
+	if len(*log) != 0 {
+		t.Errorf("a flow with no click reached the toy %d time(s)", len(*log))
 	}
 }

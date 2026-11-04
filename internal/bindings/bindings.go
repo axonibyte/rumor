@@ -322,6 +322,15 @@ type Bindings struct {
 	Uses Uses
 }
 
+// ContextBrowser is the context name a browser-stage action declares, and it
+// lives HERE because the context is this package's field: `internal/validate`
+// carried its own `isBrowser(ctx) bool { return ctx == "browser" }` and
+// `internal/schedule` needed the same test to route a flow, which is two copies
+// of one convention in two packages that cannot see each other's. docs/contract
+// .md:295 is the rule the name serves: "an action whose context is a browser
+// context declares a flow instead of a response".
+const ContextBrowser = "browser"
+
 // Action is one thing an actor can do.
 type Action struct {
 	Name     string

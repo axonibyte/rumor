@@ -249,7 +249,8 @@ func TestFakeAdapterFlagsAreRefusedByName(t *testing.T) {
 		// a DIFFERENT clause refused the same spec. The arity message is the
 		// only one with nothing between the colon and `wanted`.
 		{[]string{"fake-adapter", "--stop-flow", "create_event:2"}, ": wanted ACTION:AT:REASON"},
-		{[]string{"fake-adapter", "--stop-flow", "create_event:2:wait:1:extra"}, ": wanted ACTION:AT:REASON"},
+		{[]string{"fake-adapter", "--stop-flow", "create_event:2:wait:1:2:extra"}, ": wanted ACTION:AT:REASON"},
+		{[]string{"fake-adapter", "--stop-flow", "create_event:2:wait:1:later"}, `THENAT "later" is not a number`},
 		{[]string{"fake-adapter", "--stop-flow", ":2:wait"}, "no action named"},
 		{[]string{"fake-adapter", "--stop-flow", "create_event:two:wait"}, `AT "two" is not a number`},
 		{[]string{"fake-adapter", "--stop-flow", "create_event:2:wait:once"}, `TIMES "once" is not a number`},
@@ -361,7 +362,7 @@ func TestFakeAdapterReportsAFailedWrite(t *testing.T) {
 // TestFakeAdapterUsageIsInTheUsageLine, because a subcommand nobody can
 // discover is a subcommand the agent guide has to carry instead.
 func TestFakeAdapterUsageIsInTheUsageLine(t *testing.T) {
-	for _, want := range []string{"fake-adapter", "--surface", "--contract", "--fail", "--omit", "--id-salt", "--stop-flow"} {
+	for _, want := range []string{"fake-adapter", "--surface", "--contract", "--fail", "--omit", "--id-salt", "--stop-flow", "--lacks"} {
 		if !strings.Contains(usage, want) {
 			t.Errorf("the usage line omits %q", want)
 		}

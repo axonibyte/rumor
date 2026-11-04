@@ -116,6 +116,16 @@ type StopFlow struct {
 	Reason wire.Stop `json:"reason"`
 	// Times is how many calls stop this way. Zero means EVERY call.
 	Times int `json:"times"`
+	// ThenAt is where the NEXT call stops once the Times above are spent, and 0
+	// means it completes instead.
+	//
+	// IT EXISTS FOR ONE BRANCH NOTHING ELSE CAN REACH: the engine records
+	// `ui_timeout` only when the re-check stops at the SAME position, because a
+	// flow that got FURTHER and stopped at a later wait has made progress and
+	// gets its own re-check rather than the finding. With `At` alone every stop
+	// is at one index, so that branch is unreachable from a test -- and an
+	// unarmed branch is one nobody has seen work.
+	ThenAt int `json:"thenAt"`
 }
 
 // Config is the adapter's whole behavior.
@@ -125,6 +135,21 @@ type Config struct {
 	// StopFlow stops one action's flow short, keyed by action name. See the
 	// type above for why it carries a count.
 	StopFlow map[string]StopFlow
+
+	// Lacks makes this adapter NOT SERVE a named request kind, refusing it by
+	// name through wire.UnservedKind exactly as an adapter built before that
+	// kind existed would.
+	//
+	// WHY IT IS A DRILL KNOB AND NOT A FABRICATED SUBJECT (fable, coop r9/40
+	// part three, on rook's r9/37): the contract version stays "2" because an
+	// adapter that merely LACKS a request is refused for the thing it lacks and
+	// not for its version -- and the witness for that used to be
+	// cmd/toy-adapter's fall-through, which now SERVES `flow` because the toy
+	// declares an action with one. With it served, no adapter in this tree
+	// lacks the kind by accident, so the live case has to be an adapter that
+	// lacks it ON PURPOSE. That is what this package is for, and it is the same
+	// family as --fail and --omit: a named misbehavior, not a mock.
+	Lacks map[wire.Kind]bool
 
 	// Contract is the version the adapter claims. Empty means the engine's own,
 	// which is the only value that agrees. fable's D6 bumps exactly this.
@@ -217,6 +242,13 @@ func (cfg Config) answer(contract string, line []byte, calls map[string]int, clo
 			Kind:   cfg.Fail,
 			Detail: fmt.Sprintf("the fake adapter was asked to answer %s with this kind", env.Kind),
 		})
+	}
+	// LACKING A KIND IS ANSWERED BEFORE ANYTHING IS BUILT, which is what makes
+	// it a lack rather than a failure: the adapter never looks at the request's
+	// fields, so nothing of the system under test is touched and the refusal
+	// carries the kind and nothing else.
+	if cfg.Lacks[env.Kind] {
+		return envelope(contract, env.ID, wire.UnservedKind(env.Kind))
 	}
 	var typed wire.Message
 	switch m := msg.(type) {
@@ -354,6 +386,22 @@ func (cfg Config) answer(contract string, line []byte, calls map[string]int, clo
 				})
 			}
 			calls["flow:"+m.Action]++
+			if stop.ThenAt > 0 && stop.Times > 0 && calls["flow:"+m.Action] == stop.Times+1 {
+				if stop.ThenAt >= len(m.Steps) {
+					return envelope(contract, env.ID, wire.Fault{
+						Kind:  wire.FaultInternal,
+						Field: "stopFlow",
+						Detail: fmt.Sprintf("this adapter is configured to stop %q at %d next, and the flow has %d step(s)",
+							m.Action, stop.ThenAt, len(m.Steps)),
+					})
+				}
+				typed = wire.FlowResponse{
+					Envelope: wire.Envelope{Kind: wire.KindFlow, Contract: contract, ID: env.ID},
+					Reached:  stop.ThenAt,
+					Stopped:  stop.Reason,
+				}
+				break
+			}
 			if stop.Times == 0 || calls["flow:"+m.Action] <= stop.Times {
 				typed = wire.FlowResponse{
 					Envelope: wire.Envelope{Kind: wire.KindFlow, Contract: contract, ID: env.ID},
@@ -374,14 +422,19 @@ func (cfg Config) answer(contract string, line []byte, calls map[string]int, clo
 			Response: cfg.Surface.Execute[m.Action].Response,
 		}
 	default:
-		// UNREACHABLE WHILE wire's REQUEST KINDS ARE THE FIVE ABOVE, and it
-		// answers rather than panicking: a kind added to the protocol without
-		// a case here is this adapter's gap, and the run should say so and
-		// carry on rather than taking the engine down.
-		return envelope(contract, env.ID, wire.Fault{
-			Kind:   wire.FaultInternal,
-			Detail: fmt.Sprintf("the fake adapter has no answer for a %s request", env.Kind),
-		})
+		// REACHABLE, AND THE COMMENT THAT SAID OTHERWISE IS RETIRED (rook, coop
+		// r9/39, measured at fdfc6e3). It read "UNREACHABLE WHILE wire's
+		// REQUEST KINDS ARE THE FIVE ABOVE" while the package served six and
+		// `Lacks` now routes here on purpose -- a default under a comment
+		// claiming it cannot be reached is a default nobody checks.
+		//
+		// AND THE WORDING IS NOW PACKAGE WIRE'S, not this package's: it said
+		// "the fake adapter has no answer for a %s request" with NO FIELD,
+		// which could never have satisfied the arm the contract version's own
+		// note rests on -- that arm asserts the detail contains "does not
+		// serve" and the field is `kind`. Two adapters said two things and
+		// nothing paired them.
+		return envelope(contract, env.ID, wire.UnservedKind(env.Kind))
 	}
 	obj := object(typed)
 	if field, ok := cfg.Omit[env.Kind]; ok {

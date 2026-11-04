@@ -624,3 +624,55 @@ count = 1
 # the one the whole world lives in as a single file.
 provider = "toy-process-restart"
 covers = ["store"]
+
+# THE BROWSER ACTION'S OWN WORLD (R9.1), and it exists because the action could
+# not be reached in any other. `join_event_ui` is the one action this project
+# declares with a browser context and a UI flow, and as of R9.1 the walk routes
+# such an action through the `flow` operation rather than `execute` -- so a walk
+# that DRAWS it is the only dynamic witness that the routing works and that the
+# adapter serves what the declaration promises. rook's tools/adapterserves.py is
+# the static half and neither replaces the other (fable, coop r9/40 part four,
+# amended at r9/43 on rook's r9/41-/42).
+#
+# WHY A PROFILE AND NOT A SEED. Measured on b3e3f18 plus H2: thirty unprofiled
+# seeds drew it NONE of the time, and rook measured why -- every unprofiled walk
+# STOPS ON A FINDING at step 7 to 12, so the action competes with an early halt
+# and not merely with its weight. A bigger --steps cannot help. fable's ruling
+# is that the arm runs under a profile whose weights put the action ahead of that
+# halt and ASSERTS the draw, because a seed is a fact about today's weights.
+#
+# THE VENIRE ROW IS THE OTHER HALF, and it is why `viewing` does not fit: only
+# the `viewer` role holds the browser context, this project's venire declares
+# admin, member and guest, and `viewing` appends a viewer for its OBSERVATIONS.
+# Under it the viewer acts and `join_event_ui` is still never applicable,
+# measured -- the action needs a bound `event` handle the viewer KNOWS, so the
+# chain is create_event, then a tell of THAT handle to the viewer, then the draw.
+# These weights are chosen for that chain: `tell` and `create_event` carry it,
+# `join_event_ui` is weighted to be taken the step it becomes applicable, and the
+# four kinds that produce the early finding are ZERO -- which is a weight this
+# project already uses for `essoin` and `advance`.
+#
+# IT MOVES NO MEASUREMENT TAKEN ELSEWHERE, by construction and measured: a
+# profile's venire rows APPEND and its weights apply under its own name, so
+# every unprofiled figure -- the three control digests among them -- is
+# byte-identical with this block present.
+[profiles.clicking]
+stages = ["api", "browser"]
+seeds = 1
+budget = "2m"
+
+[[profiles.clicking.venire]]
+role = "viewer"
+count = 1
+
+[weights.profile.clicking]
+create_user = 1
+create_event = 25
+tell = 14
+join_event_ui = 40
+join_event = 0
+leave_event = 0
+delete_event = 0
+canard = 0
+palter = 0
+suborn = 0

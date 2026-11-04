@@ -824,3 +824,75 @@ func TestAFlowWithNoStepsIsRefusedRatherThanAnsweredZero(t *testing.T) {
 		t.Errorf("the refusal names %q, want steps: %+v", resp.Error.Field, resp.Error)
 	}
 }
+
+// TestAKindThisAdapterDoesNotServeIsAFaultNamingTheKind IS THE CONTRACT
+// VERSION'S OWN WITNESS, moved here from cmd/toy-adapter by fable's ruling at
+// coop r9/40 part three.
+//
+// WHY THE VERSION NEEDS A WITNESS AT ALL. `wire.ContractVersion` stays "2"
+// through R9.1's `flow`, and the note above that constant gives the reason: the
+// version is one string compared exactly with no compatibility window, so a bump
+// would refuse an adapter built before the request AT THE HANDSHAKE -- and then
+// an adapter that merely LACKS `flow` would be refused for its VERSION and never
+// for the thing it lacks. An unmoved version is what keeps the by-name refusal
+// reachable, and an argument resting on a refusal nobody has seen fire is prose.
+//
+// WHY IT IS HERE AND NOT WHERE IT WAS. It drove `flow` at cmd/toy-adapter, whose
+// fall-through refused it -- the live case, because that adapter genuinely
+// lacked the kind. H2 ended that: examples/toy declares an action with a flow
+// and the walk now routes it there, so the toy must serve it. With it served, no
+// adapter in this tree lacks the kind by accident, and the live case has to be
+// one that lacks it ON PURPOSE.
+//
+// AND A KNOB IS NOT A FABRICATED SUBJECT, which is rook's objection at r9/37 and
+// the reason it does not hold here: rook's point was that a type written for the
+// arm would make the kind fabricated, and `Lacks` is in the --fail/--omit
+// family, whose whole purpose is an adapter misbehaving in a NAMED way. The kind
+// is real, the refusal is this package's own, and the wording comes from
+// wire.UnservedKind, which both adapters share.
+func TestAKindThisAdapterDoesNotServeIsAFaultNamingTheKind(t *testing.T) {
+	flow := request(wire.KindFlow, map[string]any{
+		"action": "create_event", "token": "t",
+		"steps": []any{map[string]any{"step": "click", "target": "join"}},
+	})
+
+	// THE CONTROL FIRST: without the knob this adapter SERVES `flow`, so the
+	// refusal below is the knob's doing and not the kind being unsupported.
+	if resp := flowAnswer(t, drive(t, dflt(), flow)); resp.Reached != 1 {
+		t.Fatalf("the control did not drive the flow (reached %d), so the refusal below says "+
+			"nothing about `Lacks`", resp.Reached)
+	}
+
+	cfg := dflt()
+	cfg.Lacks = map[wire.Kind]bool{wire.KindFlow: true}
+	fault := faultOf(t, drive(t, cfg, flow))
+	if fault.Kind != wire.FaultInternal {
+		t.Errorf("an unserved kind is fault %q, want %q", fault.Kind, wire.FaultInternal)
+	}
+	if fault.Field != "kind" {
+		t.Errorf("the fault names field %q, want kind: a reader has to be told WHICH field of "+
+			"the message the adapter could not act on", fault.Field)
+	}
+	if !strings.Contains(fault.Detail, "flow") {
+		t.Errorf("the fault does not name the kind it could not serve: %q", fault.Detail)
+	}
+	if !strings.Contains(fault.Detail, "does not serve") {
+		t.Errorf("the fault does not say it is unserved, so a reader cannot tell it from a "+
+			"malformed request: %q", fault.Detail)
+	}
+}
+
+// AND LACKING ONE KIND LEAVES THE OTHERS SERVED, which is the narrowing: a knob
+// that silently refused everything would satisfy the arm above and make the
+// adapter useless for the drills it exists for.
+func TestLackingOneKindLeavesTheRestServed(t *testing.T) {
+	cfg := dflt()
+	cfg.Lacks = map[wire.Kind]bool{wire.KindFlow: true}
+	msg, err := wire.DecodeResponse(drive(t, cfg, request(wire.KindDescribe, nil)))
+	if err != nil {
+		t.Fatalf("describe is not on the protocol with --lacks flow set: %v", err)
+	}
+	if _, ok := msg.(wire.DescribeResponse); !ok {
+		t.Errorf("describe answered %T with only `flow` lacking", msg)
+	}
+}

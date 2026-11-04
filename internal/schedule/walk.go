@@ -230,6 +230,34 @@ type Step struct {
 	// the clock where the walk asked.
 	AdvancedTo int64
 
+	// Flow says this step's action was carried by the `flow` operation rather
+	// than by `execute`, which is decided by the action's CONTEXT (R9.1's H2).
+	//
+	// IT EXISTS BECAUSE AN ARM CANNOT COMPARE WHAT THE PRODUCT CANNOT SAY. A
+	// flow that went through first time leaves FlowReached 0 and FlowStopped
+	// empty -- exactly what an `execute` leaves -- so nothing in the record or
+	// the output distinguished the two, and the arm fable's r9/40 part four
+	// asks for has to assert the action "went through `flow`". A grep cleverer
+	// than the product is not the cure; an observable is.
+	Flow bool
+
+	// FlowReached and FlowStopped are a BROWSER-CONTEXT action's flow that did
+	// not finish: how many of its steps the driver completed, and the closed
+	// word saying why it got no further. Zero and empty for every other kind
+	// AND for a flow that reached its last step.
+	//
+	// THEY ARE ON THE RECORD for AdvancedTo's reason, which is the same one: a
+	// flow that stopped and then resumed is a different history from one that
+	// went through first time, and a record carrying neither would let two
+	// attempts agree while their worlds diverged. A mutant that stopped
+	// resuming would survive every arm reading only the kind.
+	//
+	// THE TOKEN IS NOT HERE AND NEVER WILL BE. The resume needs one and the
+	// record must not carry one, which is why the pending state lives in the
+	// walk's own `pendingFlow` and only these two facts reach the record.
+	FlowReached int
+	FlowStopped string
+
 	// Drew is the scalars this step's action DREW, in the order the action
 	// declares its arguments.
 	//
@@ -928,6 +956,17 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	// here rather than moved.
 	reAsked := map[string]bool{}
 
+	// THE FLOW THAT STOPPED SHORT, carried across one step boundary and no
+	// further: it is resumed at the top of the next iteration, after the seal
+	// and the clock write, and the second failure of the same wait ends it as a
+	// `ui_timeout`. Declared out here because the walk owns the retry -- see
+	// pendingFlow for why that is the engine's hand and not the adapter's.
+	var pend pendingFlow
+	// pendAt is where in rec.Steps the stopped step sits, so the resume updates
+	// THAT record rather than the step it happens during: the resume is not a
+	// draw and must not read as one.
+	pendAt := -1
+
 	for n := 1; n <= steps; n++ {
 		// SEAL EVERYTHING SO FAR. The seal is the prefix a precondition is
 		// evaluated against, so it moves to the end of what has happened
@@ -941,6 +980,39 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		// its claim.
 		if err := clk.seal(l, sess); err != nil {
 			return rec, fmt.Errorf("schedule: step %d: sealing the prefix at %d: %w", n, l.Len(), err)
+		}
+
+		// A FLOW THAT STOPPED AT A WAIT IS RE-CHECKED HERE, and the position is
+		// the whole of R9.1's retry policy (fable, coop r9/21 and r9/1 item 3):
+		// after the seal and after the clock write, which is when the engine's
+		// time has moved, and BEFORE any draw, so the re-check consumes no
+		// generator entropy and a seed's world is unchanged.
+		//
+		// ON THE SECOND FAILURE OF THE SAME WAIT THE WALK ENDS, which is a
+		// decision and is recorded as one: after a wait that never came true
+		// the page the actor acts through is in a state the record cannot
+		// describe, so every later step in that context would act on a world no
+		// reader can reconstruct. It ends the walk the way a `bug` and a
+		// `quiesce_timeout` do, and `stopsTheWalk` carries the word so no path
+		// walks past it.
+		if pend.waiting() {
+			found, timedOut, rerr := resumeFlow(sess, sessions, l, &pend, &rec.Steps[pendAt])
+			if rerr != nil {
+				return rec, fmt.Errorf("schedule: step %d: %w", n, rerr)
+			}
+			if timedOut {
+				rec.Steps[pendAt].Verdicts = append(rec.Steps[pendAt].Verdicts, found.Says())
+				f := found
+				rec.Finding = &f
+				rec.FoundAt = rec.Steps[pendAt].N
+				// NO `stopped = true` HERE, and the linter is why rather than a
+				// preference: that flag guards the PERIODIC RECONCILIATION later
+				// in the same iteration and is never read after the loop, so
+				// setting it immediately before breaking out is ineffectual --
+				// ineffassign said so and it is right. The verdict a caller
+				// reads is rec.Finding, which is set above.
+				break
+			}
 		}
 
 		ai, err := src.IntN(len(actors))
@@ -1018,7 +1090,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		}
 
 		step := Step{N: n, Actor: actor, Kind: kind}
-		if err := take(ctx, p, sess, sessions, l, table, mint, src, known, clk, landings, &step); err != nil {
+		if err := take(ctx, p, sess, sessions, l, table, mint, src, known, clk, landings, &pend, &step); err != nil {
 			return rec, fmt.Errorf("schedule: step %d: %s taking %s: %w", n, actor, kind, err)
 		}
 		// AND THE WALK OBSERVES, after every step (fable, coop r5/152). The
@@ -1048,6 +1120,9 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		}
 		rec.Observations += len(seen)
 		rec.Steps = append(rec.Steps, step)
+		if pend.waiting() {
+			pendAt = len(rec.Steps) - 1
+		}
 
 		// THE FIRST FINDING THAT STOPS A WALK ENDS IT -- a `bug`, or R6.2's
 		// `quiesce_timeout`. Checked after the step is recorded, so the
@@ -1833,13 +1908,13 @@ const findingBug = "bug"
 // single place to add it is a value some paths stop on and others walk past.
 func stopsTheWalk(v any) bool {
 	s, ok := v.(string)
-	return ok && (s == findingBug || s == engine.FindingQuiesceTimedOut)
+	return ok && (s == findingBug || s == engine.FindingQuiesceTimedOut || s == engine.FindingUITimedOut)
 }
 
 // take performs one drawn kind: the honest action, or the lie.
 func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions,
 	l *ledger.Ledger, table *handle.Table, mint *minter, src *Source, known []string,
-	clk *runClock, landings []int64, step *Step) error {
+	clk *runClock, landings []int64, pend *pendingFlow, step *Step) error {
 
 	switch step.Kind {
 	case Canard:
@@ -1855,7 +1930,7 @@ func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions
 		// `visible_to` argument is that field. ibis hit the refusal from the
 		// other end driving the toy (coop r5/88): seed 4242 reaches step 3 and
 		// step 3 draws palter.
-		return palter(ctx, p, sess, sessions, l, table, mint, src, known, step)
+		return palter(ctx, p, sess, sessions, l, table, mint, src, known, pend, step)
 	case Advance:
 		return advanceStep(clk, sess, src, landings, step)
 	case Essoin:
@@ -1873,7 +1948,7 @@ func take(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions
 		return fmt.Errorf("%q is neither a declared action nor a nemesis kind, and the pool it "+
 			"came from is built from those two sets alone", step.Kind)
 	}
-	return honest(ctx, sess, sessions, l, table, mint, src, a, known, step)
+	return honest(ctx, sess, sessions, l, table, mint, src, a, known, pend, step)
 }
 
 // honest executes the action against the system under test and records what it
@@ -1890,6 +1965,14 @@ type performed struct {
 	// with the one the action declares. Nothing is appended for such a step
 	// and nothing is minted -- see refusal below.
 	Refused bool
+
+	// Stopped says the action HAS NOT HAPPENED YET: a browser flow reached a
+	// wait whose condition was not met, and the walk will send it again from
+	// that position after the next seal. It is NOT a refusal -- the system did
+	// not decline anything -- and it appends and mints nothing for the same
+	// reason a refusal does not: there is no claim to make about a thing that
+	// is still in progress.
+	Stopped bool
 }
 
 // refusal reports whether the system refused the action, and in what words.
@@ -1940,18 +2023,25 @@ type performed struct {
 // 2xx range in internal/concurrency would have been a second answer, about one
 // transport, to a question the bindings already answer, and the two could then
 // disagree about the same response. So the stage calls this.
-func Refusal(a bindings.Action, resp wire.ExecuteResponse) (string, bool) {
+// REFUSAL READS THE ANSWER AND NOT THE ENVELOPE, as of R9.1's H2: it took a
+// `wire.ExecuteResponse` and used exactly one field of it, and a browser-context
+// action's answer arrives in a `wire.FlowResponse` instead. Taking the response
+// VALUE is what keeps one reader of the declared-response rule for both
+// operations; a second copy for flows would be free to drift in the numeric
+// comparison, the key order or the quoting, which are exactly the parts a reader
+// would assume identical.
+func Refusal(a bindings.Action, response any) (string, bool) {
 	if len(a.Response) == 0 {
 		return "", false
 	}
-	got, ok := resp.Response.(map[string]any)
+	got, ok := response.(map[string]any)
 	if !ok {
 		// A DECLARED SHAPE AND AN ANSWER THAT IS NOT ONE. The project said
 		// what acceptance looks like and the adapter answered something else
 		// entirely, which cannot be the declared shape -- so it is a refusal
 		// and the answer is quoted rather than guessed at.
 		return fmt.Sprintf("%s declares a response of %v and the adapter answered %v, "+
-			"which is not a table", a.Name, a.Response, resp.Response), true
+			"which is not a table", a.Name, a.Response, response), true
 	}
 	for _, k := range sortedKeys(a.Response) {
 		want := a.Response[k]
@@ -2014,6 +2104,259 @@ func asFloat(v any) (float64, bool) {
 	return 0, false
 }
 
+// resumeFlow sends a stopped flow again from where it reached, and is the
+// ENGINE's half of R9.1's retry policy (fable, coop r9/21).
+//
+// IT IS CALLED AFTER THE SEAL AND BEFORE ANY DRAW, which is the whole of why it
+// is here and not inside `perform`: r9/1 item 3 bounds a wait in the engine's
+// time -- checked at each seal and after each clock advance the engine makes --
+// so the re-check has to happen where something has MOVED. An adapter asking
+// twice inside one call reads the same world twice.
+//
+// IT DRAWS NOTHING AND TAKES NO STEP SLOT, so the request sequence and the world
+// a seed replays do not move (r9/1 item 2). The steps before `Reached` are not
+// re-sent either; `from` is what says so on the wire.
+//
+// THE RECORD IT UPDATES IS THE STOPPED STEP'S OWN, not a new one: the walk's
+// record is an account of the DRAWS, and a resume is not a draw. So the step
+// that stopped carries both facts in the end -- where it stopped, and whether
+// the re-check got it through.
+func resumeFlow(sess *wire.Session, sessions *Sessions, l *ledger.Ledger,
+	pend *pendingFlow, step *Step) (engine.Finding, bool, error) {
+	a := pend.Action
+	token, err := sessions.Token(pend.Actor, a.Context)
+	if err != nil {
+		return engine.Finding{}, false, err
+	}
+	resp, err := sess.Flow(wire.FlowRequest{
+		Action: a.Name, Token: token, From: pend.Reached, Steps: pend.Steps,
+	})
+	if err != nil {
+		return engine.Finding{}, false, fmt.Errorf("resuming %s's flow from %d: %w",
+			a.Name, pend.Reached, err)
+	}
+
+	if wire.Stop(resp.Stopped) == wire.StopWait && resp.Reached == pend.Reached {
+		// THE SAME WAIT, FAILED TWICE. The position is compared and not just
+		// the word: a flow that got FURTHER and then stopped at a different
+		// wait has made progress, and recording a `ui_timeout` for it would
+		// name a wait that did come true. That one becomes the pending instead
+		// and gets its own re-check.
+		until := ""
+		if pend.Reached < len(a.Flow) {
+			until = a.Flow[pend.Reached].Until
+		}
+		step.FlowReached, step.FlowStopped = resp.Reached, string(resp.Stopped)
+		found := engine.UITimedOut(a.Name, pend.Actor, resp.Reached, len(a.Flow), until)
+		*pend = pendingFlow{}
+		return found, true, nil
+	}
+
+	if wire.Stop(resp.Stopped) == wire.StopWait {
+		// A LATER WAIT, which is progress and not the same failure. It is the
+		// pending now, with its own count, so "the second failure of the same
+		// wait" stays a claim about one wait rather than about the flow.
+		step.FlowReached, step.FlowStopped = resp.Reached, string(resp.Stopped)
+		pend.Reached = resp.Reached
+		return engine.Finding{}, false, nil
+	}
+
+	// IT GOT THROUGH, OR THE PAGE DECLINED A STEP. Either way the flow is no
+	// longer pending, and what the action owes its record is what a first-time
+	// send would owe: the declared response read against the answer, and the
+	// claim appended when the system agreed.
+	step.FlowReached, step.FlowStopped = resp.Reached, string(resp.Stopped)
+	done := performed{Emits: len(a.Emits) > 0, Args: map[string]any{}}
+	if wire.Stop(resp.Stopped) == wire.StopStep {
+		step.Refused = fmt.Sprintf("%s's flow stopped at step %d of %d: the page would not perform it",
+			a.Name, resp.Reached+1, len(a.Flow))
+		*pend = pendingFlow{}
+		return engine.Finding{}, false, nil
+	}
+	if why, refused := Refusal(a, resp.Response); refused {
+		step.Refused = why
+		*pend = pendingFlow{}
+		return engine.Finding{}, false, nil
+	}
+	*pend = pendingFlow{}
+	if !done.Emits {
+		return engine.Finding{}, false, nil
+	}
+	return engine.Finding{}, false, appendClaim(l, a, done, step)
+}
+
+// pendingFlow is a browser-context flow that stopped short and is waiting to be
+// sent again from where it reached.
+//
+// WHY THE WALK OWNS IT AND NOT `perform`: fable ruled at coop r9/21 that THE
+// RETRIER IS THE ENGINE, because r9/1 item 3 bounds a wait in the engine's time
+// -- checked at each seal and after each clock advance the engine makes. An
+// adapter re-checking inside one `flow` call has nothing advance between its two
+// looks and reads the same world twice, and `perform` cannot seal either. So the
+// resume happens at the TOP of the next step, after the seal and the clock
+// write, where something has moved.
+//
+// AND IT DRAWS NOTHING, which is r9/1 item 2's requirement carried into the
+// loop: the resume takes no step slot, consumes no generator entropy and
+// re-sends none of the steps before `Reached`, so the request sequence and the
+// world a seed replays do not move.
+type pendingFlow struct {
+	Action bindings.Action
+	Actor  string
+	// Steps is the composed request, kept so the resume sends the SAME bytes
+	// rather than re-composing them from a declaration that would be read twice.
+	Steps []map[string]any
+	// Reached is where to resume: the position the last answer reported.
+	Reached int
+	// THERE IS NO SEND COUNTER HERE, and there was one until the arms were
+	// written. It claimed to be "what makes `second` decidable rather than
+	// assumed" and that stopped being true the moment the decision keyed on the
+	// POSITION: a resume happens only after a stop, so a re-check that stops at
+	// the SAME position IS the second failure of that wait, and a count adds
+	// nothing to it. Found by asking what a mutant against the counter would
+	// kill -- nothing read it, in three assignments. A field whose comment is
+	// false and whose value nothing reads is worse than an absent one, and
+	// golangci-lint does not flag an assigned struct field, so the lint that
+	// caught `pendingFlow.waiting` could not catch this.
+}
+
+// waiting reports whether a flow is pending. An action name is the presence
+// test because `Action` is a value: a zero one has no name, and no declared
+// action may be nameless (internal/bindings refuses it).
+func (p pendingFlow) waiting() bool { return p.Action.Name != "" }
+
+// flowSteps composes a declared flow for the wire, with its handle placeholders
+// RESOLVED.
+//
+// IT EMITS THE NON-EMPTY FIELDS AND DOES NOT ASK WHICH KIND TAKES WHICH, which
+// would make this a second reader of what internal/bindings has already parsed
+// and refused -- the drift docs/contract.md's own sibling rule warns about, and
+// the reason the wire carries the steps opaque. A `navigate` declares `to`, a
+// `fill` declares `field` and `value`, a `click` declares `target` and a `wait`
+// declares `until`; emitting what is set reproduces exactly that without
+// deciding it again, and the adapter refuses a step it does not know by name.
+//
+// AND `{kind}` IS SUBSTITUTED, which "carried as written" cannot cover: the
+// toy's `join_event_ui` navigates to `/ui/events/{event}`, and an adapter handed
+// that literal has no event to point a browser at. FlowPlaceholders has read
+// those kinds since R9's pool work -- it is what keeps the action out of the
+// pool until some handle of the kind resolves -- and until this head nothing
+// SENT a flow, so nothing filled them in.
+//
+// THE ID COMES FROM THE ACTION'S OWN ARGUMENT AND NOTHING IS DRAWN, which is
+// the project's own rule rather than a choice made here: examples/toy's
+// declaration says "THE SAME EVENT HANDLE THE API ACTION TAKES, and the flow's
+// `{event}` placeholder below names the same kind". So the placeholder resolves
+// to the handle already chosen for the argument of that kind -- a second draw
+// would move a seed's world, and a second CHOICE could point the page at one
+// entity while the request named another.
+func flowSteps(a bindings.Action, chosen map[string]string, table *handle.Table) ([]map[string]any, error) {
+	// THE KIND'S HANDLE, read off the arguments this action declares. Keyed by
+	// `of` and not by the argument's NAME, because FlowPlaceholders answers in
+	// kinds and the two coincide in the toy without being the same thing.
+	ids := map[string]string{}
+	for _, arg := range a.Args {
+		if arg.Source != bindings.ArgHandle || arg.Of == "" {
+			continue
+		}
+		h, ok := chosen[arg.Name]
+		if !ok || table == nil {
+			continue
+		}
+		if id, bound := table.ID(h); bound {
+			ids[arg.Of] = id
+		}
+	}
+	for _, kind := range FlowPlaceholders(a) {
+		if _, ok := ids[kind]; !ok {
+			// THIS IS THE WALK'S DEFECT AND NOT THE PROJECT'S, which is why it
+			// is an error and not a refusal: applicability already asks whether
+			// a handle of the kind resolves, so reaching here without one means
+			// the pool offered a step it should have withheld.
+			return nil, fmt.Errorf("%s's flow refers to {%s} and no argument of that kind "+
+				"resolved to an id, so the step cannot be pointed anywhere: the pool offered "+
+				"an action it should have withheld", a.Name, kind)
+		}
+	}
+	fill := func(v string) string {
+		if v == "" {
+			return v
+		}
+		return placeholder.ReplaceAllStringFunc(v, func(m string) string {
+			if id, ok := ids[strings.Trim(m, "{}")]; ok {
+				return id
+			}
+			return m
+		})
+	}
+	out := make([]map[string]any, 0, len(a.Flow))
+	for _, st := range a.Flow {
+		m := map[string]any{"step": st.Step}
+		for k, v := range map[string]string{
+			"to": fill(st.To), "field": st.Field, "value": fill(st.Value),
+			"target": fill(st.Target), "until": fill(st.Until),
+		} {
+			if v != "" {
+				m[k] = v
+			}
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+// drive sends one action and hands back what came off the wire: the answer the
+// declared response is read against, the ids an `execute` minted from, and --
+// for a browser-context action -- where its flow stopped and why.
+//
+// IT IS ONE FUNCTION SO THE CHOICE OF OPERATION IS MADE ONCE. `perform` and the
+// walk's resume both need it, and two call sites each deciding `execute` versus
+// `flow` from the context would be free to disagree -- the shape of defect this
+// package already pays for whenever a rule has two readers.
+//
+// `from` IS 0 FOR A FIRST SEND and the position a resume starts at otherwise;
+// wire refuses it at or past the step count, and an `execute` cannot carry one,
+// so a non-zero `from` for an api action is this function's own error rather
+// than a field quietly dropped.
+// driven is what came back, and `Flowed` is in it for a reason a MUTANT found:
+// `step.Flow` was set from the action's CONTEXT, so the run reported "1 step(s)
+// through `flow`" whether or not a flow request went out -- a mutant disabling
+// the routing entirely left that line intact and the arm passed. An observable
+// that reports an INTENT is worse than none, because a reader trusts it. This
+// says what was SENT.
+type driven struct {
+	Answer  any
+	IDs     map[string]any
+	Flowed  bool
+	Stopped string
+	Reached int
+}
+
+func drive(sess *wire.Session, a bindings.Action, token string, args map[string]any,
+	from int, steps []map[string]any) (driven, error) {
+	if a.Context == bindings.ContextBrowser && len(a.Flow) > 0 {
+		resp, ferr := sess.Flow(wire.FlowRequest{
+			Action: a.Name, Token: token, From: from, Steps: steps,
+		})
+		if ferr != nil {
+			return driven{}, fmt.Errorf("driving %s's flow from %d: %w", a.Name, from, ferr)
+		}
+		return driven{
+			Answer: resp.Response, Flowed: true,
+			Stopped: string(resp.Stopped), Reached: resp.Reached,
+		}, nil
+	}
+	if from != 0 {
+		return driven{}, fmt.Errorf("%s is a %q-context action and `execute` carries no resume "+
+			"position, so a request from %d has nowhere to put it", a.Name, a.Context, from)
+	}
+	resp, eerr := sess.Execute(wire.ExecuteRequest{Action: a.Name, Token: token, Args: args})
+	if eerr != nil {
+		return driven{}, fmt.Errorf("executing %s: %w", a.Name, eerr)
+	}
+	return driven{Answer: resp.Response, IDs: resp.IDs}, nil
+}
+
 // perform executes an action and does everything that is true of BOTH an honest
 // step and a palter: compose the args, acquire the token, send the execute,
 // mint the claim's handle and bind it to the id the system gave.
@@ -2026,7 +2369,7 @@ func asFloat(v any) (float64, bool) {
 // are exactly the parts a reader would assume identical.
 func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
 	table *handle.Table, mint *minter, src *Source, a bindings.Action, known []string,
-	step *Step) (performed, error) {
+	pend *pendingFlow, step *Step) (performed, error) {
 	_ = ctx
 	var out performed
 
@@ -2070,10 +2413,36 @@ func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
 		return out, err
 	}
 
-	resp, err := sess.Execute(wire.ExecuteRequest{Action: a.Name, Token: token, Args: args})
-	if err != nil {
-		return out, fmt.Errorf("executing %s: %w", a.Name, err)
+	// A BROWSER-CONTEXT ACTION GOES THROUGH `flow` AND NOT `execute` (R9.1's
+	// H2; fable's ruling at coop r9/21). docs/contract.md:295: "an action whose
+	// context is a browser context declares a flow instead of a response", so
+	// the two operations are not alternatives for one action -- the context
+	// decides, and validate's arm 4 already refuses a browser-stage action with
+	// no flow.
+	//
+	// NOTHING IS MINTED EITHER WAY AND THAT IS ARM 22's DOING: a `flow` answers
+	// {reached, response} and no ids, and arm 22 refuses a browser-context
+	// action declaring `creates`, so a handle that could never be minted cannot
+	// be declared in the first place. Without that arm this branch would have
+	// to decide what to do with an unmintable handle at walk time.
+	// THE FLOW IS COMPOSED ONCE, here, and the SAME bytes are both sent and kept
+	// for the resume: composing a second time in the pending would make two
+	// readers of one declaration, and a resume that re-composed could differ
+	// from what went out if anything about the handles moved underneath it.
+	var steps []map[string]any
+	if a.Context == bindings.ContextBrowser && len(a.Flow) > 0 {
+		steps, err = flowSteps(a, chosen, table)
+		if err != nil {
+			return out, err
+		}
 	}
+	got, err := drive(sess, a, token, args, 0, steps)
+	if err != nil {
+		return out, err
+	}
+	// RECORDED FROM WHAT WAS SENT, not from the action's context: see `driven`.
+	step.Flow = got.Flowed
+	answer, ids, stopped, reached := got.Answer, got.IDs, got.Stopped, got.Reached
 
 	// WHAT THE SYSTEM ANSWERED, READ BEFORE ANYTHING IS RECORDED (R7.4,
 	// fable's ruling at coop rumor/1405 item 2). A refused action appends no
@@ -2097,7 +2466,42 @@ func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
 	// claim, and the mutant dies in tests/run.
 	out.Emits = len(a.Emits) > 0
 
-	if why, refused := Refusal(a, resp); refused {
+	// A FLOW THAT STOPPED SHORT IS READ BEFORE THE REFUSAL, because the two are
+	// different events and only one of them is about the declared response: a
+	// wait that was not met says nothing about what the page would eventually
+	// answer, so reading `Refusal` over a half-driven flow's answer would
+	// refuse an action that has not finished happening.
+	switch wire.Stop(stopped) {
+	case wire.StopNone:
+	case wire.StopWait:
+		// THE WAIT IS THE ENGINE'S TO RE-CHECK, so the walk is told where and
+		// the next step's seal is what moves the world before it asks again.
+		step.FlowReached, step.FlowStopped = reached, stopped
+		*pend = pendingFlow{Action: a, Actor: step.Actor, Steps: steps, Reached: reached}
+		out.Stopped = true
+		return out, nil
+	case wire.StopStep:
+		// A STEP THE PAGE WOULD NOT PERFORM IS A REFUSAL AND NOT A RETRY, and
+		// the reason is r9/1 item 2: the retry is of the WAIT and never re-sends
+		// the request before it, so there is nothing to re-check here -- asking
+		// again would re-send the step the page declined, which is the thing
+		// that moves a seed's world. The system declined to act, which is what
+		// `Refused` already means, so it takes that shape rather than a sixth.
+		step.FlowReached, step.FlowStopped = reached, stopped
+		out.Refused = true
+		step.Refused = fmt.Sprintf("%s's flow stopped at step %d of %d: the page would not perform it",
+			a.Name, reached+1, len(a.Flow))
+		return out, nil
+	default:
+		// UNREACHABLE WHILE wire.Stop IS THE THREE ABOVE, and it is an error
+		// rather than a fall-through: a word added to that closed set without a
+		// case here would otherwise be read as a completed flow, which is the
+		// silent-drop class this project refuses by name.
+		return out, fmt.Errorf("%s's flow stopped with %q, which is not a stop reason this walk "+
+			"knows: a word added to wire.Stop needs a case here", a.Name, stopped)
+	}
+
+	if why, refused := Refusal(a, answer); refused {
 		out.Refused = true
 		step.Refused = why
 		return out, nil
@@ -2127,7 +2531,7 @@ func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
 	// resolve is inapplicable. That is the same mechanism a suborn uses, which
 	// is why there is one of it.
 	if len(a.Creates) == 1 {
-		id, ok := resp.IDs[a.Creates[0]]
+		id, ok := ids[a.Creates[0]]
 		if !ok {
 			// THE ADAPTER'S OWN ANSWER GOES IN THE REFUSAL, because `ids {}` has
 			// more than one cause and they need different fixes. ibis drove both
@@ -2138,7 +2542,7 @@ func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
 				"which carries no id for it -- the handle would resolve to nothing and a later step "+
 				"needing it could not say why. The adapter's response was %v; an empty ids map has "+
 				"more than one cause, so read that rather than guessing (401 is no session, 400 is "+
-				"no args, and a walk sends neither today)", a.Name, a.Creates[0], resp.IDs, resp.Response)
+				"no args, and a walk sends neither today)", a.Name, a.Creates[0], ids, answer)
 		}
 		str, ok := id.(string)
 		if !ok {
@@ -2156,8 +2560,8 @@ func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
 // emitted, truthfully.
 func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledger.Ledger,
 	table *handle.Table, mint *minter, src *Source, a bindings.Action, known []string,
-	step *Step) error {
-	done, err := perform(ctx, sess, sessions, table, mint, src, a, known, step)
+	pend *pendingFlow, step *Step) error {
+	done, err := perform(ctx, sess, sessions, table, mint, src, a, known, pend, step)
 	if err != nil {
 		return err
 	}
@@ -2165,9 +2569,22 @@ func honest(ctx context.Context, sess *wire.Session, sessions *Sessions, l *ledg
 	// ledger records the world and this did not happen in it. The STEP is
 	// recorded, carrying the refusal, so replay and the shrink see a draw that
 	// was made and an action the system declined.
-	if done.Refused || !done.Emits {
+	// AND A STOPPED FLOW APPENDS NOTHING EITHER, for a different reason than a
+	// refusal: the action has not finished happening, so there is no claim to
+	// make about it yet. The walk resumes it after the next seal.
+	if done.Stopped || done.Refused || !done.Emits {
 		return nil
 	}
+	return appendClaim(l, a, done, step)
+}
+
+// appendClaim records the claim an honest action emitted, and it is a function
+// because R9.1's resume is its SECOND caller: a browser flow that stopped at a
+// wait and completed on the next step's send has happened, so it owes the same
+// claim the first-time path owes -- the same handles, the same visibility and
+// the same order. A second copy would be free to drift in exactly the parts a
+// reader assumes identical, which is the reason `perform` is one function too.
+func appendClaim(l *ledger.Ledger, a bindings.Action, done performed, step *Step) error {
 	seen, err := visibleTo(a, done.Args)
 	if err != nil {
 		return err
@@ -2750,13 +3167,13 @@ func palterable(a bindings.Action) bool {
 // defect.
 func palter(ctx context.Context, p Project, sess *wire.Session, sessions *Sessions,
 	l *ledger.Ledger, table *handle.Table, mint *minter, src *Source, known []string,
-	step *Step) error {
+	pend *pendingFlow, step *Step) error {
 
 	a, err := lieAbout(ctx, p, l, src, step.Actor, table, known, palterable)
 	if err != nil {
 		return err
 	}
-	done, err := perform(ctx, sess, sessions, table, mint, src, a, known, step)
+	done, err := perform(ctx, sess, sessions, table, mint, src, a, known, pend, step)
 	if err != nil {
 		return err
 	}
@@ -2766,7 +3183,7 @@ func palter(ctx context.Context, p Project, sess *wire.Session, sessions *Sessio
 	// plant a lie the control could never clear -- the strip would remove a
 	// claim about an action that never ran, which is a suborn's shape under
 	// palter's name.
-	if done.Refused {
+	if done.Stopped || done.Refused {
 		return nil
 	}
 	if !done.Emits {

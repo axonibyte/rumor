@@ -39,6 +39,7 @@ import (
 	"strings"
 	"time"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
@@ -430,8 +431,25 @@ func (a *adapter) answer(line []byte) any {
 		return a.observe(env.ID, m)
 	case wire.ClockRequest:
 		return a.clockOp(env.ID, m)
+	case wire.FlowRequest:
+		return a.flow(env.ID, m)
 	}
-	return fault(env.ID, wire.FaultInternal, "kind", fmt.Sprintf("%q is a kind this adapter does not serve", env.Kind))
+	// UNREACHABLE WHILE THIS ADAPTER SERVES EVERY REQUEST KIND, which it does as
+	// of R9.1's H2 -- and the claim is GUARDED rather than asserted here:
+	// TestEveryRequestKindWireCanSendHasACaseHere drives every kind
+	// `wire.Kinds("request")` reports and fails if one lands below. The last
+	// default in this tree to carry an unreachability comment had a FALSE one
+	// (internal/fake, found by rook at coop r9/39), so this one does not get to
+	// be a sentence nobody checks. It is kept because a kind added to the
+	// protocol without a case above is this adapter's gap, and the run should
+	// say so rather than taking the engine down.
+	//
+	// THE WORDING AND THE FIELD COME FROM package wire, not from here: this
+	// refusal is what the contract version's own note rests on, and a sentence
+	// each adapter spelled for itself is one that can drift out from under that
+	// argument one adapter at a time (fable, coop r9/40 part two).
+	f := wire.UnservedKind(env.Kind)
+	return fault(env.ID, f.Kind, f.Field, f.Detail)
 }
 
 // clockOp moves the WORLD's clock and answers WHAT IT NOW HOLDS, which is the
@@ -607,6 +625,126 @@ func (a *adapter) execute(id string, m wire.ExecuteRequest) any {
 	return wire.ExecuteResponse{
 		Envelope: wire.Envelope{Kind: wire.KindExecute, Contract: wire.ContractVersion, ID: id},
 		IDs:      ids,
+		Response: map[string]any{"status": code, "body": out},
+	}
+}
+
+// flow drives a declared UI flow by walking its steps against the toy's own UI
+// ROUTES, which is this adapter standing in for a browser until R9.1b replaces
+// it with one (fable, coop r9/40 part one).
+//
+// WHY IT EXISTS AT ALL, and it is not a convenience: examples/toy declares
+// `join_event_ui` with a browser context AND a flow, and as of R9.1's H2 the
+// walk routes such an action through `flow` rather than `execute`. A
+// declaration the walk now honors is one the toy must honor too -- without this
+// case, any walk that DREW that action died with "flow is a kind this adapter
+// does not serve", which rook's adapterserves.py reports as a latent trap from
+// the pushed tip and `clicking`'s own arm reproduces at step 23.
+//
+// IT IS NO MORE HONEST THAN THE EXECUTE CASE WAS. That case already posts to
+// /ui/events/<id>/join and its comment says so: "THE UI ACTION GOES THROUGH THE
+// PAGE'S OWN ROUTE, not the API's, so what the flow declares and what the
+// browser would do in R9 are the same path". This walks the same path from the
+// steps instead of from the args. What it CANNOT do is render, read the DOM or
+// evaluate a page condition -- so a `wait` is a no-op here and the arms that
+// care whether a condition was truly observed cannot be satisfied by this
+// answer, exactly as internal/fake's own flow case says of itself.
+//
+// `reached` IS len(steps) OR WHERE IT STOPPED, and nothing between: this
+// adapter either walks the whole flow or answers a fault, because a toy route
+// that returned 4xx is the SYSTEM refusing and belongs in `response` the way
+// the execute case puts it there.
+func (a *adapter) flow(id string, m wire.FlowRequest) any {
+	if len(m.Steps) == 0 {
+		return fault(id, wire.FaultAction, "steps",
+			fmt.Sprintf("a flow for %q carried no steps, so there is nothing to drive", m.Action))
+	}
+	if m.From < 0 || m.From >= len(m.Steps) {
+		return fault(id, wire.FaultAction, "from",
+			fmt.Sprintf("a flow for %q asked to resume at %d with %d step(s)", m.Action, m.From, len(m.Steps)))
+	}
+
+	// THE PATH IS CARRIED BETWEEN STEPS, because a `click` acts on the page a
+	// `navigate` opened. A resume starts PAST the navigate, so the path has to
+	// be read from the steps before `from` as well -- walking them for their
+	// path without PERFORMING them is what "the request before it is never
+	// re-sent" means here.
+	path := ""
+	var out map[string]any
+	code := 0
+	for i, st := range m.Steps {
+		kind, _ := st["step"].(string)
+		switch kind {
+		case bindings.StepNavigate:
+			to, _ := st["to"].(string)
+			if to == "" {
+				return fault(id, wire.FaultField, "steps",
+					fmt.Sprintf("step %d of %q navigates nowhere", i+1, m.Action))
+			}
+			if strings.Contains(to, "{") {
+				// AN UNRESOLVED PLACEHOLDER IS THE ENGINE'S FAULT AND IS SAID
+				// SO: the walk substitutes a flow's `{kind}` from the handle
+				// its own argument chose, and an adapter handed the literal has
+				// no entity to point at. Guessing would make a 404 look like
+				// the system's answer.
+				return fault(id, wire.FaultField, "steps",
+					fmt.Sprintf("step %d of %q navigates to %q, which still carries a placeholder: "+
+						"the engine resolves those before sending", i+1, m.Action, to))
+			}
+			path = to
+		case bindings.StepClick:
+			if i < m.From {
+				continue
+			}
+			target, _ := st["target"].(string)
+			if path == "" {
+				return fault(id, wire.FaultField, "steps",
+					fmt.Sprintf("step %d of %q clicks before anything navigated", i+1, m.Action))
+			}
+			var err error
+			code, err = a.call(http.MethodPost, path+"/"+target, m.Token, nil, &out)
+			if err != nil {
+				return fault(id, wire.FaultInternal, "", err.Error())
+			}
+			if code >= 400 {
+				return wire.FlowResponse{
+					Envelope: wire.Envelope{Kind: wire.KindFlow, Contract: wire.ContractVersion, ID: id},
+					Reached:  i,
+					Stopped:  wire.StopStep,
+					Response: nil,
+				}
+			}
+		case bindings.StepWait:
+			// A NO-OP, AND NAMED AS ONE. The toy answers its UI routes
+			// synchronously, so the condition a flow waits for is already true
+			// when the click returned -- there is no page to poll. A real
+			// driver evaluates it, which is R9.1b's first head.
+		case bindings.StepFill:
+			// NOTHING TO FILL WITHOUT A FORM. The toy's one UI route takes no
+			// body, and an adapter that silently dropped a declared `fill`
+			// would answer `reached` for a step it never performed.
+			return fault(id, wire.FaultAction, "steps",
+				fmt.Sprintf("step %d of %q is a fill and the toy's UI has no form to fill", i+1, m.Action))
+		default:
+			return fault(id, wire.FaultAction, "steps",
+				fmt.Sprintf("step %d of %q is %q, which is not a step this adapter drives", i+1, m.Action, kind))
+		}
+	}
+	if code == 0 {
+		// NOTHING WAS ASKED OF THE SYSTEM, so there is no status to report and
+		// a `"status": 0` would be a non-status dressed as one. A flow of
+		// navigates and waits opens a page and acts on nothing; the toy has one
+		// UI route and the CLICK is what acts. Measured: a navigate-only flow
+		// answered `{"status":0,"body":null}` before this branch, which reads
+		// as a response the system gave.
+		return wire.FlowResponse{
+			Envelope: wire.Envelope{Kind: wire.KindFlow, Contract: wire.ContractVersion, ID: id},
+			Reached:  len(m.Steps),
+		}
+	}
+	return wire.FlowResponse{
+		Envelope: wire.Envelope{Kind: wire.KindFlow, Contract: wire.ContractVersion, ID: id},
+		Reached:  len(m.Steps),
 		Response: map[string]any{"status": code, "body": out},
 	}
 }

@@ -26,7 +26,7 @@ func browserEnabled(p platform.Platform) bool {
 // isBrowser reports whether a context is the browser one. One name today, and
 // the test is a helper rather than a literal at three call sites so a second
 // browser context has one place to arrive.
-func isBrowser(ctx string) bool { return ctx == "browser" }
+func isBrowser(ctx string) bool { return ctx == bindings.ContextBrowser }
 
 // arm4: A BROWSER-STAGE ACTION WITH NO UI FLOW.
 //

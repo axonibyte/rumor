@@ -150,12 +150,21 @@ func browserStage(b bindings.Bindings, stdout, stderr io.Writer) int {
 	tokens := &refusedTokens{}
 	driver, how := browserDriver()
 	flows := flowsDeclared(b)
+	// "THIS STAGE DROVE NONE" AND NOT "NONE WAS DRIVEN", and H2 is why: the WALK
+	// now drives a browser-context action's flow through the adapter, so a run
+	// can print "1 step(s) through `flow`" in its summary and this line three
+	// lines later. Measured on examples/toy under the `clicking` profile with
+	// ZERO browser binaries on PATH -- both sentences true, one a count of the
+	// stage's work and the other of the walk's, and a reader seeing "none was
+	// driven" beside the summary reads a contradiction. A true sentence that
+	// reads as "no flow was driven at all" is the silent-skip class wearing
+	// honest words.
 	if driver == "" {
-		_, _ = fmt.Fprintf(stdout, "run:   %s -- SKIPPED, no driver: %s. %d action(s) declare a flow and none was driven\n",
+		_, _ = fmt.Fprintf(stdout, "run:   %s -- SKIPPED, no driver: %s. %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter\n",
 			stage.Browser, how, flows)
 		return conductVerdict(tokens, stderr)
 	}
-	_, _ = fmt.Fprintf(stdout, "run:   %s -- driver %s (%s). %d action(s) declare a flow and none was driven yet: the flows are R9.1's next head\n",
+	_, _ = fmt.Fprintf(stdout, "run:   %s -- driver %s (%s). %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter, and driving them through a browser here is R9.1b's\n",
 		stage.Browser, driver, how, flows)
 	return conductVerdict(tokens, stderr)
 }

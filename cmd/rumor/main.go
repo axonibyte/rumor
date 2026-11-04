@@ -47,7 +47,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
-const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor validate PROJECT\n       rumor attaint [--examples DIR]\n       rumor run PROJECT [--seed N] [--steps N] [--profile NAME]\n       rumor report PROJECT [--profile NAME]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S] [--stop-flow ACTION:AT:REASON[:TIMES]]"
+const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor validate PROJECT\n       rumor attaint [--examples DIR]\n       rumor run PROJECT [--seed N] [--steps N] [--profile NAME]\n       rumor report PROJECT [--profile NAME]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S] [--stop-flow ACTION:AT:REASON[:TIMES[:THENAT]]] [--lacks KIND]"
 
 // coverageCheck is a seam, not indirection for its own sake: it lets a test
 // drive the WRITE handling below -- including the failed-write path -- without
@@ -275,7 +275,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 // fakeConfig reads `fake-adapter`'s flags. Each one exists for a named drill
 // (coop breakout-r4): --contract for D6, --omit for D7, --fail for the error
-// envelope, --surface for R4.2's bindings and R4.3's twin, and --stop-flow for
+// envelope, --surface for R4.2's bindings and R4.3's twin, --lacks for the
+// by-name refusal of a kind an adapter does not serve, and --stop-flow for
 // R9.1's retry, which is the engine's and therefore needs a flow that fails
 // where a SESSION can see it rather than only in internal/fake's own tests. The
 // second return is the reason the arguments were refused, empty when they were
@@ -319,6 +320,17 @@ func fakeConfig(rest []string) (fake.Config, string) {
 				return cfg, fmt.Sprintf("--omit %s: wanted KIND.FIELD, as in execute.ids", value)
 			}
 			cfg.Omit[wire.Kind(kind)] = field
+		case "--lacks":
+			// A KIND THIS ADAPTER DOES NOT SERVE, which is the witness the
+			// contract version's own note rests on now that cmd/toy-adapter
+			// serves `flow` (fable, coop r9/40 part three). The kind is NOT
+			// checked against wire's set here: an adapter that lacks a kind
+			// nobody sends is harmless, and refusing an unknown spelling would
+			// make this flag a second reader of that set.
+			if cfg.Lacks == nil {
+				cfg.Lacks = map[wire.Kind]bool{}
+			}
+			cfg.Lacks[wire.Kind(value)] = true
 		case "--stop-flow":
 			stop, action, bad := stopFlowSpec(value)
 			if bad != "" {
@@ -346,7 +358,7 @@ func fakeConfig(rest []string) (fake.Config, string) {
 // command a second reader of that set, and the two would drift -- which is
 // exactly what `--fail KIND` already does with the fault kinds.
 func stopFlowSpec(value string) (fake.StopFlow, string, string) {
-	const want = "wanted ACTION:AT:REASON[:TIMES], as in publish_doc_ui:2:wait:1"
+	const want = "wanted ACTION:AT:REASON[:TIMES[:THENAT]], as in publish_doc_ui:2:wait:1"
 	parts := strings.Split(value, ":")
 	// FIELDS ARE READ THROUGH A BOUND, not by index, and the reason is what a
 	// MUTANT showed: with `parts[1]` and `parts[2]` read directly, weakening the
@@ -361,7 +373,7 @@ func stopFlowSpec(value string) (fake.StopFlow, string, string) {
 		}
 		return ""
 	}
-	if len(parts) < 3 || len(parts) > 4 {
+	if len(parts) < 3 || len(parts) > 5 {
 		return fake.StopFlow{}, "", fmt.Sprintf("--stop-flow %s: %s", value, want)
 	}
 	action := field(0)
@@ -377,12 +389,24 @@ func stopFlowSpec(value string) (fake.StopFlow, string, string) {
 		return fake.StopFlow{}, "", fmt.Sprintf("--stop-flow %s: no reason named; %s", value, want)
 	}
 	stop := fake.StopFlow{At: at, Reason: wire.Stop(reason)}
-	if len(parts) == 4 {
+	if len(parts) >= 4 {
 		times, terr := strconv.Atoi(field(3))
 		if terr != nil {
 			return fake.StopFlow{}, "", fmt.Sprintf("--stop-flow %s: TIMES %q is not a number; %s", value, field(3), want)
 		}
 		stop.Times = times
+	}
+	// THENAT IS THE LATER WAIT, and it is a fifth field rather than a second
+	// flag because it only means anything beside the first four: "stop at AT
+	// this many times, then at THENAT once". It exists for the branch where a
+	// re-check gets FURTHER and stops somewhere else, which is progress and not
+	// the `ui_timeout` finding.
+	if len(parts) == 5 {
+		thenAt, aerr := strconv.Atoi(field(4))
+		if aerr != nil {
+			return fake.StopFlow{}, "", fmt.Sprintf("--stop-flow %s: THENAT %q is not a number; %s", value, field(4), want)
+		}
+		stop.ThenAt = thenAt
 	}
 	return stop, action, ""
 }

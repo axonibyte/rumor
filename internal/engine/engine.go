@@ -87,6 +87,45 @@ type Check struct {
 // stopping on this one reads the constant rather than retyping the string.
 const FindingQuiesceTimedOut = "quiesce_timeout"
 
+// FindingUITimedOut is the SIXTH FINDING, and it cost docs/vocabulary.md an
+// AMENDMENT rather than a row: v1 reserved "one finding beside these four" and
+// `quiesce_timeout` spent that slot at v3, so v7 rewrites the reserved-slot
+// sentence and says why a seventh word would need the same (fable's ruling at
+// coop r9/35, on ratchet's reading at r9/32).
+//
+// WHY IT IS NOT A KIND UNDER `bug`, which is what the unamended sentence would
+// have forced: a kind narrows a `bug` by saying WHY it is one, and a `bug` is a
+// VALUE DISAGREEMENT. A wait whose condition never came true is not a
+// disagreement -- the project's declarations are right, the adapter answered,
+// and the SYSTEM did not reach the state. That is FindingQuiesceTimedOut's
+// shape exactly, and v3 made that one a finding for the same reason.
+//
+// IT IS THE SECOND FAILURE OF ONE WAIT AND NOT THE FIRST (fable, coop r9/1
+// item 2): the engine seals, advances and sends the flow again from where it
+// reached, so a condition that only the clock advances is reached by the walk
+// that advances it. A first failure is a retry, and only a second is a finding.
+const FindingUITimedOut = "ui_timeout"
+
+// UITimedOut is the finding a flow's second failed wait produces, and it is
+// constructed HERE so the word and the shape have one home: the walk is the
+// only producer today, and a second producer writing the overlay by hand would
+// be free to differ in the rule name or to set Kind -- which would make a
+// reader keying on Value see a `bug` this is not.
+func UITimedOut(action, actor string, at, of int, until string) Finding {
+	return Finding{
+		Value:   FindingUITimedOut,
+		Defined: true,
+		Overlay: &Overlay{
+			Rule:  "engine.ui_timeout",
+			Value: FindingUITimedOut,
+			Reason: fmt.Sprintf("%s's flow stopped at step %d of %d waiting for %q, and the "+
+				"re-check after the next seal did not find it either: the run found that the "+
+				"page %s acts through did not reach the state the flow waits for",
+				action, at+1, of, until, actor),
+		},
+	}
+}
+
 // QuiesceState is a prober's answer about the system having settled.
 //
 // FOUR VALUES AND NOT A BOOL, which is fable's ruling 1(b) at coop r6/10 on

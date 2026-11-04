@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
-	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
 // TestARefusedActionIsReadOffTheDeclaredResponse is R7.4's second half at the
@@ -71,7 +70,7 @@ func TestARefusedActionIsReadOffTheDeclaredResponse(t *testing.T) {
 			refused: false,
 		},
 	} {
-		why, refused := Refusal(c.action, wire.ExecuteResponse{Response: c.answer})
+		why, refused := Refusal(c.action, c.answer)
 		if refused != c.refused {
 			t.Errorf("%s: refused=%v, want %v (%q)", c.what, refused, c.refused, why)
 			continue
@@ -106,9 +105,7 @@ func TestTheRefusalReasonIsExactlyThis(t *testing.T) {
 		Response: map[string]any{"status": int64(200)},
 	}
 	const want = "join_event declares response.status = 200 and the system answered 409"
-	why, refused := Refusal(a, wire.ExecuteResponse{
-		Response: map[string]any{"status": float64(409)},
-	})
+	why, refused := Refusal(a, map[string]any{"status": float64(409)})
 	if !refused {
 		t.Fatalf("a 409 against a declared 200 read as accepted")
 	}
@@ -131,12 +128,12 @@ func TestTheRefusalReasonIsStableAcrossAttempts(t *testing.T) {
 		Response: map[string]any{"status": int64(201), "created": true},
 	}
 	answer := map[string]any{"status": float64(500), "created": false}
-	first, refused := Refusal(a, wire.ExecuteResponse{Response: answer})
+	first, refused := Refusal(a, answer)
 	if !refused {
 		t.Fatalf("two broken keys read as accepted: %q", first)
 	}
 	for i := 0; i < 50; i++ {
-		again, _ := Refusal(a, wire.ExecuteResponse{Response: answer})
+		again, _ := Refusal(a, answer)
 		if again != first {
 			t.Fatalf("the reason moved between reads: %q then %q -- a map's order reached "+
 				"the record, and two attempts of one seed would disagree", first, again)

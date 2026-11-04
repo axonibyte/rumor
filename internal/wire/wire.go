@@ -46,11 +46,23 @@ import (
 // window, so a bump refuses an adapter built before the request AT THE
 // HANDSHAKE -- and then an adapter that merely lacks `flow` is refused for its
 // VERSION and never for the thing it lacks. An unmoved version is what keeps
-// that by-name refusal reachable, and cmd/toy-adapter's fall-through already
-// gives it ("%q is a kind this adapter does not serve"), armed by
-// TestAKindThisAdapterDoesNotServeIsAFaultNamingTheKind. rook's reason at coop
-// rumor/1348, their condition at r9/13, fable's ruling at r9/15 correcting
-// r9/11. docs/contract.md's Revisions carries the row.
+// that by-name refusal reachable, and `UnservedKind` below is the ONE site that
+// gives it -- field `kind`, "%q is a kind this adapter does not serve" -- called
+// by both adapters in this tree.
+//
+// WHAT THE WITNESS IS, AS OF R9.1's H2, because it MOVED and the citation here
+// is where the version lives (rook, coop r9/39): this note used to name
+// cmd/toy-adapter's fall-through, and that adapter now SERVES `flow`, because
+// examples/toy declares an action with a flow and a declaration the walk honors
+// is one the toy must honor too (fable, r9/40 part one). With it served, no
+// adapter in this tree LACKS the kind by accident -- so the witness is
+// `internal/fake` under its lacks-a-kind knob, an adapter at version 2 that
+// refuses `flow` by name through the site above, armed by
+// TestAKindThisAdapterDoesNotServeIsAFaultNamingTheKind. A knob whose purpose is
+// a NAMED misbehavior is not a subject fabricated for the arm (rook r9/37,
+// fable r9/40 part three). rook's reason at coop rumor/1348, their condition at
+// r9/13, fable's ruling at r9/15 correcting r9/11, and r9/40 for the move.
+// docs/contract.md's Revisions carries the row.
 const ContractVersion = "2"
 
 // Kind is a message's kind, which the decoder reads off the message rather than
@@ -777,6 +789,32 @@ func semantics(msg Message) error {
 		}
 	}
 	return nil
+}
+
+// UnservedKind is the fault an adapter answers for a request kind it does not
+// serve, and it is HERE because it is load-bearing for the contract version:
+// wire.go's note above ContractVersion rests on an adapter that LACKS a request
+// being refused by NAME rather than by its version, and a refusal whose wording
+// lives in each adapter separately is a refusal that can drift out from under
+// that argument one adapter at a time.
+//
+// IT WAS TWO SITES SAYING TWO THINGS (rook, coop r9/39, measured at fdfc6e3).
+// `cmd/toy-adapter` said "%q is a kind this adapter does not serve" with field
+// `kind`, which is the wording the arm for this asserts; `internal/fake` said
+// "the fake adapter has no answer for a %s request" with NO field, under a
+// comment calling its own default unreachable. One of the two satisfied the arm
+// and the other could not have, and nothing paired them.
+//
+// THE FIELD IS `kind` AND THE CLASS IS INTERNAL: the message was well formed and
+// the engine was entitled to send it, so this is not the caller's fault -- it is
+// the adapter saying what it cannot do, which is a could-not-run for the run and
+// never a refusal of the project (fable, coop r9/40 part two).
+func UnservedKind(kind Kind) Fault {
+	return Fault{
+		Kind:   FaultInternal,
+		Field:  "kind",
+		Detail: fmt.Sprintf("%q is a kind this adapter does not serve", kind),
+	}
 }
 
 // --- the version check ----------------------------------------------------

@@ -85,7 +85,12 @@ func TestTheBrowserStageNamesTheDriverItFound(t *testing.T) {
 		t.Errorf("a driver was present and the stage exited %d", rc)
 	}
 	got := out.String()
-	for _, want := range []string{"driver", fake, browserDriverEnv, "3 action(s)", "none was driven yet"} {
+	// "THIS STAGE drove none" REPLACED "none was driven yet", and the reason is
+	// in browser.go: as of R9.1's H2 the WALK drives these flows through the
+	// adapter, so a line saying none was driven reads as a contradiction beside
+	// a summary that counts the ones that were. The arm asserts the new words
+	// because the old ones would now be a false reading of a true count.
+	for _, want := range []string{"driver", fake, browserDriverEnv, "3 action(s)", "THIS STAGE drove none"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the present-driver line does not name %q: %q", want, got)
 		}
