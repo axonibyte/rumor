@@ -773,7 +773,7 @@ would make the file say something it does not.
 
 **None of this file's refusals are `rumor validate`'s arms.** A document that
 cannot be read as a platform at all is **could-not-run**, and it arrives before
-any of the twenty-five arms evaluates. Validate's refusals are about a project
+any of validate's twenty-five arms evaluates. Validate's refusals are about a project
 whose statute, bindings and platform disagree.
 
 ### Reserved for the phase that owns them

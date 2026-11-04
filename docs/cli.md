@@ -81,12 +81,15 @@ said about them is not known -- and a decode refusal is 2 and never 1, because
 "the project is not wrong; its adapter is". fable's D7 drill asserts that
 boundary for the adapter and this command keeps the same one.
 
-**It reports what it EVALUATED, not only what it refused.** Twenty-three arms
-are declared -- the figure said NINETEEN for three releases, unseen because the
-arm-count oracle matches only `validate's`, `validate has` or `R4.3's` and this
-sentence names none of them; it is corrected here and still outside the oracle,
-because the oracle also pins HOW MANY attributions the documents make and a
-third one fails it -- and an arm whose precondition is absent -- the browser stage off, no
+**It reports what it EVALUATED, not only what it refused.** Validate has
+twenty-five arms -- the figure said NINETEEN for three releases and
+TWENTY-THREE for one more, unseen both times because the arm-count oracle
+matches only `validate's`, `validate has` or `R4.3's` and this sentence named
+none of them. It is ATTRIBUTED here rather than only corrected, and
+`wantArmCountClaims` moves with it: "a third attribution fails the count" was a
+reason to move the count, not a reason to leave the sentence unpinned, and
+leaving it unpinned is what let it rot a second time (R9.1, from rook at coop
+r9/20) -- and an arm whose precondition is absent -- the browser stage off, no
 rule declared, no seeds file -- did not pass, it did not run. Those are named
 with their reason rather than folded into a number:
 
@@ -138,7 +141,7 @@ the declared roles, where a project declares any; an observation's `args` and a
 flow's `{handle}` against what the actions create; a `[claim.<type>]` table
 against the emitted types; and the bindings' observations against the adapter's
 `describe`. rook found the first against `examples/toy` (coop r5/22) with every
-one of the eighteen arms passing it, and quill's consumer had already assumed
+one of R5's eighteen arms passing it, and quill's consumer had already assumed
 the pairing existed -- so the hole was load-bearing before anyone noticed it
 was missing. The weights cell runs both ways for the same reason: a weight for
 nothing is a typo, and a kind with no weight is an action the walk can draw and

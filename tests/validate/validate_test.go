@@ -392,7 +392,17 @@ func TestAVacuousProjectIsRefusedAndAccountsForEveryArm(t *testing.T) {
 // to this command by name. It is DECLARED for the reason every count in this
 // project is: a scan that found nothing would pass, and the sentence it was
 // written to check would have been deleted rather than corrected.
-const wantArmCountClaims = 2
+//
+// IT MOVED FROM 2 TO 7 AT R9.1, and five of the five additions are prose this
+// oracle could already have read and was kept away from. docs/cli.md:84 said so
+// in its own words -- "it is corrected here and still outside the oracle,
+// because the oracle also pins HOW MANY attributions the documents make and a
+// third one fails it" -- and that sentence then rotted a SECOND time, from
+// nineteen to twenty-three to a stale twenty-three. A count that fails because
+// a true sentence was added is a count to move, never a reason to leave the
+// sentence unattributed; the attribution is what the oracle reads, so prose kept
+// out of the form is prose nothing checks.
+const wantArmCountClaims = 7
 
 // armCountClaim is the shape quill found wrong twice at coop r4/91:
 // docs/contract.md said "R4.3's thirteen refusals" and "one of validate's
@@ -424,8 +434,9 @@ var spelled = map[int]string{
 }
 
 // wantArmTotalClaims is how many times the documents state the count as a PAIR,
-// and it is 1: docs/cli.md's "Twenty-four of twenty-four is what a complete
-// small project looks like". A zero here would mean the oracle below agrees
+// and it is 1: docs/cli.md's "<N> of <N> is what a complete small project looks
+// like", quoted here without its number so this comment cannot rot the way the
+// sentence it describes did. A zero here would mean the oracle below agrees
 // with every number, which is the failure its sibling above already names.
 const wantArmTotalClaims = 1
 
@@ -546,11 +557,7 @@ func TestTheDocumentedArmCountIsTotalArms(t *testing.T) {
 		t.Fatalf("TotalArms is %d and this test does not know how the prose spells it; "+
 			"add it to `spelled` rather than leaving the documents unchecked", validate.TotalArms)
 	}
-	docs, err := filepath.Glob(filepath.Join("..", "..", "docs", "*.md"))
-	if err != nil || len(docs) == 0 {
-		t.Fatalf("no documents to read: %v %v", docs, err)
-	}
-	sort.Strings(docs)
+	docs := docCorpus(t)
 
 	found, pairs := 0, 0
 	for _, d := range docs {
@@ -585,6 +592,230 @@ func TestTheDocumentedArmCountIsTotalArms(t *testing.T) {
 			"a scan that finds nothing agrees with every number", found, wantArmCountClaims)
 	}
 	t.Logf("PROOF %d documented arm count(s) read, all %s", found, want)
+}
+
+// docCorpus is every document the prose oracles read: docs/ AND its
+// subdirectories, in path order. It was `docs/*.md` until R9.1, and that glob
+// is not recursive, so docs/adr/ was unread by all three families at once.
+// Widening it moves no count today -- measured, docs/adr contributes zero to
+// each -- which is the whole point: the hole is closed before something lands
+// in it rather than after.
+func docCorpus(t *testing.T) []string {
+	t.Helper()
+	var out []string
+	err := filepath.Walk(filepath.Join("..", "..", "docs"), func(p string, info os.FileInfo, werr error) error {
+		if werr != nil {
+			return werr
+		}
+		if !info.IsDir() && strings.HasSuffix(p, ".md") {
+			out = append(out, p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking docs/: %v", err)
+	}
+	if len(out) == 0 {
+		t.Fatal("no documents to read: a corpus of nothing agrees with every claim")
+	}
+	sort.Strings(out)
+	return out
+}
+
+// wantArmFigureClaims is how many times the corpus and ci.yml write the figure
+// WITH ITS NOUN -- `N of M arm` -- and it is 9: docs/cli.md's two sample runs,
+// docs/testing-methodology.md's three measured readings, and ci.yml's two greps
+// with the two error messages beside them. A zero here would mean the oracle
+// below agrees with every number, which is the failure its siblings above
+// already name.
+const wantArmFigureClaims = 9
+
+// armFigureClaim is THE THIRD SHAPE A DOCUMENT STATES THIS COUNT IN, and R9.1
+// is why it exists. The 24 -> 25 bump left FOUR stale numbers in
+// docs/testing-methodology.md with every suite green, because that paragraph
+// writes each figure in DIGITS -- which armTotalClaim, a SPELLED pair, cannot
+// read -- and attributed none of them possessively, which is the only subject
+// armCountClaim answers to. ci.yml's own comment named that document as a
+// co-mover of the count in so many words, and nothing enforced it.
+//
+// IT KEYS ON THE NOUN, and the reason covers exactly that narrowing. A bare
+// equal-digit-pair oracle is the obvious cure and is WRONG, measured in this
+// tree before the pattern was chosen: docs/design.md's "2 of 2 into room for
+// 1", docs/release.md's "24 of 24 allowed" -- a licence gate, not arms -- and
+// docs/testing-methodology.md's own "5 of 5 from 5 of 11" are true `N of N`
+// sentences about other things. The noun is also the form the PRODUCT prints,
+// so the documents are held to the spelling a reader can copy out of a real
+// run: change the observable rather than tune the pattern.
+//
+// THE DENOMINATOR IS THE CLAIM, not the pair. `20 of 25 arm(s) evaluated` is
+// what an unreachable adapter honestly prints, so a numerator below the total
+// is true prose and only the total is pinned -- and the numerator is still
+// bounded by it, because no run evaluates more arms than exist.
+var armFigureClaim = regexp.MustCompile(`(\d+) of (\d+) arm`)
+
+func TestEveryArmFigureHasTotalArmsAsItsDenominator(t *testing.T) {
+	paths := append(docCorpus(t), filepath.Join("..", "..", ".forgejo", "workflows", "ci.yml"))
+	total := strconv.Itoa(validate.TotalArms)
+	found := 0
+	for _, path := range paths {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s could not be read, so its arm figures are unchecked: %v", path, err)
+		}
+		for _, m := range armFigureClaim.FindAllStringSubmatch(string(raw), -1) {
+			found++
+			if m[2] != total {
+				t.Errorf("%s says %q and validate.TotalArms is %d: the DENOMINATOR of an arm "+
+					"figure is the total, whatever the numerator",
+					filepath.Base(path), m[0], validate.TotalArms)
+				continue
+			}
+			n, cerr := strconv.Atoi(m[1])
+			if cerr != nil || n > validate.TotalArms {
+				t.Errorf("%s says %q: no run evaluates more arms than exist",
+					filepath.Base(path), m[0])
+			}
+		}
+	}
+	if found != wantArmFigureClaims {
+		t.Errorf("the documents and the workflow write an arm figure %d time(s), want %d: "+
+			"a scan that finds nothing agrees with every number", found, wantArmFigureClaims)
+	}
+	t.Logf("PROOF %d arm figure(s) read, every denominator %s", found, total)
+}
+
+// TestTheArmFigureOracleReadsOnlyAnArmFigure is armFigureClaim's control, and
+// the six cases ARE the narrowing: the two figures it must pin, and the four
+// `N of N` sentences this project's own documents really write about other
+// things, which a digit-pair oracle would have errored against.
+func TestTheArmFigureOracleReadsOnlyAnArmFigure(t *testing.T) {
+	for _, c := range []struct {
+		in    string
+		match bool
+	}{
+		{"validate: twin -- 20 of 25 arm(s) evaluated; 2 action(s)", true},
+		{"22 of 25 arms with the browser stage off", true},
+		{"splits 2 of 2 into room for 1 and the clause fires", false},
+		{`"24 of 24 allowed" is what a gate that always says yes also prints`, false},
+		{"5 of 5 from 5 of 11. Fixed in `abc400a`", false},
+		{"11 of 24 toy seeds find a bug and 13 walk clean", false},
+	} {
+		if got := armFigureClaim.MatchString(c.in); got != c.match {
+			t.Errorf("%q matched = %v, want %v: a figure this oracle cannot see is unpinned, "+
+				"and a true sentence about something else that it CAN see makes it error "+
+				"against correct prose", c.in, got, c.match)
+		}
+	}
+}
+
+// wantArmNounClaims is how many times the corpus writes a spelled count
+// straight onto the noun, and it is 4: docs/cli.md's declared total and its R5
+// history, and docs/contract.md's two.
+const wantArmNounClaims = 4
+
+// THE FOURTH SHAPE IS THE RESIDUAL THE OTHER THREE LEAVE, and rook named it at
+// coop r9/20 while the unit above was being cut: a SPELLED, NON-POSSESSIVE,
+// NON-PAIR total -- "twenty-five arms are declared" -- is read by none of them.
+// BY VALUE it is irreducible, because "nineteen arms" is a true sentence about a
+// project whose adapter cannot be reached and no value oracle separates that
+// from a stale total. BY FORM it is not: a spelled number written onto the noun
+// must be possessive or half of a pair, and both shapes the value oracles
+// already read. So this oracle carries NO NUMBER and cannot rot; what it does is
+// make the other three total.
+//
+// IT WAS ALREADY HOLDING A STALE VALUE. docs/cli.md said "Twenty-three arms are
+// declared" at TotalArms 25, having been corrected from NINETEEN one release
+// earlier -- and the same sentence explained that it was left outside the oracle
+// on purpose, because a third attribution would fail wantArmCountClaims. That
+// is the defect this closes: the count moves, the sentence gets attributed.
+//
+// A PHASE POSSESSIVE COUNTS AS ATTRIBUTION AND IS NOT VALUE-CHECKED, and the
+// reason covers exactly that: "R5's eighteen arms" DATES the claim, so it is
+// true prose about a tree that is gone, where "validate's eighteen arms" would
+// be a claim about this one. The value oracles keep their three literal
+// subjects; this one only asks that somebody be named.
+var (
+	armNounSuffix = `\*{0,2}\s+\*{0,2}arms?\b`
+	// armNounBare finds EVERY spelled count written onto the noun.
+	armNounBare = regexp.MustCompile(`(?i)\b(` + spelledAlternation() + `)` + armNounSuffix)
+	// armNounAttributed finds the possessive ones, the value oracles' own two
+	// subjects plus a phase.
+	armNounAttributed = regexp.MustCompile(`(?i)\b(?:validate's|validate has|R\d+(?:\.\d+)?'s)\s+(?:own\s+)?(` +
+		spelledAlternation() + `)` + armNounSuffix)
+	// armNounPaired finds the pair form, which is armTotalClaim's.
+	armNounPaired = regexp.MustCompile(`(?i)\b(` + spelledAlternation() + `)\s+of\s+(` +
+		spelledAlternation() + `)` + armNounSuffix)
+)
+
+// attributedEnds is the set of offsets at which an ATTRIBUTED count ends. A
+// bare match is covered when an attributed one ends where it ends, which is
+// what makes "R4.3's twenty-five arms" one claim rather than two readings of it.
+func attributedEnds(text string) map[int]bool {
+	ends := map[int]bool{}
+	for _, re := range []*regexp.Regexp{armNounAttributed, armNounPaired} {
+		for _, loc := range re.FindAllStringIndex(text, -1) {
+			ends[loc[1]] = true
+		}
+	}
+	return ends
+}
+
+func TestAnArmCountBeforeTheNounIsAttributed(t *testing.T) {
+	paths := append(docCorpus(t), filepath.Join("..", "..", ".forgejo", "workflows", "ci.yml"))
+	found := 0
+	for _, path := range paths {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s could not be read, so its arm counts are unchecked: %v", path, err)
+		}
+		text := string(raw)
+		ends := attributedEnds(text)
+		for _, loc := range armNounBare.FindAllStringIndex(text, -1) {
+			found++
+			if ends[loc[1]] {
+				continue
+			}
+			t.Errorf("%s:%d writes %q and names nobody: a spelled count beside the noun is "+
+				"possessive or half of a pair, which are the two shapes the value oracles "+
+				"read -- this one is checked by neither and rots in place (rook, coop r9/20)",
+				filepath.Base(path), 1+strings.Count(text[:loc[0]], "\n"),
+				strings.Join(strings.Fields(text[loc[0]:loc[1]]), " "))
+		}
+	}
+	if found != wantArmNounClaims {
+		t.Errorf("the corpus writes a spelled count beside the noun %d time(s), want %d: "+
+			"a scan that finds nothing accepts every unattributed count", found, wantArmNounClaims)
+	}
+	t.Logf("PROOF %d spelled arm count(s) read, every one attributed", found)
+}
+
+// TestTheAttributionOracleRefusesExactlyTheUnattributed is the control, and the
+// first case is the real sentence this oracle was written for -- docs/cli.md as
+// it stood at TotalArms 25, saying twenty-three.
+func TestTheAttributionOracleRefusesExactlyTheUnattributed(t *testing.T) {
+	for _, c := range []struct {
+		in string
+		ok bool
+	}{
+		{"Twenty-three arms\nare declared -- the figure said NINETEEN", false},
+		{"nineteen arms evaluated", false},
+		{"**Validate has\ntwenty-five arms** -- the figure said", true},
+		{"It is one of R4.3's twenty-five arms now", true},
+		{"with every\none of R5's eighteen arms passing it", true},
+		{"Twenty-five of twenty-five arms is what a complete project looks like", true},
+	} {
+		locs := armNounBare.FindAllStringIndex(c.in, -1)
+		if len(locs) == 0 {
+			t.Errorf("%q matched nothing: a count this oracle cannot see is one it cannot refuse", c.in)
+			continue
+		}
+		ends := attributedEnds(c.in)
+		last := locs[len(locs)-1]
+		if got := ends[last[1]]; got != c.ok {
+			t.Errorf("%q read as attributed = %v, want %v: the refusal is the whole oracle, so "+
+				"both directions are the test", c.in, got, c.ok)
+		}
+	}
 }
 
 // TestANemesisKindMayBeWeighted is arm 19's weight cell's own control, and the

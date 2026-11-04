@@ -832,7 +832,7 @@ network or build tool carries a bound (`timeout`, or `curl -m` — *not*
 
 Run it before committing a workflow change, with its own self-test:
 
-    python3 tools/check-workflows.py --self-test      # 10 arms
+    python3 tools/check-workflows.py --self-test      # 25 arms
     python3 tools/check-workflows.py .forgejo/workflows
 
 The self-test's primary fixture is `probe-pkg.yml` **as it actually shipped** —

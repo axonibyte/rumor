@@ -373,8 +373,10 @@ func arm8(rep *Report, dir string, b bindings.Bindings) {
 // THIS ARM READS THE BINDINGS ALONE and evaluates
 // wherever they can be read -- no statute, no adapter, no platform file. That is
 // why it moves all three of the documented figures by one rather than only the
-// first (docs/testing-methodology.md's twenty-four / twenty-two / nineteen),
-// the way R6.2's three arms did and arm 19 did not.
+// first -- the three docs/testing-methodology.md measures, named there rather
+// than copied here, because a triple of VALUES in a comment is a fourth copy of
+// the count that no oracle reads and this one had gone stale by R9.1 -- the way
+// R6.2's three arms did and arm 19 did not.
 //
 // fable ruled the id at coop r7/48: a fresh number, because a cited identifier
 // does not move for a sibling and the lettered families are the ones born

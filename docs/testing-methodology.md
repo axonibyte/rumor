@@ -129,7 +129,8 @@ file, and emptying the recorded knowledge each turn the suite red.
 ## Self-test the oracle
 
 An oracle is checked before it is trusted, in the same run that trusts it.
-`rumor validate` declares **twenty-four** arms, and the count is pinned in FIVE
+`rumor validate` declares arms -- **validate has twenty-five** of them -- and the
+count is pinned in FIVE
 places that move together -- `internal/validate.TotalArms`, that package's own
 `allArmIDs` (which `unreached` walks), `tests/validate`'s `allArms`, `ci.yml`'s
 literal and this sentence -- the way the release gate's own case count is. It
@@ -138,27 +139,74 @@ unexported, so no external suite could read it and nothing did, and `ci.yml`'s
 is a grep in YAML that no Go test could see. Both have oracles now
 (`TestAllArmIDsIsTotalArms`, in-package, and `TestTheWorkflowsArmCountIsTotalArms`),
 because a copy with no oracle is found by whoever bumps next. The PROSE copies
-are a separate family with two oracles of their own: a count attributed to the
-command possessively, and a count stated as a pair of identical numbers --
-`docs/cli.md` carries one of those, and it was pinned by nothing until R8.4 and
-moved by hand at every bump before it. The invariant
+are a separate family with FOUR oracles of their own, three that read a value
+and one that reads only the form: a count attributed to the command
+possessively; a count stated as a pair of identical SPELLED numbers; a figure
+written with its noun -- `N of M arm` -- whose DENOMINATOR must be the total;
+and a refusal of a spelled count written onto the noun that names nobody.
+`docs/cli.md` carries one of the second kind, and it was pinned by nothing until
+R8.4 and moved by hand at every bump before it.
+
+**The last two were added at R9.1, and the first two had both missed this
+document.** The paragraph below stated every figure in DIGITS, which the pair
+oracle does not read, and attributed none of them possessively, which is the
+only subject the possessive oracle answers to -- so the 24 -> 25 bump left four
+stale numbers here while the whole suite was green. A BARE equal-digit-pair
+oracle would have been the wrong cure and is not what was written:
+`docs/design.md`, `docs/release.md` and this file's own R8 section each hold a
+true `N of N` that is not about arms, measured before the pattern was chosen, so
+the cure is the NOUN -- which is also the form the product prints, a reader
+being able to copy it out of a real run.
+
+**And the fourth closes the residual the other three leave** (rook, coop
+r9/20). A SPELLED, NON-POSSESSIVE, NON-PAIR total -- `<N> arms are declared` --
+is read by none of them, and BY VALUE it is irreducible: `<N> arms`, for an `N`
+below the total, is a true sentence about a project whose adapter cannot be
+reached, so no value oracle separates it from a stale total. BY FORM it is not, because such a
+count must be possessive or half of a pair and both shapes the value oracles
+already read. So the fourth oracle carries no number, cannot itself rot, and
+what it does is make the other three TOTAL. It found `docs/cli.md` already
+holding a stale value: it read `<N> arms are declared` with an `N` two behind
+the total, having been corrected from a different wrong `N` one release earlier,
+and the same sentence explained in its own words that it was left outside the
+possessive oracle ON PURPOSE, because a third attribution would fail that
+oracle's declared claim count. A count that fails because a true sentence was
+added is a count to MOVE. A PHASE possessive counts as attribution and is not
+checked against the total, and the reason covers exactly that: `R5's <N> arms`
+dates the claim, where the same number attributed to the command would be a
+claim about this tree.
+
+**The numbers in this section are written as `<N>` deliberately**, because this
+is the one document that has to describe the broken form in order to explain the
+oracle, and it is also in the oracle's corpus. A real example here would be
+refused by the fourth oracle, or worse, checked against the total by the first
+and found wrong -- a document failing a suite for quoting a defect it has
+already fixed.
+
+The invariant
 is an ACCOUNTING one rather than a per-project number (fable, coop r4/77): every
-run accounts for all twenty-four as evaluated or skipped-with-its-reason, never
+run accounts for all of validate's twenty-five as evaluated or
+skipped-with-its-reason, never
 silently and never twice, and across `tests/validate/fixtures/` every arm is
-evaluated at least once. The permitted twin evaluates all twenty-four, which
+evaluated at least once. The permitted twin evaluates all of validate's
+twenty-five, which
 is what fable's D9 drill requires of it; a project declaring no browser stage
 honestly reports **twenty-two**, and one whose adapter cannot be reached
-reports **nineteen** -- the skips named, and could-not-run rather than refused.
+reports **twenty** -- the skips named, and could-not-run rather than refused.
 Each of those three figures is measured here rather than computed, at R7.2 as at
 R6.2 as at R4.3: arm 19 evaluates on an unreachable adapter because eight of its
 nine cells read documents alone, so that reading moved by one and not by two;
 the three arms R6.2 added read the bindings alone, so they evaluate in all three
 conditions and every figure moved by exactly three; and R7.2's arm 20 reads the
 bindings alone for the same reason -- both `[deadline]` and `[clock]` are
-presence in the same file -- so every figure moved by exactly one again,
-measured at each count rather than carried forward: 24 of 24 on the twin and on
-the toy, 22 of 24 with the browser stage off, 19 of 24 with no adapter on
-PATH.
+presence in the same file -- so every figure moved by exactly one again; and
+R9.1's arm 22 reads a browser-context action's `creates`, so it SKIPS exactly
+where arms 4 and 5 already skip, which makes it the first addition in this
+series NOT to move all three -- the twin and the unreachable-adapter readings
+each gained one and the browser-stage-off reading held still, so twenty-two is
+the same numerator under a denominator one larger. Measured at each count rather
+than carried forward: 25 of 25 arms on the twin and on the toy, 22 of 25 arms
+with the browser stage off, 20 of 25 arms with no adapter on PATH.
 
 `tools/release-gate.py --self-test` drives twenty cases, fifteen trailer checks,
 seven docs-verdict checks, four worktree checks, three changelog-date checks,
