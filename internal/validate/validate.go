@@ -50,7 +50,7 @@ import (
 // the adapter's describe, and the count for it is coop breakout-r4/8 -- posted
 // BEFORE this line moved, which is the rule above read as an order and not a
 // decoration.
-const TotalArms = 24
+const TotalArms = 25
 
 // Refusal is one arm firing, named by the arm so a fixture can assert that it
 // tripped ITS arm and no other -- the invariant fable set over the eighteen.
@@ -193,7 +193,7 @@ func (r *Report) unreached(f string, a ...any) {
 var allArmIDs = []string{
 	"1", "2", "3", "4", "5", "6", "7a", "7b", "7c", "7d", "7e", "8",
 	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13", "19", "20",
-	"21",
+	"21", "22",
 }
 
 func (r *Report) refuse(arm, f string, a ...any) {
@@ -357,6 +357,7 @@ func Run(dir string) Report {
 	arm3(&rep, b)
 	arm4(&rep, b, plat)
 	arm5(&rep, b, plat)
+	arm22(&rep, b, plat)
 	arm6(&rep, b, plat)
 	arm7(&rep, b)
 	arm8(&rep, dir, b)

@@ -542,8 +542,8 @@ jobs:
           # a message that reads like a dropped arm. tests/validate's
           # TestTheWorkflowsArmCountIsTotalArms reads this file now, so the next
           # bump fails locally in a second instead of in CI in six minutes.
-          grep -q '24 of 24 arm(s) evaluated' ../validate.log \
-            || { echo "the twin did not report 24 of 24 arms evaluated: an arm was added or removed without this literal, or an arm skipped where D9 requires none"; exit 1; }
+          grep -q '25 of 25 arm(s) evaluated' ../validate.log \
+            || { echo "the twin did not report 25 of 25 arms evaluated: an arm was added or removed without this literal, or an arm skipped where D9 requires none"; exit 1; }
           grep -q '0 refusal(s)' ../validate.log \
             || { echo "the twin was refused, and the permitted twin is the one project that must pass"; exit 1; }
           grep -q 'skipped' ../validate.log \
@@ -567,8 +567,8 @@ jobs:
           cat ../validate-toy.log
           test "$rc" -eq 124 && { echo "HANG: validate on the toy exceeded 300s. RUNNER finding."; exit 124; }
           test "$rc" -eq 0 || { echo "validate exited $rc on the toy, which issue 73 requires to pass"; exit "$rc"; }
-          grep -q '24 of 24 arm(s) evaluated' ../validate-toy.log \
-            || { echo "the toy did not report 24 of 24 arms evaluated"; exit 1; }
+          grep -q '25 of 25 arm(s) evaluated' ../validate-toy.log \
+            || { echo "the toy did not report 25 of 25 arms evaluated"; exit 1; }
           grep -q '0 refusal(s)' ../validate-toy.log \
             || { echo "the toy was refused, and issue 73 requires it to validate"; exit 1; }
           grep -q 'skipped' ../validate-toy.log \

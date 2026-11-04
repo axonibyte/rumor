@@ -52,7 +52,11 @@ import (
 // that bites quietly -- a profile's claim is also what takes a name out of the
 // project's set, so a misspelled claim leaves the observation taken by every
 // profile and reads as a working declaration from the profile that wanted it.
-const wantFixtures = 40
+// AND ONE MORE AT R9.1: arm 22, `creates` on a browser-context action, whose
+// handle a `flow` answer carries no field to mint from (fable's ruling at coop
+// r9/17 over giving `flow` an `ids` nothing reads). The count was posted in
+// thread:breakout-r4 before this constant moved, as arm 21's was.
+const wantFixtures = 41
 
 // ARM 19 IS ONE ARM WITH SEVERAL CELLS, so it is the one arm with more than one
 // fixture -- and the count is declared here for the same reason every count in
@@ -406,7 +410,7 @@ const wantArmCountClaims = 2
 // of it in the alternation this oracle reads a correct document as saying
 // "twenty" and errors against it. Measured at the 19 -> 21 bump (R6.2).
 var armCountClaim = regexp.MustCompile(`(?i)(validate's|validate has|R4\.3's)\s+(?:own\s+)?` +
-	`(twenty-one|twenty-two|twenty-three|twenty-four|one|two|three|four|five|six|seven|eight|nine|ten|` +
+	`(twenty-one|twenty-two|twenty-three|twenty-four|twenty-five|one|two|three|four|five|six|seven|eight|nine|ten|` +
 	`eleven|twelve|` +
 	`thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b`)
 
@@ -416,7 +420,7 @@ var spelled = map[int]string{
 	13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen",
 	17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
 	21: "twenty-one", 22: "twenty-two", 23: "twenty-three",
-	24: "twenty-four",
+	24: "twenty-four", 25: "twenty-five",
 }
 
 // wantArmTotalClaims is how many times the documents state the count as a PAIR,
@@ -480,6 +484,7 @@ func TestTheArmCountOracleReadsAHyphenatedNumberWhole(t *testing.T) {
 		{"one of validate's twenty-one", "twenty-one"},
 		{"one of validate's twenty-two", "twenty-two"},
 		{"one of validate's twenty-four", "twenty-four"},
+		{"one of validate's twenty-five", "twenty-five"},
 		{"one of validate's twenty", "twenty"},
 		{"one of validate's nineteen", "nineteen"},
 	} {
@@ -935,6 +940,10 @@ var changedBy = map[string][]string{
 	"11-no-mutants":        {"mutants", "WHY-no-mutants.md"},
 	"12a-no-position":      {"cases/miscount.json"},
 	"12b-no-source":        {"cases/untold-claim.json"},
+	// R9.1's arm 22 changes the twin's browser action alone, adding `creates`
+	// to it; the generator writes its reason as a comment header on that same
+	// file rather than a WHY of its own, which is 7b's shape.
+	"22-creates-on-a-browser-action": {"bindings.toml"},
 
 	// FIXTURES WHOSE CONDITION HAS A PRECONDITION declare BOTH edits, and fable's
 	// rule (coop r4/74) is that this is still ONE change: one CONDITION, not one
@@ -1076,7 +1085,7 @@ func TestEveryFixtureIsTheTwinPlusItsOwnChange(t *testing.T) {
 var allArms = []string{
 	"1", "2", "3", "4", "5", "6", "7a", "7b", "7c", "7d", "7e", "8",
 	"9a", "9b", "9c", "10a", "10b", "11", "12a", "12b", "13", "19", "20",
-	"21",
+	"21", "22",
 }
 
 // TestEveryArmAccountsForItself is the every-arm-accounted invariant, and it is

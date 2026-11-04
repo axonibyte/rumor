@@ -92,10 +92,10 @@ with their reason rather than folded into a number:
 
 ```console
 $ rumor validate examples/twin          # with the adapter on PATH
-validate: twin -- 24 of 24 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
+validate: twin -- 25 of 25 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
 ```
 
-Twenty-four of twenty-four is what a complete small project looks like: fable's D9
+Twenty-five of twenty-five is what a complete small project looks like: fable's D9
 drill requires the untouched examples to pass with every arm EVALUATED and none
 skipped, which is why the twin enables the browser stage and declares a browser
 action with its flow. **An adapter it cannot reach costs five arms and one cell**, and that
@@ -113,7 +113,7 @@ validate: arm 21 skipped: the adapter did not answer a describe, so what it can 
 validate: arm 9a skipped: the adapter did not answer a describe, so what it can do is unknown
 validate: arm 9b skipped: the adapter did not answer a describe, so what it can do is unknown
 validate: arm 9c skipped: the adapter did not answer a describe, so what it can do is unknown
-validate: twin -- 19 of 24 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
+validate: twin -- 20 of 25 arm(s) evaluated; 2 action(s), 1 observation(s), 5 case(s), 4 rule(s), 4 mutant(s); 0 refusal(s)
 ```
 
 The run is could-not-run either way -- exit 2, never a refusal, because the

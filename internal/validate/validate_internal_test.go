@@ -292,3 +292,52 @@ func TestArm10bRefusesASeedNamingAnUndeclaredProfile(t *testing.T) {
 		}
 	}
 }
+
+// ARM 22's MESSAGE NAMES THREE THINGS, which fable required at coop r9/17: the
+// action, its context and the handle it would have declared, "so the project's
+// author is told what to drop or what to wait for".
+//
+// THE FIXTURE ARM CANNOT SEE THIS. tests/validate asserts WHICH arm a fixture
+// trips, by id, so a refusal that named none of the three would pass there --
+// the id is not the message. This is the cell for the words.
+func TestArm22NamesTheActionItsContextAndTheHandle(t *testing.T) {
+	on := platform.Platform{Stages: map[string]platform.Stage{"browser": {Enabled: true}}}
+	browserAction := bindings.Action{Name: "publish_doc_ui", Context: "browser", Creates: []string{"published_doc"}}
+
+	// THE CONTROLS FIRST, so the refusal below is about `creates` on a BROWSER
+	// action and not about either half alone.
+	for _, clean := range []bindings.Bindings{
+		{Actions: []bindings.Action{{Name: "publish_doc", Context: "api", Creates: []string{"doc"}}}},
+		{Actions: []bindings.Action{{Name: "publish_doc_ui", Context: "browser"}}},
+	} {
+		var rep Report
+		arm22(&rep, clean, on)
+		if len(rep.Refusals) != 0 {
+			t.Errorf("arm 22 refused a project it should not: %+v", rep.Refusals)
+		}
+	}
+
+	// AND WITH THE STAGE OFF IT IS VACUOUS, not clean: a skip and a pass are
+	// different accounts and arms 4 and 5 make the same distinction.
+	var off Report
+	arm22(&off, bindings.Bindings{Actions: []bindings.Action{browserAction}}, platform.Platform{})
+	if len(off.Refusals) != 0 {
+		t.Errorf("arm 22 refused with the browser stage off: %+v", off.Refusals)
+	}
+	if len(off.Skipped) == 0 {
+		t.Error("arm 22 neither ran nor skipped with the stage off, so a run would not account for it")
+	}
+
+	var rep Report
+	arm22(&rep, bindings.Bindings{Actions: []bindings.Action{browserAction}}, on)
+	if len(rep.Refusals) != 1 {
+		t.Fatalf("arm 22 over a browser action declaring `creates` gave %d refusal(s), want 1: %+v",
+			len(rep.Refusals), rep.Refusals)
+	}
+	got := rep.Refusals[0].Detail
+	for _, want := range []string{"publish_doc_ui", "browser", "published_doc"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the refusal does not name %q, so the author is not told what to drop: %q", want, got)
+		}
+	}
+}

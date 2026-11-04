@@ -193,6 +193,22 @@ contexts = ["browser", "api"]
         "It is named `author` -- the role platform.toml's venire already draws --\nbecause arm 19's venire cell refuses a project that declares some role while\n"
         "drawing another, and with any other name this fixture would trip two arms.\n")
 
+    d = fresh("22-creates-on-a-browser-action")
+    p = os.path.join(d, "bindings.toml"); s2 = open(os.path.join(d, "bindings.toml")).read()
+    s2 = s2.replace('name = "publish_doc_ui"\ncontext = "browser"',
+                    'name = "publish_doc_ui"\ncontext = "browser"\ncreates = ["published_doc"]', 1)
+    assert 'creates = ["published_doc"]' in s2, "arm 22's fixture did not take: publish_doc_ui moved"
+    open(p, "w").write(
+        "# FIXTURE for arm 22.\n#\n"
+        "# ONE CHANGE, no setup: the twin already declares a browser-context action with\n"
+        "# a flow, and the stage is already enabled. This adds `creates` to it.\n#\n"
+        "# THE CONDITION: a `flow` request answers {reached, response} and carries no\n"
+        "# ids, so the handle this action declares could never be minted -- accepted by\n"
+        "# the parser, registered by arm 19's name gathering, and consumed by nothing.\n#\n"
+        "# THE HANDLE NAME IS NOT A REFERENCE ANYWHERE, deliberately: arm 19 refuses a\n"
+        "# name the project uses and does not declare, and the reverse -- a declared\n"
+        "# handle nothing uses -- is not an arm, so this trips 22 alone.\n" + s2)
+
     d = fresh("7b-quiesce-no-probe")
     p = os.path.join(d, "bindings.toml"); s = open(p).read()
     s = s.replace('timing = "immediate"', 'timing = "eventual"\nbound = "quiesce"', 1)

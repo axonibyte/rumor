@@ -108,6 +108,46 @@ func arm5(rep *Report, b bindings.Bindings, p platform.Platform) {
 // fixture that trips it.
 var probeKinds = map[string]bool{"queue_depth": true, "worker_idle": true, "direct": true}
 
+// arm22: `creates` ON A BROWSER-CONTEXT ACTION.
+//
+// WHAT CANNOT BE SERVED IS REFUSED, which is this package's whole shape. R9.1's
+// `flow` request answers {reached, response} and carries NO ids, because nothing
+// mints a handle from one: `execute` answers `ids` and the walk mints from them,
+// and a browser action has no such field to read. So an action whose context is
+// a browser context and which declares `creates` has declared a handle the run
+// can never produce -- accepted by the parser, registered by arm 19's name
+// gathering, and consumed by nothing.
+//
+// IT FAILS CLOSED RATHER THAN GROWING THE WIRE (fable, coop r9/17): giving
+// `flow` an `ids` field while no project needs one would be a field with no
+// reader, which is the same void one level along. The refusal names the action,
+// its context and the handle, so an author is told what to drop or what to wait
+// for.
+//
+// VACUOUS WITHOUT THE STAGE, the same as arms 4 and 5 above: an action of a
+// stage no run takes mints nothing either way.
+func arm22(rep *Report, b bindings.Bindings, p platform.Platform) {
+	if !browserEnabled(p) {
+		rep.skip("22", "stages.browser.enabled is not true, and this arm is vacuous without it")
+		return
+	}
+	rep.ran("22")
+	var bad []string
+	for _, a := range b.Actions {
+		if !isBrowser(a.Context) || len(a.Creates) == 0 {
+			continue
+		}
+		names := append([]string(nil), a.Creates...)
+		sort.Strings(names)
+		bad = append(bad, fmt.Sprintf("%s (context %s) creates %s", a.Name, a.Context, strings.Join(names, "/")))
+	}
+	if len(bad) > 0 {
+		sort.Strings(bad)
+		rep.refuse("22", "browser-context action(s) declaring `creates`: %s -- a `flow` answers "+
+			"{reached, response} and no ids, so the handle would never be minted", strings.Join(bad, "; "))
+	}
+}
+
 // arm7: AN EVENTUAL CLAIM TYPE WITH NO BOUND (7a), ONE BOUNDED ON QUIESCE WITH
 // NO QUIESCE PROBE DECLARED (7b), A PROBE WITH NO TIMEOUT (7c), A PROBE OF AN
 // UNKNOWN KIND (7d), AND `query` ON A PROBE THAT IS NOT `direct` (7e).
