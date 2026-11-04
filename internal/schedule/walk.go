@@ -230,15 +230,25 @@ type Step struct {
 	// the clock where the walk asked.
 	AdvancedTo int64
 
-	// Flow says this step's action was carried by the `flow` operation rather
-	// than by `execute`, which is decided by the action's CONTEXT (R9.1's H2).
+	// Flow says this step's action WAS CARRIED by the `flow` operation rather
+	// than by `execute`, and it is set from what `drive` actually SENT -- not
+	// from the action's context, which is what chooses the operation.
+	//
+	// THIS COMMENT ITSELF ASSERTED THE DEFECT until rook's clear of H2 (coop
+	// rumor/1896). It said the field was "decided by the action's CONTEXT",
+	// which is the exact formula under which a mutant disabling the routing
+	// leaves this field TRUE, the summary still claiming the flow, and the one
+	// arm that proves the routing happened passing blind. The code was fixed
+	// and the prose that named the broken rule was not; rook reproduced my own
+	// survivor from these two lines and nothing else. See `driven`.
 	//
 	// IT EXISTS BECAUSE AN ARM CANNOT COMPARE WHAT THE PRODUCT CANNOT SAY. A
 	// flow that went through first time leaves FlowReached 0 and FlowStopped
 	// empty -- exactly what an `execute` leaves -- so nothing in the record or
 	// the output distinguished the two, and the arm fable's r9/40 part four
 	// asks for has to assert the action "went through `flow`". A grep cleverer
-	// than the product is not the cure; an observable is.
+	// than the product is not the cure; an observable is -- and an observable
+	// whose own comment states the wrong rule is the next reader's defect.
 	Flow bool
 
 	// FlowReached and FlowStopped are a BROWSER-CONTEXT action's flow that did
