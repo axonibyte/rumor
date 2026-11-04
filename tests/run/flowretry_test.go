@@ -214,14 +214,23 @@ func TestTheToyWalkDrawsItsBrowserActionAndGoesThroughFlow(t *testing.T) {
 	// THE KIND IS THE ONLY DISCRIMINATOR OUT THERE: both operations post to the
 	// toy's same UI route by design, so a request log of paths would show the
 	// identical line either way.
+	//
+	// WHAT THIS RECORD WITNESSES IS A DECODE, AND THE FAILURE SAYS ONLY THAT
+	// (rook, coop rumor/1898). `note()` runs after `wire.DecodeRequest`
+	// SUCCEEDS, so a flow that went out and failed to decode leaves no line
+	// here either -- it DID cross the wire, and this record cannot see it. The
+	// message below therefore claims a decode and not a crossing; the decode
+	// failure has its own path, which answers with a `field` fault naming what
+	// it could not read.
 	kinds, rerr := os.ReadFile(record)
 	if rerr != nil {
 		t.Fatalf("the adapter wrote no request record at %s: %v", record, rerr)
 	}
 	got := string(kinds)
 	if !strings.Contains(got, "flow join_event_ui") {
-		t.Errorf("the adapter never decoded a `flow` for join_event_ui, so nothing crossed the "+
-			"wire as one however the summary reads\nrecord:\n%s", got)
+		t.Errorf("the adapter DECODED no `flow` for join_event_ui, however the summary reads. "+
+			"This record witnesses decodes, so it cannot tell a flow that was never sent from "+
+			"one that arrived malformed -- the second has its own `field` fault\nrecord:\n%s", got)
 	}
 	// THE CONTROL, so the assertion above is not satisfied by an empty file or a
 	// record of everything: the same walk must also have sent EXECUTEs, which is
