@@ -1070,7 +1070,7 @@ usage error and exits 2.
 ## `rumor fake-adapter`
 
 ```
-rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S]
+rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S] [--stop-flow ACTION:AT:REASON[:TIMES]]
 ```
 
 The fake adapter (R4.1, issue 62): it speaks the whole wire protocol
@@ -1097,6 +1097,7 @@ r4/4, correcting the reason this entry first gave).
 | `--contract VERSION` | answers with that contract version instead of the engine's | fable's D6 drill: a version bump on one side of three, refused naming all three |
 | `--fail KIND` | answers every request with an error envelope of that kind | issue 62's "speaks the error envelope when asked to"; the kinds are in `docs/contract.md` |
 | `--omit KIND.FIELD` | deletes one required field from one kind's response | fable's D7 drill: the decoder refuses the field by name, and validate reports could-not-run rather than a refusal |
+| `--stop-flow ACTION:AT:REASON[:TIMES]` | stops that action's flow after `AT` steps, answering `stopped` = `REASON`. `TIMES` is how many calls stop that way and defaults to 0, meaning EVERY call; `:1` is the one that fails once and then completes. `AT` at or past the step count is this adapter's own `internal` fault, since a flow cannot both complete and stop. `REASON` is not checked here: `internal/wire` holds the closed set, so a third word travels and is refused by name on the response, the way `--fail KIND` leaves the fault kinds to one reader | R9.1's retry, which is the ENGINE's (fable, coop r9/21): the engine seals, advances, and re-sends from `reached`, and a `ui_timeout` is the SECOND failure of one wait -- so a test needs a flow that fails once and one that fails every time, and with no browser on the box this flag is the only thing that can produce either |
 | `--id-salt S` | prefixes every id in an execute's `ids` with `S`, so two attempts answer different ids for the same action; deterministic, and empty by default so every fixture reads as before. Observation values are untouched, since one of them is a count | issue 72's done-when: two runs from one seed produce the same handle sequence with DIFFERENT ids, which no adapter in the tree could show -- the fake answered one id per action and `cmd/toy` numbers by operation sequence |
 
 Without `--surface` the built-in surface answers: two API actions, an `api` and

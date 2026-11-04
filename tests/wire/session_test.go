@@ -614,3 +614,92 @@ func TestTheKeptSessionObserves(t *testing.T) {
 	t.Logf("PROOF observe on a kept session: `event` -> %v twice, an unrecorded query faults, "+
 		"and the session still answers %v after it", first, after.Value)
 }
+
+// SESSION.FLOW HAD NO CALLER AND NO TEST, which is the hole `fdfc6e3` left and
+// this is the same finding as TestTheKeptSessionObserves records against
+// `.Observe(`: the method was defined, the wire carried the kind, and NOTHING
+// drove it -- so `from` going out and `stopped` coming back were a shape nobody
+// had seen travel.
+//
+// WHAT THIS DRIVES is the exchange and nothing above it: that a flow goes out on
+// a KEPT session, that a driver which stops short answers a position and a
+// reason rather than a completed count, that resuming FROM that position on the
+// same session completes, and that `stopped` is empty when it did. Whether the
+// WALK composes the right request and records the right finding is
+// internal/schedule's and R9.1's next head.
+//
+// THE PRECONDITION IS ASSERTED FIRST, as it is at the fake's own tier: a first
+// answer that had already completed would make every assertion below it pass
+// for a reason that has nothing to do with resuming.
+func TestTheKeptSessionDrivesAFlowAndResumesIt(t *testing.T) {
+	sess := open(t, fakeSpawn("--stop-flow", "create_event:2:wait:1"))
+
+	steps := []map[string]any{
+		{"step": "navigate", "to": "/events/new"},
+		{"step": "click", "target": "join"},
+		{"step": "wait", "until": "count-changed"},
+	}
+
+	first, err := sess.Flow(wire.FlowRequest{Action: "create_event", Token: "t", Steps: steps})
+	if err != nil {
+		t.Fatalf("driving the flow: %v", err)
+	}
+	if first.Reached != 2 || first.Stopped != wire.StopWait {
+		t.Fatalf("reached %d stopped %q, want 2 and %q -- without the stop there is nothing to resume",
+			first.Reached, first.Stopped, wire.StopWait)
+	}
+
+	// AND THE RESUME TRAVELS. `from` is omitempty, so a request that failed to
+	// set it would be INDISTINGUISHABLE on the wire from one that meant the
+	// whole flow -- which is why the adapter is configured to stop exactly
+	// once: a resume that silently restarted at 0 would stop again here.
+	again, err := sess.Flow(wire.FlowRequest{
+		Action: "create_event", Token: "t", From: first.Reached, Steps: steps,
+	})
+	if err != nil {
+		t.Fatalf("resuming the flow at %d: %v", first.Reached, err)
+	}
+	if again.Stopped != wire.StopNone {
+		t.Errorf("the resumed flow stopped %q, want empty", again.Stopped)
+	}
+	if again.Reached != len(steps) {
+		t.Errorf("the resumed flow reached %d of %d", again.Reached, len(steps))
+	}
+
+	// THE SESSION IS STILL USABLE AFTER BOTH, which is what makes this an
+	// exchange test and not two spawns: a flow that poisoned the session would
+	// pass every assertion above.
+	if _, err := sess.Observe(wire.ObserveRequest{Query: "event", Source: wire.SourceDirect}); err != nil {
+		t.Errorf("the session is unusable after two flows: %v", err)
+	}
+}
+
+// AND A RESUME PAST THE END NEVER LEAVES THE ENGINE, which is the other side of
+// `from`: wire's own decoder refuses it before the adapter is asked. Two
+// oracles over one rule -- internal/wire proves the decoder refuses, and this
+// proves the SESSION does not send it and stays usable afterwards.
+func TestAFlowResumingPastItsEndIsNotSent(t *testing.T) {
+	sess := open(t, fakeSpawn())
+	steps := []map[string]any{{"step": "click", "target": "join"}}
+
+	_, err := sess.Flow(wire.FlowRequest{Action: "create_event", Token: "t", From: 1, Steps: steps})
+	if err == nil {
+		t.Fatal("a resume at 1 with one step was sent and answered, where the position is past the end")
+	}
+	// AND THE REASON IS THE `from` BOUND, not any error at all. THIS CASE
+	// PASSED FOR THE WRONG REASON BEFORE `Session.Flow` WORKED: with the
+	// stamping case missing, every flow errored with "not a request kind this
+	// session can send" and a bare `err != nil` was satisfied by a method that
+	// could never send anything. An assertion that any error will satisfy is an
+	// assertion about nothing.
+	if !strings.Contains(err.Error(), "from") {
+		t.Errorf("the refusal is %v, and it does not name `from`: the bound is what must have "+
+			"stopped this, not some other failure to send", err)
+	}
+	if strings.Contains(err.Error(), "not a request kind") {
+		t.Errorf("the session cannot send a flow at all: %v", err)
+	}
+	if _, err := sess.Observe(wire.ObserveRequest{Query: "event", Source: wire.SourceDirect}); err != nil {
+		t.Errorf("the session is unusable after a refused flow: %v", err)
+	}
+}

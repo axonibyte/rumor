@@ -619,6 +619,193 @@ func TestTheFakeDriverReachesEveryStepItWasGiven(t *testing.T) {
 	}
 }
 
+// driveMany feeds SEVERAL requests to ONE adapter, which `drive` cannot: it
+// starts a fresh Run per call and the per-action call counter dies with it. The
+// retry this head exists for is two calls to the same adapter, so a helper that
+// could not do that would make the "fails once, then succeeds" case untestable
+// -- and that case is the whole difference between a retry that worked and a
+// `ui_timeout`.
+func driveMany(t *testing.T, cfg Config, requests ...map[string]any) [][]byte {
+	t.Helper()
+	var in bytes.Buffer
+	for _, r := range requests {
+		b, err := json.Marshal(r)
+		if err != nil {
+			t.Fatalf("marshalling a request: %v", err)
+		}
+		in.Write(append(b, '\n'))
+	}
+	var out bytes.Buffer
+	if err := Run(cfg, bytes.NewReader(in.Bytes()), &out); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
+	if len(lines) != len(requests) {
+		t.Fatalf("%d answer(s) for %d request(s): one request, one line", len(lines), len(requests))
+	}
+	got := make([][]byte, 0, len(lines))
+	for _, l := range lines {
+		got = append(got, []byte(l))
+	}
+	return got
+}
+
+// flowOf is the three-step flow these cases drive, built fresh each time so no
+// case can mutate another's.
+func flowOf(action string, from int) map[string]any {
+	m := map[string]any{"action": action, "token": "t", "steps": []any{
+		map[string]any{"step": "navigate", "to": "/events/new"},
+		map[string]any{"step": "click", "target": "join"},
+		map[string]any{"step": "wait", "until": "count-changed"},
+	}}
+	if from != 0 {
+		m["from"] = from
+	}
+	return request(wire.KindFlow, m)
+}
+
+func flowAnswer(t *testing.T, line []byte) wire.FlowResponse {
+	t.Helper()
+	msg, err := wire.DecodeResponse(line)
+	if err != nil {
+		t.Fatalf("the fake's flow answer is not on the protocol: %v", err)
+	}
+	resp, ok := msg.(wire.FlowResponse)
+	if !ok {
+		t.Fatalf("the fake answered %T where a flow response was asked: %s", msg, line)
+	}
+	return resp
+}
+
+func faultOf(t *testing.T, line []byte) wire.Fault {
+	t.Helper()
+	msg, err := wire.DecodeResponse(line)
+	if err != nil {
+		t.Fatalf("the refusal is not on the protocol: %v", err)
+	}
+	resp, ok := msg.(wire.ErrorResponse)
+	if !ok {
+		t.Fatalf("answered %T, want an error: %s", msg, line)
+	}
+	return resp.Error
+}
+
+// A CONFIGURED STOP IS WHAT MAKES THE ENGINE'S RETRY DRIVABLE, and these are
+// its two shapes. `Times: 1` fails the first call and completes the second,
+// which is the retry WORKING; `Times: 0` fails every call, which is the second
+// failure of the same wait that fable's r9/1 item 2 makes a `ui_timeout`.
+//
+// THE PRECONDITION IS ASSERTED FIRST IN BOTH: a case whose first answer was
+// already complete would pass its "then it completes" assertion for a reason
+// that has nothing to do with the retry.
+func TestAStoppedFlowNamesWhereAndWhyItStopped(t *testing.T) {
+	cfg := dflt()
+	cfg.StopFlow = map[string]StopFlow{"create_event": {At: 2, Reason: wire.StopWait, Times: 1}}
+
+	lines := driveMany(t, cfg, flowOf("create_event", 0), flowOf("create_event", 2))
+
+	first := flowAnswer(t, lines[0])
+	if first.Reached != 2 || first.Stopped != wire.StopWait {
+		t.Fatalf("first answer reached %d stopped %q, want 2 and %q: without the stop there is no "+
+			"retry to drive and every assertion below is vacuous", first.Reached, first.Stopped, wire.StopWait)
+	}
+	if first.Response != nil {
+		t.Errorf("a flow that stopped at %d carried a response %v: the page never reached the "+
+			"state that answer describes", first.Reached, first.Response)
+	}
+
+	second := flowAnswer(t, lines[1])
+	if second.Stopped != wire.StopNone {
+		t.Errorf("the resumed flow stopped %q, want empty: Times 1 stops once", second.Stopped)
+	}
+	if second.Reached != 3 {
+		t.Errorf("the resumed flow reached %d of 3: a retry that worked reaches the end", second.Reached)
+	}
+	if second.Response == nil {
+		t.Error("the completed flow carried no response, where the stopped one is the answer-less case")
+	}
+}
+
+// AND `Times: 0` IS EVERY CALL, which is the case the finding rests on. Driven
+// as THREE calls rather than two, because a knob that stopped exactly twice
+// would satisfy a two-call case and lie about "every".
+func TestAFlowStoppedEveryTimeNeverCompletes(t *testing.T) {
+	cfg := dflt()
+	cfg.StopFlow = map[string]StopFlow{"create_event": {At: 2, Reason: wire.StopWait}}
+
+	lines := driveMany(t, cfg,
+		flowOf("create_event", 0), flowOf("create_event", 2), flowOf("create_event", 2))
+	for i, line := range lines {
+		resp := flowAnswer(t, line)
+		if resp.Stopped != wire.StopWait || resp.Reached != 2 {
+			t.Errorf("call %d reached %d stopped %q, want 2 and %q on every call",
+				i+1, resp.Reached, resp.Stopped, wire.StopWait)
+		}
+	}
+}
+
+// A STEP THE PAGE WOULD NOT PERFORM IS THE OTHER WORD, and it is here because
+// `reached` cannot tell it from a failed wait: both stop at the same index and
+// only one is a `ui_timeout`.
+func TestAStoppedFlowCanSayTheStepWouldNotGo(t *testing.T) {
+	cfg := dflt()
+	cfg.StopFlow = map[string]StopFlow{"create_event": {At: 1, Reason: wire.StopStep}}
+	resp := flowAnswer(t, drive(t, cfg, flowOf("create_event", 0)))
+	if resp.Stopped != wire.StopStep {
+		t.Errorf("stopped %q, want %q", resp.Stopped, wire.StopStep)
+	}
+	if resp.Reached != 1 {
+		t.Errorf("reached %d, want 1", resp.Reached)
+	}
+}
+
+// A STOP CONFIGURED PAST THE FLOW IS THIS ADAPTER'S OWN FAULT, not the
+// caller's, and the kind says so: a fake answering `reached` equal to or above
+// the step count would be a flow that both completed and stopped, and the
+// engine would read a reason with nothing left to retry.
+func TestAStopConfiguredPastTheFlowIsAnInternalFault(t *testing.T) {
+	for _, at := range []int{3, 4, -1} {
+		cfg := dflt()
+		cfg.StopFlow = map[string]StopFlow{"create_event": {At: at, Reason: wire.StopWait}}
+		fault := faultOf(t, drive(t, cfg, flowOf("create_event", 0)))
+		if fault.Kind != wire.FaultInternal {
+			t.Errorf("at %d: kind %q, want %q -- a misconfigured fake is not the engine's mistake",
+				at, fault.Kind, wire.FaultInternal)
+		}
+		if fault.Field != "stopFlow" {
+			t.Errorf("at %d: the fault names %q, want stopFlow", at, fault.Field)
+		}
+	}
+}
+
+// AND A RESUME PAST THE END REACHES THE CALLER AS AN ENVELOPE NAMING `from`,
+// which is the end-to-end half: the READER is wire's decoder and not this
+// package, so what this case pins is that the refusal survives the adapter
+// rather than being swallowed into a `reached` the flow never drove. It is a
+// `field` fault for that reason -- I first wrote it expecting the `action` fault
+// this package would have raised, drove it, and found this package's guard
+// unreachable.
+func TestAFlowResumingPastItsEndIsRefusedByName(t *testing.T) {
+	for _, from := range []int{3, 9} {
+		fault := faultOf(t, drive(t, dflt(), flowOf("create_event", from)))
+		if fault.Kind != wire.FaultField || fault.Field != "from" {
+			t.Errorf("from %d: %+v, want a field fault naming from", from, fault)
+		}
+	}
+}
+
+// A FLOW NOT NAMED IN StopFlow IS UNTOUCHED, which is the control that keeps
+// every case above from passing because the knob stops everything.
+func TestAnUnnamedFlowIsNotStopped(t *testing.T) {
+	cfg := dflt()
+	cfg.StopFlow = map[string]StopFlow{"create_event": {At: 1, Reason: wire.StopWait}}
+	resp := flowAnswer(t, drive(t, cfg, flowOf("join_event", 0)))
+	if resp.Stopped != wire.StopNone || resp.Reached != 3 {
+		t.Errorf("join_event reached %d stopped %q, want 3 and empty: the knob is keyed by action",
+			resp.Reached, resp.Stopped)
+	}
+}
+
 // A FLOW OF NO STEPS IS A REFUSAL AND NOT `reached: 0`, because zero is also
 // what a driver that stopped at the first step would report, and the two are
 // different events.

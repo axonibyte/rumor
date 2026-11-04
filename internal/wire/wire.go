@@ -86,6 +86,30 @@ const (
 	SourceDirect  Source = "direct"
 )
 
+// Stop is why a flow got no further, and the set is CLOSED for exactly the
+// reason Source's is: the ENGINE branches on this value to decide whether what
+// it is looking at becomes a `ui_timeout`, so an adapter free to invent a third
+// word would be deciding a finding. A fourth cannot arrive here without
+// arriving in docs/vocabulary.md first.
+type Stop string
+
+const (
+	// StopNone is the zero value, and it means the flow did not stop short --
+	// the state of every flow an adapter drove to its last step, which is why
+	// the field is omitted for it and an adapter that never stops is unchanged.
+	StopNone Stop = ""
+	// StopWait is a wait whose condition was not met. This is the one the
+	// engine re-checks at the same position, never re-sending the step before
+	// it, and records as a `ui_timeout` on the second failure of the SAME wait
+	// (fable, coop r9/1 item 2 and r9/21).
+	StopWait Stop = "wait"
+	// StopStep is a step the page would not perform, and it is NOT a
+	// `ui_timeout`: `reached` alone cannot tell the two apart, and retrying
+	// this one would re-send the request r9/1 item 2 forbids re-sending. What
+	// the engine does with it is R9.1's next head and not this one's to decide.
+	StopStep Stop = "step"
+)
+
 // ClockOp is what a clock request asks for, and the SHAPE is `observe`'s
 // `source` rather than a field this protocol already has: one kind, one variant
 // field, the variant deciding how the rest of the message reads. `op` itself is
@@ -166,10 +190,23 @@ type ExecuteRequest struct {
 // reaches here -- so re-typing them in the transport would be a second reader
 // of one declaration, which is the drift docs/contract.md's own sibling rule
 // warns about. The adapter refuses a step it does not know, by name.
+// From IS WHERE THE FLOW RESUMES, and it exists because fable ruled at coop
+// r9/21 that THE RETRIER IS THE ENGINE. A wait is bounded in the engine's time
+// -- checked at each seal and after each clock advance the engine makes (r9/1
+// item 3) -- so an adapter re-checking inside one call has nothing advance
+// between its two looks and reads the same world twice. The engine therefore
+// seals, advances, and sends the flow again FROM the unmet wait; r9/1 item 2
+// forbids re-sending the steps before it, and `from` is how they are not sent.
+//
+// ZERO IS THE WHOLE FLOW and the field is omitted for it, so an adapter that
+// has never heard of resuming is unchanged -- which is why ContractVersion
+// stays at 2, the same reason R7.2 gave for an additive request field: a
+// by-name refusal of an unknown field has to stay reachable.
 type FlowRequest struct {
 	Envelope
 	Action string           `json:"action"`
 	Token  string           `json:"token,omitempty"`
+	From   int              `json:"from,omitempty"`
 	Steps  []map[string]any `json:"steps"`
 }
 
@@ -179,10 +216,19 @@ type FlowRequest struct {
 // WHERE a flow stopped: fable ruled at coop r9/1 that a failed wait re-checks
 // its condition at the same position and never re-sends the step before it, so
 // "it failed" is not enough to act on and "it failed at step k" is.
+// Stopped IS WHY IT GOT NO FURTHER, and `reached` alone cannot say: a wait
+// whose condition was not met and a step the page would not perform both stop
+// at the same index, and only the first becomes a `ui_timeout`. Without it the
+// engine would have to guess which finding it is looking at.
+//
+// IT IS OPTIONAL AND EMPTY MEANS "it did not stop", which is the state of every
+// flow that reached its last step -- so an adapter that completes each flow in
+// one call never sends it and is unchanged by this field's existence.
 type FlowResponse struct {
 	Envelope
-	Reached  int `json:"reached"`
-	Response any `json:"response"`
+	Reached  int  `json:"reached"`
+	Stopped  Stop `json:"stopped,omitempty"`
+	Response any  `json:"response"`
 }
 
 // ObserveRequest reads one named observation. Token is present exactly when
@@ -418,7 +464,7 @@ var requests = map[Kind]shape{
 	KindSession: {required: []string{"kind", "contract", "id", "actor", "context"}},
 	KindFlow: {
 		required: []string{"kind", "contract", "id", "action", "steps"},
-		optional: []string{"token"},
+		optional: []string{"token", "from"},
 	},
 }
 
@@ -427,7 +473,10 @@ var responses = map[Kind]shape{
 		required: []string{"kind", "contract", "id", "actions", "observations", "contexts", "components", "capabilities"},
 	},
 	KindExecute: {required: []string{"kind", "contract", "id", "ids", "response"}},
-	KindFlow:    {required: []string{"kind", "contract", "id", "reached", "response"}},
+	KindFlow: {
+		required: []string{"kind", "contract", "id", "reached", "response"},
+		optional: []string{"stopped"},
+	},
 	// `missing` IS OPTIONAL AND `value` STAYS REQUIRED, which is what keeps this
 	// additive: an adapter that never answers `missing` is unchanged, and one
 	// that does still sends `value` (null). THE TABLE IS THE SECOND INSTRUMENT
@@ -690,6 +739,34 @@ func semantics(msg Message) error {
 				return Refusal{Kind: KindDescribe, Field: "observations",
 					Reason: fmt.Sprintf("observation %q declares a source that is not one of api, browser, direct: %q", o.Name, o.Source)}
 			}
+		}
+	case FlowResponse:
+		switch m.Stopped {
+		case StopNone, StopWait, StopStep:
+		default:
+			return Refusal{Kind: KindFlow, Field: "stopped",
+				Reason: fmt.Sprintf("not one of wait, step: %q -- the engine branches on this "+
+					"to decide whether the finding is a ui_timeout, so an adapter cannot widen it", m.Stopped)}
+		}
+		if m.Reached < 0 {
+			return Refusal{Kind: KindFlow, Field: "reached",
+				Reason: fmt.Sprintf("negative: %d -- it is an index into the steps that were sent", m.Reached)}
+		}
+	case FlowRequest:
+		if m.From < 0 {
+			return Refusal{Kind: KindFlow, Field: "from",
+				Reason: fmt.Sprintf("negative: %d -- it is the position the flow resumes at, and 0 is the whole flow", m.From)}
+		}
+		// ONLY WHEN THERE ARE STEPS, and the reason covers exactly that
+		// narrowing: `from: 0` on a flow of NO steps satisfies `0 >= 0` and this
+		// clause refused it by naming `from`, where the fault is the absent
+		// steps and the adapter already names them. Measured -- it broke
+		// internal/fake's own zero-step case the moment the clause was added,
+		// which is the boundary this project keeps finding under `>=`.
+		if len(m.Steps) > 0 && m.From >= len(m.Steps) {
+			return Refusal{Kind: KindFlow, Field: "from",
+				Reason: fmt.Sprintf("%d with %d step(s): a flow cannot resume past its own end, and the "+
+					"engine only resumes at a position an earlier answer reached", m.From, len(m.Steps))}
 		}
 	case ErrorResponse:
 		switch m.Error.Kind {

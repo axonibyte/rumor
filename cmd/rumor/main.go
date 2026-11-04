@@ -20,6 +20,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	// THE ZONE DATABASE IS EMBEDDED AND NOT READ OFF THE BOX (R7.5; fable's
@@ -46,7 +47,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
-const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor validate PROJECT\n       rumor attaint [--examples DIR]\n       rumor run PROJECT [--seed N] [--steps N] [--profile NAME]\n       rumor report PROJECT [--profile NAME]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S]"
+const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor validate PROJECT\n       rumor attaint [--examples DIR]\n       rumor run PROJECT [--seed N] [--steps N] [--profile NAME]\n       rumor report PROJECT [--profile NAME]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S] [--stop-flow ACTION:AT:REASON[:TIMES]]"
 
 // coverageCheck is a seam, not indirection for its own sake: it lets a test
 // drive the WRITE handling below -- including the failed-write path -- without
@@ -274,8 +275,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 // fakeConfig reads `fake-adapter`'s flags. Each one exists for a named drill
 // (coop breakout-r4): --contract for D6, --omit for D7, --fail for the error
-// envelope, --surface for R4.2's bindings and R4.3's twin. The second return is
-// the reason the arguments were refused, empty when they were not.
+// envelope, --surface for R4.2's bindings and R4.3's twin, and --stop-flow for
+// R9.1's retry, which is the engine's and therefore needs a flow that fails
+// where a SESSION can see it rather than only in internal/fake's own tests. The
+// second return is the reason the arguments were refused, empty when they were
+// not.
 func fakeConfig(rest []string) (fake.Config, string) {
 	cfg := fake.Config{Surface: fake.Default(), Omit: map[wire.Kind]string{}}
 	for len(rest) > 0 {
@@ -315,11 +319,72 @@ func fakeConfig(rest []string) (fake.Config, string) {
 				return cfg, fmt.Sprintf("--omit %s: wanted KIND.FIELD, as in execute.ids", value)
 			}
 			cfg.Omit[wire.Kind(kind)] = field
+		case "--stop-flow":
+			stop, action, bad := stopFlowSpec(value)
+			if bad != "" {
+				return cfg, bad
+			}
+			if cfg.StopFlow == nil {
+				cfg.StopFlow = map[string]fake.StopFlow{}
+			}
+			cfg.StopFlow[action] = stop
 		default:
 			return cfg, fmt.Sprintf("unknown flag %s", flag)
 		}
 	}
 	return cfg, ""
+}
+
+// stopFlowSpec reads `--stop-flow ACTION:AT:REASON[:TIMES]`, the knob that makes
+// the engine's retry drivable through a Session. TIMES defaults to 0, which is
+// every call -- the shape that produces the SECOND failure of one wait, where
+// `:1` is the retry that works.
+//
+// THE REASON IS NOT VALIDATED HERE and that is deliberate: wire's decoder holds
+// the closed set, so a third word travels, is refused by name on the response,
+// and the refusal says which word it was. Checking it twice would make this
+// command a second reader of that set, and the two would drift -- which is
+// exactly what `--fail KIND` already does with the fault kinds.
+func stopFlowSpec(value string) (fake.StopFlow, string, string) {
+	const want = "wanted ACTION:AT:REASON[:TIMES], as in publish_doc_ui:2:wait:1"
+	parts := strings.Split(value, ":")
+	// FIELDS ARE READ THROUGH A BOUND, not by index, and the reason is what a
+	// MUTANT showed: with `parts[1]` and `parts[2]` read directly, weakening the
+	// arity check below does not produce a wrong message, it PANICS -- and a
+	// kill that arrives as a crash takes the rest of the package's results with
+	// it. Read through here, a weakened bound accepts a malformed spec instead,
+	// which is what the refusal cases assert against and what a reader can act
+	// on.
+	field := func(i int) string {
+		if i < len(parts) {
+			return parts[i]
+		}
+		return ""
+	}
+	if len(parts) < 3 || len(parts) > 4 {
+		return fake.StopFlow{}, "", fmt.Sprintf("--stop-flow %s: %s", value, want)
+	}
+	action := field(0)
+	if action == "" {
+		return fake.StopFlow{}, "", fmt.Sprintf("--stop-flow %s: no action named; %s", value, want)
+	}
+	at, err := strconv.Atoi(field(1))
+	if err != nil {
+		return fake.StopFlow{}, "", fmt.Sprintf("--stop-flow %s: AT %q is not a number; %s", value, field(1), want)
+	}
+	reason := field(2)
+	if reason == "" {
+		return fake.StopFlow{}, "", fmt.Sprintf("--stop-flow %s: no reason named; %s", value, want)
+	}
+	stop := fake.StopFlow{At: at, Reason: wire.Stop(reason)}
+	if len(parts) == 4 {
+		times, terr := strconv.Atoi(field(3))
+		if terr != nil {
+			return fake.StopFlow{}, "", fmt.Sprintf("--stop-flow %s: TIMES %q is not a number; %s", value, field(3), want)
+		}
+		stop.Times = times
+	}
+	return stop, action, ""
 }
 
 // examplesDir reads the one flag `check` and `attaint` share.

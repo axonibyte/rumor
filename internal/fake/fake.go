@@ -93,9 +93,38 @@ func LoadSurface(r io.Reader) (Surface, error) {
 	return s, nil
 }
 
+// StopFlow makes a flow stop short, and it is what lets the ENGINE's retry be
+// driven on a box with no browser (fable, coop r9/21: the retrier is the
+// engine). Without it the fake answers every flow complete, so the resume path
+// -- seal, advance, send again from `reached` -- has no way to be reached by a
+// test, and a retry nothing has driven is a retry nobody has seen fail.
+//
+// Times IS WHY TWO DISTINCT OUTCOMES ARE REACHABLE. fable's r9/1 item 2 records
+// `ui_timeout` on the SECOND failure of the same wait, so a test needs a flow
+// that fails once and then succeeds (the retry worked) and one that fails twice
+// (the finding). `Times: 1` is the first and `Times: 0`, meaning every call, is
+// the second.
+type StopFlow struct {
+	// At is how many steps the flow reached before stopping, so it is also the
+	// position the engine resumes at. It must be inside the flow: a fake
+	// answering a figure past the step count would teach the engine to accept
+	// one.
+	At int `json:"at"`
+	// Reason is the `stopped` value, and wire's closed set is the only
+	// vocabulary -- an unknown word here is refused by the decoder, which is
+	// the pairing working rather than a limitation of this knob.
+	Reason wire.Stop `json:"reason"`
+	// Times is how many calls stop this way. Zero means EVERY call.
+	Times int `json:"times"`
+}
+
 // Config is the adapter's whole behavior.
 type Config struct {
 	Surface Surface
+
+	// StopFlow stops one action's flow short, keyed by action name. See the
+	// type above for why it carries a count.
+	StopFlow map[string]StopFlow
 
 	// Contract is the version the adapter claims. Empty means the engine's own,
 	// which is the only value that agrees. fable's D6 bumps exactly this.
@@ -302,6 +331,42 @@ func (cfg Config) answer(contract string, line []byte, calls map[string]int, clo
 				Field:  "steps",
 				Detail: fmt.Sprintf("a flow for %q carried no steps, so there is nothing to drive", m.Action),
 			})
+		}
+		// `from` IS NOT CHECKED HERE, and that is deliberate rather than
+		// forgotten: every request reaching this switch has been through
+		// wire's decoder, whose `semantics` already refuses a negative `from`
+		// and one at or past the step count. I wrote the guard, drove it, and
+		// found it UNREACHABLE -- wire's refusal arrives first, as a `field`
+		// fault naming `from`. A second reader that cannot run is the defect
+		// this branch already paid for once (the unused apiTokens interface,
+		// 1a94ed0), so it is gone rather than kept for symmetry.
+		if stop, ok := cfg.StopFlow[m.Action]; ok {
+			// THE CONFIGURED STOP IS CHECKED AGAINST THE FLOW IT STOPS. `At`
+			// equal to the step count would be a flow that both completed and
+			// stopped, which no page can do and the engine would read as a
+			// reason with nothing to retry.
+			if stop.At < 0 || stop.At >= len(m.Steps) {
+				return envelope(contract, env.ID, wire.Fault{
+					Kind:  wire.FaultInternal,
+					Field: "stopFlow",
+					Detail: fmt.Sprintf("this adapter is configured to stop %q at %d, and the flow has %d step(s)",
+						m.Action, stop.At, len(m.Steps)),
+				})
+			}
+			calls["flow:"+m.Action]++
+			if stop.Times == 0 || calls["flow:"+m.Action] <= stop.Times {
+				typed = wire.FlowResponse{
+					Envelope: wire.Envelope{Kind: wire.KindFlow, Contract: contract, ID: env.ID},
+					Reached:  stop.At,
+					Stopped:  stop.Reason,
+					// NO RESPONSE FROM A FLOW THAT DID NOT FINISH: the page
+					// never got to the state the recorded answer describes, and
+					// handing it back would let an engine read a completed
+					// flow's answer off an incomplete one.
+					Response: nil,
+				}
+				break
+			}
 		}
 		typed = wire.FlowResponse{
 			Envelope: wire.Envelope{Kind: wire.KindFlow, Contract: contract, ID: env.ID},

@@ -262,33 +262,8 @@ func (s *Session) exchange(req Message, kind Kind) (Message, error) {
 	id := strconv.Itoa(s.n)
 	env := Envelope{Kind: kind, Contract: ContractVersion, ID: id}
 
-	// THE ENVELOPE IS STAMPED BY TYPE, not through a promoted field on an
-	// interface value: Message carries Env() and nothing settable, so each
-	// request shape is named once here. The same go1.26 language floor that
-	// keeps Describe's literal spelled out applies (see client.go).
-	var body any
-	switch kind {
-	case KindDescribe:
-		r, _ := req.(DescribeRequest)
-		r.Envelope = env
-		body = r
-	case KindExecute:
-		r, _ := req.(ExecuteRequest)
-		r.Envelope = env
-		body = r
-	case KindObserve:
-		r, _ := req.(ObserveRequest)
-		r.Envelope = env
-		body = r
-	case KindSession:
-		r, _ := req.(SessionRequest)
-		r.Envelope = env
-		body = r
-	case KindClock:
-		r, _ := req.(ClockRequest)
-		r.Envelope = env
-		body = r
-	default:
+	body, ok := stampEnvelope(req, kind, env)
+	if !ok {
 		return nil, fmt.Errorf("wire: %q is not a request kind this session can send", kind)
 	}
 
@@ -370,4 +345,59 @@ func (s *Session) Close() error {
 		s.cancel()
 	})
 	return nil
+}
+
+// stampEnvelope puts the envelope on one request and hands back the value to
+// encode, reporting false for a kind it has no case for.
+//
+// IT IS A FUNCTION AND NOT A SWITCH INSIDE `exchange` for one reason: `Session`
+// needs a live process, so a switch in there can only be reached by spawning an
+// adapter, and the kind that was MISSING from it shipped green because no test
+// spawned one to send a flow. Out here, every kind in the `requests` table can
+// be driven through it in microseconds, which is what
+// TestEveryRequestKindCanBeStamped does.
+//
+// THE ENVELOPE IS STAMPED BY TYPE, not through a promoted field on an
+// interface value: Message carries Env() and nothing settable, so each
+// request shape is named once here. The same go1.26 language floor that
+// keeps Describe's literal spelled out applies (see client.go).
+func stampEnvelope(req Message, kind Kind, env Envelope) (any, bool) {
+	var body any
+	switch kind {
+	case KindDescribe:
+		r, _ := req.(DescribeRequest)
+		r.Envelope = env
+		body = r
+	case KindExecute:
+		r, _ := req.(ExecuteRequest)
+		r.Envelope = env
+		body = r
+	case KindObserve:
+		r, _ := req.(ObserveRequest)
+		r.Envelope = env
+		body = r
+	case KindSession:
+		r, _ := req.(SessionRequest)
+		r.Envelope = env
+		body = r
+	case KindClock:
+		r, _ := req.(ClockRequest)
+		r.Envelope = env
+		body = r
+	case KindFlow:
+		// MISSING UNTIL R9.1's SECOND HEAD, and `Session.Flow` therefore NEVER
+		// WORKED: `fdfc6e3` added the method, the kind, both shape tables, the
+		// decoder cases and the fake's answer, and every suite stayed green
+		// because nothing called the method. It returned "flow is not a request
+		// kind this session can send" on every call. Found by writing the
+		// end-to-end arm that tests/wire now carries -- a method with no caller
+		// is a method with no evidence, which is the finding
+		// TestTheKeptSessionObserves already records against `.Observe(`.
+		r, _ := req.(FlowRequest)
+		r.Envelope = env
+		body = r
+	default:
+		return nil, false
+	}
+	return body, true
 }

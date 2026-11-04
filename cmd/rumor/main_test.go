@@ -242,6 +242,18 @@ func TestFakeAdapterFlagsAreRefusedByName(t *testing.T) {
 		{[]string{"fake-adapter", "--omit", "execute."}, "wanted KIND.FIELD"},
 		{[]string{"fake-adapter", "--surface"}, "takes a value"},
 		{[]string{"fake-adapter", "--surface", "/nonesuch/surface.json"}, "--surface /nonesuch/surface.json"},
+		// THE ARITY CASES ASSERT THE CLAUSE AND NOT THE USAGE TEXT, because
+		// EVERY refusal here appends the same `wanted ACTION:AT:REASON[:TIMES]`
+		// sentence -- so a case keyed on that phrase is satisfied by whichever
+		// clause answered, and a mutant loosening the arity bound passed while
+		// a DIFFERENT clause refused the same spec. The arity message is the
+		// only one with nothing between the colon and `wanted`.
+		{[]string{"fake-adapter", "--stop-flow", "create_event:2"}, ": wanted ACTION:AT:REASON"},
+		{[]string{"fake-adapter", "--stop-flow", "create_event:2:wait:1:extra"}, ": wanted ACTION:AT:REASON"},
+		{[]string{"fake-adapter", "--stop-flow", ":2:wait"}, "no action named"},
+		{[]string{"fake-adapter", "--stop-flow", "create_event:two:wait"}, `AT "two" is not a number`},
+		{[]string{"fake-adapter", "--stop-flow", "create_event:2:wait:once"}, `TIMES "once" is not a number`},
+		{[]string{"fake-adapter", "--stop-flow", "create_event:2:"}, "no reason named"},
 	} {
 		var stdout, stderr bytes.Buffer
 		rc := run(tc.args, bytes.NewReader(nil), &stdout, &stderr)
@@ -273,6 +285,66 @@ func TestFakeAdapterOmitAndContractReachTheConfig(t *testing.T) {
 	}
 }
 
+// TestFakeAdapterStopFlowReachesTheConfig, which is the wiring half: the parse
+// above is refused by name, and this is the one case that proves a WELL-FORMED
+// spec arrives at the adapter and changes what it answers. Without it the flag
+// could parse perfectly and be dropped on the floor.
+//
+// THE CONTROL IS THE SAME REQUEST WITHOUT THE FLAG, run first: a `stopped` that
+// appears either way would say nothing about the flag.
+func TestFakeAdapterStopFlowReachesTheConfig(t *testing.T) {
+	flow := `{"kind":"flow","contract":"` + wire.ContractVersion +
+		`","id":"1","action":"create_event","token":"t","steps":[` +
+		`{"step":"click","target":"join"},{"step":"wait","until":"count-changed"}]}` + "\n"
+
+	var plain, stderr bytes.Buffer
+	if rc := run([]string{"fake-adapter"}, strings.NewReader(flow), &plain, &stderr); rc != 0 {
+		t.Fatalf("control: rc %d, stderr %q", rc, stderr.String())
+	}
+	if strings.Contains(plain.String(), `"stopped"`) {
+		t.Fatalf("the control already stops: %s", strings.TrimSpace(plain.String()))
+	}
+	if !strings.Contains(plain.String(), `"reached":2`) {
+		t.Fatalf("the control did not complete the flow: %s", strings.TrimSpace(plain.String()))
+	}
+
+	var stopped bytes.Buffer
+	stderr.Reset()
+	rc := run([]string{"fake-adapter", "--stop-flow", "create_event:1:wait"},
+		strings.NewReader(flow), &stopped, &stderr)
+	if rc != 0 {
+		t.Fatalf("rc %d, stderr %q", rc, stderr.String())
+	}
+	line := strings.TrimSpace(stopped.String())
+	if !strings.Contains(line, `"stopped":"wait"`) {
+		t.Errorf("--stop-flow did not reach the adapter: %s", line)
+	}
+	if !strings.Contains(line, `"reached":1`) {
+		t.Errorf("--stop-flow reached the adapter and its position did not: %s", line)
+	}
+
+	// AND TIMES REACHES IT TOO, which needs TWO requests down one stdin: with
+	// `:1` the first flow stops and the second completes, and a flag whose
+	// count was dropped would stop both. One request cannot tell the two apart,
+	// which is why the case above is not enough on its own.
+	var twice bytes.Buffer
+	stderr.Reset()
+	if rc := run([]string{"fake-adapter", "--stop-flow", "create_event:1:wait:1"},
+		strings.NewReader(flow+flow), &twice, &stderr); rc != 0 {
+		t.Fatalf("rc %d, stderr %q", rc, stderr.String())
+	}
+	answers := strings.Split(strings.TrimSpace(twice.String()), "\n")
+	if len(answers) != 2 {
+		t.Fatalf("%d answer(s) for 2 requests: %q", len(answers), twice.String())
+	}
+	if !strings.Contains(answers[0], `"stopped":"wait"`) {
+		t.Errorf("the first flow did not stop: %s", answers[0])
+	}
+	if strings.Contains(answers[1], `"stopped"`) {
+		t.Errorf("TIMES 1 stopped the second flow too, so the count did not reach the adapter: %s", answers[1])
+	}
+}
+
 // TestFakeAdapterReportsAFailedWriteOnTheExitCode: the engine reads this
 // process's status, so a write that never arrived cannot be a clean exit.
 func TestFakeAdapterReportsAFailedWrite(t *testing.T) {
@@ -289,7 +361,7 @@ func TestFakeAdapterReportsAFailedWrite(t *testing.T) {
 // TestFakeAdapterUsageIsInTheUsageLine, because a subcommand nobody can
 // discover is a subcommand the agent guide has to carry instead.
 func TestFakeAdapterUsageIsInTheUsageLine(t *testing.T) {
-	for _, want := range []string{"fake-adapter", "--surface", "--contract", "--fail", "--omit", "--id-salt"} {
+	for _, want := range []string{"fake-adapter", "--surface", "--contract", "--fail", "--omit", "--id-salt", "--stop-flow"} {
 		if !strings.Contains(usage, want) {
 			t.Errorf("the usage line omits %q", want)
 		}

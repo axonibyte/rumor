@@ -324,22 +324,42 @@ func TestANonObjectLineIsRefusedWithoutAKind(t *testing.T) {
 // TestTheSchemaAndTheStructsAgree is the two-instrument check: the schema table
 // drives the decoder's refusals and the struct tags drive the unmarshal, and
 // nothing but this test requires them to be the same schema.
-func TestTheSchemaAndTheStructsAgree(t *testing.T) {
-	cases := map[string]Message{
-		"request/describe":  DescribeRequest{},
-		"request/execute":   ExecuteRequest{},
-		"request/observe":   ObserveRequest{},
-		"request/clock":     ClockRequest{},
-		"request/session":   SessionRequest{},
+// pairedMessages is every message type this package carries, keyed
+// "<direction>/<kind>". It is a FUNCTION and not a literal inside one test
+// because two oracles read it: the tag-against-table agreement below, and
+// TestEveryKindInTheTablesIsPairedHere, which asks whether this map has fallen
+// behind the tables themselves.
+func pairedMessages() map[string]Message {
+	return map[string]Message{
+		"request/describe": DescribeRequest{},
+		"request/execute":  ExecuteRequest{},
+		"request/observe":  ObserveRequest{},
+		"request/clock":    ClockRequest{},
+		"request/session":  SessionRequest{},
+		// FLOW WAS MISSING FROM THIS MAP UNTIL R9.1's SECOND HEAD, and it is the
+		// hole this oracle exists to make impossible: `fdfc6e3` added the kind to
+		// both tables, to the structs, to `into` and to `deref`, and every suite
+		// here stayed green because the ONLY test that pairs a struct's tags
+		// against the table walks a hand-written list. The declared `len(cases)`
+		// guard cannot see an omission either -- it agrees with whatever the list
+		// holds. So the count moves to 13 and the two entries are listed by name;
+		// a kind added to `requests`/`responses` and not here is still invisible,
+		// which is what TestEveryKindInTheTablesIsPairedHere below now refuses.
+		"request/flow":      FlowRequest{},
 		"response/describe": DescribeResponse{},
 		"response/execute":  ExecuteResponse{},
 		"response/observe":  ObserveResponse{},
 		"response/clock":    ClockResponse{},
 		"response/session":  SessionResponse{},
+		"response/flow":     FlowResponse{},
 		"response/error":    ErrorResponse{},
 	}
-	if len(cases) != 11 {
-		t.Fatalf("%d message types listed, want 11", len(cases))
+}
+
+func TestTheSchemaAndTheStructsAgree(t *testing.T) {
+	cases := pairedMessages()
+	if len(cases) != 13 {
+		t.Fatalf("%d message types listed, want 13", len(cases))
 	}
 	for name, msg := range cases {
 		direction, kindText, _ := strings.Cut(name, "/")
@@ -374,6 +394,50 @@ func TestTheSchemaAndTheStructsAgree(t *testing.T) {
 				name, decoded, msg)
 		}
 	}
+}
+
+// TestEveryKindInTheTablesIsPairedHere IS WHAT WOULD HAVE CAUGHT FLOW, and it
+// reads the TABLES rather than a second hand-written list, which is the only
+// way a list can be checked for an OMISSION: a kind in `requests` needs a
+// "request/<kind>" entry and one in `responses` needs "response/<kind>". The
+// agreement test above pairs a struct's tags against its shape and is therefore
+// silent about a kind nobody listed -- `fdfc6e3` shipped flow in both tables,
+// both structs, `into` and `deref` with every suite in this package green.
+//
+// IT ALSO REFUSES THE OTHER DIRECTION: an entry here for a kind no table
+// carries, which would be a pairing against a shape that does not exist and
+// would fail inside the agreement test as a missing schema rather than as what
+// it is.
+func TestEveryKindInTheTablesIsPairedHere(t *testing.T) {
+	paired := pairedMessages()
+	for direction, table := range map[string]map[Kind]shape{"request": requests, "response": responses} {
+		for kind := range table {
+			key := direction + "/" + string(kind)
+			if _, ok := paired[key]; !ok {
+				t.Errorf("%s is in the %s table and not in pairedMessages: its struct tags are "+
+					"paired against nothing, which is how flow shipped unchecked", key, direction)
+			}
+		}
+	}
+	for key := range paired {
+		direction, kindText, _ := strings.Cut(key, "/")
+		var table map[Kind]shape
+		switch direction {
+		case "request":
+			table = requests
+		case "response":
+			table = responses
+		default:
+			t.Errorf("pairedMessages has %q, whose direction is neither request nor response", key)
+			continue
+		}
+		if _, ok := table[Kind(kindText)]; !ok {
+			t.Errorf("pairedMessages has %q and the %s table does not: the pairing has no shape "+
+				"to read", key, direction)
+		}
+	}
+	t.Logf("PROOF %d message type(s) paired, %d request shape(s) and %d response shape(s)",
+		len(paired), len(requests), len(responses))
 }
 
 // TestADisagreementBetweenTableAndStructIsReportedAsADefectHere drives the one
@@ -480,6 +544,208 @@ func TestCheckVersionNamesEveryValueItSaw(t *testing.T) {
 
 // TestEncodeFramesOneMessagePerLine: the newline is the framing, so it belongs
 // to the encoder and not to every caller's memory.
+// TestEveryRequestKindCanBeStamped IS WHAT WOULD HAVE CAUGHT Session.Flow, and
+// it is the sibling of TestEveryKindInTheTablesIsPairedHere one layer out: the
+// kind was in both shape tables, in `into`, in `deref`, in the fake and on a
+// `Session` method, and the stamping switch had no case for it -- so every call
+// to `Session.Flow` returned "flow is not a request kind this session can send"
+// from the day it shipped, with this package and every suite green.
+//
+// IT READS THE `requests` TABLE, not a list: a kind added to the protocol and
+// not to the switch fails here. And it asserts TWO things, because a case that
+// exists is not a case that works -- a branch that forgot `r.Envelope = env`
+// would satisfy the first assertion and send a request with no kind, no
+// contract and no id, which the adapter would refuse by name three fields at a
+// time.
+func TestEveryRequestKindCanBeStamped(t *testing.T) {
+	paired := pairedMessages()
+	for kind := range requests {
+		msg, ok := paired["request/"+string(kind)]
+		if !ok {
+			// Its own oracle above says this better; skipping keeps the two
+			// failures from reading as one defect.
+			continue
+		}
+		env := Envelope{Kind: kind, Contract: ContractVersion, ID: "4"}
+		body, stamped := stampEnvelope(msg, kind, env)
+		if !stamped {
+			t.Errorf("%s has no case in stampEnvelope: Session's method for it answers "+
+				"%q on every call, which is how flow shipped", kind,
+				"is not a request kind this session can send")
+			continue
+		}
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Errorf("%s: the stamped body does not marshal: %v", kind, err)
+			continue
+		}
+		var got map[string]any
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Errorf("%s: %v", kind, err)
+			continue
+		}
+		for field, want := range map[string]any{
+			"kind": string(kind), "contract": ContractVersion, "id": "4",
+		} {
+			if got[field] != want {
+				t.Errorf("%s: the stamped request carries %s = %v, want %v -- a case that "+
+					"forgot the assignment sends a request with no envelope at all",
+					kind, field, got[field], want)
+			}
+		}
+	}
+	t.Logf("PROOF %d request kind(s) stamped, envelope asserted on each", len(requests))
+}
+
+// AND A KIND THE SWITCH DOES NOT KNOW IS REPORTED, not stamped with a zero
+// value: the `false` return is what `exchange` turns into the refusal, and
+// without this case that return is prose.
+func TestAnUnknownRequestKindIsNotStamped(t *testing.T) {
+	if _, ok := stampEnvelope(DescribeRequest{}, Kind("nonesuch"), Envelope{}); ok {
+		t.Error("an unknown kind was stamped, so `exchange` would send it and the adapter would " +
+			"answer a fault where this package should have refused")
+	}
+	// A RESPONSE KIND IS NOT A REQUEST KIND EITHER, driven because `error` is
+	// in the responses table and nowhere near this switch.
+	if _, ok := stampEnvelope(DescribeRequest{}, KindError, Envelope{}); ok {
+		t.Error("the error kind was stamped as a request")
+	}
+}
+
+// --- `from` and `stopped`, R9.1's second head ------------------------------
+
+func flowRequestLine(t *testing.T, from any, steps int) []byte {
+	t.Helper()
+	m := wellFormed("request", KindFlow)
+	list := make([]any, 0, steps)
+	for i := 0; i < steps; i++ {
+		list = append(list, map[string]any{"step": "click", "target": "x"})
+	}
+	m["steps"] = list
+	if from != nil {
+		m["from"] = from
+	}
+	return line(t, m)
+}
+
+// TestTheResumePositionIsBoundedOnBOTHSides drives both sides of the bound,
+// which is the only way a `>=` can be shown to be the right operator: the LAST
+// step is inside and must decode, and the step count itself is past the end and
+// must be refused. A cell on one side alone passes under `>` just as happily.
+func TestTheResumePositionIsBoundedOnBothSides(t *testing.T) {
+	const steps = 3
+	for _, c := range []struct {
+		from   int
+		refuse bool
+	}{
+		{0, false},         // the whole flow
+		{1, false},         // inside
+		{steps - 1, false}, // the last step, INSIDE
+		{steps, true},      // the end, PAST
+		{steps + 1, true},
+		{-1, true},
+	} {
+		msg, err := DecodeRequest(flowRequestLine(t, c.from, steps))
+		var ref Refusal
+		refused := asRefusal(err, &ref)
+		if refused != c.refuse {
+			t.Errorf("from %d of %d steps: refused = %v, want %v (err %v)", c.from, steps, refused, c.refuse, err)
+			continue
+		}
+		if refused {
+			if ref.Field != "from" {
+				t.Errorf("from %d: the refusal names %q, want from", c.from, ref.Field)
+			}
+			continue
+		}
+		req, ok := msg.(FlowRequest)
+		if !ok {
+			t.Fatalf("from %d decoded as %T", c.from, msg)
+		}
+		if req.From != c.from {
+			t.Errorf("from %d decoded as %d", c.from, req.From)
+		}
+	}
+}
+
+// AND A FLOW OF NO STEPS IS NOT THE `from` REFUSAL, which is the narrowing the
+// bound carries and the case that caught it: `from: 0` satisfies `0 >= 0`, so
+// an unguarded bound refused a zero-step flow by naming the wrong field. The
+// steps are the fault there, and the adapter is what names them -- this case
+// pins only that `from` keeps its hands off.
+func TestAFlowWithNoStepsIsNotAFromRefusal(t *testing.T) {
+	msg, err := DecodeRequest(flowRequestLine(t, nil, 0))
+	if err != nil {
+		t.Fatalf("a flow of no steps was refused here: %v -- the zero-step rule is the adapter's", err)
+	}
+	if req, ok := msg.(FlowRequest); !ok || len(req.Steps) != 0 || req.From != 0 {
+		t.Errorf("decoded %#v, want a FlowRequest with no steps and from 0", msg)
+	}
+}
+
+// TestAnUnknownStopWordIsRefusedWithItsValue is Stop's closed-set arm, the same
+// shape Source and the fault kinds already have. It matters more than theirs:
+// the engine branches on this word to decide whether a finding is produced, so
+// an adapter free to invent one would be deciding a `ui_timeout`.
+func TestAnUnknownStopWordIsRefusedWithItsValue(t *testing.T) {
+	for _, c := range []struct {
+		stopped any
+		refuse  bool
+	}{
+		{nil, false},
+		{"", false},
+		{"wait", false},
+		{"step", false},
+		{"timeout", true},
+		{"WAIT", true},
+	} {
+		m := wellFormed("response", KindFlow)
+		if c.stopped != nil {
+			m["stopped"] = c.stopped
+		}
+		msg, err := DecodeResponse(line(t, m))
+		var ref Refusal
+		refused := asRefusal(err, &ref)
+		if refused != c.refuse {
+			t.Errorf("stopped %v: refused = %v, want %v (err %v)", c.stopped, refused, c.refuse, err)
+			continue
+		}
+		if refused {
+			if ref.Field != "stopped" {
+				t.Errorf("stopped %v: the refusal names %q, want stopped", c.stopped, ref.Field)
+			}
+			if !strings.Contains(ref.Reason, fmt.Sprintf("%q", c.stopped)) {
+				t.Errorf("stopped %v: the reason %q does not carry the value it refused", c.stopped, ref.Reason)
+			}
+			continue
+		}
+		resp, ok := msg.(FlowResponse)
+		if !ok {
+			t.Fatalf("stopped %v decoded as %T", c.stopped, msg)
+		}
+		if c.stopped == nil && resp.Stopped != StopNone {
+			t.Errorf("an absent `stopped` decoded as %q, want the zero value", resp.Stopped)
+		}
+	}
+}
+
+// A NEGATIVE `reached` IS REFUSED TOO, because it is an index and the engine
+// resumes from it: a flow answering -1 would have the engine send `from: -1`,
+// which its own sibling clause then refuses one layer later and one message
+// too late to say whose fault it was.
+func TestANegativeReachedIsRefused(t *testing.T) {
+	m := wellFormed("response", KindFlow)
+	m["reached"] = -1
+	_, err := DecodeResponse(line(t, m))
+	var ref Refusal
+	if !asRefusal(err, &ref) {
+		t.Fatalf("%v, want a Refusal", err)
+	}
+	if ref.Field != "reached" {
+		t.Errorf("the refusal names %q, want reached", ref.Field)
+	}
+}
+
 func TestEncodeFramesOneMessagePerLine(t *testing.T) {
 	var buf bytes.Buffer
 	msg := ObserveResponse{Envelope: Envelope{Kind: KindObserve, Contract: ContractVersion, ID: "7"}, Value: 2}
