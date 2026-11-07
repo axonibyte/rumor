@@ -1401,9 +1401,31 @@ turns on, and the one a reader cannot make from an absence.
 
 **AND `browser` IS RUNNABLE AS OF R9.1, so the paragraphs above are history and
 not the present tense.** The stage is dispatched under its one name, selected
-and reported like every other, and where no driver is on the box it SKIPS BY
-NAME carrying how it looked — the six candidate binaries, `RUMOR_BROWSER`, and
-how many actions declare a flow. A skip is not an absence, which is the whole
+and reported like every other, and where no drivable browser is on the box it
+SKIPS BY NAME carrying how it looked — the six browser-and-driver PAIRS,
+`RUMOR_BROWSER`, and how many actions declare a flow.
+
+**A BROWSER IS DRIVABLE ONLY WITH ITS DRIVER, and R9.1b's scan looks for PAIRS
+because of it** (fable's ruling at coop r9/73, on the measurement at r9/71). The
+flows are driven over W3C WebDriver, which is spoken by a DRIVER PROCESS and not
+by the browser: chromium and its kin answer `chromedriver`, firefox answers
+`geckodriver`, and the six names this scan grew with are therefore two protocol
+families rather than six interchangeable commands. Measured on the two boxes
+this phase has: firefox 158's own `--help` says its `--remote-debugging-port`
+serves WebDriver BiDi and it carries no CDP, and the jail holding it has neither
+driver, while forge-01's ci jail holds chromium 156 and `chromedriver` from the
+same package.
+
+**SO A BROWSER WITHOUT ITS DRIVER IS FOUND, NOT DRIVABLE — a THIRD state, and
+never a met precondition.** The scan that shipped in v0.1.48 took the first
+browser name present, which on a firefox-only box would have selected a browser
+nothing in this tree can speak to and handed it to the driver's head as a
+resolution. The skip now names WHICH HALF is missing, because "no pair at all"
+and "a browser one package short" are different things to an operator and only
+the second tells them what to install. An incomplete pair does not take the scan
+down with it: the first COMPLETE pair answers, so a box with firefox and no
+`geckodriver` beside a chromium with its `chromedriver` runs on chromium, and
+the pair that was passed over is named only when none completes. A skip is not an absence, which is the whole
 point of the two sentences before this one: what changed is that `browser` now
 reaches the dispatcher, so "declared but unrunnable" is a reading the report
 makes rather than one a reader derives.

@@ -426,14 +426,32 @@ that printed number is exactly what `--seed` takes.
 | 3 | **a bug was found**, and the line above the verdict names it |
 
 **The run takes the stages the project enables, and every one it takes says
-what it did.** `[stages]` names them and this build runs three: `api`, which is
+what it did.** `[stages]` names them and this build runs four: `api`, which is
 the walk above; `concurrency`, which puts limit-plus-one requests in flight
 against every action declaring `contended` and judges each against the quantity
-the system itself holds; and `fuzz`, which sends a hostile corpus derived from
+the system itself holds; `fuzz`, which sends a hostile corpus derived from
 the project's own declared write actions and counts only what reached the
-system. A declared stage this build cannot run is refused before anything runs,
+system; and `browser`, which is dispatched as of v0.1.48 and skips by name where
+the box holds no drivable browser. A declared stage this build cannot run is refused before anything runs,
 and a project that enables `concurrency` without `api` gets the fan-out and no
 walk — selecting a stage is what selects it.
+
+**The `browser` stage looks for a browser AND ITS DRIVER, as a pair.** The flows
+are driven over W3C WebDriver, which a driver process speaks and a browser does
+not: `chrome`, `chromium`, `chromium-browser`, `google-chrome` and
+`headless_shell` pair with `chromedriver`, and `firefox` pairs with
+`geckodriver`. The first COMPLETE pair on `PATH` answers, so an incomplete one
+earlier in that order does not stop the scan. `RUMOR_BROWSER` names a browser
+outright and `RUMOR_WEBDRIVER` its driver; a named browser whose basename is a
+pair this build knows takes its driver from the table, and one it does not know
+needs `RUMOR_WEBDRIVER` or it cannot be driven. Either name is checked for
+executability, so a typo is a refusal here and not a stage failing later.
+
+**A browser with no driver beside it is FOUND, NOT DRIVABLE, and the skip says
+which half is missing.** That state is not a met precondition: `no pair ... on
+PATH` and `firefox without geckodriver` are different sentences, and only the
+second tells an operator which package they are short. The stage still exits 0 —
+a box without a browser is not a wrong project.
 
 **Which stages were selected, and why each skipped one was, is a fact of the
 record rather than a line a run prints.** `rumor run` says nothing about them on

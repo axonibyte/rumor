@@ -5,43 +5,144 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/stage"
 )
 
-// browserCandidates are the commands a driver is looked for under, in order.
+// browserPair is a browser and the driver binary that speaks W3C WebDriver to
+// it. BOTH halves are needed and neither is sufficient.
+//
+// WHY PAIRS AND NOT NAMES (fable, coop r9/73, on the measurement at r9/71):
+// R9.1b drives a browser over W3C WebDriver, which is spoken by a DRIVER
+// process and not by the browser itself. The six names this scan grew with are
+// two protocol families -- chromium's kin answer chromedriver, firefox answers
+// geckodriver -- so a list of browsers cannot say whether any of them is
+// drivable. Measured: firefox 158's own `--help` says its
+// `--remote-debugging-port` serves WebDriver BiDi and it has no CDP, and the
+// jail holding it has neither geckodriver nor chromedriver, while forge-01's ci
+// jail holds chromium 156 AND chromedriver from the same package.
+//
+// A BROWSER WITHOUT ITS DRIVER IS FOUND, NOT DRIVABLE, and that is rook's point
+// at coop r9/72: it must never read as a met precondition. The old scan would
+// have selected firefox here -- position four of six, the first name present --
+// and handed a later head a browser nothing in this tree can speak to.
+type browserPair struct{ browser, driver string }
+
+// browserPairs are the pairs a driver is looked for under, in order.
 //
 // NAMED AND NOT GUESSED: a stage that searched for "a browser" could not tell a
 // reader what it failed to find, and the skip below has to name it or the
 // operator cannot act on it.
-var browserCandidates = []string{"chrome", "chromium", "chromium-browser", "firefox", "google-chrome", "headless_shell"}
+var browserPairs = []browserPair{
+	{"chrome", "chromedriver"},
+	{"chromium", "chromedriver"},
+	{"chromium-browser", "chromedriver"},
+	{"firefox", "geckodriver"},
+	{"google-chrome", "chromedriver"},
+	{"headless_shell", "chromedriver"},
+}
 
-// browserDriverEnv names a command outright, for a box that holds one under
-// another name and for the arms, which must drive BOTH paths without a browser.
+// browserDriverEnv names a BROWSER outright, for a box that holds one under
+// another name and for the arms, which must drive every path without one.
 const browserDriverEnv = "RUMOR_BROWSER"
 
-// browserDriver resolves the driver and says HOW it was looked for, because the
-// how is what an operator needs when the answer is "none".
-func browserDriver() (path, how string) {
+// webDriverEnv names the DRIVER outright, and it exists because the pair's
+// other half cannot be guessed from an arbitrary path: `RUMOR_BROWSER` may name
+// a build under any filename, and a driver inferred from one would be a guess
+// presented as a resolution. Where the named browser's BASENAME is a pair this
+// build knows, its driver is taken from the table and the `how` says so.
+const webDriverEnv = "RUMOR_WEBDRIVER"
+
+// driverFor is the driver a named browser pairs with, by BASENAME, and whether
+// this build knows one. A path is matched on its last element so
+// `/usr/local/bin/chromium` pairs as `chromium` does.
+func driverFor(browser string) (string, bool) {
+	base := filepath.Base(browser)
+	for _, p := range browserPairs {
+		if p.browser == base {
+			return p.driver, true
+		}
+	}
+	return "", false
+}
+
+// pairNames is the pairs as a reader needs them in a refusal: both halves of
+// each, so the operator is told what to install and not merely what is absent.
+func pairNames() []string {
+	out := make([]string, 0, len(browserPairs))
+	for _, p := range browserPairs {
+		out = append(out, p.browser+"+"+p.driver)
+	}
+	return out
+}
+
+// browserDriver resolves a browser AND its driver and says HOW the pair was
+// looked for, because the how is what an operator needs when the answer is
+// "none" -- and WHICH HALF is missing is what they need when the answer is
+// "found, not drivable" (fable, coop r9/73).
+//
+// A FOUND-BUT-UNDRIVABLE BROWSER DOES NOT STOP THE SCAN, and the reason is a
+// box this room holds: a jail with firefox and no geckodriver beside a chromium
+// with its chromedriver should run on chromium, not refuse because an earlier
+// name matched. So the scan takes the FIRST COMPLETE PAIR, and every incomplete
+// one it passed is NAMED in the verdict -- an operator one package away from a
+// drivable box is told which package.
+func browserDriver() (browser, driver, how string) {
 	if named := os.Getenv(browserDriverEnv); named != "" {
 		// A NAMED COMMAND IS STILL CHECKED. Trusting the variable would turn a
-		// typo into "the driver is present" and move the refusal to a later
+		// typo into "the browser is present" and move the refusal to a later
 		// head, where it would read as the stage failing.
-		found, err := exec.LookPath(named)
+		foundBrowser, err := exec.LookPath(named)
 		if err != nil {
-			return "", fmt.Sprintf("%s names %q, which is not executable here", browserDriverEnv, named)
+			return "", "", fmt.Sprintf("%s names %q, which is not executable here", browserDriverEnv, named)
 		}
-		return found, fmt.Sprintf("%s=%s", browserDriverEnv, named)
-	}
-	for _, name := range browserCandidates {
-		if found, err := exec.LookPath(name); err == nil {
-			return found, fmt.Sprintf("%s on PATH", name)
+		wantDriver := os.Getenv(webDriverEnv)
+		fromTable := false
+		if wantDriver == "" {
+			paired, known := driverFor(named)
+			if !known {
+				return "", "", fmt.Sprintf("%s names %q, which is executable, and %s is unset: "+
+					"this build pairs %s, and %q is none of them, so its driver cannot be inferred -- "+
+					"FOUND, NOT DRIVABLE", browserDriverEnv, named, webDriverEnv,
+					strings.Join(pairNames(), ", "), filepath.Base(named))
+			}
+			wantDriver, fromTable = paired, true
 		}
+		foundDriver, derr := exec.LookPath(wantDriver)
+		if derr != nil {
+			return "", "", fmt.Sprintf("%s names %q, which is executable, and its driver %q is NOT on PATH "+
+				"-- FOUND, NOT DRIVABLE: W3C WebDriver is spoken by the driver and not by the browser",
+				browserDriverEnv, named, wantDriver)
+		}
+		if fromTable {
+			return foundBrowser, foundDriver, fmt.Sprintf("%s=%s with its paired driver %s on PATH",
+				browserDriverEnv, named, wantDriver)
+		}
+		return foundBrowser, foundDriver, fmt.Sprintf("%s=%s and %s=%s", browserDriverEnv, named, webDriverEnv, wantDriver)
 	}
-	return "", fmt.Sprintf("none of %s on PATH, and %s unset",
-		strings.Join(browserCandidates, ", "), browserDriverEnv)
+	var undrivable []string
+	for _, p := range browserPairs {
+		foundBrowser, err := exec.LookPath(p.browser)
+		if err != nil {
+			continue
+		}
+		foundDriver, derr := exec.LookPath(p.driver)
+		if derr != nil {
+			undrivable = append(undrivable, fmt.Sprintf("%s without %s", p.browser, p.driver))
+			continue
+		}
+		return foundBrowser, foundDriver, fmt.Sprintf("%s with %s on PATH", p.browser, p.driver)
+	}
+	if len(undrivable) > 0 {
+		return "", "", fmt.Sprintf("FOUND, NOT DRIVABLE: %s on PATH, so no pair is complete; "+
+			"this build pairs %s, and %s is unset", strings.Join(undrivable, " and "),
+			strings.Join(pairNames(), ", "), browserDriverEnv)
+	}
+	return "", "", fmt.Sprintf("no pair of %s on PATH, and %s unset",
+		strings.Join(pairNames(), ", "), browserDriverEnv)
 }
 
 // flowsDeclared is how many actions carry a UI flow, which is what this stage
@@ -148,7 +249,7 @@ func browserStage(b bindings.Bindings, stdout, stderr io.Writer) int {
 	// THE STAGE'S ONLY TOKEN SOURCE, AND IT REFUSES. Nothing below asks it for
 	// anything; the point is that asking is impossible to do quietly.
 	tokens := &refusedTokens{}
-	driver, how := browserDriver()
+	browser, driver, how := browserDriver()
 	flows := flowsDeclared(b)
 	// "THIS STAGE DROVE NONE" AND NOT "NONE WAS DRIVEN", and H2 is why: the WALK
 	// now drives a browser-context action's flow through the adapter, so a run
@@ -159,13 +260,17 @@ func browserStage(b bindings.Bindings, stdout, stderr io.Writer) int {
 	// driven" beside the summary reads a contradiction. A true sentence that
 	// reads as "no flow was driven at all" is the silent-skip class wearing
 	// honest words.
-	if driver == "" {
-		_, _ = fmt.Fprintf(stdout, "run:   %s -- SKIPPED, no driver: %s. %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter\n",
+	if browser == "" {
+		// THE SKIP NAMES WHICH HALF IS MISSING, which is the whole of the pair
+		// ruling as a reader meets it: "no pair" and "a browser without its
+		// driver" are different states and only the second tells an operator
+		// they are one package away. `how` carries the distinction.
+		_, _ = fmt.Fprintf(stdout, "run:   %s -- SKIPPED, no drivable browser: %s. %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter\n",
 			stage.Browser, how, flows)
 		return conductVerdict(tokens, stderr)
 	}
-	_, _ = fmt.Fprintf(stdout, "run:   %s -- driver %s (%s). %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter, and driving them through a browser here is R9.1b's\n",
-		stage.Browser, driver, how, flows)
+	_, _ = fmt.Fprintf(stdout, "run:   %s -- browser %s driven by %s (%s). %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter, and driving them through the browser is R9.1b's next head\n",
+		stage.Browser, browser, driver, how, flows)
 	return conductVerdict(tokens, stderr)
 }
 
