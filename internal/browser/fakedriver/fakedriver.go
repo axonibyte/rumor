@@ -26,6 +26,10 @@ import (
 	"time"
 )
 
+// SlowFor is how long mode "slow" withholds readiness. Short enough to be a
+// cheap cell and long enough that a one-second bound cannot pass it.
+const SlowFor = 3 * time.Second
+
 const (
 	// ModeEnv carries the behavior wanted: "ready" to answer /status ready,
 	// "never" to answer it not-ready forever, "wedge" to come up ready and
@@ -80,8 +84,18 @@ func serve(mode, journal string, args []string) {
 	}
 	opened := 0
 	mux := http.NewServeMux()
+	// A DRIVER CAN BE SLOW RATHER THAN DEAD, which is the state rook measured on
+	// a real chromedriver at coop r9/99: not ready, then ready. "slow" answers
+	// not-ready for SlowFor and ready after, so a bound too tight to let a
+	// starting driver finish is a failing cell rather than a false NOT DRIVABLE
+	// on somebody's box.
+	up := time.Now().Add(SlowFor)
 	mux.HandleFunc("/status", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = fmt.Fprintf(w, `{"value":{"ready":%t}}`, mode != "never")
+		ready := mode != "never"
+		if mode == "slow" {
+			ready = time.Now().After(up)
+		}
+		_, _ = fmt.Fprintf(w, `{"value":{"ready":%t}}`, ready)
 	})
 	mux.HandleFunc("/session", func(w http.ResponseWriter, r *http.Request) {
 		if mode == "wedge" {

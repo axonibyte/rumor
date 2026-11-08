@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -371,35 +372,121 @@ func TestAStartThatCannotExecIsAnErrorAndNotAPanic(t *testing.T) {
 	}
 }
 
-// TestTheReadinessWaitIsBoundedWithoutADeadlineFromTheCaller holds ReadyTimeout
-// ITSELF, which the arm above cannot: that one hands Start a 2s context, so it
-// would still pass if the only bound were the caller's. A caller passing
-// context.Background() -- which the stage reasonably might -- would then hang
-// forever on a driver that half-starts, and nothing in this package would
-// notice. This arm costs ReadyTimeout of wall clock and buys the bound.
+// shortReady is the bound the bounded-wait cell hands waitReady directly.
+// ReadyTimeout is 60s as of rook's measurement at coop r9/99, and a cell that
+// sat through it would cost a minute of every suite run to prove a property a
+// short bound proves identically -- that SOMETHING other than the caller's
+// deadline ends the wait.
+const shortReady = 2 * time.Second
+
+// TestTheReadinessWaitIsBoundedWithoutADeadlineFromTheCaller holds the bound
+// ITSELF, which the ctx-deadline arm cannot: that one hands Start a 2s context,
+// so it would pass if the only bound were the caller's. A caller passing
+// context.Background() -- which the stage reasonably might -- would hang forever
+// on a driver that half-starts.
+//
+// IT DRIVES waitReady AND NOT Start, because Start deliberately takes no bound
+// argument: a passed bound left the value production sends held by nothing, and
+// the mutant that sent 1s from the stage SURVIVED. So the cheap bound is reached
+// where it cannot also be production's.
 func TestTheReadinessWaitIsBoundedWithoutADeadlineFromTheCaller(t *testing.T) {
 	path, _ := fakeDriver(t, "never")
-	type outcome struct {
-		d   *Driver
-		err error
+	port, err := freePort()
+	if err != nil {
+		t.Fatal(err)
 	}
-	done := make(chan outcome, 1)
-	go func() {
-		d, err := Start(context.Background(), path, "", true)
-		done <- outcome{d, err}
-	}()
-	select {
-	case got := <-done:
-		if got.err == nil {
-			_ = got.d.Close(context.Background())
-			t.Fatalf("Start succeeded against a driver that never reports ready")
-		}
-		if !strings.Contains(got.err.Error(), "/status") {
-			t.Fatalf("the error does not name the wait that failed: %v", got.err)
-		}
-	case <-time.After(ReadyTimeout + 10*time.Second):
-		t.Fatalf("Start has not returned after %s with no deadline from the caller, so the wait is bounded only by one",
-			ReadyTimeout+10*time.Second)
+	cmd := exec.Command(path, fmt.Sprintf("--port=%d", port))
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	d := &Driver{
+		base:     fmt.Sprintf("http://127.0.0.1:%d", port),
+		path:     path,
+		http:     &http.Client{Timeout: 5 * time.Second},
+		exited:   make(chan struct{}),
+		sessions: map[string]string{},
+	}
+	go func() { _ = cmd.Wait(); close(d.exited) }()
+	t.Cleanup(func() {
+		_ = cmd.Process.Signal(os.Interrupt)
+		<-d.exited
+	})
+
+	began := time.Now()
+	err = d.waitReady(context.Background(), shortReady)
+	took := time.Since(began)
+	if err == nil {
+		t.Fatalf("waitReady returned nil against a driver that never readies")
+	}
+	if took > shortReady+5*time.Second {
+		t.Fatalf("waitReady took %s against a %s bound and no caller deadline", took, shortReady)
+	}
+	if !strings.Contains(err.Error(), "/status") {
+		t.Fatalf("the error does not name the wait that failed: %v", err)
+	}
+	// AND IT NAMES STUCK RATHER THAN SLOW, which is rook's diagnosis at coop
+	// r9/104 made readable: 40 uncensored runs put healthy readiness in the tens
+	// of milliseconds, so a driver that answered and never readied is not behind.
+	// A message that only reported the elapsed bound invited the next reader to
+	// grant it more time, which is how a stuck driver got filed as a slow one.
+	if !strings.Contains(err.Error(), "stuck rather than slow") {
+		t.Errorf("the error lets a stuck driver read as a slow one: %v", err)
+	}
+}
+
+// TestAStartingDriverIsGivenTimeToComeUp is rook's measurement as a cell. A real
+// chromedriver on their box exceeded my old 20s bound while STARTING, and the
+// stage reported FOUND, NOT DRIVABLE for a driver that was merely slow -- the
+// worst reading this package can produce. This drives the PRODUCTION path, bound
+// and all, against a fake that withholds readiness and then grants it.
+func TestAStartingDriverIsGivenTimeToComeUp(t *testing.T) {
+	path, _ := fakeDriver(t, "slow")
+	began := time.Now()
+	d, err := Start(context.Background(), path, "", true)
+	if err != nil {
+		t.Fatalf("a driver that readies after %s was refused: %v", fakedriver.SlowFor, err)
+	}
+	defer func() { _ = d.Close(context.Background()) }()
+	// THE VACUITY GUARD, AND ITS FLOOR IS WRITTEN HERE RATHER THAN IMPORTED.
+	// My first version compared the elapsed time against fakedriver.SlowFor --
+	// the same constant the fake withholds readiness for -- so a mutant setting
+	// SlowFor to 0 moved BOTH sides and the arm went vacuous with its own guard
+	// agreeing. That is precisely the fault rook found in my pair-table
+	// assertion at coop r9/98, committed again one file away. An independent
+	// literal cannot be moved by a cut to the fake.
+	const floor = 2 * time.Second
+	if fakedriver.SlowFor < floor {
+		t.Fatalf("the fake withholds readiness for only %s, under this arm's %s floor: a bound "+
+			"too tight to matter would pass", fakedriver.SlowFor, floor)
+	}
+	if took := time.Since(began); took < floor {
+		t.Fatalf("Start returned in %s, inside the %s the fake should have withheld: the arm is vacuous",
+			took, floor)
+	}
+}
+
+// TestTheReadinessBoundIsSizedFromTheMeasuredTail pins the FIGURE, which no
+// behavioural cell can: a fake slow by 3s passes a 10s bound as happily as a
+// 60s one, so only an assertion on the constant holds its derivation.
+//
+// BOTH ENDS ARE THE CLAIM. The floor keeps the bound far above the 68.3ms tail
+// of forty uncensored runs (rook r9/104, ibis r9/105), so a cold start or CI
+// contention neither of us sampled cannot be failed as stuck. The CEILING is the
+// half my own two mistakes needed: 20s and then 60s were numbers I chose, and at
+// 878x the observed maximum a bound stops discriminating and merely delays the
+// message. Either end moving is a figure that has left its measurement.
+func TestTheReadinessBoundIsSizedFromTheMeasuredTail(t *testing.T) {
+	// the combined observed maximum, written here rather than imported: a
+	// derivation that reads its own inputs agrees with itself (coop r9/98).
+	const observedMax = 68300 * time.Microsecond
+	if ReadyTimeout < 100*observedMax {
+		t.Errorf("ReadyTimeout is %s, under 100x the %s tail measured across 40 uncensored runs: "+
+			"a cold start nobody sampled would read as STUCK", ReadyTimeout, observedMax)
+	}
+	if ReadyTimeout > 20*time.Second {
+		t.Errorf("ReadyTimeout is %s, over 290x the %s tail: past that it no longer tells a stuck "+
+			"driver from a slow one, it only delays the message (rook, coop r9/104)",
+			ReadyTimeout, observedMax)
 	}
 }
 

@@ -43,7 +43,35 @@ const StopGrace = 3 * time.Second
 // ReadyTimeout bounds the wait for the driver's own `/status`, and it is a
 // BOUND rather than a sleep: the loop asks and stops asking, so a driver that
 // never answers is an error naming the wait and not a hung run.
-const ReadyTimeout = 20 * time.Second
+//
+// SET FROM TWO MEASURED DISTRIBUTIONS, uncensored, under fable's method at coop
+// r9/103. Every run's answer-time was recorded with a 120s ceiling so nothing
+// was cut off at a threshold:
+//
+//	sll-driver-01 (rook, r9/104)  N=20  hw.ncpu 4  load 1.21
+//	    min 25.8   median 63.9   p90 65.1   MAX 68.3 ms
+//	matrix        (ibis, r9/105)  N=20  hw.ncpu 8  load 2.31
+//	    min 21.1   median 21.5   p95 31.8   MAX 32.7 ms
+//
+// 0 censored in 40 runs, and the combined observed tail is 68.3ms. 10s is ~146x
+// that, which leaves room for a cold start and for CI contention that NEITHER
+// distribution sampled.
+//
+// THE BOUND WENT DOWN, NOT UP, AND MY FIRST TWO READINGS WERE BOTH WRONG. I set
+// 20s against a fake that answers in microseconds. rook's 1-in-6 failure then
+// made me raise it to 60s, which was a margin I chose and called measured
+// (r9/101, corrected at r9/102). Their distribution settles it: nothing takes
+// between 68ms and 20s, so that failure was never a SLOW driver and no amount of
+// waiting could have turned it into a pass -- 60s would only have delayed the
+// same message by 40 seconds.
+//
+// WHICH MAKES THE BOUND A DISCRIMINATOR AND NOT A BUDGET. A driver that has
+// exited is answered at once below. A driver that is alive and answering
+// `ready:false` cannot be told from a slow one by waiting -- but healthy
+// readiness is TENS OF MILLISECONDS on both boxes, so one that is still not
+// ready after 10s is stuck, and saying so quickly is the whole value of the
+// number.
+const ReadyTimeout = 10 * time.Second
 
 // Driver is a running WebDriver process and the sessions opened through it.
 type Driver struct {
@@ -91,6 +119,12 @@ func freePort() (int, error) {
 // (cmd/rumor's pairs), and a driver left to find its own would be free to pick
 // a different install than the one the skip line named -- so the path travels
 // into the session's capabilities and the two cannot disagree.
+// THERE IS NO BOUND PARAMETER, and that is deliberate after one measured
+// mistake: I first made the readiness bound an argument so a cell could hold it
+// cheaply, and the mutant that passed 1s from the stage SURVIVED -- nothing held
+// the value production sends. A constant cannot be passed wrongly. The cells
+// reach the bound through waitReady directly and through a driver that is SLOW
+// to come up, which is the case that matters anyway.
 func Start(ctx context.Context, driverPath, browserPath string, headless bool) (*Driver, error) {
 	port, err := freePort()
 	if err != nil {
@@ -114,7 +148,7 @@ func Start(ctx context.Context, driverPath, browserPath string, headless bool) (
 		_ = cmd.Wait()
 		close(d.exited)
 	}()
-	if err := d.waitReady(ctx); err != nil {
+	if err := d.waitReady(ctx, ReadyTimeout); err != nil {
 		d.stopProcess()
 		return nil, err
 	}
@@ -129,8 +163,8 @@ func Start(ctx context.Context, driverPath, browserPath string, headless bool) (
 // commonest failure on a misconfigured box -- a `driver` on PATH that is not a
 // webdriver at all -- into a 20-second stall per run. The reason is also more
 // precise: "it exited" and "it never answered" are different faults.
-func (d *Driver) waitReady(ctx context.Context) error {
-	deadline := time.Now().Add(ReadyTimeout)
+func (d *Driver) waitReady(ctx context.Context, bound time.Duration) error {
+	deadline := time.Now().Add(bound)
 	var last error
 	for time.Now().Before(deadline) {
 		if ctx.Err() != nil {
@@ -156,8 +190,15 @@ func (d *Driver) waitReady(ctx context.Context) error {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return fmt.Errorf("%s did not answer /status as ready within %s: %w -- the port may have been "+
-		"taken between being chosen and being bound", d.path, ReadyTimeout, last)
+	// THE MESSAGE NAMES STUCK, NOT SLOW. Measured readiness is tens of
+	// milliseconds on both boxes this phase has (see ReadyTimeout), so a driver
+	// that answered and never readied inside the bound is not behind -- it is
+	// not coming. "within 10s" alone invites the reader to grant it more time,
+	// which is the reading that cost rook a 1-in-6 failure misfiled as slowness.
+	return fmt.Errorf("%s answered /status but never became ready within %s, and measured "+
+		"readiness is tens of milliseconds on this phase's boxes -- so it is stuck rather than "+
+		"slow, and waiting longer would not help: %w (a port taken between being chosen and "+
+		"being bound reads the same way)", d.path, bound, last)
 }
 
 // capabilities is what a new session asks for.
