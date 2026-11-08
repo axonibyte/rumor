@@ -97,7 +97,7 @@ func TestTwoAttemptsFromOneSeedAgreeOnHandlesAndDifferOnIDs(t *testing.T) {
 			t.Fatalf("attempt %d: Open: %v", n, err)
 		}
 		defer func() { _ = sess.Close() }()
-		rec, err := schedule.Walk(ctx, p, sess, seed, 6, n)
+		rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, seed, 6, n)
 		if err != nil {
 			t.Fatalf("attempt %d: Walk: %v", n, err)
 		}
@@ -167,7 +167,7 @@ func TestTheSameSeedReproducesTheWholeRun(t *testing.T) {
 			t.Fatalf("Open: %v", err)
 		}
 		defer func() { _ = sess.Close() }()
-		rec, err := schedule.Walk(ctx, p, sess, seed, 5, 1)
+		rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, seed, 5, 1)
 		if err != nil {
 			t.Fatalf("Walk: %v", err)
 		}
@@ -204,7 +204,7 @@ func TestADifferentSeedWalksDifferently(t *testing.T) {
 			t.Fatalf("Open: %v", err)
 		}
 		defer func() { _ = sess.Close() }()
-		rec, err := schedule.Walk(ctx, p, sess, seed, 8, 1)
+		rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, seed, 8, 1)
 		if err != nil {
 			t.Fatalf("Walk with seed %d: %v", seed, err)
 		}
@@ -253,7 +253,7 @@ func TestAnActionThatEmitsNothingIsRecordedAndMintsNothing(t *testing.T) {
 	}
 	defer func() { _ = sess.Close() }()
 
-	rec, err := schedule.Walk(ctx, p, sess, 11, 4, 1)
+	rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, 11, 4, 1)
 	if err != nil {
 		t.Fatalf("a step whose action emits nothing must be recorded, not refused: %v", err)
 	}
@@ -319,7 +319,7 @@ func TestAnEmptyIDsRefusalCarriesTheAdaptersAnswer(t *testing.T) {
 	}
 	defer func() { _ = sess.Close() }()
 
-	_, err = schedule.Walk(ctx, p, sess, 1, 1, 1)
+	_, err = schedule.Walk(ctx, p, sess, schedule.Browser{}, 1, 1, 1)
 	if err == nil {
 		t.Fatal("a declared `creates` with no id in the answer must refuse: the handle would " +
 			"resolve to nothing")
@@ -349,7 +349,7 @@ func TestASessionIsAcquiredOncePerActorPerContext(t *testing.T) {
 	}
 	defer func() { _ = sess.Close() }()
 
-	rec, err := schedule.Walk(ctx, p, sess, 7, 10, 1)
+	rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, 7, 10, 1)
 	if err != nil {
 		t.Fatalf("Walk: %v", err)
 	}
@@ -385,7 +385,7 @@ func TestASessionIsAcquiredOncePerActorPerContext(t *testing.T) {
 	// AND THE COUNT REPLAYS. A session acquired at first use is acquired at a
 	// step the seed chose, so two attempts from one seed must agree on how many
 	// there were.
-	again, err := schedule.Walk(ctx, p, sess, 7, 10, 2)
+	again, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, 7, 10, 2)
 	if err != nil {
 		t.Fatalf("Walk again: %v", err)
 	}
@@ -410,7 +410,7 @@ func TestAWalkOfContextFreeActionsAcquiresNoSession(t *testing.T) {
 	}
 	defer func() { _ = sess.Close() }()
 
-	rec, err := schedule.Walk(ctx, p, sess, 7, 10, 1)
+	rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, 7, 10, 1)
 	if err != nil {
 		t.Fatalf("Walk: %v", err)
 	}
@@ -450,7 +450,7 @@ func TestAnEmptyTokenIsRefused(t *testing.T) {
 	}
 	defer func() { _ = sess.Close() }()
 
-	_, err = schedule.Walk(ctx, p, sess, 1, 1, 1)
+	_, err = schedule.Walk(ctx, p, sess, schedule.Browser{}, 1, 1, 1)
 	if err == nil {
 		t.Fatal("a session answered with an empty token was accepted")
 	}
@@ -478,7 +478,7 @@ func TestOneActorInTwoContextsHoldsTwoSessions(t *testing.T) {
 	}
 	defer func() { _ = sess.Close() }()
 
-	rec, err := schedule.Walk(ctx, p, sess, 7, 12, 1)
+	rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, 7, 12, 1)
 	if err != nil {
 		t.Fatalf("Walk: %v", err)
 	}
@@ -577,7 +577,7 @@ func TestTheAcquiredTokenIsOnTheExecute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	if _, err := schedule.Walk(ctx, p, sess, 1, 1, 1); err != nil {
+	if _, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, 1, 1, 1); err != nil {
 		t.Fatalf("Walk: %v", err)
 	}
 	// THE PROCESS IS STOPPED BEFORE THE CAPTURE IS READ, so the background cat
@@ -634,7 +634,7 @@ func TestAnActionOutsideASessionCarriesNoToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	if _, err := schedule.Walk(ctx, p, sess, 1, 1, 1); err != nil {
+	if _, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, 1, 1, 1); err != nil {
 		t.Fatalf("Walk: %v", err)
 	}
 	if err := sess.Close(); err != nil {
@@ -687,7 +687,7 @@ func TestAHandleArgumentIsDrawnFromTheBoundHandles(t *testing.T) {
 	sawTwoCandidates := false
 	consuming := 0
 	for _, seed := range []uint64{1, 2, 3, 4, 5, 6, 7, 8} {
-		rec, err := schedule.Walk(ctx, p, sess, seed, 14, 1)
+		rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, seed, 14, 1)
 		if err != nil {
 			t.Fatalf("seed %d: %v", seed, err)
 		}
@@ -756,11 +756,11 @@ func TestTwoAttemptsConsumeTheSameHandles(t *testing.T) {
 		}
 		return out
 	}
-	a, err := schedule.Walk(ctx, p, sess, 11, 14, 1)
+	a, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, 11, 14, 1)
 	if err != nil {
 		t.Fatalf("attempt 1: %v", err)
 	}
-	b, err := schedule.Walk(ctx, p, sess, 11, 14, 2)
+	b, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, 11, 14, 2)
 	if err != nil {
 		t.Fatalf("attempt 2: %v", err)
 	}
@@ -796,7 +796,7 @@ func TestAnActionInAnUnheldContextIsNeverDrawn(t *testing.T) {
 		p.Roles = roles
 		sawUI, sawAPI := false, false
 		for _, seed := range []uint64{1, 2, 3, 4, 5} {
-			rec, werr := schedule.Walk(ctx, p, sess, seed, 12, 1)
+			rec, werr := schedule.Walk(ctx, p, sess, schedule.Browser{}, seed, 12, 1)
 			if werr != nil {
 				t.Fatalf("seed %d: %v", seed, werr)
 			}
@@ -852,7 +852,7 @@ func TestTheClaimCarriesTheDrawnVisibility(t *testing.T) {
 	seen := map[string]int{}
 	claims := 0
 	for _, seed := range []uint64{1, 2, 3, 4, 5, 6} {
-		rec, werr := schedule.Walk(ctx, p, sess, seed, 10, 1)
+		rec, werr := schedule.Walk(ctx, p, sess, schedule.Browser{}, seed, 10, 1)
 		if werr != nil {
 			t.Fatalf("seed %d: %v", seed, werr)
 		}
@@ -914,7 +914,7 @@ func TestAWalkedClaimCarriesTheHandlesItNames(t *testing.T) {
 	}
 	defer func() { _ = sess.Close() }()
 
-	rec, err := schedule.Walk(ctx, p, sess, 20261019, 8, 1)
+	rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, 20261019, 8, 1)
 	if err != nil {
 		t.Fatalf("Walk: %v", err)
 	}
@@ -1024,7 +1024,7 @@ func TestASubornedClaimLooksLikeTheHonestOne(t *testing.T) {
 	}
 	defer func() { _ = sess.Close() }()
 
-	rec, err := schedule.Walk(ctx, p, sess, 20261023, 12, 1)
+	rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, 20261023, 12, 1)
 	if err != nil {
 		t.Fatalf("Walk: %v", err)
 	}
@@ -1136,7 +1136,7 @@ default may_join := true
 			t.Fatalf("Open: %v", err)
 		}
 		defer func() { _ = sess.Close() }()
-		rec, err := schedule.Walk(ctx, p, sess, seed, steps, 1)
+		rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, seed, steps, 1)
 		if err != nil {
 			t.Fatalf("Walk (observations=%d): %v", len(obs), err)
 		}
@@ -1223,7 +1223,7 @@ func TestTheFirstBugEndsTheWalkAndIsCarried(t *testing.T) {
 	}
 	defer func() { _ = sess.Close() }()
 
-	rec, err := schedule.Walk(ctx, p, sess, 20261023, 6, 1)
+	rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, 20261023, 6, 1)
 	if err != nil {
 		t.Fatalf("a bug is the tool's product and must not be an error from Walk: %v", err)
 	}
@@ -1315,7 +1315,7 @@ default may_join := true
 
 	var original []string
 	withSession("orig", func(sess *wire.Session) {
-		rec, err := schedule.Walk(ctx, project(), sess, seed, steps, 1)
+		rec, err := schedule.Walk(ctx, project(), sess, schedule.Browser{}, seed, steps, 1)
 		if err != nil {
 			t.Fatalf("the original walk: %v", err)
 		}
@@ -1328,7 +1328,7 @@ default may_join := true
 
 	// CELL 1: the whole trace, nothing dropped.
 	withSession("whole", func(sess *wire.Session) {
-		_, got, _, err := schedule.Replay(ctx, project(), sess, seed, 1, steps, nil)
+		_, got, _, err := schedule.Replay(ctx, project(), sess, schedule.Browser{}, seed, 1, steps, nil)
 		if err != nil {
 			t.Fatalf("replaying the whole trace: %v", err)
 		}
@@ -1340,7 +1340,7 @@ default may_join := true
 
 	// CELL 2: a shorter count is a prefix.
 	withSession("short", func(sess *wire.Session) {
-		_, got, _, err := schedule.Replay(ctx, project(), sess, seed, 1, steps-2, nil)
+		_, got, _, err := schedule.Replay(ctx, project(), sess, schedule.Browser{}, seed, 1, steps-2, nil)
 		if err != nil {
 			t.Fatalf("replaying a prefix: %v", err)
 		}
@@ -1357,7 +1357,7 @@ default may_join := true
 		t.Fatalf("the original trace %v draws no join_event, so dropping it proves nothing", original)
 	}
 	withSession("dropped", func(sess *wire.Session) {
-		_, got, _, err := schedule.Replay(ctx, project(), sess, seed, 1, steps, []string{"join_event"})
+		_, got, _, err := schedule.Replay(ctx, project(), sess, schedule.Browser{}, seed, 1, steps, []string{"join_event"})
 		if err != nil {
 			t.Fatalf("replaying without join_event: %v", err)
 		}
@@ -1372,7 +1372,7 @@ default may_join := true
 
 	// AND A KIND NOTHING WEIGHTS IS REFUSED.
 	withSession("unknown", func(sess *wire.Session) {
-		if _, _, _, err := schedule.Replay(ctx, project(), sess, seed, 1, steps,
+		if _, _, _, err := schedule.Replay(ctx, project(), sess, schedule.Browser{}, seed, 1, steps,
 			[]string{"no_such_kind"}); err == nil {
 			t.Error("dropping a kind the project never weighted must refuse: silently succeeding " +
 				"would report that removing it changed nothing")
@@ -1467,7 +1467,7 @@ default may_join := false
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	if _, err := schedule.Walk(ctx, p, sess, 7, 1, 1); err != nil {
+	if _, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, 7, 1, 1); err != nil {
 		t.Fatalf("Walk: %v", err)
 	}
 	_ = sess.Close()
@@ -1590,7 +1590,7 @@ func TestAReplayReproducesARefusalFromTheRecord(t *testing.T) {
 		return sess
 	}
 
-	first, err := schedule.Walk(ctx, project(), session("one"), seed, steps, 1)
+	first, err := schedule.Walk(ctx, project(), session("one"), schedule.Browser{}, seed, steps, 1)
 	if err != nil {
 		t.Fatalf("the original walk: %v", err)
 	}
@@ -1617,7 +1617,7 @@ func TestAReplayReproducesARefusalFromTheRecord(t *testing.T) {
 			"about a refusal: %v", first.KindSequence())
 	}
 
-	_, again, _, err := schedule.Replay(ctx, project(), session("two"), seed, 1, steps, nil)
+	_, again, _, err := schedule.Replay(ctx, project(), session("two"), schedule.Browser{}, seed, 1, steps, nil)
 	if err != nil {
 		t.Fatalf("the replay: %v", err)
 	}
@@ -1712,7 +1712,7 @@ default may_join := true
 			t.Fatalf("Open: %v", oerr)
 		}
 		defer func() { _ = sess.Close() }()
-		rec, werr := schedule.Walk(ctx, project(declare), sess, seed, steps, 1)
+		rec, werr := schedule.Walk(ctx, project(declare), sess, schedule.Browser{}, seed, steps, 1)
 		if werr != nil {
 			t.Fatalf("Walk (declare=%v): %v", declare, werr)
 		}
@@ -1772,7 +1772,7 @@ default may_join := true
 			t.Fatalf("Open: %v", oerr)
 		}
 		defer func() { _ = sess.Close() }()
-		_, werr := schedule.Walk(ctx, project(true), sess, seed, steps, 1)
+		_, werr := schedule.Walk(ctx, project(true), sess, schedule.Browser{}, seed, steps, 1)
 		if werr == nil {
 			t.Fatal("a declared instant answered \"soonish\" and the walk did not refuse: " +
 				"`[deadline].instants` names where a deadline is READ, so a value that is not a " +
@@ -1824,7 +1824,7 @@ func TestTheRecordCarriesTheStageItWasDispatchedAs(t *testing.T) {
 			t.Fatalf("Open: %v", err)
 		}
 		defer func() { _ = sess.Close() }()
-		rec, err := schedule.Walk(ctx, p, sess, seed, 5, 1)
+		rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, seed, 5, 1)
 		if err != nil {
 			t.Fatalf("Walk(stage=%q): %v", stage, err)
 		}
@@ -1922,7 +1922,7 @@ default may_join := true
 	}
 	defer func() { _ = sess.Close() }()
 
-	rec, err := schedule.Walk(ctx, p, sess, seed, steps, 1)
+	rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, seed, steps, 1)
 	if err != nil {
 		t.Fatalf("the walk REFUSED an unservable subject, which the ruling forbids: %v", err)
 	}
@@ -2004,7 +2004,7 @@ default may_join := true
 	}
 	defer func() { _ = sess.Close() }()
 
-	rec, err := schedule.Walk(ctx, p, sess, seed, steps, 1)
+	rec, err := schedule.Walk(ctx, p, sess, schedule.Browser{}, seed, steps, 1)
 	if err != nil {
 		t.Fatalf("the walk refused a served subject: %v", err)
 	}

@@ -1,0 +1,631 @@
+package browser
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
+)
+
+// THE FAKE DRIVER CANNOT STAND IN FOR A PAGE, and these arms are split on that
+// line. A fake that answered /element and /click would be a pretend browser,
+// and every claim driven against it would be a claim about my own simulation --
+// the fixture-override fault this tree has paid for before. So the fake covers
+// exactly the paths that never reach a page (a step the driver refuses before
+// it opens anything), and everything that touches a document is driven against
+// a REAL chromium in TestAFlowDrivesARealPage below.
+
+func flowSteps(steps ...map[string]any) []map[string]any { return steps }
+
+// TestAFlowRefusesWhatItCannotDriveBeforeOpeningAnything: each of these is
+// settled by reading the steps, so none of them needs a page and all of them
+// are driven here.
+func TestAFlowRefusesWhatItCannotDriveBeforeOpeningAnything(t *testing.T) {
+	d, journal := startFake(t, "ready", true)
+	defer func() { _ = d.Close(context.Background()) }()
+
+	for _, c := range []struct {
+		name  string
+		req   wire.FlowRequest
+		wants string
+	}{
+		{"no steps at all", wire.FlowRequest{Action: "a"}, "carried no steps"},
+		{"a resume past the end", wire.FlowRequest{Action: "a", From: 9,
+			Steps: flowSteps(map[string]any{"step": "navigate", "to": "/x"})}, "asked to resume at 9"},
+		{"a resume before the start", wire.FlowRequest{Action: "a", From: -1,
+			Steps: flowSteps(map[string]any{"step": "navigate", "to": "/x"})}, "asked to resume at -1"},
+		{"a navigate to nowhere", wire.FlowRequest{Action: "a",
+			Steps: flowSteps(map[string]any{"step": "navigate", "to": ""})}, "navigates nowhere"},
+		{"an unresolved placeholder", wire.FlowRequest{Action: "a",
+			Steps: flowSteps(map[string]any{"step": "navigate", "to": "/ui/events/{event}"})},
+			"still carries a placeholder"},
+		{"a click before anything opened", wire.FlowRequest{Action: "a",
+			Steps: flowSteps(map[string]any{"step": "click", "target": "join"})},
+			"clicks before anything navigated"},
+		{"a fill before anything opened", wire.FlowRequest{Action: "a",
+			Steps: flowSteps(map[string]any{"step": "fill", "field": "title", "value": "x"})},
+			"fills before anything navigated"},
+		{"a step kind nobody drives", wire.FlowRequest{Action: "a",
+			Steps: flowSteps(map[string]any{"step": "hover", "target": "x"})},
+			"not a step this driver drives"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, _, err := d.Flow(context.Background(), "alice", "http://127.0.0.1:1", "tok", c.req)
+			if err == nil {
+				t.Fatalf("%s was accepted", c.name)
+			}
+			if !strings.Contains(err.Error(), c.wants) {
+				t.Errorf("the refusal does not say %q: %v", c.wants, err)
+			}
+		})
+	}
+
+	// AND NOTHING WAS OPENED, which this arm's NAME has claimed since it was
+	// written and nothing checked. It was false: the session was acquired
+	// before any step was read, so every case above refused with a browser
+	// session already open. The gate found the sibling defect -- a flow that
+	// navigated before refusing a LATER step -- and this is the same ordering
+	// mistake one line further up.
+	if opens := linesWith(journalLines(t, journal), "open "); len(opens) != 0 {
+		t.Errorf("%d session(s) were opened for flows that could be refused by reading them: %v",
+			len(opens), opens)
+	}
+}
+
+// TestANavigateAgainstNothingIsRefusedRatherThanDriven is a defect this head
+// found in itself, by mutation. With the adapter reporting `http://127.0.0.1:1`
+// the end-to-end arm PASSED: chromedriver answered the navigate 200, loaded
+// CHROME'S OWN ERROR PAGE, the click that followed found no element, and the
+// walk recorded "the page would not perform it" -- a refusal attributed to a
+// system that was never reached, at exit 0.
+//
+// W3C WEBDRIVER CARRIES NO HTTP STATUS FOR A NAVIGATION, so the browser cannot
+// be asked whether the page loaded. The address can be, once per run.
+//
+// IT RUNS WITHOUT A BROWSER, which is why it is a fake-driven arm: the check
+// happens before the driver is asked for a page, so the box this runs on needs
+// no pair -- and that is also the assertion, since the fake WOULD have answered
+// the navigate.
+func TestANavigateAgainstNothingIsRefusedRatherThanDriven(t *testing.T) {
+	d, _ := startFake(t, "ready", true)
+	defer func() { _ = d.Close(context.Background()) }()
+
+	// A PORT THAT WAS REAL AND IS NOT, rather than a number chosen for being
+	// unlikely: the kernel gave it out, so it is a legal address, and closing
+	// the listener is what makes "nothing answers" true of it.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dead := ln.Addr().String()
+	if cerr := ln.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+
+	_, _, ferr := d.Flow(context.Background(), "alice", "http://"+dead, "tok",
+		wire.FlowRequest{Action: "join_event_ui",
+			Steps: flowSteps(map[string]any{"step": "navigate", "to": "/ui/events/1"})})
+	if ferr == nil {
+		t.Fatal("a flow navigating at an address nothing serves was DRIVEN: the browser would " +
+			"load its own error page and the next step would read as the page refusing")
+	}
+	for _, want := range []string{"nothing answers at", dead, "adapter"} {
+		if !strings.Contains(ferr.Error(), want) {
+			t.Errorf("the refusal does not say %q: %v", want, ferr)
+		}
+	}
+
+	// AND THE ANSWER IS REMEMBERED, which is the other half: a walk drives many
+	// flows against one base, and a dial per navigate would be a cost with no
+	// second answer.
+	if _, seen := d.worlds[dead]; !seen {
+		t.Error("the refusal was not cached, so every navigate would dial again")
+	}
+}
+
+// TestAWaitRefusesWhatNoConditionCanFix is what remains of this file's earlier
+// arm. RETARGETED, NOT DELETED: that arm held `wait` refusing because its
+// vocabulary was undefined, and fable DEFINED it at coop r9/110 -- so the claim
+// it existed for is gone and the refusals that survive the definition are these
+// two. A wait with no condition and a wait before anything opened are still
+// settled by reading the steps, so neither needs a page.
+func TestAWaitRefusesWhatNoConditionCanFix(t *testing.T) {
+	d, _ := startFake(t, "ready", true)
+	defer func() { _ = d.Close(context.Background()) }()
+
+	for _, c := range []struct {
+		name  string
+		steps []map[string]any
+		wants string
+	}{
+		{"a wait for nothing", flowSteps(
+			map[string]any{"step": "navigate", "to": "/x"},
+			map[string]any{"step": "wait", "until": ""}), "waits for nothing"},
+		{"a wait before anything opened", flowSteps(
+			map[string]any{"step": "wait", "until": "count-changed"}),
+			"waits before anything navigated"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, _, err := d.Flow(context.Background(), "alice", "http://127.0.0.1:1", "tok",
+				wire.FlowRequest{Action: "a", Steps: c.steps})
+			if err == nil {
+				t.Fatalf("%s was accepted", c.name)
+			}
+			if !strings.Contains(err.Error(), c.wants) {
+				t.Errorf("the refusal does not say %q: %v", c.wants, err)
+			}
+		})
+	}
+}
+
+// TestTheWaitVocabularyIsDrivenBothWays is fable's r9/110 as cells, against a
+// REAL page, which is the only place a condition can be evaluated.
+//
+// BOTH FORMS AND THE ABSENT CASE. `<id>-changed` is satisfied when the text
+// differs from what it was immediately before the preceding step; `<id>` is
+// satisfied when the element is present; and an element ABSENT before counts as
+// changed when it appears, which the ruling states and an implementation
+// comparing against an empty string would get wrong.
+func TestTheWaitVocabularyIsDrivenBothWays(t *testing.T) {
+	driver, found := realDriver(t)
+	if !found {
+		t.Skip("no chromedriver on PATH: a condition needs a page")
+	}
+	browserBin, bfound := realBrowser(t)
+	if !bfound {
+		t.Skip("no chromium on PATH")
+	}
+
+	// THE PAGE CHANGES ON THE POST, which is what makes every case below
+	// reachable: #count's text moves, #joined appears where it was absent, and
+	// #never is never there at all.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if r.Method == http.MethodPost {
+			_, _ = fmt.Fprint(w, `<!doctype html><title>after</title>`+
+				`<p id="count">1 of 2</p><p id="joined">yes</p>`+
+				`<form id="join" method="post" action="?"><button type="submit">join</button></form>`)
+			return
+		}
+		_, _ = fmt.Fprint(w, `<!doctype html><title>before</title>`+
+			`<p id="count">0 of 2</p>`+
+			`<form id="join" method="post" action="?"><button type="submit">join</button></form>`)
+	}))
+	defer srv.Close()
+
+	for _, c := range []struct {
+		name    string
+		until   string
+		stopped wire.Stop
+		reached int
+		detail  string
+	}{
+		{"the changed form", "count-changed", wire.StopNone, 3, ""},
+		{"the present form on an element that appears", "joined", wire.StopNone, 3, ""},
+		{"a condition the page never meets", "never", wire.StopWait, 2, "#never read absent"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			d, err := Start(context.Background(), driver, browserBin, true)
+			if err != nil {
+				t.Fatalf("starting the real pair: %v", err)
+			}
+			defer func() { _ = d.Close(context.Background()) }()
+
+			// THE SESSION IS OPENED BEFORE THE BUDGET STARTS, and the gate is
+			// why. This cell's 2s bounded the WAIT and the browser's own
+			// startup together, so when a sibling package was launching
+			// chromium at the same time the session POST alone spent the
+			// budget and the arm failed with "context deadline exceeded" on
+			// `/session` -- a timing fact about the BOX reported as a verdict
+			// about a wait. Sessions are cached per actor, so the Flow below
+			// reuses this one and the budget now bounds only its subject.
+			if _, serr := d.SessionFor(context.Background(), "alice"); serr != nil {
+				t.Fatalf("opening a session for alice: %v", serr)
+			}
+
+			// A SHORT BUDGET FOR THE CASE THAT CANNOT BE MET, so the cell costs
+			// a second rather than the flow's whole bound. The deadline IS the
+			// budget by waitBudget's reading of fable's ruling, so setting one
+			// here is the supported way to bound it and not a test-only seam.
+			ctx := context.Background()
+			if c.stopped == wire.StopWait {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 2*time.Second)
+				defer cancel()
+			}
+
+			got, detail, err := d.Flow(ctx, "alice", srv.URL, "t",
+				wire.FlowRequest{Action: "join_event_ui", Steps: flowSteps(
+					map[string]any{"step": "navigate", "to": "/ui/events/e1"},
+					map[string]any{"step": "click", "target": "join"},
+					map[string]any{"step": "wait", "until": c.until},
+				)})
+			if err != nil {
+				t.Fatalf("driving the flow: %v", err)
+			}
+			if got.Stopped != c.stopped {
+				t.Errorf("stopped %q, want %q (detail %q)", got.Stopped, c.stopped, detail)
+			}
+			if got.Reached != c.reached {
+				t.Errorf("reached %d, want %d", got.Reached, c.reached)
+			}
+			if c.detail == "" {
+				if detail != "" {
+					t.Errorf("a satisfied condition carries a detail: %q", detail)
+				}
+				return
+			}
+			// THE FAILURE NAMES THE CONDITION AND WHAT IT SAW, which is the
+			// half of the ruling the wire shape has no field for.
+			for _, want := range []string{c.until, c.detail} {
+				if !strings.Contains(detail, want) {
+					t.Errorf("the detail does not carry %q: %q", want, detail)
+				}
+			}
+		})
+	}
+}
+
+// TestAFlowDrivesARealPage is the browser-side arm, and it is the only one here
+// that proves the driver drives: a real chromium, a real document served over
+// HTTP, a real click, and the page's own state read back afterwards.
+//
+// THE PAGE IS THIS TEST'S OWN and shaped like cmd/toy's: an id per readable
+// thing and a form whose id is what a `click target` names. Driving the toy
+// itself would need the toy, its state and a session token, which is the WALK's
+// business; what this arm owes is that navigate and click reach a document.
+func TestAFlowDrivesARealPage(t *testing.T) {
+	driver, found := realDriver(t)
+	if !found {
+		t.Skip("no chromedriver on PATH: the browser-side arms run where the pair lives")
+	}
+	browserBin, bfound := realBrowser(t)
+	if !bfound {
+		t.Skip("no chromium on PATH")
+	}
+
+	// A CHANNEL AND NOT A BOOL, for two reasons the first version of this arm
+	// had wrong. The handler runs on the server's goroutine and the assertion on
+	// the test's, so a plain bool is a data race; and a W3C click returns when
+	// the click is DISPATCHED, so the POST it causes may still be in flight.
+	// This arm failed in a group run and passed alone until it waited for the
+	// effect instead of reading a variable.
+	//
+	// WAITING HERE IS NOT THE `wait` STEP. The flow's own wait is refused above
+	// while its vocabulary is undefined; this is the test synchronising with its
+	// own server, which is a different thing and must not be confused for one.
+	joined := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/join") {
+			select {
+			case joined <- struct{}{}:
+			default:
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = fmt.Fprint(w, `<!doctype html><title>joined</title><p id="count">1 of 2</p>`)
+			return
+		}
+		// THE TOKEN MUST ARRIVE, and the page says so rather than the arm
+		// trusting the URL it built: cmd/toy serves 401 without one.
+		if r.URL.Query().Get("token") == "" {
+			http.Error(w, "the page needs a session", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(w, `<!doctype html><title>event</title>
+<p id="count">0 of 2</p>
+<form id="join" method="post" action="%s/join?token=t"><button type="submit">join</button></form>`,
+			r.URL.Path)
+	}))
+	defer srv.Close()
+
+	d, err := Start(context.Background(), driver, browserBin, true)
+	if err != nil {
+		t.Fatalf("starting the real pair: %v", err)
+	}
+	defer func() { _ = d.Close(context.Background()) }()
+
+	resp, _, err := d.Flow(context.Background(), "alice", srv.URL, "t",
+		wire.FlowRequest{Action: "join_event_ui", Steps: flowSteps(
+			map[string]any{"step": "navigate", "to": "/ui/events/e1"},
+			map[string]any{"step": "click", "target": "join"},
+		)})
+	if err != nil {
+		t.Fatalf("driving navigate+click against a real page: %v", err)
+	}
+	if resp.Reached != 2 {
+		t.Errorf("reached %d of 2 steps, stopped %q", resp.Reached, resp.Stopped)
+	}
+	if resp.Stopped != wire.StopNone {
+		t.Errorf("a flow that drove both steps reports stopped %q", resp.Stopped)
+	}
+	// THE CLICK IS PROVED BY THE SERVER, not by the absence of an error: a
+	// driver that found the button and never clicked it would answer the same
+	// way, which is the shape of every claim this phase has had to re-measure.
+	select {
+	case <-joined:
+	case <-time.After(10 * time.Second):
+		t.Errorf("the flow reported 2 steps and the page was never POSTed to: the click did nothing")
+	}
+	// AND NO RESPONSE IS CLAIMED, because a W3C driver is not told a status --
+	// examples/toy/bindings.toml:305-309 leaves what a browser "response" means
+	// to this phase, and a status it cannot know would be a non-status dressed
+	// as one.
+	if resp.Response != nil {
+		t.Errorf("the flow invented a response a browser cannot see: %#v", resp.Response)
+	}
+}
+
+// TestAMissingTargetStopsTheFlowRatherThanFailingIt: a target the page does not
+// carry is the SYSTEM's answer, so it stops at that step the way the adapter's
+// 4xx does, and is not an error about this build.
+func TestAMissingTargetStopsTheFlowRatherThanFailingIt(t *testing.T) {
+	driver, found := realDriver(t)
+	if !found {
+		t.Skip("no chromedriver on PATH")
+	}
+	browserBin, bfound := realBrowser(t)
+	if !bfound {
+		t.Skip("no chromium on PATH")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(w, `<!doctype html><title>bare</title><p id="count">0 of 2</p>`)
+	}))
+	defer srv.Close()
+
+	d, err := Start(context.Background(), driver, browserBin, true)
+	if err != nil {
+		t.Fatalf("starting the real pair: %v", err)
+	}
+	defer func() { _ = d.Close(context.Background()) }()
+
+	resp, _, err := d.Flow(context.Background(), "alice", srv.URL, "t",
+		wire.FlowRequest{Action: "join_event_ui", Steps: flowSteps(
+			map[string]any{"step": "navigate", "to": "/ui/events/e1"},
+			map[string]any{"step": "click", "target": "join"},
+		)})
+	if err != nil {
+		t.Fatalf("a missing target was an error rather than a stop: %v", err)
+	}
+	if resp.Stopped != wire.StopStep {
+		t.Errorf("stopped %q, want %q", resp.Stopped, wire.StopStep)
+	}
+	if resp.Reached != 1 {
+		t.Errorf("reached %d, want 1 -- the navigate landed and the click did not", resp.Reached)
+	}
+}
+
+// realDriver and realBrowser answer what is on PATH, so the browser-side arms
+// skip by name where the pair is absent rather than failing a browserless box.
+func realDriver(t *testing.T) (string, bool) {
+	t.Helper()
+	return lookPath("chromedriver")
+}
+
+func realBrowser(t *testing.T) (string, bool) {
+	t.Helper()
+	for _, n := range []string{"chrome", "chromium", "chromium-browser", "google-chrome"} {
+		if p, ok := lookPath(n); ok {
+			return p, true
+		}
+	}
+	return "", false
+}
+
+func lookPath(name string) (string, bool) {
+	for _, dir := range strings.Split(os.Getenv("PATH"), ":") {
+		if dir == "" {
+			continue
+		}
+		p := dir + "/" + name
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+			return p, true
+		}
+	}
+	return "", false
+}
+
+// TestClosingTheDriverLeavesNoBrowserBehind holds deliverable 1's "nothing is
+// left running" against a REAL browser, which is the only place it can be
+// tested: a fake driver spawns nothing, so every earlier arm for this claim
+// measured a process with no children.
+//
+// AND IT WAS FALSE UNTIL MEASURED. Driving these flow arms, chromedriver was
+// reaped and gone while SIX `chrome:` processes stayed alive, reparented onto
+// the test binary -- `go test` then waited on them until it was killed at 110s
+// having passed in 0.8s. The same orphans explain 19 strays found in this jail
+// earlier the same night. Closing a session ASKS the browser to go and the
+// driver answers before it has gone, so a signal to the driver alone can outrun
+// the browser's exit.
+//
+// THE PROCESS GROUP IS THE ASSERTION, not a count of chrome processes: `kill(0)`
+// to a GROUP answers ESRCH exactly when no member is left, which is the claim
+// stated as a system call rather than as a pattern over `ps` output that a
+// browser could rename its way out of.
+func TestClosingTheDriverLeavesNoBrowserBehind(t *testing.T) {
+	driver, found := realDriver(t)
+	if !found {
+		t.Skip("no chromedriver on PATH: this claim needs a driver that spawns a browser")
+	}
+	browserBin, bfound := realBrowser(t)
+	if !bfound {
+		t.Skip("no chromium on PATH")
+	}
+
+	d, err := Start(context.Background(), driver, browserBin, true)
+	if err != nil {
+		t.Fatalf("starting the real pair: %v", err)
+	}
+	// A SESSION IS NOT ENOUGH: IT MUST HAVE DRIVEN A PAGE. The first version of
+	// this arm opened a session and closed it, and the mutant restoring the
+	// exact code that orphaned six chrome processes SURVIVED -- a blank browser
+	// tears down on a SIGINT where one holding a document does not. An arm that
+	// cannot reach the state the defect needs is not evidence about it, however
+	// directly it asserts the claim.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(w, `<!doctype html><title>held</title>
+<p id="count">0 of 2</p>
+<form id="join" method="post" action="%s/join?token=t"><button type="submit">join</button></form>`,
+			r.URL.Path)
+	}))
+	defer srv.Close()
+	if _, _, err := d.Flow(context.Background(), "alice", srv.URL, "t",
+		wire.FlowRequest{Action: "held", Steps: flowSteps(
+			map[string]any{"step": "navigate", "to": "/ui/events/e1"},
+			map[string]any{"step": "click", "target": "join"},
+		)}); err != nil {
+		_ = d.Close(context.Background())
+		t.Fatalf("driving a page before the teardown: %v", err)
+	}
+	pgid := d.cmd.Process.Pid
+	if err := syscall.Kill(-pgid, 0); err != nil {
+		t.Fatalf("the driver's group is already empty with a session open, so this arm has no "+
+			"subject: %v", err)
+	}
+
+	if err := d.Close(context.Background()); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// THE GROUP MUST BE EMPTY. A browser still running is one `kill(0)` away
+	// from being detected, and the window is bounded: a group that empties
+	// slowly is still a group that empties.
+	var last error
+	for i := 0; i < 100; i++ {
+		last = syscall.Kill(-pgid, 0)
+		if last != nil {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("5s after Close the driver's process group %d still has members (kill(0) = %v): "+
+		"the browser outlived the driver", pgid, last)
+}
+
+// TestTheActorsTokenReachesNoOutput is fable's own arm (coop r9/110): "a test
+// that greps the stage's output for the token and finds it is the arm".
+//
+// THE TOKEN HAS TO TRAVEL IN THE URL because cmd/toy authenticates by an
+// Authorization header or `?token=` and a browser navigation can set no header.
+// So it is in a URL by necessity, and the rule is that it appears nowhere a
+// human or a log will see. The leak is not in what this package FORMATS -- no
+// error here prints the built URL -- it is in what it PASSES THROUGH:
+// chromedriver's message for a failed navigation can echo the URL back, and a
+// page's own text can carry the token, the toy's form action being exactly that.
+//
+// SO THE ARM DRIVES BOTH PATHS WITH A TOKEN THAT CANNOT OCCUR BY ACCIDENT, and
+// greps everything the driver hands back.
+func TestTheActorsTokenReachesNoOutput(t *testing.T) {
+	driver, found := realDriver(t)
+	if !found {
+		t.Skip("no chromedriver on PATH")
+	}
+	browserBin, bfound := realBrowser(t)
+	if !bfound {
+		t.Skip("no chromium on PATH")
+	}
+	const token = "ZZ-SECRET-TOKEN-8f3a1c-ZZ"
+
+	// THE PAGE PRINTS THE TOKEN BACK, which is the toy's own shape: its form
+	// action embeds the session token, so a condition reading that element's
+	// text would carry the credential into a detail.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(w, `<!doctype html><title>t</title><p id="leak">token=%s</p>`,
+			r.URL.Query().Get("token"))
+	}))
+	defer srv.Close()
+
+	d, err := Start(context.Background(), driver, browserBin, true)
+	if err != nil {
+		t.Fatalf("starting the real pair: %v", err)
+	}
+	defer func() { _ = d.Close(context.Background()) }()
+
+	// THE SESSION IS OPENED FIRST, for the reason the wait-vocabulary arm above
+	// states: a budget covering the browser's startup as well as the wait makes
+	// the arm a measurement of how busy the box is.
+	if _, serr := d.SessionFor(context.Background(), "alice"); serr != nil {
+		t.Fatalf("opening a session for alice: %v", serr)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	// A CONDITION THAT CANNOT BE MET, so the detail is produced and carries the
+	// text of an element the page filled with the token.
+	_, detail, ferr := d.Flow(ctx, "alice", srv.URL, token,
+		wire.FlowRequest{Action: "leaky", Steps: flowSteps(
+			// TWO NAVIGATES, so the condition has a real BEFORE to compare
+			// against: the element exists with the token in it, the second
+			// navigate leaves it the same, and the condition therefore cannot
+			// be met -- which is what produces a detail carrying the text.
+			map[string]any{"step": "navigate", "to": "/page"},
+			map[string]any{"step": "navigate", "to": "/page"},
+			map[string]any{"step": "wait", "until": "leak-changed"},
+		)})
+
+	var text string
+	if ferr != nil {
+		text += ferr.Error()
+	}
+	text += detail
+	if text == "" {
+		t.Fatalf("the flow produced neither an error nor a detail, so this arm greps nothing")
+	}
+	if strings.Contains(text, token) {
+		t.Errorf("the actor's token reached the driver's output: %q", text)
+	}
+	// AND THE REDACTION IS VISIBLE rather than a silent deletion, so a reader
+	// knows a value was removed and does not read the gap as "no token".
+	if !strings.Contains(text, Redacted) {
+		t.Errorf("nothing was redacted, so this arm may be passing because the token never "+
+			"reached the text at all: %q", text)
+	}
+}
+
+// TestRedactionTakesWholeValuesAndNotSubstrings holds the boundary rule, which
+// a measured corruption bought. The wait-vocabulary arm drives with the token
+// "t", and a blanket ReplaceAll turned `"never" was not met: #never read absent`
+// into `was no<token redacted> me<token redacted>` -- every letter t in the
+// sentence redacted, and a detail no reader could use.
+//
+// NO LENGTH THRESHOLD, because that is a number chosen rather than measured.
+// The rule is that a token is a whole value: an occurrence counts only where
+// what surrounds it is not itself value-shaped.
+func TestRedactionTakesWholeValuesAndNotSubstrings(t *testing.T) {
+	for _, c := range []struct {
+		name, text, token, want string
+	}{
+		{"a short token inside words is left alone",
+			`"never" was not met: #never read absent`, "t",
+			`"never" was not met: #never read absent`},
+		{"the same short token as a whole value is taken",
+			"token=t&x=1", "t", "token=" + Redacted + "&x=1"},
+		{"a realistic token is taken",
+			"navigating to /p?token=ZZ-SECRET-8f3a1c failed", "ZZ-SECRET-8f3a1c",
+			"navigating to /p?token=" + Redacted + " failed"},
+		{"a token that is part of a longer value is not a match",
+			"token=ZZ-SECRET-8f3a1c-EXTRA", "ZZ-SECRET-8f3a1c",
+			"token=ZZ-SECRET-8f3a1c-EXTRA"},
+		{"an empty token rewrites nothing",
+			"nothing to hide", "", "nothing to hide"},
+		{"every whole occurrence goes, not just the first",
+			"a=K1 b=K1", "K1", "a=" + Redacted + " b=" + Redacted},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := redact(c.text, c.token); got != c.want {
+				t.Errorf("redact(%q, %q)\n got %q\nwant %q", c.text, c.token, got, c.want)
+			}
+		})
+	}
+}

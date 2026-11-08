@@ -53,7 +53,7 @@ func settlingWalk(t *testing.T, seed uint64, end engine.QuiesceState, every int,
 	if asks != nil {
 		p.Prober = countingProber{state: end, asks: asks}
 	}
-	rec, err := schedule.Walk(context.Background(), p, fakeSpawn(t), seed, 8, 1)
+	rec, err := schedule.Walk(context.Background(), p, fakeSpawn(t), schedule.Browser{}, seed, 8, 1)
 	if err != nil {
 		t.Fatalf("seed %d, period %d: %v", seed, every, err)
 	}

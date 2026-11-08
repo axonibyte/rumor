@@ -464,6 +464,17 @@ func (a *adapter) answer(line []byte) any {
 			Contexts:     contexts,
 			Components:   components,
 			Capabilities: capabilities,
+			// THE WORLD'S ADDRESS, REPORTED BECAUSE THIS PROCESS IS THE ONE
+			// THAT KNOWS IT (fable, coop r9/111). `a.base` is set either from
+			// TOY_ADDR or from the address the toy this adapter started
+			// printed, and a browser driving a declared flow has no other way
+			// to learn it -- the engine sees a command and an environment, not
+			// a port chosen at runtime.
+			//
+			// IT IS WHATEVER THIS ADAPTER IS ACTUALLY TALKING TO, not a
+			// configured intention: both paths above assign `a.base` from the
+			// address in hand, so a toy that moved would move this with it.
+			Base: a.base,
 		}
 	case wire.SessionRequest:
 		return a.session(env.ID, m)

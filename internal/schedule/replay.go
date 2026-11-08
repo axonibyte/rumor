@@ -53,7 +53,12 @@ import (
 // finding and the steps alone left a judge unable to tell a trace that no
 // longer causes the finding from a run nobody waited for, and those are
 // different facts a reader acts on differently.
-func Replay(ctx context.Context, p Project, sess *wire.Session, seed uint64, attempt, steps int,
+// THE BROWSER TRAVELS WITH THE REPLAY, because a replay that drove the adapter
+// where the original drove a page is a replay of a different system: the flow's
+// stop reasons come from a document the adapter cannot see. A zero Browser
+// replays through the adapter, which is correct for every run that drove it.
+func Replay(ctx context.Context, p Project, sess *wire.Session, br Browser,
+	seed uint64, attempt, steps int,
 	without []string) (*engine.Finding, []Step, int, error) {
 
 	if steps <= 0 {
@@ -66,7 +71,7 @@ func Replay(ctx context.Context, p Project, sess *wire.Session, seed uint64, att
 		}
 		p.Weights = dropped
 	}
-	rec, err := Walk(ctx, p, sess, seed, steps, attempt)
+	rec, err := Walk(ctx, p, sess, br, seed, steps, attempt)
 	if err != nil {
 		return nil, nil, 0, err
 	}

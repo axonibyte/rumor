@@ -187,7 +187,7 @@ func TestAnAdapterClockIsSetAtEverySealAndTheLedgerTakesTheAnswer(t *testing.T) 
 // have made this one unreachable -- which is what R6.2 measured beside the
 // probes, where a fixture written to trip an arm tripped the parser first.
 func TestAClockedProjectWithNoFormIsRefusedBeforeAnyStep(t *testing.T) {
-	_, err := Walk(context.Background(), Project{ClockControl: true}, &wire.Session{}, 1, 1, 1)
+	_, err := Walk(context.Background(), Project{ClockControl: true}, &wire.Session{}, Browser{}, 1, 1, 1)
 	if err == nil {
 		t.Fatal("a project declaring `[clock]` with no form was walked")
 	}
@@ -198,7 +198,7 @@ func TestAClockedProjectWithNoFormIsRefusedBeforeAnyStep(t *testing.T) {
 	// and fail on something else, or the arm above would also pass against a
 	// walk that refuses every project.
 	_, err = Walk(context.Background(), Project{ClockControl: true, ClockForm: bindings.ClockFaked},
-		&wire.Session{}, 1, 1, 1)
+		&wire.Session{}, Browser{}, 1, 1, 1)
 	if err != nil && strings.Contains(err.Error(), "no `form`") {
 		t.Errorf("a project declaring `faked` was refused for a missing form: %v", err)
 	}

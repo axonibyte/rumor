@@ -27,10 +27,10 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -93,6 +93,23 @@ type Driver struct {
 	// context per actor": the key is the actor, so asking twice answers the
 	// same session and two actors can never be handed one.
 	sessions map[string]string
+
+	// worlds remembers, per system address, whether anything answers there --
+	// nil for proved, an error for the refusal to repeat.
+	//
+	// IT EXISTS BECAUSE A NAVIGATION TO NOTHING SUCCEEDS. Measured: with the
+	// adapter reporting `http://127.0.0.1:1`, chromedriver answered the
+	// navigate 200 and loaded CHROME'S OWN ERROR PAGE, so the click that
+	// followed found no element and the walk recorded "the page would not
+	// perform it" -- a REFUSAL attributed to a system that was never reached.
+	// W3C WebDriver carries no HTTP status for a navigation, so the browser
+	// cannot be asked; the address can.
+	//
+	// CACHED BECAUSE IT IS ONE FACT PER RUN, not one per step: a walk drives
+	// many flows against one base and a dial per navigate would be a cost with
+	// no second answer. A world that dies mid-run fails at the browser instead,
+	// which is a true report of a different thing.
+	worlds map[string]error
 }
 
 // freePort asks the kernel for a port and gives it back.
@@ -131,6 +148,20 @@ func Start(ctx context.Context, driverPath, browserPath string, headless bool) (
 		return nil, fmt.Errorf("no local port for the webdriver: %w", err)
 	}
 	cmd := exec.Command(driverPath, fmt.Sprintf("--port=%d", port))
+	// ITS OWN PROCESS GROUP, SO THE WHOLE TREE CAN BE STOPPED. A webdriver
+	// SPAWNS THE BROWSER, and signalling the driver alone does not take the
+	// browser with it -- MEASURED 2026-11-08 while driving the flow arms: with
+	// chromedriver reaped and gone, six `chrome:` processes were still alive,
+	// reparented onto the test binary, and `go test` waited on them until it was
+	// killed at 110s having passed in 0.8s. The same orphans explain 19 stray
+	// processes found in this jail earlier the same night.
+	//
+	// SO "NOTHING IS LEFT RUNNING" NEEDED THIS TO BE TRUE. Closing the sessions
+	// asks the browser to go and the driver acknowledges before it has gone, so
+	// a signal to the driver can outrun the browser's own exit. A group makes
+	// the guarantee structural instead of a race: one signal reaches the driver
+	// and everything it started.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("starting %s: %w", driverPath, err)
 	}
@@ -141,8 +172,8 @@ func Start(ctx context.Context, driverPath, browserPath string, headless bool) (
 		cmd:      cmd,
 		http:     &http.Client{Timeout: 30 * time.Second},
 		headless: headless,
-		sessions: map[string]string{},
-		exited:   make(chan struct{}),
+		sessions: map[string]string{}, worlds: map[string]error{},
+		exited: make(chan struct{}),
 	}
 	go func() {
 		_ = cmd.Wait()
@@ -311,14 +342,29 @@ func (d *Driver) stopProcess() {
 	if d.cmd == nil || d.cmd.Process == nil {
 		return
 	}
-	_ = d.cmd.Process.Signal(os.Interrupt)
+	// THE GROUP AND NOT THE PROCESS: a negative pid signals the whole group, so
+	// the browser the driver spawned goes with it. The driver's own pid is the
+	// group id because Start asked for Setpgid.
+	pid := d.cmd.Process.Pid
+	signalGroup(pid, syscall.SIGTERM)
 	select {
 	case <-d.exited:
 	case <-time.After(StopGrace):
-		_ = d.cmd.Process.Kill()
+		signalGroup(pid, syscall.SIGKILL)
 		<-d.exited
 	}
+	// AND AGAIN AFTER THE REAP, because the driver exiting is not the browser
+	// exiting: the first signal is the polite one and a browser mid-teardown can
+	// outlive it. A signal to a group with no members left is harmless, which is
+	// what makes this cheap rather than conditional.
+	signalGroup(pid, syscall.SIGKILL)
 	d.cmd = nil
+}
+
+// signalGroup signals a whole process group and says nothing about the result:
+// the group may already be empty, which is the success case and not an error.
+func signalGroup(pid int, sig syscall.Signal) {
+	_ = syscall.Kill(-pid, sig)
 }
 
 // call is the one place a WebDriver request is made, so the base, the timeout

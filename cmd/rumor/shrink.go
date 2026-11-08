@@ -192,7 +192,16 @@ func shrinkFound(ctx context.Context, dir string, prep platform.Report, p schedu
 				}
 				proj.Prober = pr
 			}
-			f, ran, open, rerr := schedule.Replay(c, proj, s, seed, 1, steps, without)
+			// THE SHRINKER REPLAYS THROUGH THE ADAPTER, AND THAT IS A NAMED
+			// REMAINDER rather than a decision. A browser-driven failure
+			// shrunk here re-drives the adapter's simulation of the page, so a
+			// finding that depended on the document may not reproduce and the
+			// shrink would report a seed it could not narrow. Threading the
+			// stage's browser into the shrink is deliverable 2's successor's,
+			// not this head's: the shrink opens its own sessions and owns no
+			// browser, so there is nothing here to hand it yet.
+			f, ran, open, rerr := schedule.Replay(c, proj, s, schedule.Browser{},
+				seed, 1, steps, without)
 			if rerr != nil {
 				return shrink.Candidate{Steps: ran, PendingOpen: open}, rerr
 			}

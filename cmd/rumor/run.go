@@ -11,6 +11,10 @@ import (
 	"strings"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	// webdriver, not browser: this file already has a `browser` local for the
+	// handover, and cmd/rumor/browser.go names the import the same way for the
+	// same reason.
+	webdriver "forge.axonibyte.com/axonibyte/rumor/internal/browser"
 	"forge.axonibyte.com/axonibyte/rumor/internal/concurrency"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
@@ -352,9 +356,53 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 	// own documents are wrong", and a project that declared a stage this build
 	// advertises as runnable has done nothing wrong. 2 is "what an observation
 	// would have said is unknown", which is exactly the state.
+	// ONE BROWSER FOR THE RUN, OWNED HERE -- ONCE THERE IS AN ADDRESS TO DRIVE
+	// IT AT. fable's ruling
+	// (coop r9/110) is that the stage owns the lifecycle and the walk is handed
+	// what it drives through -- and the stages are independent closures in any
+	// selected order, so a walk that ran before the `browser` stage would
+	// otherwise be handed a driver nothing had started yet. Owning it for the
+	// whole run is what makes "one context per actor" mean one browser session
+	// per actor across the run rather than per stage.
+	//
+	// AND IT IS ASKED FOR, NOT ASSUMED, which is the cost lesson of this head's
+	// predecessor: run 1109 died at the step's 1800s budget because the browser
+	// was started on every run, and `tests/run` makes 55 of them. So one flag
+	// means "this run uses a real browser" and governs both the stage's probe
+	// and the walk's driving. WHETHER THAT BECOMES THE DEFAULT IS A MEASUREMENT
+	// NOBODY HAS YET: the per-launch cost is 0.8-0.9s on two boxes, which does
+	// not explain 1109's eleven minutes, and flipping a default on an
+	// unexplained figure is what this phase has already paid for once.
+	//
+	// AND THE ADDRESS IS NOT THIS FUNCTION'S TO SUPPLY. A flow's `navigate`
+	// resolves against the system's base URL, and the ADAPTER reports it on
+	// describe (fable, coop r9/111, on the gap raised at rumor/1943): it is the
+	// one thing that knows, having either started the system or been handed
+	// TOY_ADDR. So the handover below carries a DRIVER AND NOTHING ELSE -- the
+	// walk reads the base off the session it is already holding, and there is
+	// no parameter here for a guessed host to travel in. An adapter that
+	// reports no base is a named refusal at the walk, which is where a flow
+	// that needs one finds out.
+	var browser schedule.Browser
+	if opts.browserCheck {
+		if b, drv, _ := browserDriver(); b != "" {
+			d, derr := webdriver.Start(ctx, drv, b, !opts.headed)
+			if derr != nil {
+				// NOT A REFUSAL: a pair that will not start is this box being
+				// short of something, and the browser stage reports it by name
+				// with its own reason. The walk falls back to the adapter,
+				// which is what every run did before this head.
+				_, _ = fmt.Fprintf(stderr, "run: no browser for this run: %v\n", derr)
+			} else {
+				defer func() { _ = d.Close(context.WithoutCancel(ctx)) }()
+				browser = schedule.Browser{Driver: d}
+			}
+		}
+	}
+
 	runners := map[string]func() int{
 		stage.API: func() int {
-			return walkStage(ctx, dir, prep, brep.Bindings.Probes, p, clockStartLevel,
+			return walkStage(ctx, dir, prep, brep.Bindings.Probes, p, clockStartLevel, browser,
 				seed, steps, stdout, stderr)
 		},
 		stage.Concurrency: func() int {
@@ -466,7 +514,7 @@ func missingRunners(stages []string, runners map[string]func() int) []string {
 // prevent -- and the shape this file warns about one field up, where a knob
 // resolved in two places silently does nothing in one of them.
 func walkStage(ctx context.Context, dir string, prep platform.Report, probes []bindings.Probe,
-	p schedule.Project, clockStartLevel platform.ClockStartLevel,
+	p schedule.Project, clockStartLevel platform.ClockStartLevel, br schedule.Browser,
 	seed uint64, steps int, stdout, stderr io.Writer) int {
 
 	sess, err := wire.Open(ctx, wire.Spawn{
@@ -500,7 +548,7 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 		p.Prober = pr
 	}
 
-	rec, werr := schedule.Walk(ctx, p, sess, seed, steps, 1)
+	rec, werr := schedule.Walk(ctx, p, sess, br, seed, steps, 1)
 	// THE RECORD IS PRINTED EVEN WHEN THE WALK STOPPED EARLY, because the
 	// steps it did take are what a reader needs to see where it stopped.
 	for _, s := range rec.Steps {
@@ -685,17 +733,31 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 	// relatively rather than against a constant -- so the cost is republishing
 	// three figures, against permanently losing the difference between a zero
 	// and a build that cannot count.
-	flows := 0
+	flows, drivenHere := 0, 0
 	for _, st := range rec.Steps {
 		if st.Flow {
 			flows++
 		}
+		// AND HOW MANY OF THEM A REAL BROWSER DROVE, counted separately
+		// because the two are different facts as of R9.1b: every flow before
+		// this head went through the adapter, so one count said both things and
+		// now it cannot. A reader of a run with the flow count alone cannot
+		// tell a page from a simulation of one.
+		//
+		// PRINTED AT ZERO TOO, for the reason the paragraph above gives about
+		// the flow count itself: an omitted zero reads exactly like a build
+		// that never learned to count, and that is the shape that let `fuzz`
+		// ship known, unrunnable and declared by nobody.
+		if st.FlowBrowser {
+			drivenHere++
+		}
 	}
 	if _, err := fmt.Fprintf(stdout,
 		"run: %s -- seed %d, %d step(s), %d handle(s), %d session(s), "+
-			"%d observation(s), %d step(s) through `flow`; %d rollback provider(s) registered\n",
+			"%d observation(s), %d step(s) through `flow`, %d through a real browser; "+
+			"%d rollback provider(s) registered\n",
 		filepath.Base(dir), rec.Seed, len(rec.Steps), len(rec.HandleSequence()),
-		rec.Sessions, rec.Observations, flows, len(rollback.Registered())); err != nil {
+		rec.Sessions, rec.Observations, flows, drivenHere, len(rollback.Registered())); err != nil {
 		_, _ = fmt.Fprintf(stderr, "run: writing the verdict: %v\n", err)
 		return 2
 	}

@@ -268,6 +268,23 @@ type Step struct {
 	FlowReached int
 	FlowStopped string
 
+	// FlowBrowser is whether a REAL browser drove this step's flow, rather than
+	// the adapter standing in for one.
+	//
+	// IT IS A SECOND FACT AND NOT A RESTATEMENT OF `Flow`, and the distance
+	// between them is the whole of R9.1b: before this head every flow went
+	// through the adapter, so "a flow was driven" and "a page was driven" were
+	// the same sentence, and now they are not. A reader of a record carrying
+	// only `Flow` cannot tell a page from a simulation of one.
+	//
+	// AND IT IS HERE BECAUSE THE PRODUCT HAS TO BE ABLE TO SAY IT, which is the
+	// lesson `Flow`'s own comment records one field up: `driven.Browser` was
+	// set and read by nothing for a commit, so the routing arm asserted the
+	// walk's internal value while no record or output could distinguish the two
+	// drivers. An observable the product does not carry is a claim only a test
+	// can see.
+	FlowBrowser bool
+
 	// Drew is the scalars this step's action DREW, in the order the action
 	// declares its arguments.
 	//
@@ -874,7 +891,12 @@ func (c *runClock) advance(a clockAsker, delta int64) (int64, error) {
 	return c.t, nil
 }
 
-func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps, attempt int) (Record, error) {
+// THE BROWSER IS A PARAMETER AND NOT PART OF Project, because Project is "what
+// a walk needs from a project's DOCUMENTS" and a running browser is read from no
+// file. The stage starts it, owns its lifecycle and stops it; the walk is handed
+// it and only drives (fable, coop r9/110).
+func Walk(ctx context.Context, p Project, sess *wire.Session, br Browser,
+	seed uint64, steps, attempt int) (Record, error) {
 	// SettleEvery IS STAMPED AT THE START and not at the periodic block,
 	// because a project that declares a period the walk never reaches must
 	// still report the period it declared -- stamping it where the pass runs
@@ -927,6 +949,13 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 	// second world with its own ids, and reusing the first attempt's tokens
 	// would carry one attempt's state into another.
 	sessions := NewSessions(sess)
+	// THE ADDRESS COMES OFF THE ADAPTER AND NOT OFF THE CALLER (fable, coop
+	// r9/111). The adapter is the one thing that knows where its world is --
+	// it either started the system or was handed TOY_ADDR -- and it reports it
+	// on describe, so the walk reads it from the session it is already holding.
+	// Nothing in between gets to substitute a host: there is no parameter here
+	// to put one in.
+	sessions.UseBrowser(br.Driver, sess.Described().Base)
 	// ONE REGISTER FOR THE WHOLE ATTEMPT, for the reason the holder is one: a
 	// `pending` opened at step 2 is re-checked at the actor's next observation
 	// of the same query, which is a fact about the attempt and not about a
@@ -1006,7 +1035,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, seed uint64, steps
 		// `quiesce_timeout` do, and `stopsTheWalk` carries the word so no path
 		// walks past it.
 		if pend.waiting() {
-			found, timedOut, rerr := resumeFlow(sess, sessions, l, &pend, &rec.Steps[pendAt])
+			found, timedOut, rerr := resumeFlow(ctx, sess, sessions, l, &pend, &rec.Steps[pendAt])
 			if rerr != nil {
 				return rec, fmt.Errorf("schedule: step %d: %w", n, rerr)
 			}
@@ -2131,16 +2160,28 @@ func asFloat(v any) (float64, bool) {
 // record is an account of the DRAWS, and a resume is not a draw. So the step
 // that stopped carries both facts in the end -- where it stopped, and whether
 // the re-check got it through.
-func resumeFlow(sess *wire.Session, sessions *Sessions, l *ledger.Ledger,
-	pend *pendingFlow, step *Step) (engine.Finding, bool, error) {
+func resumeFlow(ctx context.Context, sess *wire.Session, sessions *Sessions,
+	l *ledger.Ledger, pend *pendingFlow, step *Step) (engine.Finding, bool, error) {
 	a := pend.Action
 	token, err := sessions.Token(pend.Actor, a.Context)
 	if err != nil {
 		return engine.Finding{}, false, err
 	}
-	resp, err := sess.Flow(wire.FlowRequest{
-		Action: a.Name, Token: token, From: pend.Reached, Steps: pend.Steps,
-	})
+	// THE RESUME GOES TO WHOEVER DROVE IT, which is not a detail: a flow that a
+	// browser started and the adapter resumed would re-check a condition against
+	// a page the adapter cannot see, and the StopWait the engine re-checks is
+	// precisely a condition on that page. One driver for the flow and its
+	// resume, or the re-check means nothing.
+	var resp wire.FlowResponse
+	if br, base := sessions.Browser(); br != nil {
+		resp, _, err = br.Flow(ctx, pend.Actor, base, token, wire.FlowRequest{
+			Action: a.Name, Token: token, From: pend.Reached, Steps: pend.Steps,
+		})
+	} else {
+		resp, err = sess.Flow(wire.FlowRequest{
+			Action: a.Name, Token: token, From: pend.Reached, Steps: pend.Steps,
+		})
+	}
 	if err != nil {
 		return engine.Finding{}, false, fmt.Errorf("resuming %s's flow from %d: %w",
 			a.Name, pend.Reached, err)
@@ -2340,11 +2381,80 @@ type driven struct {
 	Flowed  bool
 	Stopped string
 	Reached int
+
+	// Browser is whether a REAL browser drove this flow rather than the
+	// adapter, and it is here for the same reason Flowed is: a mutant found
+	// that `step.Flow` was set from the action's CONTEXT, so the run reported a
+	// flow whether or not one went out. "A flow was driven" and "a browser
+	// drove it" are two facts, and a reader of a run that cannot tell them
+	// apart cannot tell a page from a simulation of one.
+	Browser bool
+
+	// Detail is what a failing wait saw. The wire has no field for it, so it
+	// travels beside the response (fable, coop r9/110).
+	Detail string
 }
 
-func drive(sess *wire.Session, a bindings.Action, token string, args map[string]any,
+// navigates reports whether a declared flow has a step that needs the system's
+// address. ONE READER OF THAT FACT, so the refusal above and any later caller
+// cannot disagree about which steps need a base.
+func navigates(flow []bindings.Step) bool {
+	for _, st := range flow {
+		if st.Step == bindings.StepNavigate {
+			return true
+		}
+	}
+	return false
+}
+
+func drive(ctx context.Context, sess *wire.Session, ss *Sessions, actor string,
+	a bindings.Action, token string, args map[string]any,
 	from int, steps []map[string]any) (driven, error) {
+
 	if a.Context == bindings.ContextBrowser && len(a.Flow) > 0 {
+		// A REAL BROWSER DRIVES IT WHERE THERE IS ONE, which is R9.1b's
+		// deliverable 2 and the promise head 1's own line made: "driving them
+		// through the browser is R9.1b's next head". The adapter stays the
+		// stand-in for every box without a drivable pair, and wire.go:79 is
+		// already written that way -- KindFlow is "the steps a browser driver
+		// executes".
+		//
+		// THE SHAPE IS THE SAME EITHER WAY. Both answer Reached, Stopped and
+		// the system's Response, so the engine's resume, its StopWait re-check
+		// and its ui_timeout read identically and nothing downstream has to ask
+		// who drove.
+		if br, base := ss.Browser(); br != nil {
+			// AN ABSENT BASE IS A NAMED REFUSAL AND NEVER A GUESS (fable, coop
+			// r9/111). `base` is optional in contract 2, so an adapter may
+			// legitimately omit it -- and a `navigate` with no address has
+			// nowhere to go. Defaulting to localhost would drive a REAL browser
+			// at whatever happens to be listening on this box, and a flow that
+			// passed against the wrong world is worse than one that refused.
+			//
+			// IT IS CONDITIONED ON `navigate` AND NOT ON THE BROWSER, because
+			// the other three steps need no address: a flow of fill, click and
+			// wait acts on the page the driver already has, and refusing it for
+			// a missing base would refuse a flow that has no use for one.
+			if base == "" && navigates(a.Flow) {
+				return driven{}, fmt.Errorf("%s declares a `navigate` and this adapter's "+
+					"describe carries no `base`, so there is no address to resolve it "+
+					"against: `base` is optional in contract %q and this adapter omitted "+
+					"it. A host is not guessed here -- the adapter is the one thing that "+
+					"knows where its world is, so it is the one thing that can report it",
+					a.Name, wire.ContractVersion)
+			}
+			resp, detail, ferr := br.Flow(ctx, actor, base, token, wire.FlowRequest{
+				Action: a.Name, Token: token, From: from, Steps: steps,
+			})
+			if ferr != nil {
+				return driven{}, fmt.Errorf("driving %s's flow from %d through the browser: %w",
+					a.Name, from, ferr)
+			}
+			return driven{
+				Answer: resp.Response, Flowed: true, Browser: true, Detail: detail,
+				Stopped: string(resp.Stopped), Reached: resp.Reached,
+			}, nil
+		}
 		resp, ferr := sess.Flow(wire.FlowRequest{
 			Action: a.Name, Token: token, From: from, Steps: steps,
 		})
@@ -2446,12 +2556,13 @@ func perform(ctx context.Context, sess *wire.Session, sessions *Sessions,
 			return out, err
 		}
 	}
-	got, err := drive(sess, a, token, args, 0, steps)
+	got, err := drive(ctx, sess, sessions, step.Actor, a, token, args, 0, steps)
 	if err != nil {
 		return out, err
 	}
 	// RECORDED FROM WHAT WAS SENT, not from the action's context: see `driven`.
 	step.Flow = got.Flowed
+	step.FlowBrowser = got.Browser
 	answer, ids, stopped, reached := got.Answer, got.IDs, got.Stopped, got.Reached
 
 	// WHAT THE SYSTEM ANSWERED, READ BEFORE ANYTHING IS RECORDED (R7.4,

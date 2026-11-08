@@ -324,6 +324,32 @@ type DescribeResponse struct {
 	Contexts     []string      `json:"contexts"`
 	Components   []Component   `json:"components"`
 	Capabilities Capabilities  `json:"capabilities"`
+
+	// Base is where the adapter's world is reachable over HTTP, and it is here
+	// because THE ADAPTER IS THE ONE THING THAT KNOWS: it either started the
+	// system itself or was handed an address for one, and nothing else in a run
+	// sees both cases (fable, coop r9/111, ruling on ibis rumor/1943).
+	//
+	// IT EXISTS FOR A BROWSER TO NAVIGATE AGAINST. A declared flow's `navigate`
+	// step resolves against it, and before this field the engine had no address
+	// at all -- `platform.Adapter` carries a command, a directory and an
+	// environment, and the one stage that knows an address starts its own world
+	// to get it. The alternatives were refused by name: declaring it in
+	// platform.toml duplicates what the adapter already holds and will drift,
+	// and making the walk own the world moves ownership for a reason that is
+	// not the walk's.
+	//
+	// ADDITIVE, SO THE CONTRACT STAYS "2" (same ruling, and the same shape as
+	// ObserveResponse.Missing below): an adapter that never sets it is
+	// unchanged, `omitempty` keeps it off the wire for every existing answer,
+	// and no persisted artifact gains a field. The strict decoder is what makes
+	// the addition visible rather than silent -- before it, an adapter sending
+	// `base` was REFUSED as an unknown field.
+	//
+	// AN ABSENT BASE IS NOT A DEFAULT. There is no localhost to fall back to: a
+	// flow that navigates against an adapter whose describe carries no base is
+	// a NAMED REFUSAL at the walk, never a guessed host or port.
+	Base string `json:"base,omitempty"`
 }
 
 // ExecuteResponse reports what the action did. IDs is keyed by the names the
@@ -481,8 +507,15 @@ var requests = map[Kind]shape{
 }
 
 var responses = map[Kind]shape{
+	// `base` IS OPTIONAL AND ADDITIVE, so contract "2" stands (fable, coop
+	// r9/111): an adapter that reports no address is unchanged and every
+	// existing describe still decodes. THE TABLE IS THE SECOND INSTRUMENT over
+	// the struct tag, and it caught this addition exactly as it caught
+	// `missing` below -- the field went on the struct first and a real
+	// toy-adapter's describe was refused for a field the struct could hold.
 	KindDescribe: {
 		required: []string{"kind", "contract", "id", "actions", "observations", "contexts", "components", "capabilities"},
+		optional: []string{"base"},
 	},
 	KindExecute: {required: []string{"kind", "contract", "id", "ids", "response"}},
 	KindFlow: {

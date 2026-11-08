@@ -181,7 +181,7 @@ func walk(t *testing.T, seed uint64, steps int) schedule.Record {
 		}
 		p.Prober = pr
 	}
-	rec, werr := schedule.Walk(ctx, p, sess, seed, steps, 1)
+	rec, werr := schedule.Walk(ctx, p, sess, schedule.Browser{}, seed, steps, 1)
 	if werr != nil {
 		t.Fatalf("the walk could not run: %v", werr)
 	}
@@ -344,7 +344,7 @@ func fakeSpawn(t *testing.T) *wire.Session {
 // the arm's subject.
 func judged(t *testing.T, seed uint64, end engine.QuiesceState) schedule.Record {
 	t.Helper()
-	rec, err := schedule.Walk(context.Background(), judgedProject(t, end), fakeSpawn(t), seed, 8, 1)
+	rec, err := schedule.Walk(context.Background(), judgedProject(t, end), fakeSpawn(t), schedule.Browser{}, seed, 8, 1)
 	if err != nil {
 		t.Fatalf("seed %d: %v", seed, err)
 	}

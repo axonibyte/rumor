@@ -100,6 +100,7 @@ read identically to a real project missing its `bindings.toml`.
 | `contexts` | array of strings | `session`'s `context` must name one of these, and the reachability arm above is computed over them |
 | `components` | array of `{name, stateful}` | the arm on a stateful component no rollback provider covers compares these against `[[rollback]].covers` in `platform.toml`. Without `components` that arm has nothing to compare and would pass vacuously |
 | `capabilities` | object: `{faults, volume, upgrade}`, three arrays of names | the arm on a declared fault, volume target or upgrade with no capability or path behind it. Each array may be empty, and an empty array is the answer that makes the arm fire rather than an omission that makes it vacuous |
+| `base` | string, **optional** | a declared flow's `navigate` step, driven through a real browser. It is where the adapter's world is reachable over HTTP, and the adapter is the one thing that knows -- it either started the system itself or was handed an address for one (fable, coop r9/111). OMITTED IS A VALID DESCRIBE and the contract stays `"2"`: an adapter that serves no HTTP world reports none, and a flow that NAVIGATES against such an adapter is a named refusal at the walk, never a guessed host or port. An adapter reports what it is actually talking to rather than a configured intention |
 
 `context` on an action is a context name or `"none"` for an action taken
 without a session.

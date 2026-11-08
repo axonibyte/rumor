@@ -351,7 +351,7 @@ func tryWalkProfile(t *testing.T, dir string, seed uint64, steps int, profile st
 		ClockZone:  brep.Bindings.ClockZone,
 		ClockStart: clockStartOf(prep.Platform, profile, brep.Bindings.ClockStart),
 		Profile:    profile,
-	}), sess, seed, steps, 1)
+	}), sess, schedule.Browser{}, seed, steps, 1)
 }
 
 // prober wires the project's own quiesce probes, which is what cmd/rumor does
@@ -467,7 +467,7 @@ func replayed(t *testing.T, dir string, seed uint64, steps int, profile string) 
 		ClockZone:  brep.Bindings.ClockZone,
 		ClockStart: clockStartOf(prep.Platform, profile, brep.Bindings.ClockStart),
 		Profile:    profile,
-	}), sess, seed, 1, steps, nil)
+	}), sess, schedule.Browser{}, seed, 1, steps, nil)
 }
 
 func clockFacts(facts []ledger.Fact) []ledger.Fact {

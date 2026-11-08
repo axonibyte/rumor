@@ -242,10 +242,18 @@ func conductRefusal(r *refusedTokens) (string, bool) {
 // browserStage is R9's `browser` stage, dispatched by `rumor run` under the one
 // name (issue 120, deliverable 5).
 //
-// WHAT THIS HEAD DOES AND WHAT IT DOES NOT. It makes the stage DISPATCHED and
-// reports what it met: a driver, or none. It drives no flow yet -- that is
-// R9.1's next head and the line says so, because a stage that printed nothing
-// would be indistinguishable from one that ran and found nothing.
+// WHAT THIS STAGE DOES AND WHAT THE WALK DOES. It reports what it met -- a
+// complete pair, one half of one, or none -- and under `--browser-check` it
+// DRIVES ONE PAGE to turn "complete" into "drivable here", because presence on
+// PATH is not a run. It prints in every case, since a stage that printed
+// nothing would be indistinguishable from one that ran and found nothing.
+//
+// IT DOES NOT DRIVE THE PROJECT'S DECLARED FLOWS. fable ruled (coop r9/110)
+// that the WALK drives those and the stage owns the browser's lifecycle, so
+// this line is the PROBE's verdict and the summary's `through a real browser`
+// count is the walk's. The two are separate drivers and the wording keeps them
+// apart: this stage cannot see what the walk did, and saying otherwise would be
+// a count of someone else's work.
 //
 // A MISSING DRIVER IS A SKIP AND NOT A REFUSAL, by issue 120's deliverable 5:
 // the project is not wrong and the build is not broken, so exit 0 with the
@@ -295,7 +303,7 @@ func browserStage(ctx context.Context, b bindings.Bindings, opts runOpts, stdout
 		mode = "headed"
 	}
 	if !opts.browserCheck {
-		_, _ = fmt.Fprintf(stdout, "run:   %s -- browser %s with %s on PATH (%s), %s when driven: the pair is COMPLETE and this stage has not driven it, so whether it RUNS here is UNKNOWN -- pass --browser-check to make it try. %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter, and driving them through the browser is R9.1b's next head\n",
+		_, _ = fmt.Fprintf(stdout, "run:   %s -- browser %s with %s on PATH (%s), %s when driven: the pair is COMPLETE and this stage has not driven it, so whether it RUNS here is UNKNOWN -- pass --browser-check to make it try. %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter on this run -- pass --browser-check and it drives them through this pair instead, which the summary's `through a real browser` count reports\n",
 			stage.Browser, browser, driver, how, mode, flows)
 		return conductVerdict(tokens, stderr)
 	}
@@ -318,7 +326,7 @@ func browserStage(ctx context.Context, b bindings.Bindings, opts runOpts, stdout
 	if leaked != "" {
 		closed = "one session opened, AND NOT CLOSED: " + leaked
 	}
-	_, _ = fmt.Fprintf(stdout, "run:   %s -- browser %s driven by %s (%s, %s): DRIVABLE, %s. %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter, and driving them through the browser is R9.1b's next head\n",
+	_, _ = fmt.Fprintf(stdout, "run:   %s -- browser %s driven by %s (%s, %s): DRIVABLE, %s. %d action(s) declare a flow and THIS STAGE drove none; the walk drives declared flows through a pair of its OWN on a run given one -- this line is the probe's and the summary's `through a real browser` count is the walk's\n",
 		stage.Browser, browser, driver, how, mode, closed, flows)
 	return conductVerdict(tokens, stderr)
 }

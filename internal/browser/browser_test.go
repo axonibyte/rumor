@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -33,7 +34,66 @@ func TestMain(m *testing.M) {
 	if fakedriver.MainIfAsked() {
 		return
 	}
-	os.Exit(m.Run())
+	// THE PACKAGE AUDITS ITS OWN LEAVINGS, by a before-and-after diff rather
+	// than a count. MEASURED 2026-11-08: with the driver signalled instead of
+	// its process group, these arms left 8 `chrome:` processes and a
+	// chromedriver alive -- orphans that reparented onto the test binary and
+	// held `go test` open until it was killed at 110s having passed in 2s.
+	//
+	// WHY HERE AND NOT IN AN ARM. The leak shows in whichever arm started the
+	// browser, so a per-driver assertion sees only its own group and the arm
+	// that leaks is the one without the check. A diff over the whole account
+	// catches any arm, including ones not written yet, and the BEFORE set is
+	// what keeps it honest in a jail where something else may be running: only
+	// what this run added can fail it.
+	before := browserProcesses()
+	code := m.Run()
+	if leaked := newSince(before); len(leaked) > 0 && code == 0 {
+		fmt.Fprintf(os.Stderr, "\ninternal/browser left %d browser process(es) running: %s\n"+
+			"a driver that outlives its arm holds the harness open and accumulates in the jail\n",
+			len(leaked), strings.Join(leaked, ", "))
+		code = 1
+	}
+	os.Exit(code)
+}
+
+// browserProcesses is the pids of every chromedriver and chrome this account can
+// see, which on a jail is this account's own.
+func browserProcesses() map[string]bool {
+	out := map[string]bool{}
+	ps, err := exec.Command("ps", "-axww", "-o", "pid=", "-o", "command=").Output()
+	if err != nil {
+		return out
+	}
+	for _, line := range strings.Split(string(ps), "\n") {
+		if !strings.Contains(line, "chromedriver") && !strings.Contains(line, "chrome:") {
+			continue
+		}
+		if f := strings.Fields(line); len(f) > 0 {
+			out[f[0]] = true
+		}
+	}
+	return out
+}
+
+// newSince answers the browser processes that were not there before, waiting a
+// little first: a teardown is allowed to be slower than the last arm's return.
+func newSince(before map[string]bool) []string {
+	var leaked []string
+	for i := 0; i < 40; i++ {
+		leaked = nil
+		for pid := range browserProcesses() {
+			if !before[pid] {
+				leaked = append(leaked, pid)
+			}
+		}
+		if len(leaked) == 0 {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	sort.Strings(leaked)
+	return leaked
 }
 
 // fakeDriver points Start at this test binary and returns the journal to read.

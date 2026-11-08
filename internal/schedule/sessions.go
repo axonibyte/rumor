@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	"context"
 	"fmt"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
@@ -43,6 +44,24 @@ type Sessions struct {
 	sess *wire.Session
 	held map[sessionKey]string
 
+	// browser is the live browser a browser-context flow is driven through,
+	// and base is the system's address that a `navigate` step resolves against.
+	//
+	// IT LIVES HERE BECAUSE A BROWSER SESSION IS PER ACTOR PER CONTEXT, which
+	// is what this type is already for: the paragraphs above reason about an
+	// actor's browser context holding a token of its own, and deliverable 1's
+	// driver keys its sessions by actor for the same reason. Putting it on
+	// Project was refused -- that struct is "what a walk needs from a project's
+	// DOCUMENTS", and a running browser is not read from a file.
+	//
+	// THE STAGE OWNS THE LIFECYCLE AND THE WALK ONLY DRIVES (fable, coop
+	// r9/110): the browser stage starts the pair and stops it, and hands the
+	// walk what it needs to drive a flow. Nil here is the ordinary case -- a
+	// project with no browser flows, or a box with no drivable pair -- and the
+	// walk falls back to the adapter, which is what every run did before this.
+	browser FlowDriver
+	base    string
+
 	// acquired counts the `session` exchanges actually sent, which is how a
 	// test can tell "held and reused" from "asked for again": the token
 	// returned is identical either way, so a cache that never cached would be
@@ -50,10 +69,51 @@ type Sessions struct {
 	acquired int
 }
 
+// FlowDriver drives one action's declared UI steps through a real browser and
+// answers in the wire's own shape, so the engine's resume reads the same whether
+// the adapter or a browser drove.
+//
+// IT IS AN INTERFACE HERE SO THE ENGINE DOES NOT IMPORT A DRIVER. internal/browser
+// implements it; schedule names only what it needs, which keeps the walk
+// testable with a stand-in and keeps a browser out of every build that has no
+// use for one.
+//
+// THE DETAIL IS SEPARATE because wire.FlowResponse has no field for it: a
+// condition that was not met names itself and the last text observed, and that
+// sentence has nowhere to go on the wire (fable, coop r9/110).
+type FlowDriver interface {
+	Flow(ctx context.Context, actor, base, token string, req wire.FlowRequest) (
+		resp wire.FlowResponse, detail string, err error)
+}
+
+// Browser is the live browser a walk drives flows through, as the stage that
+// started it hands it over (fable, coop r9/110). The zero value drives nothing,
+// which is every project without browser flows and every box without a
+// drivable pair -- and in that case the adapter answers as it always has.
+//
+// IT CARRIES NO ADDRESS, AND THAT IS DELIBERATE. The system's base URL comes
+// from the ADAPTER'S OWN DESCRIBE (fable, coop r9/111), and `Walk` reads it off
+// the session it was handed -- so there is no field here for a caller to put a
+// guessed host in, and no second place the address could come from. An adapter
+// that reports none is a named refusal at the walk, not a default.
+type Browser struct {
+	Driver FlowDriver
+}
+
 // NewSessions holds tokens against one adapter session.
 func NewSessions(sess *wire.Session) *Sessions {
 	return &Sessions{sess: sess, held: map[sessionKey]string{}}
 }
+
+// UseBrowser hands this walk the browser the stage started, and the address its
+// `navigate` steps resolve against. Called once, before the walk begins.
+func (s *Sessions) UseBrowser(d FlowDriver, base string) {
+	s.browser, s.base = d, base
+}
+
+// Browser is the live browser and its base address, or a nil driver when the
+// flows are to go through the adapter as they always have.
+func (s *Sessions) Browser() (FlowDriver, string) { return s.browser, s.base }
 
 // Acquired is how many `session` requests have been sent.
 func (s *Sessions) Acquired() int { return s.acquired }

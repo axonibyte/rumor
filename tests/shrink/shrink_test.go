@@ -261,7 +261,7 @@ func TestTheToyBugsAreFoundByAWalkAndShrinkToUnderFiveActions(t *testing.T) {
 				}
 				p.Prober = pr
 			}
-			rec, werr := schedule.Walk(ctx, p, sess, tc.seed, 10, 1)
+			rec, werr := schedule.Walk(ctx, p, sess, schedule.Browser{}, tc.seed, 10, 1)
 			_ = sess.Close()
 			if werr != nil {
 				t.Fatalf("the walk could not run: %v", werr)
@@ -339,7 +339,7 @@ func TestTheToyBugsAreFoundByAWalkAndShrinkToUnderFiveActions(t *testing.T) {
 						}
 						rp.Prober = pr
 					}
-					f, ran, open, rerr := schedule.Replay(c, rp, s, tc.seed, 1, steps, without)
+					f, ran, open, rerr := schedule.Replay(c, rp, s, schedule.Browser{}, tc.seed, 1, steps, without)
 					if rerr != nil {
 						return shrink.Candidate{Steps: ran, PendingOpen: open}, rerr
 					}

@@ -1505,12 +1505,57 @@ must not buy the driver a reprieve — and best-effort does not mean silent: the
 refusal is carried out to the caller, which is the only thing that can say it.
 
 **THE STAGE AND THE WALK ARE TWO COUNTS, and the report says whose is whose.** A
-browser-context action's flow is driven by the WALK, through the adapter, and
-needs no driver on this box at all; the STAGE is what a real browser would ride.
+browser-context action's flow is driven by the WALK — through a real browser
+where the run was handed one and through the adapter otherwise, and the adapter
+path needs no driver on this box at all; the STAGE is what the browser rides.
 So a run can report steps through `flow` in its summary and a skipped browser
 stage three lines later, both true — and the stage's line says "THIS STAGE drove
 none" for exactly that reason. The earlier wording said "none was driven", which
 was true of the stage and read as true of the run.
+
+**THE WALK DRIVES THE FLOW AND THE STAGE OWNS THE BROWSER** (fable, coop
+r9/110). The stage starts the pair, stops it, and hands the walk what it drives
+through; it does not drive declared flows itself. Which driver a flow reaches is
+decided in ONE place — whether this run was handed a browser — and the ROUTE IS
+A RECORDED FACT AND NOT AN INFERENCE: a step carries both "a flow was driven"
+and "a browser drove it", because a reader who cannot tell those apart cannot
+tell a page from a simulation of one. The RESUME GOES TO WHOEVER DROVE IT: a
+flow a browser started and the adapter resumed would re-check its condition
+against a page the adapter cannot see, and the `StopWait` the engine re-checks
+is precisely a condition on that page. One driver for the flow and its resume,
+or the re-check means nothing.
+
+**THE ADAPTER REPORTS WHERE ITS WORLD IS, AND THE WALK READS IT THERE** (fable,
+coop r9/111). A `navigate` resolves against the system's base URL, and before
+R9.1b nothing in the engine had one: `platform.Adapter` carries a command, a
+directory and an environment and no address, and the one stage that knew an
+address started its own world to get it. The address now rides the ADAPTER'S
+DESCRIBE, because the adapter is the one thing that knows where its world is —
+whether it started the system itself or was handed `TOY_ADDR` — so the address
+lives where the knowledge lives. Declaring it in `platform.toml` was refused as
+duplicating what the adapter already holds, where it will drift; making the walk
+own the world was refused as moving ownership for a reason that is not the
+walk's. `describe` gains an OPTIONAL `base`, absent by `omitempty`, so the
+contract stays `"2"` and every adapter that reports none is unchanged.
+
+**AND AN ABSENT BASE IS A NAMED REFUSAL, NEVER A GUESSED HOST OR PORT.** A flow
+that navigates against an adapter whose describe carries no `base` is refused at
+the walk, by name, saying that the adapter omitted an optional field and that a
+host is not guessed here. Nothing between the adapter and the walk carries an
+address: `schedule.Browser` has no field for one, so the walk reads it off the
+session it already holds and there is nowhere for a default to enter.
+
+**A NAVIGATION TO AN ADDRESS NOTHING SERVES IS REFUSED BEFORE THE BROWSER SEES
+IT**, and that rule was bought by a mutant. With the adapter reporting
+`http://127.0.0.1:1`, chromedriver answered the navigate `200`, loaded the
+BROWSER'S OWN ERROR PAGE, and the click that followed found no element — so the
+walk recorded "the page would not perform it" at exit 0, attributing a refusal
+to a system that was never reached. W3C WebDriver carries no HTTP status for a
+navigation, so the browser cannot be asked; the address is dialed once per run
+instead, and the refusal names the adapter as the address's source. WHAT THE
+DIAL PROVES IS NARROW AND SAID SO: a listener at that address, not that the
+listener is the system under test — an address pointing at the wrong live server
+still drives.
 
 **A BROWSER-CONTEXT ACTION IS CARRIED BY `flow` AND NOT `execute`**, decided by
 the action's CONTEXT and nothing else: `docs/contract.md` says such an action
