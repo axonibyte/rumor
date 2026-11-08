@@ -1442,11 +1442,16 @@ commit earlier finished the whole job in 21m17s. `tests/run` makes 55
 55 real browser launches into it.
 
 **THE AGGREGATE IS MEASURED AND THE MECHANISM IS NOT.** This paragraph first
-divided the 11 to 13 minutes by the 55 runs and called the quotient a per-launch
+divided a 11-to-13-minute figure by the 55 runs and called the quotient a per-launch
 cost of about 12s. That was arithmetic, not a measurement, and a direct one
 refutes it: chromedriver start, session open, delete and driver stop together
 take **0.8 to 0.9s**, three runs on a quiet 8-core box (2026-11-08). 55 of those
-is under a minute. So the eleven minutes are real, their cause is not per-run
+is under a minute. The BILL ITSELF is also narrower than first reported: run
+1109 was KILLED at the 1800s cap, so its true duration is unknown and only a
+LOWER BOUND can be had -- 1800s against 1110's 20m25.6s test step is **at least
+9m34s**, unbounded above. "11 to 13 minutes" was a range stated for a quantity
+that has no upper measurement, which is the same fault as the quotient. So the
+cost is real, its floor is 9m34s, its cause is not per-run
 startup latency, and what remains unexplained is how 55 browsers cost that much
 on a 4-core jail running a parallel suite — memory and CPU pressure inflating
 the whole critical path is the obvious candidate and is NOT measured here. The

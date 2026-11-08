@@ -165,7 +165,9 @@ func TestWithTheCheckAPairThatIsNotAWebdriverIsFoundNotDrivable(t *testing.T) {
 // died at the step's 1800s budget with no test failing, where the same suite one
 // commit earlier finished the whole job in 21m17s: `tests/run` makes 55
 // `rumor run` invocations and ci.yml names it the critical path, so a real
-// browser start and teardown per run is 11 to 13 minutes of diagnostics.
+// browser start and teardown per run cost AT LEAST 9m34s -- a lower bound,
+// because 1109 was killed at its cap rather than finishing (see run.go, where
+// the per-launch quotient this once reported is retracted).
 //
 // A LINE SAYING "the pair is COMPLETE" CANNOT PROVE NOTHING WAS LAUNCHED. The
 // driver's own journal can: the fake writes a line the moment it is executed, so

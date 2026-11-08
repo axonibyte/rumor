@@ -473,7 +473,9 @@ it costs a browser launch per run.** Measured: with the check unconditional, CI
 run 1109 died at its step's 1800s budget with no test failing, where the same
 suite one commit earlier finished the whole job in 21m17s — `tests/run` makes 55
 `rumor run` invocations and is the suite's critical path, so the check put 55
-real browser launches into it. Why that costs eleven minutes is NOT settled: one
+real browser launches into it. The bill is a LOWER BOUND, not a range: run 1109
+was killed at its 1800s cap, so against the 20m25.6s the same step takes without
+the check it cost **at least 9m34s** and possibly more. Why is NOT settled: one
 launch measured end to end — driver start, session, delete, stop — is 0.8 to
 0.9s, so the arithmetic quotient this page once reported as a per-launch cost
 was wrong. The bill is measured; the mechanism is not. With the
