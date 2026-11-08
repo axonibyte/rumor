@@ -1438,9 +1438,20 @@ and on a `chromedriver` that is a stub or the wrong package. This head's first
 cut therefore started the pair on EVERY run, and CI measured the bill: run 1109
 died at the step's 1800s budget with no test failing, where the same suite one
 commit earlier finished the whole job in 21m17s. `tests/run` makes 55
-`rumor run` invocations and ci.yml names it the critical path, so a real chromium
-start and teardown per run — about 12s on that 4-core jail, inferred from the
-aggregate rather than timed directly — is 11 to 13 minutes of diagnostics.
+`rumor run` invocations and ci.yml names it the critical path, so the check put
+55 real browser launches into it.
+
+**THE AGGREGATE IS MEASURED AND THE MECHANISM IS NOT.** This paragraph first
+divided the 11 to 13 minutes by the 55 runs and called the quotient a per-launch
+cost of about 12s. That was arithmetic, not a measurement, and a direct one
+refutes it: chromedriver start, session open, delete and driver stop together
+take **0.8 to 0.9s**, three runs on a quiet 8-core box (2026-11-08). 55 of those
+is under a minute. So the eleven minutes are real, their cause is not per-run
+startup latency, and what remains unexplained is how 55 browsers cost that much
+on a 4-core jail running a parallel suite — memory and CPU pressure inflating
+the whole critical path is the obvious candidate and is NOT measured here. The
+cost is reason enough to keep the check off by default; the mechanism is not
+claimed.
 
 **SO THE DEFAULT CLAIM IS NARROWED TO WHAT PRESENCE SUPPORTS, AND THE PROOF IS
 AVAILABLE ON REQUEST.** The line says the pair is COMPLETE and that whether it

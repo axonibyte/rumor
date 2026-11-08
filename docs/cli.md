@@ -472,8 +472,11 @@ exactly as wide as the evidence under it.
 it costs a browser launch per run.** Measured: with the check unconditional, CI
 run 1109 died at its step's 1800s budget with no test failing, where the same
 suite one commit earlier finished the whole job in 21m17s — `tests/run` makes 55
-`rumor run` invocations and is the suite's critical path, so a real chromium
-start and teardown each time is 11 to 13 minutes of pure diagnostics. With the
+`rumor run` invocations and is the suite's critical path, so the check put 55
+real browser launches into it. Why that costs eleven minutes is NOT settled: one
+launch measured end to end — driver start, session, delete, stop — is 0.8 to
+0.9s, so the arithmetic quotient this page once reported as a per-launch cost
+was wrong. The bill is measured; the mechanism is not. With the
 flag the line reads `DRIVABLE, one session opened and closed`, naming the
 browser, its driver, how they were found, and whether the session was headless
 or headed; a pair that will not start is a skip with its reason named.

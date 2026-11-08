@@ -882,9 +882,16 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 // is measured rather than feared: with the check running unconditionally, CI run
 // 1109 died at the step's 1800s budget with NO test failing, where the same
 // suite one commit earlier finished the whole job in 21m17s. `tests/run` makes
-// 55 `rumor run` invocations and ci.yml names it the critical path, so a real
-// chromium start and teardown per run -- about 12s on that 4-core jail, inferred
-// from the aggregate -- is 11 to 13 minutes of diagnostics.
+// 55 `rumor run` invocations and ci.yml names it the critical path, so the check
+// put 55 real browser launches into it.
+//
+// THE AGGREGATE IS MEASURED AND THE MECHANISM IS NOT. This comment first divided
+// those minutes by the 55 runs and called the quotient ~12s a launch. A direct
+// measurement refutes it: start, session, delete and stop together are 0.8-0.9s,
+// three runs on a quiet 8-core box, so 55 of them is under a minute. The minutes
+// are real and their cause is not startup latency -- most likely 55 browsers
+// pressuring a 4-core jail running a parallel suite, which is NOT measured. Off
+// by default rests on the cost, not on the explanation.
 //
 // THE FLAGS ARE A STRUCT AND NOT TWO MORE POSITIONAL RETURNS, which is the
 // remainder 5270039f recorded coming due: that commit left seven values handed
