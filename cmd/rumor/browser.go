@@ -1,14 +1,20 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	// webdriver, not browser: this file already calls the browser it found
+	// `browser`, and a package name shadowed by a local string is how a reader
+	// ends up thinking the scan's result is the driver.
+	webdriver "forge.axonibyte.com/axonibyte/rumor/internal/browser"
 	"forge.axonibyte.com/axonibyte/rumor/internal/stage"
 )
 
@@ -245,7 +251,7 @@ func conductRefusal(r *refusedTokens) (string, bool) {
 // the project is not wrong and the build is not broken, so exit 0 with the
 // reason named. A refusal here would fail every run on every box without a
 // browser, which today is this one.
-func browserStage(b bindings.Bindings, stdout, stderr io.Writer) int {
+func browserStage(ctx context.Context, b bindings.Bindings, headed bool, stdout, stderr io.Writer) int {
 	// THE STAGE'S ONLY TOKEN SOURCE, AND IT REFUSES. Nothing below asks it for
 	// anything; the point is that asking is impossible to do quietly.
 	tokens := &refusedTokens{}
@@ -269,9 +275,101 @@ func browserStage(b bindings.Bindings, stdout, stderr io.Writer) int {
 			stage.Browser, how, flows)
 		return conductVerdict(tokens, stderr)
 	}
-	_, _ = fmt.Fprintf(stdout, "run:   %s -- browser %s driven by %s (%s). %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter, and driving them through the browser is R9.1b's next head\n",
-		stage.Browser, browser, driver, how, flows)
+	// FOUND IS NOT DRIVABLE, AND THIS IS WHERE THAT STOPS BEING A GUESS. Head 1
+	// could say a pair was on PATH and called it drivable on that alone; a pair
+	// can be complete and still not run -- a browser with a missing library, a
+	// user with no writable HOME, a sandbox it cannot enter. So the stage now
+	// starts the pair and opens one session, and the line reports what HAPPENED
+	// rather than what was present.
+	mode := "headless"
+	if headed {
+		mode = "headed"
+	}
+	why, leaked := driveOnce(ctx, driver, browser, !headed, probeBound)
+	if why != "" {
+		// STILL A SKIP, by issue 120's deliverable 5 and head 1's reason: a
+		// pair that will not start is this BOX being short of something, and
+		// the project's declarations are not wrong. The reason is named and
+		// loud, which is the whole difference between this and a silent skip.
+		_, _ = fmt.Fprintf(stdout, "run:   %s -- SKIPPED, FOUND, NOT DRIVABLE: %s with %s on PATH (%s) and %s, so no browser was driven. %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter\n",
+			stage.Browser, browser, driver, how, why, flows)
+		return conductVerdict(tokens, stderr)
+	}
+	// A SESSION THAT WOULD NOT CLOSE IS SAID OUT LOUD AND NOT SWALLOWED. The
+	// pair IS drivable -- it started and it took a session -- so this is not a
+	// skip; but a delete the driver refused is a browser still running, and the
+	// line that claimed a clean teardown would be the only place a reader could
+	// have learned otherwise.
+	closed := "one session opened and closed"
+	if leaked != "" {
+		closed = "one session opened, AND NOT CLOSED: " + leaked
+	}
+	_, _ = fmt.Fprintf(stdout, "run:   %s -- browser %s driven by %s (%s, %s): DRIVABLE, %s. %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter, and driving them through the browser is R9.1b's next head\n",
+		stage.Browser, browser, driver, how, mode, closed, flows)
 	return conductVerdict(tokens, stderr)
+}
+
+// probeBound is how long the stage gives the whole start-session-stop probe.
+//
+// IT IS THE STAGE'S OWN BOUND AND NOT THE RUN'S. internal/browser bounds its
+// readiness wait, but a session open is a browser LAUNCH, and a browser that
+// starts and then wedges would otherwise hold a run for as long as the run has.
+const probeBound = 90 * time.Second
+
+// probeActor is who the probe's one session belongs to.
+//
+// IT IS A FIXED NAME AND NOT AN ACTOR OF THE PROJECT, deliberately: the walk
+// owns actor identity, and a session per real actor is deliverable 2's, driven
+// from the walk. What this proves is that the PAIR runs, so one session under
+// an obviously-synthetic name is the whole of the claim and the name says so.
+const probeActor = "rumor-browser-probe"
+
+// driveOnce starts the pair, opens one session, and puts both back. It answers
+// why the pair could not be driven, and separately what would not close.
+//
+// TWO ANSWERS AND NOT ONE, because they are different verdicts: a pair that
+// will not start is NOT DRIVABLE and a skip, while a pair that drove and then
+// refused to give a session back IS drivable and also leaking. Folding the
+// second into the first would report a working browser as a missing one.
+//
+// IT CLOSES WHAT IT OPENED EVEN WHEN IT FAILS, which is why the Close runs
+// against a context of its own: the run's ctx may be the very thing that just
+// expired, and a teardown on a dead context would leave a browser running with
+// nothing left to stop it.
+//
+// THE BOUND IS A PARAMETER SO AN ARM CAN HOLD IT. Its only caller passes
+// probeBound, and the value is not configurable from outside this file; what
+// the parameter buys is a cell that drives a browser which comes up and then
+// hangs, which at 90 seconds could not be a unit arm at all.
+func driveOnce(ctx context.Context, driverPath, browserPath string, headless bool,
+	bound time.Duration) (why, leaked string) {
+
+	ctx, cancel := context.WithTimeout(ctx, bound)
+	defer cancel()
+	d, err := webdriver.Start(ctx, driverPath, browserPath, headless)
+	if err != nil {
+		return fmt.Sprintf("starting the driver failed: %v", err), ""
+	}
+	// NOT DEFERRED: the teardown's own answer is part of this function's, and a
+	// deferred call cannot contribute to a named return without the reader
+	// having to know that it does.
+	stopAndReport := func() string {
+		stop, stopCancel := context.WithTimeout(context.WithoutCancel(ctx), webdriver.StopGrace*2)
+		defer stopCancel()
+		if err := d.Close(stop); err != nil {
+			return err.Error()
+		}
+		return ""
+	}
+	if _, err := d.SessionFor(ctx, probeActor); err != nil {
+		// THE TEARDOWN STILL RUNS, and its complaint is dropped here on
+		// purpose: the pair is already being reported as undrivable with a
+		// reason, and a second reason for the same failed probe would read as
+		// two faults where there is one.
+		_ = stopAndReport()
+		return fmt.Sprintf("the driver started and would not open a session: %v", err), ""
+	}
+	return "", stopAndReport()
 }
 
 // conductVerdict reports the conduct refusal if the stage asked for a token, and

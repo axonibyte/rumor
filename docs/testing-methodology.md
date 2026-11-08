@@ -2102,3 +2102,37 @@ floor rather than a radius.
 pinned expectation above was cited as `tests/contract/bindings_test.go:202` and
 lives in `internal/bindings/bindings_test.go:202` — same line, different file.
 The number agreed, which is what made the citation look checked.
+
+## R9
+
+**A PROTOCOL FAKE BELONGS IN ONE PLACE, BECAUSE TWO COPIES DRIFT APART AND ONE
+OF THEM IS WRONG.** `internal/browser/fakedriver` is a W3C WebDriver that drives
+no browser: it answers `/status`, opens and deletes sessions, and writes down
+what it was asked. Two test binaries need it — `internal/browser`'s, which
+measures the protocol conversation, and `cmd/rumor`'s, which measures the stage
+that starts and stops a driver — so it is a package and not a test file. A fake
+copied into both would eventually have two different ideas of the protocol, and
+the arm that disagreed with the real driver would be the one nobody re-read.
+`internal/rollback/toyrestart` is this tree's precedent for a package that
+exists to be driven.
+
+**THE FAKE IS A REAL PROCESS, STARTED BY A REAL `exec`, ON A REAL PORT.** Each
+test binary re-executes ITSELF as the driver when the environment asks, which is
+`os/exec`'s own pattern. A fake that was a function call would leave exec, the
+port, the readiness poll and the teardown unmeasured — four of the five things
+the client under test IS — and those are exactly where a browser gets left
+running.
+
+**AND THE JOURNAL IS THE ORACLE, NOT THE OUTPUT LINE.** A stage that opened a
+session and never deleted it prints the same sentence as one that cleaned up and
+leaks a browser per run. The arms read the driver's own record of what it was
+asked: one open, one delete, and the capabilities the browser was actually
+handed — which is also the only place `--headed` has an effect, so a line saying
+`headed` over a headless session cannot pass.
+
+**WHAT A FAKE CANNOT ANSWER IS WHETHER A BROWSER STARTS.** Every arm driven
+against `fakedriver` says that rumor speaks WebDriver correctly and says nothing
+about chromium launching, a missing shared library, or a sandbox it cannot
+enter. That claim needs the real pair and belongs to the browser-side arm, which
+runs where the pair lives. The two are named apart so neither is read as the
+other.

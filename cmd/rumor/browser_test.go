@@ -2,14 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/browser/fakedriver"
 	"forge.axonibyte.com/axonibyte/rumor/internal/stage"
 )
 
@@ -47,7 +50,7 @@ func flowBindings(withFlow, without int) bindings.Bindings {
 func TestTheBrowserStageSkipsByNameWhenNoDriverIsPresent(t *testing.T) {
 	emptyPath(t)
 	var out, errb bytes.Buffer
-	if rc := browserStage(flowBindings(2, 1), &out, &errb); rc != 0 {
+	if rc := browserStage(context.Background(), flowBindings(2, 1), false, &out, &errb); rc != 0 {
 		t.Errorf("a missing driver exited %d: deliverable 5 makes it a SKIP, and a refusal would "+
 			"fail every run on every box without a browser", rc)
 	}
@@ -70,13 +73,23 @@ func TestTheBrowserStageSkipsByNameWhenNoDriverIsPresent(t *testing.T) {
 func TestTheSkipIsNotSilent(t *testing.T) {
 	emptyPath(t)
 	var out, errb bytes.Buffer
-	_ = browserStage(flowBindings(1, 0), &out, &errb)
+	_ = browserStage(context.Background(), flowBindings(1, 0), false, &out, &errb)
 	if strings.TrimSpace(out.String()) == "" {
 		t.Error("the browser stage skipped and printed nothing: a silent skip reads exactly like a " +
 			"stage that ran and found nothing")
 	}
 }
 
+// TestTheBrowserStageNamesTheDriverItFound: RETARGETED BY R9.1b's HEAD 2 and
+// not weakened. What `plant` writes is `#!/bin/sh exit 0`, which is a file on
+// PATH and not a webdriver -- and as of head 2 the stage STARTS what it found,
+// so this fixture now measures the state an operator with the wrong package
+// installed is actually in. The naming property this arm was written for is
+// unchanged and still asserted: both halves of the pair and both env vars reach
+// the line. The property it can no longer hold -- that a complete pair prints
+// the drivable line and no skip -- moved to the arm below, which plants a
+// driver that answers the protocol. A fixture that cannot reach a claim must
+// not be the thing asserting it.
 func TestTheBrowserStageNamesTheDriverItFound(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake driver is a shell script")
@@ -91,7 +104,7 @@ func TestTheBrowserStageNamesTheDriverItFound(t *testing.T) {
 	t.Setenv(browserDriverEnv, "zz-fake-browser")
 	t.Setenv(webDriverEnv, "zz-fake-webdriver")
 	var out, errb bytes.Buffer
-	if rc := browserStage(flowBindings(3, 2), &out, &errb); rc != 0 {
+	if rc := browserStage(context.Background(), flowBindings(3, 2), false, &out, &errb); rc != 0 {
 		t.Errorf("a driver was present and the stage exited %d", rc)
 	}
 	got := out.String()
@@ -100,14 +113,19 @@ func TestTheBrowserStageNamesTheDriverItFound(t *testing.T) {
 	// adapter, so a line saying none was driven reads as a contradiction beside
 	// a summary that counts the ones that were. The arm asserts the new words
 	// because the old ones would now be a false reading of a true count.
-	for _, want := range []string{"browser", fake, "driven by", fakeDriver, browserDriverEnv,
+	for _, want := range []string{fake, fakeDriver, browserDriverEnv,
 		webDriverEnv, "3 action(s)", "THIS STAGE drove none"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("the present-driver line does not name %q: %q", want, got)
+			t.Errorf("the line does not name %q: %q", want, got)
 		}
 	}
-	if strings.Contains(got, "SKIPPED") {
-		t.Errorf("a driver was found and the stage still reported a skip: %q", got)
+	// AND IT SAYS WHY IT COULD NOT DRIVE THEM, naming the state and the fault
+	// rather than printing the bare pair: the operator's next move is to
+	// install a real driver, and only the reason tells them so.
+	for _, want := range []string{"FOUND, NOT DRIVABLE", "starting the driver failed", "exited"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("a pair that is not a webdriver does not report %q: %q", want, got)
+		}
 	}
 }
 
@@ -230,7 +248,7 @@ func TestABrowserWithoutItsDriverIsFoundNotDrivable(t *testing.T) {
 	// meets, and "no pair at all" and "a browser without its driver" are
 	// different states that must not print the same sentence.
 	var out, errb bytes.Buffer
-	if rc := browserStage(flowBindings(1, 0), &out, &errb); rc != 0 {
+	if rc := browserStage(context.Background(), flowBindings(1, 0), false, &out, &errb); rc != 0 {
 		t.Errorf("an undrivable browser exited %d, wanted the skip", rc)
 	}
 	if got := out.String(); !strings.Contains(got, "FOUND, NOT DRIVABLE") || !strings.Contains(got, "geckodriver") {
@@ -360,7 +378,7 @@ func TestANamedDriverThatIsNotExecutableIsNotAPresence(t *testing.T) {
 	emptyPath(t)
 	t.Setenv(browserDriverEnv, "zz-no-such-browser-binary")
 	var out, errb bytes.Buffer
-	if rc := browserStage(flowBindings(1, 0), &out, &errb); rc != 0 {
+	if rc := browserStage(context.Background(), flowBindings(1, 0), false, &out, &errb); rc != 0 {
 		t.Errorf("an unresolvable %s exited %d, wanted the skip", browserDriverEnv, rc)
 	}
 	got := out.String()
@@ -442,7 +460,7 @@ func TestTheConductVerdictCarriesTheStatusAndTheStream(t *testing.T) {
 func TestTheLiveBrowserStageTakesNoAPISessionToken(t *testing.T) {
 	emptyPath(t)
 	var out, errb bytes.Buffer
-	if rc := browserStage(flowBindings(2, 1), &out, &errb); rc != 0 {
+	if rc := browserStage(context.Background(), flowBindings(2, 1), false, &out, &errb); rc != 0 {
 		t.Fatalf("the stage exited %d with stderr %q", rc, errb.String())
 	}
 	// PRECONDITION FIRST: the stage ran and said so, so a silent no-op cannot
@@ -452,5 +470,303 @@ func TestTheLiveBrowserStageTakesNoAPISessionToken(t *testing.T) {
 	}
 	if errb.String() != "" {
 		t.Errorf("the stage reported a conduct refusal on a clean run: %q", errb.String())
+	}
+}
+
+// TestMain lets this test binary be the fake webdriver the arms below point the
+// stage at, which is how a box with no chromium measures a stage whose whole
+// job is starting one.
+func TestMain(m *testing.M) {
+	if fakedriver.MainIfAsked() {
+		return
+	}
+	os.Exit(m.Run())
+}
+
+// TestTheStageStartsAndStopsADriverThatAnswers is head 2's deliverable as a
+// reader meets it: a complete pair that WORKS prints the drivable line, and the
+// stage puts back everything it took.
+//
+// THE JOURNAL IS THE PROOF AND THE LINE IS NOT. A stage that opened a session
+// and never deleted it would print the same sentence and leak a browser per
+// run, so the arm reads the driver's own record of what it was asked.
+func TestTheStageStartsAndStopsADriverThatAnswers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fixture plants a shell script")
+	}
+	for _, c := range []struct {
+		name   string
+		headed bool
+		want   string
+		unwant string
+	}{
+		{"headless", false, "headless", "--headless=new is absent"},
+		{"headed", true, "headed", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := emptyPath(t)
+			browserBin := plant(t, dir, "zz-fake-browser")
+			journal := filepath.Join(t.TempDir(), "journal")
+			t.Setenv(browserDriverEnv, "zz-fake-browser")
+			// THE DRIVER IS THIS TEST BINARY, named outright rather than put on
+			// PATH: the stage execs it with `--port=N` and the environment below
+			// makes it answer as a webdriver.
+			t.Setenv(webDriverEnv, os.Args[0])
+			t.Setenv(fakedriver.ModeEnv, "ready")
+			t.Setenv(fakedriver.JournalEnv, journal)
+
+			var out, errb bytes.Buffer
+			if rc := browserStage(context.Background(), flowBindings(2, 1), c.headed, &out, &errb); rc != 0 {
+				t.Fatalf("a working pair exited %d, stderr %q", rc, errb.String())
+			}
+			got := out.String()
+			for _, want := range []string{"DRIVABLE", "one session opened and closed", browserBin, c.want} {
+				if !strings.Contains(got, want) {
+					t.Errorf("the drivable line does not carry %q: %q", want, got)
+				}
+			}
+			if strings.Contains(got, "SKIPPED") || strings.Contains(got, "NOT DRIVABLE") {
+				t.Errorf("a pair that answers the protocol was still reported as a skip: %q", got)
+			}
+
+			raw, err := os.ReadFile(journal)
+			if err != nil {
+				t.Fatalf("the driver recorded nothing, so the stage drove nothing: %v", err)
+			}
+			record := string(raw)
+			if n := strings.Count(record, "\nopen ") + boolToInt(strings.HasPrefix(record, "open ")); n != 1 {
+				t.Errorf("want exactly 1 session opened, the driver was asked %d time(s): %q", n, record)
+			}
+			if !strings.Contains(record, "close sess-1") {
+				t.Errorf("the stage opened a session and did not delete it: %q", record)
+			}
+			// AND THE FLAG REACHED THE BROWSER, not merely the line: the
+			// capabilities the driver was handed are where `--headed` has its
+			// effect, and a line that said "headed" over a headless session
+			// would be the silent-skip class wearing honest words.
+			if c.headed && strings.Contains(record, "--headless=new") {
+				t.Errorf("--headed printed `headed` and still asked for a headless browser: %q", record)
+			}
+			if !c.headed && !strings.Contains(record, "--headless=new") {
+				t.Errorf("a headless run did not ask for a headless browser: %q", record)
+			}
+		})
+	}
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// TestTheHeadedFlagIsParsedAndDefaultsToHeadless holds the surface: `--headed`
+// takes no value, and its ABSENCE is what every unattended run gets.
+func TestTheHeadedFlagIsParsedAndDefaultsToHeadless(t *testing.T) {
+	for _, c := range []struct {
+		args   []string
+		headed bool
+		bad    bool
+	}{
+		{[]string{"proj"}, false, false},
+		{[]string{"proj", "--headed"}, true, false},
+		{[]string{"--headed", "proj"}, true, false},
+		{[]string{"proj", "--headed", "--seed", "7"}, true, false},
+		{[]string{"proj", "--headed=yes"}, false, true},
+	} {
+		dir, _, _, _, _, headed, bad := parseRunArgs(c.args)
+		if c.bad {
+			if bad == "" {
+				t.Errorf("%v was accepted; --headed takes no value", c.args)
+			}
+			continue
+		}
+		if bad != "" {
+			t.Fatalf("%v was refused: %s", c.args, bad)
+		}
+		if dir != "proj" {
+			t.Errorf("%v read the project as %q", c.args, dir)
+		}
+		if headed != c.headed {
+			t.Errorf("%v parsed headed=%t, want %t", c.args, headed, c.headed)
+		}
+	}
+}
+
+// TestTheHeadedFlagReachesTheBrowserFromTheCommandLine closes the gap the two
+// arms above leave open between them. One measures parseRunArgs, the other
+// measures browserStage; NEITHER measures main.go, where the value is handed
+// across two positional call sites -- `parseRunArgs` answers seven values and
+// `runProject` takes seven -- and a transposition there would pass both.
+//
+// THE GAP IS NOT HYPOTHETICAL IN THIS TREE. Issue 108 shipped internal/fuzz
+// with zero production callers and its arms all green; fable ruled the wiring
+// outstanding at coop rumor/1580. A capability nothing calls is the failure
+// this project keeps finding, so the flag is measured from argv to the
+// capabilities the browser was actually handed.
+func TestTheHeadedFlagReachesTheBrowserFromTheCommandLine(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fixture plants a shell script")
+	}
+	for _, c := range []struct {
+		name     string
+		args     []string
+		headless bool
+	}{
+		{"default", []string{"run", "", "--seed", "1", "--steps", "1"}, true},
+		{"headed", []string{"run", "", "--seed", "1", "--steps", "1", "--headed"}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := browserOnlyProject(t)
+			journal := filepath.Join(t.TempDir(), "journal")
+			pathDir := emptyPath(t)
+			plant(t, pathDir, "zz-fake-browser")
+			t.Setenv(browserDriverEnv, "zz-fake-browser")
+			t.Setenv(webDriverEnv, os.Args[0])
+			t.Setenv(fakedriver.ModeEnv, "ready")
+			t.Setenv(fakedriver.JournalEnv, journal)
+
+			args := append([]string{}, c.args...)
+			args[1] = dir
+			var out, errb bytes.Buffer
+			if rc := run(args, bytes.NewReader(nil), &out, &errb); rc != 0 {
+				t.Fatalf("`rumor %v` exited %d\n%s\n%s", args, rc, out.String(), errb.String())
+			}
+			if !strings.Contains(out.String(), "DRIVABLE") {
+				t.Fatalf("the run did not drive the pair, so this arm has no subject: %q", out.String())
+			}
+			raw, err := os.ReadFile(journal)
+			if err != nil {
+				t.Fatalf("the driver recorded nothing: %v", err)
+			}
+			asked := strings.Contains(string(raw), "--headless=new")
+			if asked != c.headless {
+				t.Errorf("`rumor %v` asked for a headless browser = %t, want %t: %q",
+					args, asked, c.headless, string(raw))
+			}
+		})
+	}
+}
+
+// browserOnlyProject is the smallest project that selects the browser stage: one
+// action with a flow, and no `api` stage, so the stage under test is the only
+// one that runs and the walk needs no system.
+func browserOnlyProject(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("platform.toml", `contract = "2"
+
+[adapter]
+command = ["sh", "-c", "exit 1"]
+
+[[venire]]
+role = "member"
+count = 1
+
+[stages]
+browser = { enabled = true }
+
+[weights.default]
+publish_doc_ui = 1
+`)
+	write("bindings.toml", `[[action]]
+name = "publish_doc_ui"
+context = "browser"
+requires = ["may_publish"]
+
+  [[action.flow]]
+  step = "navigate"
+  to = "/docs/new"
+
+  [[action.flow]]
+  step = "click"
+  target = "publish"
+`)
+	write("statute.rego", "package rumor.statute\n\ndefault may_publish := true\n")
+	return dir
+}
+
+// TestABrowserThatComesUpAndHangsIsBoundedByTheStage holds probeBound. A
+// readiness check cannot see this failure: the driver answers /status, so it is
+// up, and then never answers a session -- which is what a browser missing a
+// library or denied a writable HOME does. Without the stage's own bound the run
+// would wait on the HTTP client's timeout, and with neither it would wait
+// forever on a stage that exists to report in one line.
+func TestABrowserThatComesUpAndHangsIsBoundedByTheStage(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake driver is this test binary")
+	}
+	journal := filepath.Join(t.TempDir(), "journal")
+	t.Setenv(fakedriver.ModeEnv, "wedge")
+	t.Setenv(fakedriver.JournalEnv, journal)
+
+	began := time.Now()
+	why, _ := driveOnce(context.Background(), os.Args[0], "zz-fake-browser", true, time.Second)
+	took := time.Since(began)
+
+	if why == "" {
+		t.Fatalf("a driver that never answers a session was reported as drivable")
+	}
+	// THE PRECONDITION: the fake really did wedge, so this arm is about the
+	// bound and not about a driver that failed to start for some other reason.
+	raw, err := os.ReadFile(journal)
+	if err != nil || !strings.Contains(string(raw), "wedged") {
+		t.Fatalf("the fake never reached its wedge, so the bound was not what ended this: %v %q", err, string(raw))
+	}
+	// WELL INSIDE THE HTTP CLIENT'S OWN 30s TIMEOUT, which is the next bound
+	// out: an arm that allowed 30s would pass with the stage's bound removed.
+	if took > 10*time.Second {
+		t.Fatalf("driveOnce took %s against a 1s bound, so the bound was not applied", took)
+	}
+}
+
+// TestASessionTheDriverWillNotCloseIsSaidOutLoud: the pair drove, so it IS
+// drivable -- and the delete was refused, so a browser is still running. Those
+// are two verdicts and the line has to carry both, because this is the only
+// place a reader could learn the second.
+//
+// IT IS ALSO WHY `call` READS THE HTTP STATUS. A DELETE is sent with nowhere to
+// decode a body into, so before the status check a driver answering 500 to
+// "close this session" was indistinguishable from one that closed it.
+func TestASessionTheDriverWillNotCloseIsSaidOutLoud(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake driver is this test binary")
+	}
+	dir := emptyPath(t)
+	plant(t, dir, "zz-fake-browser")
+	journal := filepath.Join(t.TempDir(), "journal")
+	t.Setenv(browserDriverEnv, "zz-fake-browser")
+	t.Setenv(webDriverEnv, os.Args[0])
+	t.Setenv(fakedriver.ModeEnv, "refuse-close")
+	t.Setenv(fakedriver.JournalEnv, journal)
+
+	var out, errb bytes.Buffer
+	if rc := browserStage(context.Background(), flowBindings(1, 0), false, &out, &errb); rc != 0 {
+		t.Fatalf("a drivable pair with a refused close exited %d, stderr %q", rc, errb.String())
+	}
+	got := out.String()
+	// STILL DRIVABLE: the pair started and took a session, and reporting it as
+	// a skip would send an operator to install a package they already have.
+	if !strings.Contains(got, "DRIVABLE") || strings.Contains(got, "NOT DRIVABLE") {
+		t.Errorf("a pair that drove and then leaked was reported undrivable: %q", got)
+	}
+	if !strings.Contains(got, "NOT CLOSED") {
+		t.Errorf("the refused delete is not in the line, so nothing tells a reader a browser is still running: %q", got)
+	}
+	if !strings.Contains(got, "would not close") {
+		t.Errorf("the line does not carry the driver's own reason: %q", got)
+	}
+	// AND THE DELETE WAS REALLY ATTEMPTED, so this arm is about noticing a
+	// refusal and not about a teardown that never ran.
+	raw, err := os.ReadFile(journal)
+	if err != nil || !strings.Contains(string(raw), "close sess-1") {
+		t.Fatalf("the stage never asked for the delete: %v %q", err, string(raw))
 	}
 }

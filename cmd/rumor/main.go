@@ -116,13 +116,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if len(args) >= 1 && args[0] == "run" {
-		dir, seed, haveSeed, steps, profile, bad := parseRunArgs(args[1:])
+		dir, seed, haveSeed, steps, profile, headed, bad := parseRunArgs(args[1:])
 		if bad != "" {
 			_, _ = fmt.Fprintf(stderr, "run: %s\n", bad)
 			_, _ = fmt.Fprintln(stderr, usage)
 			return 2
 		}
-		return runProject(dir, seed, haveSeed, steps, profile, stdout, stderr)
+		return runProject(dir, seed, haveSeed, steps, profile, headed, stdout, stderr)
 	}
 
 	if len(args) >= 1 && args[0] == "report" {

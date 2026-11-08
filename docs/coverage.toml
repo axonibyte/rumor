@@ -268,6 +268,24 @@ path = "cmd/rumor/**/*.go"
 docs = ["docs/cli.md", "docs/design.md"]
 
 [[entry]]
+# The WebDriver client (R9.1b, issue 122's deliverable 1): the driver process's
+# lifecycle and one session per actor. design.md owns WHY it is WebDriver and
+# not CDP -- fable's ruling at coop r9/73, on the two-protocol-family
+# measurement at r9/71 -- and cli.md owns the two states a reader meets in a
+# run line, DRIVABLE and FOUND NOT DRIVABLE.
+path = "internal/browser/*.go"
+docs = ["docs/design.md", "docs/cli.md"]
+
+[[entry]]
+# The fake WebDriver the arms drive (R9.1b). testing-methodology.md and not
+# cli.md: it is no part of rumor's command surface, it is how a box with no
+# chromium measures a stage whose job is starting one -- and what it CANNOT
+# answer is whether a real browser launches, which is the browser-side arm.
+# Mapped the way internal/rollback/toyrestart is, for the same reason.
+path = "internal/browser/fakedriver/*.go"
+docs = ["docs/testing-methodology.md", "docs/design.md"]
+
+[[entry]]
 # The rollback trait and its registry (R5.2's C3). rollback.md owns the
 # interface and what Verify has to prove; design.md owns why a shrink step runs
 # on a verified clean world at all.

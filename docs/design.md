@@ -1430,6 +1430,53 @@ point of the two sentences before this one: what changed is that `browser` now
 reaches the dispatcher, so "declared but unrunnable" is a reading the report
 makes rather than one a reader derives.
 
+**FOUND IS NOT DRIVABLE, SO THE STAGE STARTS THE PAIR** (R9.1b's second head,
+issue 122's deliverable 1). The scan can say a pair is on `PATH`; only a launch
+can say it runs. A complete pair still fails on a browser short of a shared
+library, on a user with no writable `HOME`, and on a `chromedriver` that is a
+stub or the wrong package — so the stage starts the driver, opens one session,
+closes it, stops the driver, and the run line reports THAT rather than the
+presence it rests on. Every one of those failures is a skip with its reason
+named: the project's declarations are right and the box is short of something.
+
+**ONE SESSION PER ACTOR, AND THE ISOLATION IS THE PROTOCOL'S.** A W3C session
+carries its own cookie jar and storage, so two actors in two sessions cannot
+see each other's logins without rumor arranging anything — which is why the
+driver keys sessions BY ACTOR and answers the same session when an actor asks
+twice. An actor acts many times in a walk, and a session per ACT would throw
+away the cookies that make the actor one person. The stage's own probe opens a
+single session under an obviously-synthetic name, because actor identity
+belongs to the WALK: a session per real actor arrives with flow execution,
+which is deliverable 2.
+
+**HEADLESS IS THE DEFAULT BECAUSE IT IS THE ONE AN UNATTENDED RUN CAN TAKE.**
+`--headed` is a property of the run and not of the project, so the same
+bindings run headless in CI and headed on a desk. `--no-sandbox` is NEVER asked
+for: measured on forge-01's ci jail, headless chromium keeps its sandbox as an
+ordinary user with a writable `HOME`, and the flag is a root-only workaround
+that no CI step should inherit from this engine.
+
+**NOTHING IS LEFT RUNNING, AND EVERY WAIT IS BOUNDED.** Sessions are deleted
+before the driver is stopped; the driver is signaled, given a grace, and killed
+if it does not go. A signal rather than a closed stdin is where this departs
+from `internal/wire`'s adapter teardown — an adapter takes EOF on stdin as the
+word to stop and a webdriver reads HTTP, so it would never notice. Three bounds
+sit in front of a run that could otherwise hang: the readiness wait, which also
+answers AT ONCE when the driver has exited rather than spending the full bound
+to report the wrong fault; the stage's own probe bound, for a browser that comes
+up and then wedges, which no readiness check can see; and the HTTP client's
+own timeout behind both.
+
+**AND EVERY REPLY'S STATUS IS READ, WHICH IS WHAT MAKES A REFUSED TEARDOWN
+VISIBLE.** A `DELETE /session/{id}` is sent with nowhere to decode a body into,
+so a driver answering 500 to "close this session" was indistinguishable from one
+that closed it: a browser left running and a teardown reporting success. W3C
+errors carry a body too, but only a request with somewhere to put it could ever
+see that, so the status is the check that covers every call. Closing is
+best-effort per session and unconditional for the process — a refusing session
+must not buy the driver a reprieve — and best-effort does not mean silent: the
+refusal is carried out to the caller, which is the only thing that can say it.
+
 **THE STAGE AND THE WALK ARE TWO COUNTS, and the report says whose is whose.** A
 browser-context action's flow is driven by the WALK, through the adapter, and
 needs no driver on this box at all; the STAGE is what a real browser would ride.

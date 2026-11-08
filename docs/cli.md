@@ -402,7 +402,7 @@ go test ./tests/attaint/ -v
 ## `rumor run`
 
 ```
-rumor run PROJECT [--seed N] [--steps N]
+rumor run PROJECT [--seed N] [--steps N] [--headed]
 ```
 
 Walks the project: draws an actor, draws what it does from the actions its
@@ -417,6 +417,14 @@ reproduce it. Without `--seed` one is minted from crypto/rand and printed, and
 that printed number is exactly what `--seed` takes.
 
 `--steps` defaults to 20.
+
+`--headed` takes no value and applies to the `browser` stage: without it the
+browser runs headless, which is the default because it is the one an unattended
+run can take -- a headless browser needs no display, and a run that drew a
+window would fail on every box without one. With it the browser draws its
+window, which is for a person watching it work. The flag is a property of the
+RUN and not of the project: the same bindings run headless in CI and headed on
+a desk.
 
 | status | meaning |
 |---|---|
@@ -447,11 +455,34 @@ pair this build knows takes its driver from the table, and one it does not know
 needs `RUMOR_WEBDRIVER` or it cannot be driven. Either name is checked for
 executability, so a typo is a refusal here and not a stage failing later.
 
+**A pair on `PATH` is not yet a browser that runs, so the stage starts it.** As
+of R9.1b it launches the driver, opens one session, and closes both -- and the
+run line reports what happened rather than what was present: `DRIVABLE, one
+session opened and closed` names the browser, its driver, how they were found,
+and whether the session was headless or headed. A pair can be complete and
+still not run: a browser short of a library, a user with no writable `HOME`, a
+driver on `PATH` that is not a webdriver at all. Each of those is now a skip
+with its reason named instead of a claim of drivability resting on presence.
+
 **A browser with no driver beside it is FOUND, NOT DRIVABLE, and the skip says
 which half is missing.** That state is not a met precondition: `no pair ... on
 PATH` and `firefox without geckodriver` are different sentences, and only the
 second tells an operator which package they are short. The stage still exits 0 —
-a box without a browser is not a wrong project.
+a box without a browser is not a wrong project, and neither is a box whose
+browser will not start: the project's declarations are correct and the box is
+short of something, so the reason is printed and the run carries on.
+
+**Nothing is left running.** The driver is signaled, given a grace, and killed
+if it does not go; every session the stage opened is deleted before that. A
+driver that exits without answering is reported at once rather than at the
+readiness bound, because `it exited` and `it never answered` are different
+faults and only one of them is worth waiting 20 seconds to confirm.
+
+**A session the driver refuses to delete is still reported DRIVABLE, and the
+line says `AND NOT CLOSED`.** Those are two verdicts: the pair started and took
+a session, so sending an operator to install a package they already have would
+be wrong — and a refused delete is a browser still running, which this line is
+the only place to learn about.
 
 **Which stages were selected, and why each skipped one was, is a fact of the
 record rather than a line a run prints.** `rumor run` says nothing about them on
