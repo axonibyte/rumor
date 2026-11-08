@@ -251,7 +251,7 @@ func conductRefusal(r *refusedTokens) (string, bool) {
 // the project is not wrong and the build is not broken, so exit 0 with the
 // reason named. A refusal here would fail every run on every box without a
 // browser, which today is this one.
-func browserStage(ctx context.Context, b bindings.Bindings, headed bool, stdout, stderr io.Writer) int {
+func browserStage(ctx context.Context, b bindings.Bindings, opts runOpts, stdout, stderr io.Writer) int {
 	// THE STAGE'S ONLY TOKEN SOURCE, AND IT REFUSES. Nothing below asks it for
 	// anything; the point is that asking is impossible to do quietly.
 	tokens := &refusedTokens{}
@@ -275,17 +275,31 @@ func browserStage(ctx context.Context, b bindings.Bindings, headed bool, stdout,
 			stage.Browser, how, flows)
 		return conductVerdict(tokens, stderr)
 	}
-	// FOUND IS NOT DRIVABLE, AND THIS IS WHERE THAT STOPS BEING A GUESS. Head 1
-	// could say a pair was on PATH and called it drivable on that alone; a pair
-	// can be complete and still not run -- a browser with a missing library, a
-	// user with no writable HOME, a sandbox it cannot enter. So the stage now
-	// starts the pair and opens one session, and the line reports what HAPPENED
-	// rather than what was present.
+	// FOUND IS NOT DRIVABLE, AND SAYING SO COSTS NOTHING WHILE PROVING IT COSTS
+	// A BROWSER. Head 1 called a pair on PATH drivable on presence alone, which
+	// is wrong: a pair can be complete and still not run -- a browser short of a
+	// shared library, a user with no writable HOME, a sandbox it cannot enter.
+	// This head's first cut proved it by STARTING the pair on every run, and CI
+	// measured what that costs: run 1109 died at the step's 1800s budget with no
+	// test failing, where the same suite one commit earlier finished the whole
+	// job in 21m17s. `tests/run` makes 55 `rumor run` invocations and ci.yml
+	// names it the critical path.
+	//
+	// SO THE CLAIM IS NARROWED TO WHAT PRESENCE ACTUALLY SUPPORTS, and the proof
+	// is available on request. The default line says the pair is COMPLETE and
+	// does not say it runs; `--browser-check` starts it and reports what
+	// happened. Driving a flow needs a browser anyway, so deliverable 2 gets
+	// drivability as a side effect of real work rather than as a diagnostic.
 	mode := "headless"
-	if headed {
+	if opts.headed {
 		mode = "headed"
 	}
-	why, leaked := driveOnce(ctx, driver, browser, !headed, probeBound)
+	if !opts.browserCheck {
+		_, _ = fmt.Fprintf(stdout, "run:   %s -- browser %s with %s on PATH (%s), %s when driven: the pair is COMPLETE and this stage has not driven it, so whether it RUNS here is UNKNOWN -- pass --browser-check to make it try. %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter, and driving them through the browser is R9.1b's next head\n",
+			stage.Browser, browser, driver, how, mode, flows)
+		return conductVerdict(tokens, stderr)
+	}
+	why, leaked := driveOnce(ctx, driver, browser, !opts.headed, probeBound)
 	if why != "" {
 		// STILL A SKIP, by issue 120's deliverable 5 and head 1's reason: a
 		// pair that will not start is this BOX being short of something, and
@@ -307,6 +321,24 @@ func browserStage(ctx context.Context, b bindings.Bindings, headed bool, stdout,
 	_, _ = fmt.Fprintf(stdout, "run:   %s -- browser %s driven by %s (%s, %s): DRIVABLE, %s. %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter, and driving them through the browser is R9.1b's next head\n",
 		stage.Browser, browser, driver, how, mode, closed, flows)
 	return conductVerdict(tokens, stderr)
+}
+
+// runOpts carries the `rumor run` flags that belong to the RUN rather than to
+// the project, which today is everything about how a browser is driven.
+//
+// A STRUCT RATHER THAN MORE POSITIONAL BOOLS: parseRunArgs already answered six
+// values before these, and two adjacent bools handed through two call sites is
+// a transposition a reader cannot see. Named fields make the same mistake
+// impossible instead of merely detectable.
+type runOpts struct {
+	// headed draws the browser's window. Absent, it runs headless, which is
+	// what every unattended run gets without asking.
+	headed bool
+
+	// browserCheck makes the stage actually START the pair it found and open a
+	// session, which is the only way to tell FOUND from DRIVABLE -- and costs a
+	// browser launch per run, so it is off unless asked for.
+	browserCheck bool
 }
 
 // probeBound is how long the stage gives the whole start-session-stop probe.

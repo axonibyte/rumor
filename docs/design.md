@@ -1430,14 +1430,25 @@ point of the two sentences before this one: what changed is that `browser` now
 reaches the dispatcher, so "declared but unrunnable" is a reading the report
 makes rather than one a reader derives.
 
-**FOUND IS NOT DRIVABLE, SO THE STAGE STARTS THE PAIR** (R9.1b's second head,
-issue 122's deliverable 1). The scan can say a pair is on `PATH`; only a launch
-can say it runs. A complete pair still fails on a browser short of a shared
-library, on a user with no writable `HOME`, and on a `chromedriver` that is a
-stub or the wrong package — so the stage starts the driver, opens one session,
-closes it, stops the driver, and the run line reports THAT rather than the
-presence it rests on. Every one of those failures is a skip with its reason
-named: the project's declarations are right and the box is short of something.
+**FOUND IS NOT DRIVABLE — AND SAYING SO COSTS NOTHING WHILE PROVING IT COSTS A
+BROWSER** (R9.1b's second head, issue 122's deliverable 1). The scan can say a
+pair is on `PATH`; only a launch can say it runs, because a complete pair still
+fails on a browser short of a shared library, on a user with no writable `HOME`,
+and on a `chromedriver` that is a stub or the wrong package. This head's first
+cut therefore started the pair on EVERY run, and CI measured the bill: run 1109
+died at the step's 1800s budget with no test failing, where the same suite one
+commit earlier finished the whole job in 21m17s. `tests/run` makes 55
+`rumor run` invocations and ci.yml names it the critical path, so a real chromium
+start and teardown per run — about 12s on that 4-core jail, inferred from the
+aggregate rather than timed directly — is 11 to 13 minutes of diagnostics.
+
+**SO THE DEFAULT CLAIM IS NARROWED TO WHAT PRESENCE SUPPORTS, AND THE PROOF IS
+AVAILABLE ON REQUEST.** The line says the pair is COMPLETE and that whether it
+runs here is UNKNOWN; `--browser-check` starts it and reports what happened,
+with a failure to start as a skip naming its reason. A diagnostic that every run
+pays for is a diagnostic priced wrong, and driving a flow needs a browser
+anyway — so deliverable 2 gets drivability as a side effect of real work instead
+of as a line of its own.
 
 **ONE SESSION PER ACTOR, AND THE ISOLATION IS THE PROTOCOL'S.** A W3C session
 carries its own cookie jar and storage, so two actors in two sessions cannot

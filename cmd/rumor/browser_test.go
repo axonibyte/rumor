@@ -50,7 +50,7 @@ func flowBindings(withFlow, without int) bindings.Bindings {
 func TestTheBrowserStageSkipsByNameWhenNoDriverIsPresent(t *testing.T) {
 	emptyPath(t)
 	var out, errb bytes.Buffer
-	if rc := browserStage(context.Background(), flowBindings(2, 1), false, &out, &errb); rc != 0 {
+	if rc := browserStage(context.Background(), flowBindings(2, 1), runOpts{}, &out, &errb); rc != 0 {
 		t.Errorf("a missing driver exited %d: deliverable 5 makes it a SKIP, and a refusal would "+
 			"fail every run on every box without a browser", rc)
 	}
@@ -73,7 +73,7 @@ func TestTheBrowserStageSkipsByNameWhenNoDriverIsPresent(t *testing.T) {
 func TestTheSkipIsNotSilent(t *testing.T) {
 	emptyPath(t)
 	var out, errb bytes.Buffer
-	_ = browserStage(context.Background(), flowBindings(1, 0), false, &out, &errb)
+	_ = browserStage(context.Background(), flowBindings(1, 0), runOpts{}, &out, &errb)
 	if strings.TrimSpace(out.String()) == "" {
 		t.Error("the browser stage skipped and printed nothing: a silent skip reads exactly like a " +
 			"stage that ran and found nothing")
@@ -104,7 +104,7 @@ func TestTheBrowserStageNamesTheDriverItFound(t *testing.T) {
 	t.Setenv(browserDriverEnv, "zz-fake-browser")
 	t.Setenv(webDriverEnv, "zz-fake-webdriver")
 	var out, errb bytes.Buffer
-	if rc := browserStage(context.Background(), flowBindings(3, 2), false, &out, &errb); rc != 0 {
+	if rc := browserStage(context.Background(), flowBindings(3, 2), runOpts{}, &out, &errb); rc != 0 {
 		t.Errorf("a driver was present and the stage exited %d", rc)
 	}
 	got := out.String()
@@ -119,13 +119,83 @@ func TestTheBrowserStageNamesTheDriverItFound(t *testing.T) {
 			t.Errorf("the line does not name %q: %q", want, got)
 		}
 	}
-	// AND IT SAYS WHY IT COULD NOT DRIVE THEM, naming the state and the fault
-	// rather than printing the bare pair: the operator's next move is to
-	// install a real driver, and only the reason tells them so.
+	// AND IT CLAIMS NO MORE THAN PRESENCE SUPPORTS. Without --browser-check
+	// nothing was started, so "COMPLETE" and "UNKNOWN" are the whole of what
+	// this stage knows; a line that said DRIVABLE here would be head 1's error
+	// restated, and one that said NOT DRIVABLE would be a verdict on a launch
+	// nobody attempted.
+	for _, want := range []string{"the pair is COMPLETE", "UNKNOWN", "--browser-check"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the default line does not carry %q: %q", want, got)
+		}
+	}
+	if strings.Contains(got, "DRIVABLE,") || strings.Contains(got, "NOT DRIVABLE") {
+		t.Errorf("the default line reaches a drivability verdict with nothing started: %q", got)
+	}
+}
+
+// TestWithTheCheckAPairThatIsNotAWebdriverIsFoundNotDrivable is the other half
+// of the arm above: `plant` writes a file on PATH that is not a webdriver, and
+// WHEN ASKED the stage starts it, fails, and names the fault. This is the state
+// an operator with the wrong package installed is in, and the reason is what
+// tells them so.
+func TestWithTheCheckAPairThatIsNotAWebdriverIsFoundNotDrivable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fixture plants a shell script")
+	}
+	dir := emptyPath(t)
+	plant(t, dir, "zz-fake-browser")
+	plant(t, dir, "zz-fake-webdriver")
+	t.Setenv(browserDriverEnv, "zz-fake-browser")
+	t.Setenv(webDriverEnv, "zz-fake-webdriver")
+	var out, errb bytes.Buffer
+	if rc := browserStage(context.Background(), flowBindings(3, 2), runOpts{browserCheck: true}, &out, &errb); rc != 0 {
+		t.Fatalf("an undrivable pair exited %d, wanted the skip; stderr %q", rc, errb.String())
+	}
+	got := out.String()
 	for _, want := range []string{"FOUND, NOT DRIVABLE", "starting the driver failed", "exited"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("a pair that is not a webdriver does not report %q: %q", want, got)
 		}
+	}
+}
+
+// TestTheDefaultRunStartsNoBrowserAtAll IS THE COST CLAIM, and it is the arm
+// this head's first cut did not have. With the probe unconditional, CI run 1109
+// died at the step's 1800s budget with no test failing, where the same suite one
+// commit earlier finished the whole job in 21m17s: `tests/run` makes 55
+// `rumor run` invocations and ci.yml names it the critical path, so a real
+// browser start and teardown per run is 11 to 13 minutes of diagnostics.
+//
+// A LINE SAYING "the pair is COMPLETE" CANNOT PROVE NOTHING WAS LAUNCHED. The
+// driver's own journal can: the fake writes a line the moment it is executed, so
+// an absent journal is proof that no driver process ever ran.
+func TestTheDefaultRunStartsNoBrowserAtAll(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake driver is this test binary")
+	}
+	dir := emptyPath(t)
+	plant(t, dir, "zz-fake-browser")
+	journal := filepath.Join(t.TempDir(), "journal")
+	t.Setenv(browserDriverEnv, "zz-fake-browser")
+	t.Setenv(webDriverEnv, os.Args[0])
+	t.Setenv(fakedriver.ModeEnv, "ready")
+	t.Setenv(fakedriver.JournalEnv, journal)
+
+	var out, errb bytes.Buffer
+	if rc := browserStage(context.Background(), flowBindings(2, 1), runOpts{}, &out, &errb); rc != 0 {
+		t.Fatalf("the default stage exited %d, stderr %q", rc, errb.String())
+	}
+	// THE PRECONDITION: a COMPLETE pair was found, so this arm is about the
+	// stage declining to launch and not about there being nothing to launch.
+	if !strings.Contains(out.String(), "the pair is COMPLETE") {
+		t.Fatalf("no complete pair was found, so this arm has no subject: %q", out.String())
+	}
+	if _, err := os.Stat(journal); err == nil {
+		raw, _ := os.ReadFile(journal)
+		t.Fatalf("the default run executed the driver; its journal holds %q", string(raw))
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("could not tell whether the driver ran: %v", err)
 	}
 }
 
@@ -248,7 +318,7 @@ func TestABrowserWithoutItsDriverIsFoundNotDrivable(t *testing.T) {
 	// meets, and "no pair at all" and "a browser without its driver" are
 	// different states that must not print the same sentence.
 	var out, errb bytes.Buffer
-	if rc := browserStage(context.Background(), flowBindings(1, 0), false, &out, &errb); rc != 0 {
+	if rc := browserStage(context.Background(), flowBindings(1, 0), runOpts{}, &out, &errb); rc != 0 {
 		t.Errorf("an undrivable browser exited %d, wanted the skip", rc)
 	}
 	if got := out.String(); !strings.Contains(got, "FOUND, NOT DRIVABLE") || !strings.Contains(got, "geckodriver") {
@@ -378,7 +448,7 @@ func TestANamedDriverThatIsNotExecutableIsNotAPresence(t *testing.T) {
 	emptyPath(t)
 	t.Setenv(browserDriverEnv, "zz-no-such-browser-binary")
 	var out, errb bytes.Buffer
-	if rc := browserStage(context.Background(), flowBindings(1, 0), false, &out, &errb); rc != 0 {
+	if rc := browserStage(context.Background(), flowBindings(1, 0), runOpts{}, &out, &errb); rc != 0 {
 		t.Errorf("an unresolvable %s exited %d, wanted the skip", browserDriverEnv, rc)
 	}
 	got := out.String()
@@ -460,7 +530,7 @@ func TestTheConductVerdictCarriesTheStatusAndTheStream(t *testing.T) {
 func TestTheLiveBrowserStageTakesNoAPISessionToken(t *testing.T) {
 	emptyPath(t)
 	var out, errb bytes.Buffer
-	if rc := browserStage(context.Background(), flowBindings(2, 1), false, &out, &errb); rc != 0 {
+	if rc := browserStage(context.Background(), flowBindings(2, 1), runOpts{}, &out, &errb); rc != 0 {
 		t.Fatalf("the stage exited %d with stderr %q", rc, errb.String())
 	}
 	// PRECONDITION FIRST: the stage ran and said so, so a silent no-op cannot
@@ -516,7 +586,7 @@ func TestTheStageStartsAndStopsADriverThatAnswers(t *testing.T) {
 			t.Setenv(fakedriver.JournalEnv, journal)
 
 			var out, errb bytes.Buffer
-			if rc := browserStage(context.Background(), flowBindings(2, 1), c.headed, &out, &errb); rc != 0 {
+			if rc := browserStage(context.Background(), flowBindings(2, 1), runOpts{headed: c.headed, browserCheck: true}, &out, &errb); rc != 0 {
 				t.Fatalf("a working pair exited %d, stderr %q", rc, errb.String())
 			}
 			got := out.String()
@@ -561,6 +631,37 @@ func boolToInt(b bool) int {
 	return 0
 }
 
+// TestBrowserCheckIsParsedAndDefaultsToOff holds the flag that governs whether
+// a run launches a browser at all. ITS DEFAULT IS THE ONE CI PAYS FOR: with the
+// check unconditional, run 1109 died at the 1800s step budget.
+func TestBrowserCheckIsParsedAndDefaultsToOff(t *testing.T) {
+	for _, c := range []struct {
+		args  []string
+		check bool
+		bad   bool
+	}{
+		{[]string{"proj"}, false, false},
+		{[]string{"proj", "--browser-check"}, true, false},
+		{[]string{"--browser-check", "proj"}, true, false},
+		{[]string{"proj", "--headed", "--browser-check"}, true, false},
+		{[]string{"proj", "--browser-check=yes"}, false, true},
+	} {
+		_, _, _, _, _, opts, bad := parseRunArgs(c.args)
+		if c.bad {
+			if bad == "" {
+				t.Errorf("%v was accepted; --browser-check takes no value", c.args)
+			}
+			continue
+		}
+		if bad != "" {
+			t.Fatalf("%v was refused: %s", c.args, bad)
+		}
+		if opts.browserCheck != c.check {
+			t.Errorf("%v parsed browserCheck=%t, want %t", c.args, opts.browserCheck, c.check)
+		}
+	}
+}
+
 // TestTheHeadedFlagIsParsedAndDefaultsToHeadless holds the surface: `--headed`
 // takes no value, and its ABSENCE is what every unattended run gets.
 func TestTheHeadedFlagIsParsedAndDefaultsToHeadless(t *testing.T) {
@@ -575,7 +676,7 @@ func TestTheHeadedFlagIsParsedAndDefaultsToHeadless(t *testing.T) {
 		{[]string{"proj", "--headed", "--seed", "7"}, true, false},
 		{[]string{"proj", "--headed=yes"}, false, true},
 	} {
-		dir, _, _, _, _, headed, bad := parseRunArgs(c.args)
+		dir, _, _, _, _, opts, bad := parseRunArgs(c.args)
 		if c.bad {
 			if bad == "" {
 				t.Errorf("%v was accepted; --headed takes no value", c.args)
@@ -588,8 +689,8 @@ func TestTheHeadedFlagIsParsedAndDefaultsToHeadless(t *testing.T) {
 		if dir != "proj" {
 			t.Errorf("%v read the project as %q", c.args, dir)
 		}
-		if headed != c.headed {
-			t.Errorf("%v parsed headed=%t, want %t", c.args, headed, c.headed)
+		if opts.headed != c.headed {
+			t.Errorf("%v parsed headed=%t, want %t", c.args, opts.headed, c.headed)
 		}
 	}
 }
@@ -614,8 +715,8 @@ func TestTheHeadedFlagReachesTheBrowserFromTheCommandLine(t *testing.T) {
 		args     []string
 		headless bool
 	}{
-		{"default", []string{"run", "", "--seed", "1", "--steps", "1"}, true},
-		{"headed", []string{"run", "", "--seed", "1", "--steps", "1", "--headed"}, false},
+		{"default", []string{"run", "", "--seed", "1", "--steps", "1", "--browser-check"}, true},
+		{"headed", []string{"run", "", "--seed", "1", "--steps", "1", "--headed", "--browser-check"}, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := browserOnlyProject(t)
@@ -748,7 +849,7 @@ func TestASessionTheDriverWillNotCloseIsSaidOutLoud(t *testing.T) {
 	t.Setenv(fakedriver.JournalEnv, journal)
 
 	var out, errb bytes.Buffer
-	if rc := browserStage(context.Background(), flowBindings(1, 0), false, &out, &errb); rc != 0 {
+	if rc := browserStage(context.Background(), flowBindings(1, 0), runOpts{browserCheck: true}, &out, &errb); rc != 0 {
 		t.Fatalf("a drivable pair with a refused close exited %d, stderr %q", rc, errb.String())
 	}
 	got := out.String()
@@ -768,5 +869,38 @@ func TestASessionTheDriverWillNotCloseIsSaidOutLoud(t *testing.T) {
 	raw, err := os.ReadFile(journal)
 	if err != nil || !strings.Contains(string(raw), "close sess-1") {
 		t.Fatalf("the stage never asked for the delete: %v %q", err, string(raw))
+	}
+}
+
+// TestAPlainRunLaunchesNoBrowser is the cost claim where CI actually pays it:
+// at the command line, through the same dispatch `tests/run` drives 55 times.
+// The stage-level arm above measures browserStage; this one measures what the
+// BINARY does when nobody passes a flag, which is the number that turned a
+// 21m17s job into a run killed at the 1800s budget.
+func TestAPlainRunLaunchesNoBrowser(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake driver is this test binary")
+	}
+	dir := browserOnlyProject(t)
+	journal := filepath.Join(t.TempDir(), "journal")
+	pathDir := emptyPath(t)
+	plant(t, pathDir, "zz-fake-browser")
+	t.Setenv(browserDriverEnv, "zz-fake-browser")
+	t.Setenv(webDriverEnv, os.Args[0])
+	t.Setenv(fakedriver.ModeEnv, "ready")
+	t.Setenv(fakedriver.JournalEnv, journal)
+
+	var out, errb bytes.Buffer
+	if rc := run([]string{"run", dir, "--seed", "1", "--steps", "1"}, bytes.NewReader(nil), &out, &errb); rc != 0 {
+		t.Fatalf("a plain run exited %d\n%s\n%s", rc, out.String(), errb.String())
+	}
+	if !strings.Contains(out.String(), "the pair is COMPLETE") {
+		t.Fatalf("no complete pair was found, so this arm has no subject: %q", out.String())
+	}
+	if _, err := os.Stat(journal); err == nil {
+		raw, _ := os.ReadFile(journal)
+		t.Fatalf("`rumor run` with no flag executed a driver; journal: %q", string(raw))
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("could not tell whether the driver ran: %v", err)
 	}
 }

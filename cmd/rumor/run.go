@@ -77,7 +77,7 @@ const findingStatus = 3
 // still tells the reader the one thing they need to replay it. A seed reported
 // only on success would be missing from exactly the runs somebody wants to
 // reproduce.
-func runProject(dir string, seed uint64, haveSeed bool, steps int, profile string, headed bool,
+func runProject(dir string, seed uint64, haveSeed bool, steps int, profile string, opts runOpts,
 	stdout, stderr io.Writer) int {
 	if steps <= 0 {
 		steps = defaultSteps
@@ -363,12 +363,14 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 		stage.Fuzz: func() int {
 			return fuzzStage(ctx, dir, prep, brep.Bindings, profile, stdout, stderr)
 		},
-		// R9.1b's second head: it now STARTS the driver it met, so it takes
-		// the ctx head 1 said would arrive with one. `headed` reaches it here
-		// because the flag is a property of the RUN and not of the project --
-		// the same bindings run headless in CI and headed on a desk.
+		// R9.1b's second head. It takes the ctx head 1 said would arrive with
+		// the driver, and it starts one ONLY when asked: `--browser-check` is a
+		// launch per run, and this stage drives no flow yet. The run's flags
+		// reach it because headless-or-headed is a property of the RUN and not
+		// of the project -- the same bindings run headless in CI and headed on
+		// a desk.
 		stage.Browser: func() int {
-			return browserStage(ctx, brep.Bindings, headed, stdout, stderr)
+			return browserStage(ctx, brep.Bindings, opts, stdout, stderr)
 		},
 	}
 	if noRunner := missingRunners(stages, runners); len(noRunner) > 0 {
@@ -867,13 +869,28 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 	return 0
 }
 
-// parseRunArgs reads `run PROJECT [--seed N] [--steps N] [--profile NAME] [--headed]`.
+// parseRunArgs reads
+// `run PROJECT [--seed N] [--steps N] [--profile NAME] [--headed] [--browser-check]`.
 //
 // `--headed` TAKES NO VALUE AND HEADLESS IS THE DEFAULT (issue 122's
 // deliverable 1). The default is the one a CI runner can take: a headless
 // browser needs no display, and a run that drew a window would fail on every
 // box without one. The flag is for a person watching, so the ABSENCE of it is
 // what every unattended run gets without asking.
+//
+// `--browser-check` IS OFF BECAUSE ON COSTS A BROWSER LAUNCH PER RUN, and that
+// is measured rather than feared: with the check running unconditionally, CI run
+// 1109 died at the step's 1800s budget with NO test failing, where the same
+// suite one commit earlier finished the whole job in 21m17s. `tests/run` makes
+// 55 `rumor run` invocations and ci.yml names it the critical path, so a real
+// chromium start and teardown per run -- about 12s on that 4-core jail, inferred
+// from the aggregate -- is 11 to 13 minutes of diagnostics.
+//
+// THE FLAGS ARE A STRUCT AND NOT TWO MORE POSITIONAL RETURNS, which is the
+// remainder 5270039f recorded coming due: that commit left seven values handed
+// across two call sites and said a struct would make a transposition impossible
+// rather than merely detected. A second bool beside the first is where that
+// stops being theoretical.
 //
 // THE PROFILE IS A NAME AND NOT A NUMBER, which is why it is parsed before the
 // numeric pair rather than folded into it: platform.toml declares profiles and
@@ -882,57 +899,60 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 // it is caught by `settling`, and until this flag existed that profile could be
 // declared, validated and never run (fable, coop r6/92).
 func parseRunArgs(args []string) (dir string, seed uint64, haveSeed bool, steps int,
-	profile string, headed bool, bad string) {
+	profile string, opts runOpts, bad string) {
 
 	rest := args
 	for len(rest) > 0 {
 		switch {
 		case rest[0] == "--profile":
 			if len(rest) < 2 {
-				return "", 0, false, 0, "", false, "--profile wants a value"
+				return "", 0, false, 0, "", runOpts{}, "--profile wants a value"
 			}
 			// AN EMPTY NAME IS REFUSED rather than read as "the default",
 			// because those are different requests and silence between them is
 			// how a reader ends up measuring the wrong mix.
 			if rest[1] == "" {
-				return "", 0, false, 0, "", false, "--profile wants a name"
+				return "", 0, false, 0, "", runOpts{}, "--profile wants a name"
 			}
 			profile = rest[1]
 			rest = rest[2:]
 		case rest[0] == "--seed" || rest[0] == "--steps":
 			if len(rest) < 2 {
-				return "", 0, false, 0, "", false, rest[0] + " wants a value"
+				return "", 0, false, 0, "", runOpts{}, rest[0] + " wants a value"
 			}
 			n, err := strconv.ParseUint(rest[1], 10, 64)
 			if err != nil {
-				return "", 0, false, 0, "", false, fmt.Sprintf("%s %s: wanted a non-negative integer", rest[0], rest[1])
+				return "", 0, false, 0, "", runOpts{}, fmt.Sprintf("%s %s: wanted a non-negative integer", rest[0], rest[1])
 			}
 			if rest[0] == "--seed" {
 				seed, haveSeed = n, true
 			} else {
 				if n == 0 {
-					return "", 0, false, 0, "", false, "--steps 0: a walk of no steps is not a walk"
+					return "", 0, false, 0, "", runOpts{}, "--steps 0: a walk of no steps is not a walk"
 				}
 				steps = int(n)
 			}
 			rest = rest[2:]
 		case rest[0] == "--headed":
-			headed = true
+			opts.headed = true
+			rest = rest[1:]
+		case rest[0] == "--browser-check":
+			opts.browserCheck = true
 			rest = rest[1:]
 		case len(rest[0]) > 2 && rest[0][:2] == "--":
-			return "", 0, false, 0, "", false, fmt.Sprintf("%s is not a flag of run", rest[0])
+			return "", 0, false, 0, "", runOpts{}, fmt.Sprintf("%s is not a flag of run", rest[0])
 		default:
 			if dir != "" {
-				return "", 0, false, 0, "", false, "run takes one project directory"
+				return "", 0, false, 0, "", runOpts{}, "run takes one project directory"
 			}
 			dir = rest[0]
 			rest = rest[1:]
 		}
 	}
 	if dir == "" {
-		return "", 0, false, 0, "", false, "run wants a project directory"
+		return "", 0, false, 0, "", runOpts{}, "run wants a project directory"
 	}
-	return dir, seed, haveSeed, steps, profile, headed, ""
+	return dir, seed, haveSeed, steps, profile, opts, ""
 }
 
 // concurrencyStage is the `concurrency` stage: it puts limit-plus-one requests

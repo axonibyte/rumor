@@ -402,7 +402,7 @@ go test ./tests/attaint/ -v
 ## `rumor run`
 
 ```
-rumor run PROJECT [--seed N] [--steps N] [--headed]
+rumor run PROJECT [--seed N] [--steps N] [--headed] [--browser-check]
 ```
 
 Walks the project: draws an actor, draws what it does from the actions its
@@ -425,6 +425,12 @@ window would fail on every box without one. With it the browser draws its
 window, which is for a person watching it work. The flag is a property of the
 RUN and not of the project: the same bindings run headless in CI and headed on
 a desk.
+
+`--browser-check` also takes no value, and it is OFF by default because ON
+costs a browser launch on every run. It makes the `browser` stage actually
+start the pair it found and open a session, which is the only way to tell a pair
+that is PRESENT from one that RUNS. Without it the stage reports the pair and
+says plainly that whether it runs here is unknown.
 
 | status | meaning |
 |---|---|
@@ -455,14 +461,22 @@ pair this build knows takes its driver from the table, and one it does not know
 needs `RUMOR_WEBDRIVER` or it cannot be driven. Either name is checked for
 executability, so a typo is a refusal here and not a stage failing later.
 
-**A pair on `PATH` is not yet a browser that runs, so the stage starts it.** As
-of R9.1b it launches the driver, opens one session, and closes both -- and the
-run line reports what happened rather than what was present: `DRIVABLE, one
-session opened and closed` names the browser, its driver, how they were found,
-and whether the session was headless or headed. A pair can be complete and
-still not run: a browser short of a library, a user with no writable `HOME`, a
-driver on `PATH` that is not a webdriver at all. Each of those is now a skip
-with its reason named instead of a claim of drivability resting on presence.
+**A pair on `PATH` is not yet a browser that runs, and the stage says so rather
+than guessing either way.** A pair can be complete and still not run: a browser
+short of a library, a user with no writable `HOME`, a driver on `PATH` that is
+not a webdriver at all. So by default the line reports `the pair is COMPLETE and
+this stage has not driven it, so whether it RUNS here is UNKNOWN` — a claim
+exactly as wide as the evidence under it.
+
+**`--browser-check` buys the stronger claim, and it is not the default because
+it costs a browser launch per run.** Measured: with the check unconditional, CI
+run 1109 died at its step's 1800s budget with no test failing, where the same
+suite one commit earlier finished the whole job in 21m17s — `tests/run` makes 55
+`rumor run` invocations and is the suite's critical path, so a real chromium
+start and teardown each time is 11 to 13 minutes of pure diagnostics. With the
+flag the line reads `DRIVABLE, one session opened and closed`, naming the
+browser, its driver, how they were found, and whether the session was headless
+or headed; a pair that will not start is a skip with its reason named.
 
 **A browser with no driver beside it is FOUND, NOT DRIVABLE, and the skip says
 which half is missing.** That state is not a met precondition: `no pair ... on
