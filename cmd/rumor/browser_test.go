@@ -309,7 +309,16 @@ func TestABrowserWithoutItsDriverIsFoundNotDrivable(t *testing.T) {
 			"is not a resolution, and reporting one hands a later head something it cannot drive",
 			browser, driver)
 	}
-	for _, want := range []string{"FOUND, NOT DRIVABLE", "firefox", "geckodriver"} {
+	// THE CLAUSE, NOT THE TWO WORDS -- and this is rook's finding at coop r9/98
+	// against my own head 1. The verdict also embeds pairNames(), which is
+	// "chrome+chromedriver, ... firefox+geckodriver, ...", so Contains(how,
+	// "firefox") and Contains(how, "geckodriver") are BOTH satisfied by the pair
+	// table whether the missing half is named or not. I reported the mutant that
+	// drops the naming as dead; rook cut it and the suite passed, and I
+	// reproduced that. The assertion could not fail for the defect it exists
+	// for. "firefox without geckodriver" appears only when the undrivable entry
+	// carries both names, so it discriminates and the two words do not.
+	for _, want := range []string{"FOUND, NOT DRIVABLE", "firefox without geckodriver"} {
 		if !strings.Contains(how, want) {
 			t.Errorf("the verdict does not name %q: %q -- an operator one package away from a "+
 				"drivable box has to be told which package", want, how)
@@ -323,7 +332,10 @@ func TestABrowserWithoutItsDriverIsFoundNotDrivable(t *testing.T) {
 	if rc := browserStage(context.Background(), flowBindings(1, 0), runOpts{}, &out, &errb); rc != 0 {
 		t.Errorf("an undrivable browser exited %d, wanted the skip", rc)
 	}
-	if got := out.String(); !strings.Contains(got, "FOUND, NOT DRIVABLE") || !strings.Contains(got, "geckodriver") {
+	// THE SAME CLAUSE HERE, for the same reason: the stage line carries the
+	// resolver's `how` verbatim, pair table and all, so "geckodriver" alone was
+	// satisfied by the table.
+	if got := out.String(); !strings.Contains(got, "FOUND, NOT DRIVABLE") || !strings.Contains(got, "firefox without geckodriver") {
 		t.Errorf("the skip does not carry the found-not-drivable state and the missing half: %q", got)
 	}
 }
