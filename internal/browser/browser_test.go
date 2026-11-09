@@ -46,32 +46,104 @@ func TestMain(m *testing.M) {
 	// catches any arm, including ones not written yet, and the BEFORE set is
 	// what keeps it honest in a jail where something else may be running: only
 	// what this run added can fail it.
+	//
+	// AND IT IS SCOPED TO THIS PROCESS'S OWN DESCENDANTS, which the gate forced
+	// on 2026-11-09: tests/run launches browsers too now, `go test ./...` runs
+	// packages in parallel, and this check failed naming 22 processes that were
+	// that package's. MEASURED both ways -- this package ALONE is clean and the
+	// suite was not -- so the claim "this package left no browser behind" was
+	// resting on a measurement of "no browser is running anywhere".
+	//
+	// THE PROCESS GROUP AND NOT DESCENT, and descent was tried first and
+	// MEASURED WRONG. The paragraph above says those orphans "reparented onto
+	// the test binary"; they do not. Measured in this jail 2026-11-09: a child
+	// whose parent exits gets PPID 1, so a browser outliving its driver is no
+	// longer below this process and a descent filter would miss the ONE case
+	// this check exists for -- it would have read clean while failing.
+	//
+	// A pgid SURVIVES ITS LEADER'S DEATH, which is what makes it the right
+	// handle: Start sets Setpgid so each driver leads its own group and its
+	// browsers inherit it, so an orphan is still in the group whose leader is
+	// gone. The groups are recorded as the arms start them, which is why every
+	// arm goes through startReal or startFake -- and TestEveryArmStartsThrough
+	// TheHelpers keeps an arm not written yet from bypassing the register.
 	before := browserProcesses()
 	code := m.Run()
-	if leaked := newSince(before); len(leaked) > 0 && code == 0 {
+	// A LEAK IS REPORTED EVEN WHEN AN ARM ALREADY FAILED, and only the EXIT
+	// CODE is withheld in that case. The report used to be skipped entirely on
+	// a failure so as not to pile a second complaint onto the first, and that
+	// silence has a cost I measured 2026-11-09: a mutant that signalled the
+	// driver instead of its group left ELEVEN groups -- 83 processes -- in this
+	// jail across one sweep, and every run that produced them FAILED, so
+	// nothing said so. That is a sufficient mechanism for the stale processes
+	// head 2 recorded as unexplained: any failing run leaks invisibly.
+	//
+	// THE CODE IS STILL NOT OVERWRITTEN, which is the half worth keeping: a
+	// failing arm is the finding a reader should chase first, and a leak report
+	// that changed 1 into 1 tells them nothing new.
+	if leaked := newSince(before); len(leaked) > 0 {
 		fmt.Fprintf(os.Stderr, "\ninternal/browser left %d browser process(es) running: %s\n"+
 			"a driver that outlives its arm holds the harness open and accumulates in the jail\n",
 			len(leaked), strings.Join(leaked, ", "))
-		code = 1
+		if code == 0 {
+			code = 1
+		}
 	}
 	os.Exit(code)
 }
 
-// browserProcesses is the pids of every chromedriver and chrome this account can
-// see, which on a jail is this account's own.
+// browserProcesses is the pids of every chromedriver and chrome IN A GROUP THIS
+// PACKAGE STARTED, which is what "this package left one behind" means. A browser
+// another package started is in another group and none of this check's business
+// -- reporting one would be a false red against the package that cleaned up.
 func browserProcesses() map[string]bool {
 	out := map[string]bool{}
-	ps, err := exec.Command("ps", "-axww", "-o", "pid=", "-o", "command=").Output()
+	// ONE COLUMN PER KEYWORD, because `-o a=,b=` is ONE column whose header is
+	// everything after the first `=`, and a multi-column ps truncates at the
+	// terminal width without -ww.
+	ps, err := exec.Command("ps", "-axww", "-o", "pid=", "-o", "pgid=", "-o", "command=").Output()
 	if err != nil {
 		return out
 	}
+	ours := startedGroups()
 	for _, line := range strings.Split(string(ps), "\n") {
 		if !strings.Contains(line, "chromedriver") && !strings.Contains(line, "chrome:") {
 			continue
 		}
-		if f := strings.Fields(line); len(f) > 0 {
+		f := strings.Fields(line)
+		if len(f) < 3 {
+			continue
+		}
+		// f[1] is the PGID here, not the parent: a group's leader is the driver
+		// this package started, and its browsers inherit the group.
+		if ours[f[1]] {
 			out[f[0]] = true
 		}
+	}
+	return out
+}
+
+// groups is every process group this package has started, as pgid strings. A
+// driver leads its own group (Start sets Setpgid), so the group is the pid.
+//
+// NO MUTEX AND THE REASON IS STATED: the arms in this package do not call
+// t.Parallel, so starts are sequential, and TestMain reads this only after
+// m.Run has returned. An arm that added t.Parallel would need a lock here, and
+// that is what this sentence is for.
+var groups []int
+
+// noteGroup records a driver's group so the leak check can tell this package's
+// browsers from another package's.
+func noteGroup(d *Driver) {
+	if d != nil && d.cmd != nil && d.cmd.Process != nil {
+		groups = append(groups, d.cmd.Process.Pid)
+	}
+}
+
+func startedGroups() map[string]bool {
+	out := make(map[string]bool, len(groups))
+	for _, g := range groups {
+		out[strconv.Itoa(g)] = true
 	}
 	return out
 }
@@ -134,6 +206,7 @@ func startFake(t *testing.T, mode string, headless bool) (*Driver, string) {
 	t.Helper()
 	path, journal := fakeDriver(t, mode)
 	d, err := Start(context.Background(), path, "/nonexistent/chromium", headless)
+	noteGroup(d)
 	if err != nil {
 		t.Fatalf("Start against the fake driver: %v", err)
 	}
@@ -341,6 +414,7 @@ func TestTheSandboxFlagIsNeverAskedFor(t *testing.T) {
 func TestTheScannedBrowserTravelsIntoTheSession(t *testing.T) {
 	path, journal := fakeDriver(t, "ready")
 	d, err := Start(context.Background(), path, "/opt/odd/place/chromium", true)
+	noteGroup(d)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -503,6 +577,7 @@ func TestAStartingDriverIsGivenTimeToComeUp(t *testing.T) {
 	path, _ := fakeDriver(t, "slow")
 	began := time.Now()
 	d, err := Start(context.Background(), path, "", true)
+	noteGroup(d)
 	if err != nil {
 		t.Fatalf("a driver that readies after %s was refused: %v", fakedriver.SlowFor, err)
 	}
@@ -562,6 +637,7 @@ func TestADriverThatExitsIsReportedAtOnceAndNotAtTheBound(t *testing.T) {
 	}
 	began := time.Now()
 	d, err := Start(context.Background(), quitter, "", true)
+	noteGroup(d)
 	took := time.Since(began)
 	if err == nil {
 		_ = d.Close(context.Background())
@@ -612,5 +688,65 @@ func TestCloseReportsASessionTheDriverRefusedToDelete(t *testing.T) {
 	// that is gone would be a second failure with no subject.
 	if got := d.Actors(); len(got) != 0 {
 		t.Errorf("Close left %v holding sessions after a refused delete", got)
+	}
+}
+
+// TestEveryStartRegistersItsProcessGroup is the guard the leak check needs, and
+// it exists because scoping that check to this package's own groups traded away
+// a property the box-wide diff had for free: a diff catches an arm not written
+// yet, and a register only catches arms that remember to register.
+//
+// SO THE REGISTER IS NOT LEFT TO MEMORY. This arm reads this package's own test
+// sources and requires every `Start(` that takes a driver to be followed by
+// noteGroup within two lines. An arm added later either registers or fails
+// here, which is the same bargain the diff made -- paid once, in source.
+//
+// A SOURCE SCAN AND NOT A RUNTIME COUNT, because the thing being guarded is
+// what a FUTURE arm does: a count of registrations at runtime says nothing
+// about the arm that forgot, since the arm that forgot is the one not running.
+func TestEveryStartRegistersItsProcessGroup(t *testing.T) {
+	sources, err := filepath.Glob("*_test.go")
+	if err != nil || len(sources) == 0 {
+		t.Fatalf("no test sources to read: %v", err)
+	}
+	// THE NEEDLE IS BUILT FROM PIECES so that no line of this file contains it
+	// whole. The first draft spelled it as one literal and the scan reported
+	// ITSELF -- twice, since the fix spelled it again -- which is the shape a
+	// grep over its own report always takes.
+	needle := ":= " + "Start(" + "context.Background()"
+	unregistered := []string{}
+	for _, name := range sources {
+		raw, rerr := os.ReadFile(name)
+		if rerr != nil {
+			t.Fatalf("reading %s: %v", name, rerr)
+		}
+		lines := strings.Split(string(raw), "\n")
+		for i, line := range lines {
+			// A CODE LINE THAT BINDS A DRIVER, not the bare call: the `:=` is
+			// what tells a start whose driver is kept from one whose is not.
+			if !strings.Contains(line, needle) {
+				continue
+			}
+			// A Start WHOSE DRIVER IS DISCARDED CANNOT LEAK ONE. The arm for a
+			// missing driver asserts the error and binds no *Driver, so there
+			// is no group to record -- `_, err :=` is that shape.
+			if strings.Contains(line, "_, err :=") || strings.Contains(line, "if _, err") {
+				continue
+			}
+			registered := false
+			for j := i + 1; j < len(lines) && j <= i+2; j++ {
+				if strings.Contains(lines[j], "noteGroup(") {
+					registered = true
+				}
+			}
+			if !registered {
+				unregistered = append(unregistered,
+					fmt.Sprintf("%s:%d", name, i+1))
+			}
+		}
+	}
+	if len(unregistered) > 0 {
+		t.Errorf("these arms start a driver and do not register its process group, so a browser "+
+			"they leak is invisible to TestMain's check: %s", strings.Join(unregistered, ", "))
 	}
 }

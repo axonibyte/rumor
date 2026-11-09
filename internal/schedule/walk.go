@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"slices"
 	"sort"
@@ -449,6 +450,15 @@ type Record struct {
 	// observed NOTHING and a walk whose observations all agreed are the same
 	// record, and the first is a project the engine never asked a question of.
 	Observations int
+
+	// BrowserObservations is how many of them a REAL BROWSER read from the
+	// page, rather than the adapter answering from the served HTML.
+	//
+	// TWO FACTS AND NOT ONE, for `FlowBrowser`'s reason: the value is identical
+	// whichever oracle produced it, so "the walk observed" and "a page was
+	// read" cannot be told apart from one number -- and the whole of R9.1b's
+	// deliverable 3 is the difference between them.
+	BrowserObservations int
 
 	// Finding is the first `bug` an observation yielded, and FoundAt is the
 	// step after which it did. Both zero means no observation found one.
@@ -1158,6 +1168,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, br Browser,
 			step.Verdicts = append(step.Verdicts, seen[i].Says())
 		}
 		rec.Observations += len(seen)
+		rec.BrowserObservations = sessions.BrowserReads()
 		rec.Steps = append(rec.Steps, step)
 		if pend.waiting() {
 			pendAt = len(rec.Steps) - 1
@@ -1803,12 +1814,56 @@ func observeOne(ctx context.Context, statute string, sess *wire.Session, session
 		token = t
 	}
 
-	resp, err := sess.Observe(wire.ObserveRequest{
-		Query: decl.Name, Source: decl.Source, Token: token, Args: args,
-	})
-	if err != nil {
-		return engine.Finding{}, nil, false, fmt.Errorf("observing %s (%s) %s: %w",
-			decl.Name, decl.Source, when, err)
+	// A `browser` OBSERVATION IS READ FROM THE PAGE WHERE THERE IS A BROWSER,
+	// which is fable's ruling at coop r9/120: the adapter reports the page and
+	// the element, "the driver navigates the actor's context to page, reads the
+	// element's text content from the LIVE DOM, and that is the `browser`
+	// observation". The adapter's own read of the served HTML stays `direct`,
+	// the engine's second oracle.
+	//
+	// AND ONLY `browser` COMES HERE. A `direct` observation is the ENGINE'S and
+	// never an actor's, so it is never read through a browser -- a page is one
+	// reader's view and `direct` is nobody's, which is the distinction the check
+	// below keeps by omitting the role. The wire holds the other half: an
+	// adapter reporting a page or an element on a non-browser observation is
+	// refused by name.
+	//
+	// THE ADAPTER STILL ANSWERS IT WHERE NO BROWSER WAS STARTED, which is what
+	// every run did before R9.1b and what a box without a drivable pair does.
+	var observed any
+	var unservable bool
+	if br, base := sessions.Browser(); br != nil && decl.Source == wire.SourceBrowser {
+		page, element, kind, perr := pageOf(sess.Described(), decl, args)
+		if perr != nil {
+			return engine.Finding{}, nil, false, perr
+		}
+		text, children, present, rerr := br.Read(ctx, actor, base, page, element, token)
+		if rerr != nil {
+			return engine.Finding{}, nil, false, fmt.Errorf("observing %s (%s) %s through the "+
+				"browser: %w", decl.Name, decl.Source, when, rerr)
+		}
+		unservable = !present
+		if present {
+			v, verr := observedValue(decl.Name, kind, text, children)
+			if verr != nil {
+				return engine.Finding{}, nil, false, verr
+			}
+			observed = v
+		}
+		// COUNTED WHETHER OR NOT THE PAGE CARRIED IT, because both are the
+		// browser's answer: an element that is not there is what a reader sees,
+		// and a count that skipped it would report fewer readings than the walk
+		// took.
+		sessions.noteBrowserRead()
+	} else {
+		resp, err := sess.Observe(wire.ObserveRequest{
+			Query: decl.Name, Source: decl.Source, Token: token, Args: args,
+		})
+		if err != nil {
+			return engine.Finding{}, nil, false, fmt.Errorf("observing %s (%s) %s: %w",
+				decl.Name, decl.Source, when, err)
+		}
+		observed, unservable = resp.Value, resp.Missing
 	}
 
 	// THE OBSERVER IS THE STEP'S ACTOR FOR api AND THE ENGINE FOR direct,
@@ -1821,7 +1876,7 @@ func observeOne(ctx context.Context, statute string, sess *wire.Session, session
 	// returns the only record of what was read is the finding's input. R7.4's
 	// `[deadline].instants` needs the NUMBER, so it is handed back rather
 	// than dug back out of a map.
-	value := resp.Value
+	value := observed
 	// A SUBJECT THE ADAPTER COULD NOT SERVE IS A VALUE, and this is the ONE
 	// place the word is written (fable, coop rumor/1669). The adapter reports
 	// the OUTCOME as a field and never the spelling, so a misspelling cannot
@@ -1839,7 +1894,12 @@ func observeOne(ctx context.Context, statute string, sess *wire.Session, session
 	// hides the one thing a browser observation exists to show. A page the
 	// reader cannot see is exactly the finding such an observation is for, so
 	// it must reach the statute rather than vanish before it.
-	if resp.Missing {
+	// AND AN ELEMENT THE PAGE DOES NOT CARRY IS THE SAME WORD, which is what
+	// keeps one spelling for one state: the adapter reports a page it could not
+	// serve as a field, and a driver reports an element that is not there as
+	// absence. Both are what a reader SEES, so both arrive here as the one
+	// value a statute may compare.
+	if unservable {
 		value = wire.ValueMissing
 	}
 	check := engine.Check{
@@ -1897,6 +1957,116 @@ func observeOne(ctx context.Context, statute string, sess *wire.Session, session
 // THE SECOND RETURN IS "THIS STEP CAN SUPPORT IT", not an error: an observation
 // the step has no subject for is not a fault, it is an observation for another
 // step.
+// subjectPlaceholder is what an adapter writes in a reported page where the
+// observation's subject goes. ONE SPELLING, here: the adapter writes it and the
+// walk resolves it, and a second spelling would be an adapter whose pages
+// silently never resolve.
+const subjectPlaceholder = "{subject}"
+
+// pageOf answers WHERE a browser observation is read -- the page and the element
+// the ADAPTER reported for it -- with the subject resolved into the page.
+//
+// IT REFUSES BY NAME AND INVENTS NOTHING (fable, coop r9/120): "a browser
+// observation whose describe carries no page or element is a NAMED refusal at
+// the walk, never an invented path or selector". The refusal is the project's
+// to read, so it says which observation and what is missing rather than failing
+// somewhere inside the driver.
+//
+// THE SUBJECT IS THE OBSERVATION'S SOLE ARGUMENT, because that is what a page
+// addresses: the toy's "/ui/events/{subject}" needs the event, and an
+// observation declaring two arguments has not said which one the page is of. A
+// page carrying no placeholder needs no subject at all and is used as written.
+func pageOf(desc wire.DescribeResponse, decl bindings.Observation,
+	args map[string]any) (page, element, kind string, err error) {
+
+	for _, o := range desc.Observations {
+		if o.Name != decl.Name {
+			continue
+		}
+		// ALL THREE OR NONE OF THEM. The page says where, the element says
+		// what, and the type says what the text MEANS (fable, coop r9/122) --
+		// a reading missing any one of them cannot be taken, and the engine
+		// guesses none of them.
+		if o.Page == "" || o.Element == "" || o.Type == "" {
+			return "", "", "", fmt.Errorf("observation %q is source %q and this adapter's "+
+				"describe reports page %q, element %q and type %q: a browser reads a page by an "+
+				"address, an element and what its text means, and NONE of the three is guessed "+
+				"here -- contract %q carries all three as optional, so an adapter serving browser "+
+				"observations through a real browser must report them",
+				decl.Name, decl.Source, o.Page, o.Element, o.Type, wire.ContractVersion)
+		}
+		page = o.Page
+		if strings.Contains(page, subjectPlaceholder) {
+			if len(args) != 1 {
+				return "", "", "", fmt.Errorf("observation %q reports page %q, which names a "+
+					"subject, and the observation resolved %d argument(s): a page addresses ONE "+
+					"subject, so which of them it is has not been said",
+					decl.Name, o.Page, len(args))
+			}
+			for _, v := range args {
+				page = strings.ReplaceAll(page, subjectPlaceholder, fmt.Sprintf("%v", v))
+			}
+		}
+		return page, o.Element, o.Type, nil
+	}
+	// AN OBSERVATION THE ADAPTER DOES NOT DECLARE cannot be read through a
+	// browser or anything else, and `rumor validate`'s arm 19 refuses this
+	// before any actor moves -- so reaching it here is this build asking for
+	// something the pre-run check should have stopped.
+	return "", "", "", fmt.Errorf("this adapter's describe declares no observation %q, so there "+
+		"is no page to read it from", decl.Name)
+}
+
+// observedValue is THE ONE PLACE a browser reading's text becomes the value a
+// statute judges, and it converts BY DECLARATION AND NEVER BY APPEARANCE
+// (fable, coop r9/122: "NO SNIFFING").
+//
+// A `number` OBSERVATION WHOSE TEXT IS NOT WHOLLY NUMERIC IS A REFUSAL BY NAME,
+// not a bug and not a zero. Both of the readings it replaces would be worse than
+// an error: a zero would make "0 of 2" an empty event and a visibility finding
+// would rest on it, and letting the text through would reach the statute as a
+// string, where it equals no count and every reading becomes a `bug`.
+//
+// THE TEXT IS TRIMMED AND NOTHING ELSE IS TAKEN FROM IT. A DOM text node
+// carries the whitespace of the template around it, so trimming is reading the
+// element rather than interpreting it -- and no digit is extracted from a longer
+// string, because that is the sniffing the ruling forbids.
+func observedValue(name, kind, text string, children int) (any, error) {
+	switch kind {
+	case wire.ObservedText:
+		return text, nil
+	case wire.ObservedCount:
+		// THE CHILDREN, COUNTED BY THE DRIVER AND NOT DERIVED FROM THE TEXT
+		// (fable, coop r9/124). A list's text is its items run together, and no
+		// arithmetic on it recovers how many there were -- which is why this
+		// reading is a separate word rather than a parse of `text`.
+		return children, nil
+	case wire.ObservedNumber:
+		trimmed := strings.TrimSpace(text)
+		n, err := strconv.ParseFloat(trimmed, 64)
+		if err != nil {
+			return nil, fmt.Errorf("observation %q is declared %q and the page showed %q, which "+
+				"is not wholly numeric: the element must hold the number ALONE. This is a "+
+				"refusal and not a reading -- a zero here would make a page that shows "+
+				"something else read as an empty one, and the text would reach a statute that "+
+				"compares counts and equal none of them", name, kind, trimmed)
+		}
+		// AN INTEGRAL READING IS AN INTEGER, so a count read through the
+		// browser is the same shape as the one the adapter answers: a statute
+		// comparing against a ledger count must not have to know which oracle
+		// produced the number.
+		if n == math.Trunc(n) {
+			return int(n), nil
+		}
+		return n, nil
+	default:
+		return nil, fmt.Errorf("observation %q is declared type %q, which this build does not "+
+			"convert: a reading is %q, %q or %q, the wire refuses anything else on the describe, "+
+			"so reaching here is this build disagreeing with itself",
+			name, kind, wire.ObservedNumber, wire.ObservedText, wire.ObservedCount)
+	}
+}
+
 func observeHandles(decl bindings.Observation, table *handle.Table,
 	step *Step) (map[string]string, bool) {
 

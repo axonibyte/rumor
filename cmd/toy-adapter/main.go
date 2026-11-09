@@ -71,8 +71,36 @@ var (
 		// the one whose value the application RENDERS rather than computes: the
 		// count the page shows a reader is what a stale per-event cache would
 		// get wrong while /events/<id>/count stayed right.
-		{Name: "page_count", Source: wire.SourceBrowser},
-		{Name: "page_attendees", Source: wire.SourceBrowser},
+		// WHERE A BROWSER READS THESE, reported because this adapter is the one
+		// thing that knows its own UI (fable, coop r9/120). The page is
+		// relative to `base` with the subject as a placeholder, and the element
+		// is an ID on that page -- cmd/toy renders `<p id="count">` and
+		// `<ul id="attendees">`, so these are the ids a driver reads.
+		//
+		// THE SAME PAIR THIS ADAPTER'S OWN READ USES, which is what keeps the
+		// two oracles about one page: a.page() fetches /ui/events/<id> and
+		// pageCount/pageAttendees parse those two ids out of the served HTML.
+		// A driver reading a DIFFERENT element would make the browser's answer
+		// and the adapter's answer two subjects rather than two readings.
+		//
+		// AND WHAT THE TEXT MEANS, declared because the engine converts by this
+		// and never by what the text looks like (fable, coop r9/122: "NO
+		// SNIFFING"). Both are counts, so both are `number`: the element holds
+		// the figure alone and the engine makes it a number in one place,
+		// refusing by name any text that is not wholly numeric.
+		//
+		// `page_attendees` IS A `count` AND NOT THE NAMES, which is the
+		// observation's own rule one block down -- the finding is that a
+		// non-admin was SHOWN the list at all, so the names add nothing a rule
+		// reads and would put other actors' ids in every report -- and it is
+		// the reading fable added at coop r9/124 for exactly this element: the
+		// <li> children are what pageAttendees has counted from the served HTML
+		// all along, so the driver counting them from the live DOM keeps the two
+		// oracles comparable and the SUT unchanged.
+		{Name: "page_count", Source: wire.SourceBrowser,
+			Page: "/ui/events/{subject}", Element: "count", Type: wire.ObservedNumber},
+		{Name: "page_attendees", Source: wire.SourceBrowser,
+			Page: "/ui/events/{subject}", Element: "attendees", Type: wire.ObservedCount},
 		// THE EXPIRY, whose value is an INSTANT and not a count: the only
 		// observation in this adapter that answers a time. `api`, because an
 		// actor reads it through its own session the way it reads a count.
@@ -1117,12 +1145,19 @@ func pageAttendees(doc string) (int, bool) {
 // page gives an id for.
 //
 // A REGEXP AND NOT A PARSER, and the reason is the id: cmd/toy writes
-// `<p id="count">N of C</p>` itself, so the anchor is the application's own
-// contract with its reader rather than a guess about HTML. The CAPACITY is
-// matched and discarded deliberately -- requiring it is what keeps this from
-// matching a `#count` element of some other shape and reading the wrong number
-// out of it.
-var pageCountRe = regexp.MustCompile(`<p id="count">([0-9]+) of ([0-9]+)</p>`)
+// `<p><span id="count">N</span> of C</p>` itself, so the anchor is the
+// application's own contract with its reader rather than a guess about HTML. The
+// CAPACITY is matched and discarded deliberately -- requiring it is what keeps
+// this from matching a `#count` element of some other shape and reading the
+// wrong number out of it.
+//
+// THE ID MOVED ONTO THE NUMBER IN R9.1b, and the reason is the OTHER oracle: a
+// `browser` observation reads #count's TEXT from the live DOM and the engine
+// converts it by declaration, so an element holding "0 of 2" would be a refusal
+// rather than a reading (fable, coop r9/122). The element holds the number
+// ALONE now and the sentence a reader sees is unchanged -- the page still says
+// "0 of 2", with the id on the figure instead of the phrase.
+var pageCountRe = regexp.MustCompile(`<span id="count">([0-9]+)</span> of ([0-9]+)`)
 
 // pageCount extracts the rendered count. The second return is whether the page
 // carried one at all, which is NOT the same question as zero: a page with no

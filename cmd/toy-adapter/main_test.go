@@ -709,7 +709,7 @@ const eventPage = `<!doctype html>
 <title>standup</title>
 <h1 id="title">standup</h1>
 <p id="role">guest</p>
-<p id="count">2 of 10</p>
+<p><span id="count">2</span> of 10</p>
 <form id="join" method="post" action="/ui/events/e-1/join?token=t-1">
 <button type="submit">join</button>
 </form>
@@ -907,7 +907,7 @@ func TestTheCountPatternDISCRIMINATES(t *testing.T) {
 	const decoyFirst = `<!doctype html>
 <h1 id="title">standup</h1>
 <p>5 of 9</p>
-<p id="count">2 of 10</p>
+<p><span id="count">2</span> of 10</p>
 `
 	for _, c := range []struct {
 		what, page string
@@ -1032,7 +1032,7 @@ func TestThePageReadersAreTheElementsAndNotThePage(t *testing.T) {
 	const twoLists = `<!doctype html>
 <h1 id="title">a page with two lists</h1>
 <p id="role">guest</p>
-<p id="count">2 of 3</p>
+<p><span id="count">2</span> of 3</p>
 <ul id="attendees">
 <li>u-1</li>
 <li>u-2</li>
@@ -1056,7 +1056,7 @@ func TestThePageReadersAreTheElementsAndNotThePage(t *testing.T) {
 
 	// ABSENT IS NOT EMPTY, both ways round.
 	const noList = `<!doctype html>
-<p id="count">0 of 3</p>
+<p><span id="count">0</span> of 3</p>
 `
 	if n, ok := pageAttendees(noList); ok || n != 0 {
 		t.Errorf("pageAttendees read (%d, %v) on a page with NO #attendees element, want (0, "+
@@ -1074,11 +1074,12 @@ func TestThePageReadersAreTheElementsAndNotThePage(t *testing.T) {
 
 	// AND THE COUNT READER, which had no cell either.
 	if n, ok := pageCount(twoLists); !ok || n != 2 {
-		t.Errorf("pageCount read (%d, %v) on `<p id=\"count\">2 of 3</p>`, want (2, true)", n, ok)
+		t.Errorf("pageCount read (%d, %v) on a page carrying `<span id=\"count\">2</span> of 3`, "+
+			"want (2, true)", n, ok)
 	}
 	if n, ok := pageCount(noList); !ok || n != 0 {
-		t.Errorf("pageCount read (%d, %v) on `<p id=\"count\">0 of 3</p>`, want (0, true): zero "+
-			"rendered is an answer", n, ok)
+		t.Errorf("pageCount read (%d, %v) on a page carrying `<span id=\"count\">0</span> of 3`, "+
+			"want (0, true): zero rendered is an answer", n, ok)
 	}
 	const noCount = `<!doctype html>
 <ul id="attendees">
@@ -1092,7 +1093,7 @@ func TestThePageReadersAreTheElementsAndNotThePage(t *testing.T) {
 	// THE CAPACITY IS REQUIRED ON PURPOSE, which pageCountRe's own comment claims
 	// and nothing held: a `#count` element of another shape must not have a
 	// number read out of it.
-	if n, ok := pageCount(`<p id="count">4</p>`); ok || n != 0 {
+	if n, ok := pageCount(`<span id="count">4</span>`); ok || n != 0 {
 		t.Errorf("pageCount read (%d, %v) out of `<p id=\"count\">4</p>`, want (0, false): the "+
 			"`N of C` shape is cmd/toy's contract with this reader, and matching a bare number "+
 			"would take the wrong one out of some other element that shares the id", n, ok)

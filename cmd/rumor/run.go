@@ -754,10 +754,11 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 	}
 	if _, err := fmt.Fprintf(stdout,
 		"run: %s -- seed %d, %d step(s), %d handle(s), %d session(s), "+
-			"%d observation(s), %d step(s) through `flow`, %d through a real browser; "+
-			"%d rollback provider(s) registered\n",
+			"%d observation(s) of which %d read from the page, %d step(s) through `flow`, "+
+			"%d through a real browser; %d rollback provider(s) registered\n",
 		filepath.Base(dir), rec.Seed, len(rec.Steps), len(rec.HandleSequence()),
-		rec.Sessions, rec.Observations, flows, drivenHere, len(rollback.Registered())); err != nil {
+		rec.Sessions, rec.Observations, rec.BrowserObservations, flows, drivenHere,
+		len(rollback.Registered())); err != nil {
 		_, _ = fmt.Fprintf(stderr, "run: writing the verdict: %v\n", err)
 		return 2
 	}

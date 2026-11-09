@@ -1557,6 +1557,57 @@ DIAL PROVES IS NARROW AND SAID SO: a listener at that address, not that the
 listener is the system under test — an address pointing at the wrong live server
 still drives.
 
+**AND THE ADAPTER REPORTS WHERE A BROWSER OBSERVATION IS READ, BESIDE `base`**
+(fable, coop r9/120). A `browser` observation names a page and an element on
+`describe`: `page` is a path relative to `base` with the subject as a
+placeholder — the toy's `/ui/events/{subject}` — and `element` is an element ID
+on that page. The driver navigates the ACTOR'S OWN context to the page and reads
+the element's text content from the live DOM, and that is the `browser`
+observation. The adapter's own read of the served HTML stays `direct`, the
+engine's second oracle, and `direct` is refused to an actor by name: a page is
+one reader's view and `direct` is nobody's, which is why a direct check carries
+no role. Declaring the two in `platform.toml` was refused as coupling the
+project to the adapter's UI, where it would drift; reading whatever page the
+last flow left open was refused because an observation would then depend on what
+happened to be open.
+
+**AND THE ADAPTER DECLARES WHAT A READING MEANS — `number`, `text` OR `count`,
+NEVER SNIFFED** (fable, coop r9/122 and r9/124). A browser reads text and a statute compares a
+count, so the reading's type is declared beside the page and the element: for
+`number` the engine converts a wholly numeric text to a number IN ONE PLACE and
+refuses by name any text that is not — `0 of 2` is a refusal, not a bug and not
+a zero — and a `text` observation stays text, reaching only judgements written
+for a string. The statute is untouched, which is what keeps `a string never
+equals a count` load-bearing: what reaches it is a number BY DECLARATION and
+never by appearance. A rule that converted whatever looked numeric would make
+the type a property of today's data — an attendee list showing one name that
+happens to be `7` would become the number seven — so the declaration is what
+makes it a fact about the observation. The toy's `#count` holds the number alone
+for this reason, with the sentence a reader sees unchanged.
+
+**AND `count` IS THE ELEMENT'S CHILD ELEMENTS**, which is the reading a LIST
+has: the toy's `#attendees` carries no figure at all, so its text is neither a
+number nor a judgeable string — and counting its `<li>` children is exactly what
+the adapter's served-HTML oracle has computed all along. THE SUT DOES NOT CHANGE
+TO BE OBSERVED and the statute does not move: a page with an empty list reads 0,
+the same figure the other oracle gives, so the two stay comparable. It is the
+CHILDREN and not the descendants — a bare `*` from an element finds every
+descendant, so a list whose items each carried a span would count twice what a
+reader sees as items. An element that is ABSENT is `missing` rather than 0, for
+the reason a withheld page is never an empty one: a hidden page read as a zero is
+the reading a visibility finding would then rest on.
+
+**AN ELEMENT IS AN ID AND NEVER A CSS SELECTOR**, in the same vocabulary as a
+flow's `until`: one word for one thing. A selector would make the adapter's
+answer a query language the engine has to implement, and two spellings of "which
+element" is how a reader ends up unable to tell a missing element from a
+mistyped selector. The wire refuses one by name, and so does the driver. A page
+carrying its own scheme is refused for `base`'s reason: one address, in one
+place. AND A BROWSER OBSERVATION WHOSE DESCRIBE CARRIES NEITHER IS A NAMED
+REFUSAL AT THE WALK — never an invented path or selector — naming the
+observation and which half is missing, because that refusal is the project's to
+read.
+
 **A BROWSER-CONTEXT ACTION IS CARRIED BY `flow` AND NOT `execute`**, decided by
 the action's CONTEXT and nothing else: `docs/contract.md` says such an action
 "declares a flow instead of a response", so the two operations are not

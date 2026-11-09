@@ -628,12 +628,24 @@ func (d *Driver) text(ctx context.Context, session, selector string) (string, bo
 	if err != nil || !found {
 		return "", false, err
 	}
+	t, terr := d.textOf(ctx, session, el)
+	if terr != nil {
+		return "", false, fmt.Errorf("reading the text of %q: %w", selector, terr)
+	}
+	return t, true, nil
+}
+
+// textOf reads one element's text content by REFERENCE, and it exists so there
+// is ONE reader of that fact: a flow's wait finds an element by selector and a
+// browser observation already holds a reference, and two calls to the same
+// endpoint would be free to drift in the path or in what they decode.
+func (d *Driver) textOf(ctx context.Context, session, ref string) (string, error) {
 	var out struct {
 		Value string `json:"value"`
 	}
-	if err := d.call(ctx, http.MethodGet, "/session/"+session+"/element/"+el+"/text",
+	if err := d.call(ctx, http.MethodGet, "/session/"+session+"/element/"+ref+"/text",
 		nil, &out); err != nil {
-		return "", false, fmt.Errorf("reading the text of %q: %w", selector, err)
+		return "", err
 	}
-	return out.Value, true, nil
+	return out.Value, nil
 }

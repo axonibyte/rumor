@@ -1828,7 +1828,7 @@ func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
 <title>` + html.EscapeString(ev.Title) + `</title>
 <h1 id="title">` + html.EscapeString(ev.Title) + `</h1>
 <p id="role">` + role + `</p>
-<p id="count">` + strconv.Itoa(ev.Rendered) + ` of ` + strconv.Itoa(ev.Capacity) + `</p>
+<p><span id="count">` + strconv.Itoa(ev.Rendered) + `</span> of ` + strconv.Itoa(ev.Capacity) + `</p>
 <ul id="attendees">
 ` + attendees + `</ul>
 <form id="join" method="post" action="/ui/events/` + html.EscapeString(ev.ID) + `/join?token=` + html.EscapeString(sess.Token) + `">

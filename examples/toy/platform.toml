@@ -671,6 +671,17 @@ covers = ["store"]
 stages = ["api", "browser"]
 seeds = 1
 budget = "2m"
+# AND THE PAGE'S OWN COUNT, so one walk witnesses BOTH halves of R9.1b: the
+# flow DRAWN and driven through a real browser, and the page READ through one.
+# Deliverable 4 asks for "the DRAW and the page", and before this claim a
+# `clicking` walk read no page at all -- `page_count` is claimed by `viewing`,
+# and Platform.Observes gives a claimed observation to claiming profiles alone.
+#
+# IT MOVES NO UNPROFILED FIGURE, for the reason the `viewing` block states: the
+# observation stays CLAIMED, so a walk under no profile still does not take it,
+# and every control digest is byte-identical. MEASURED on seed 7 that the draw
+# does not move either -- `join_event_ui` is still taken and still driven.
+observations = ["page_count"]
 
 [[profiles.clicking.venire]]
 role = "viewer"

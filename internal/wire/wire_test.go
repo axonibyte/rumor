@@ -268,6 +268,95 @@ func TestSourceOutsideTheThreeIsRefusedWithItsValue(t *testing.T) {
 	}
 }
 
+// TestPageAndElementAreABrowserObservationsAlone holds the two rules fable's
+// r9/120 attaches to the new fields: they say how a BROWSER reads a page, and an
+// element is an ID in the same vocabulary as a flow's `until` -- "no CSS
+// selectors; one word for one thing".
+//
+// THE TABLE AND THE STRUCT TAG ARE TWO INSTRUMENTS and this drives the table's
+// side: `into` would accept every case below, because each field is a plain
+// string on the struct. Only this pass can tell a confused adapter from a
+// well-formed message.
+func TestPageAndElementAreABrowserObservationsAlone(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		obs  map[string]any
+		says string
+	}{
+		{"page on an api observation",
+			map[string]any{"name": "event_count", "source": "api", "page": "/ui/x"},
+			"how a BROWSER reads a page"},
+		{"element on a direct observation",
+			map[string]any{"name": "stored_count", "source": "direct", "element": "count"},
+			"how a BROWSER reads a page"},
+		{"an element that is a selector",
+			map[string]any{"name": "page_count", "source": "browser",
+				"page": "/ui/events/{subject}", "element": "#count .n"},
+			"never a CSS selector"},
+		{"an element carrying a dot",
+			map[string]any{"name": "page_count", "source": "browser",
+				"page": "/ui/events/{subject}", "element": "count.n"},
+			"never a CSS selector"},
+		{"a page carrying its own host",
+			map[string]any{"name": "page_count", "source": "browser",
+				"page": "http://127.0.0.1:8080/ui", "element": "count"},
+			"second address"},
+		{"type on an api observation",
+			map[string]any{"name": "event_count", "source": "api", "type": "number"},
+			"how a BROWSER reads a page"},
+		{"a type outside the two words",
+			map[string]any{"name": "page_count", "source": "browser",
+				"page": "/ui/events/{subject}", "element": "count", "type": "integer"},
+			"rather than by what the text looks like"},
+		{"a type that is a Go type name",
+			map[string]any{"name": "page_count", "source": "browser",
+				"page": "/ui/events/{subject}", "element": "count", "type": "int"},
+			"rather than by what the text looks like"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			resp := wellFormed("response", KindDescribe)
+			resp["observations"] = []any{c.obs}
+			_, err := DecodeResponse(line(t, resp))
+			var ref Refusal
+			if !asRefusal(err, &ref) {
+				t.Fatalf("%s: %v, want a Refusal", c.name, err)
+			}
+			if ref.Field != "observations" {
+				t.Errorf("the refusal names field %q, want observations", ref.Field)
+			}
+			if !strings.Contains(ref.Reason, c.says) {
+				t.Errorf("the refusal %q does not say %q", ref.Reason, c.says)
+			}
+		})
+	}
+}
+
+// AND A WELL-FORMED BROWSER OBSERVATION PASSES, which is the control: every case
+// above would also be refused by a pass that refused the fields outright, and
+// then the rules would be a ban rather than a shape.
+func TestAReportedPageAndElementAreAccepted(t *testing.T) {
+	resp := wellFormed("response", KindDescribe)
+	resp["observations"] = []any{map[string]any{
+		"name": "page_count", "source": "browser",
+		"page": "/ui/events/{subject}", "element": "count", "type": "number",
+	}}
+	msg, err := DecodeResponse(line(t, resp))
+	if err != nil {
+		t.Fatalf("a well-formed browser observation was refused: %v", err)
+	}
+	got, ok := msg.(DescribeResponse)
+	if !ok {
+		t.Fatalf("decoded %T, want a DescribeResponse", msg)
+	}
+	if len(got.Observations) != 1 {
+		t.Fatalf("%d observation(s) decoded, want 1", len(got.Observations))
+	}
+	o := got.Observations[0]
+	if o.Page != "/ui/events/{subject}" || o.Element != "count" || o.Type != ObservedNumber {
+		t.Errorf("the fields did not survive the decode: %+v", o)
+	}
+}
+
 func TestFaultKindOutsideTheSixIsRefused(t *testing.T) {
 	fixture := wellFormed("response", KindError)
 	fixture["error"] = map[string]any{"kind": "oops", "detail": "d"}

@@ -214,6 +214,7 @@ func TestTheWaitVocabularyIsDrivenBothWays(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			d, err := Start(context.Background(), driver, browserBin, true)
+			noteGroup(d)
 			if err != nil {
 				t.Fatalf("starting the real pair: %v", err)
 			}
@@ -328,6 +329,7 @@ func TestAFlowDrivesARealPage(t *testing.T) {
 	defer srv.Close()
 
 	d, err := Start(context.Background(), driver, browserBin, true)
+	noteGroup(d)
 	if err != nil {
 		t.Fatalf("starting the real pair: %v", err)
 	}
@@ -383,6 +385,7 @@ func TestAMissingTargetStopsTheFlowRatherThanFailingIt(t *testing.T) {
 	defer srv.Close()
 
 	d, err := Start(context.Background(), driver, browserBin, true)
+	noteGroup(d)
 	if err != nil {
 		t.Fatalf("starting the real pair: %v", err)
 	}
@@ -401,6 +404,121 @@ func TestAMissingTargetStopsTheFlowRatherThanFailingIt(t *testing.T) {
 	}
 	if resp.Reached != 1 {
 		t.Errorf("reached %d, want 1 -- the navigate landed and the click did not", resp.Reached)
+	}
+}
+
+// TestTwoActorsSessionsDoNotLeakThroughAFlow is ISSUE 122'S FIRST TEST, and
+// until this head it existed only as prose: browser.go's "a W3C session carries
+// its own cookie jar and storage" was asserted by nobody, and the nearest arm --
+// TestEachActorGetsItsOwnSession -- compares session IDS on the wire against a
+// FAKE and never opens a page. fable ruled this shape at coop r9/118 after ibis
+// reported the gap at r9/117; the wire-level arm stays as itself and is not this.
+//
+// THE SHAPE, as ruled: the first actor acts so that its session holds something
+// the page SHOWS BACK, the second's flow reads the same page and sees NONE of
+// it, and THE PRESENCE PARTNER IS THE FIRST ACTOR RE-READING AND SEEING ITS OWN,
+// IN THE SAME ARM -- so a driver that sees nothing at all fails on the partner
+// rather than passing the absence. An absence assertion without its partner is
+// the vacuity this tree refuses by name.
+//
+// A COOKIE IS THE SUBJECT because it is what the claim is about. The login sets
+// one and every later page reads ONLY the cookie, never the query, so what the
+// page shows is a fact about whose session asked -- which is exactly the leak a
+// shared jar would produce.
+//
+// DRIVEN ONLY WHERE THE SCAN READS A PAIR, skipped by that verdict and never by
+// a fallback: an adapter standing in here would answer about no browser at all.
+func TestTwoActorsSessionsDoNotLeakThroughAFlow(t *testing.T) {
+	driver, found := realDriver(t)
+	if !found {
+		t.Skip("no chromedriver on PATH: the browser-side arms run where the pair lives")
+	}
+	browserBin, bfound := realBrowser(t)
+	if !bfound {
+		t.Skip("no chromium on PATH")
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if r.URL.Path == "/login" {
+			// THE TOKEN IS THE IDENTITY, and navigate is what puts it in the
+			// URL: the driver appends `?token=` for the actor it drives, so
+			// each actor signs in as itself without this arm building a URL.
+			who := r.URL.Query().Get("token")
+			http.SetCookie(w, &http.Cookie{Name: "who", Value: who, Path: "/"})
+			_, _ = fmt.Fprintf(w, `<!doctype html><title>in</title><p id="who">%s</p>`, who)
+			return
+		}
+		// THE QUERY IS IGNORED HERE, deliberately: if this read the token the
+		// page would show the asker whatever it asked as, and the arm would
+		// pass on a shared cookie jar. Only the COOKIE decides.
+		who := "nobody"
+		if c, cerr := r.Cookie("who"); cerr == nil {
+			who = c.Value
+		}
+		_, _ = fmt.Fprintf(w, `<!doctype html><title>page</title><p id="who">%s</p>`, who)
+	}))
+	defer srv.Close()
+
+	d, err := Start(context.Background(), driver, browserBin, true)
+	noteGroup(d)
+	if err != nil {
+		t.Fatalf("starting the real pair: %v", err)
+	}
+	defer func() { _ = d.Close(context.Background()) }()
+
+	ctx := context.Background()
+	navigate := func(actor, token, to string) {
+		t.Helper()
+		if _, _, ferr := d.Flow(ctx, actor, srv.URL, token, wire.FlowRequest{
+			Action: "visit", Steps: flowSteps(map[string]any{"step": "navigate", "to": to}),
+		}); ferr != nil {
+			t.Fatalf("%s navigating %s: %v", actor, to, ferr)
+		}
+	}
+	reads := func(actor string) string {
+		t.Helper()
+		session, serr := d.SessionFor(ctx, actor)
+		if serr != nil {
+			t.Fatalf("session for %s: %v", actor, serr)
+		}
+		got, present, terr := d.text(ctx, session, "#who")
+		if terr != nil {
+			t.Fatalf("reading #who for %s: %v", actor, terr)
+		}
+		if !present {
+			t.Fatalf("%s sees no #who element at all, so this arm can say nothing about "+
+				"what leaked: the page did not render for it", actor)
+		}
+		return got
+	}
+
+	// ALICE SIGNS IN, so her session now holds a cookie the page shows back.
+	navigate("alice", "alice", "/login")
+
+	// THE PRESENCE PARTNER FIRST, because it is what makes the absence below
+	// mean anything: alice re-reads the ordinary page and must see HER OWN.
+	navigate("alice", "alice", "/page")
+	if got := reads("alice"); got != "alice" {
+		t.Fatalf("alice re-read the page as %q, want alice: her own session's cookie did not "+
+			"reach it, so the absence asserted below would hold for a driver that carries no "+
+			"cookies at all", got)
+	}
+
+	// AND BOB SEES NONE OF IT. Same page, a session that never signed in.
+	navigate("bob", "bob", "/page")
+	if got := reads("bob"); got != "nobody" {
+		t.Errorf("bob read the page as %q, want nobody: one actor's cookies reached another's "+
+			"flow, so two actors share a jar and either could act as the other", got)
+	}
+
+	// AND THE SESSIONS ARE TWO, which is the wire-level claim holding at the
+	// same time rather than instead: one session answering both actors would
+	// produce the leak above by a different route.
+	alice, _ := d.SessionFor(ctx, "alice")
+	bob, _ := d.SessionFor(ctx, "bob")
+	if alice == bob {
+		t.Errorf("alice and bob share session %q", alice)
 	}
 }
 
@@ -462,6 +580,7 @@ func TestClosingTheDriverLeavesNoBrowserBehind(t *testing.T) {
 	}
 
 	d, err := Start(context.Background(), driver, browserBin, true)
+	noteGroup(d)
 	if err != nil {
 		t.Fatalf("starting the real pair: %v", err)
 	}
@@ -547,6 +666,7 @@ func TestTheActorsTokenReachesNoOutput(t *testing.T) {
 	defer srv.Close()
 
 	d, err := Start(context.Background(), driver, browserBin, true)
+	noteGroup(d)
 	if err != nil {
 		t.Fatalf("starting the real pair: %v", err)
 	}

@@ -32,6 +32,38 @@ type routedFlow struct {
 	resp   wire.FlowResponse
 	detail string
 	err    error
+
+	// reads records browser OBSERVATIONS, which is the other half of one
+	// actor's context (fable, coop r9/120). It is recorded rather than counted
+	// so an arm can place WHICH read happened and not merely how many.
+	//
+	// NO ARM ASSERTS YET THAT A `direct` OBSERVATION REACHES THE DRIVER NEVER,
+	// and this comment said one did. The routing for it cannot be driven from
+	// this package: a non-browser source takes the adapter branch, which needs
+	// a live *wire.Session, and the nil session these arms rely on would panic
+	// rather than answer. It belongs in tests/run beside the end-to-end read,
+	// which waits on the value's type (ibis r9/121) -- carried, not claimed.
+	reads        []readCall
+	readText     string
+	readChildren int
+	readPresent  bool
+	readErr      error
+}
+
+type readCall struct {
+	actor   string
+	base    string
+	page    string
+	element string
+	token   string
+}
+
+func (r *routedFlow) Read(_ context.Context, actor, base, page, element, token string) (
+	string, int, bool, error) {
+	r.reads = append(r.reads, readCall{
+		actor: actor, base: base, page: page, element: element, token: token,
+	})
+	return r.readText, r.readChildren, r.readPresent, r.readErr
 }
 
 type flowCall struct {

@@ -291,7 +291,69 @@ type Action struct {
 type Observation struct {
 	Name   string `json:"name"`
 	Source Source `json:"source"`
+
+	// Page and Element are how a BROWSER observation is read, and the adapter
+	// reports them because the adapter is the one thing that knows its own UI
+	// (fable, coop r9/120, ruling on ibis r9/119).
+	//
+	// Page is a path relative to `base` with the subject as a placeholder --
+	// the toy's "/ui/events/{subject}" -- and Element is an element ID on that
+	// page. The driver navigates the ACTOR'S OWN context to the page and reads
+	// the element's text content from the LIVE DOM, and that is the observation.
+	//
+	// AN ID AND NOT A CSS SELECTOR, in the same vocabulary as a flow's `until`:
+	// one word for one thing. A selector would make the adapter's answer a
+	// query language the engine has to implement, and two spellings of "which
+	// element" is how a reader ends up unable to tell a missing element from a
+	// mistyped selector.
+	//
+	// ADDITIVE, SO THE CONTRACT STAYS "2": an adapter reporting neither is
+	// unchanged, and a browser observation whose describe carries no page or
+	// element is a NAMED REFUSAL at the walk -- never an invented path or
+	// selector, for `base`'s own reason.
+	Page    string `json:"page,omitempty"`
+	Element string `json:"element,omitempty"`
+
+	// Type is what a reading MEANS -- `number`, `text` or `count` -- and it is
+	// declared rather than guessed (fable, coop r9/122: "NO SNIFFING", and
+	// r9/124 for the third word).
+	//
+	// WHY DECLARED. A browser reads TEXT, and the statute compares a count: the
+	// toy's statute relies on "a string never equals a count", so a reading
+	// that arrived as text would reach `consistent` never and `bug` always. The
+	// engine converts a `number` observation's text in ONE place and refuses by
+	// name any text that is not wholly numeric -- "0 of 2" is a refusal, not a
+	// bug and not a zero -- and a `text` observation stays text, reaching only
+	// judgements written for a string.
+	//
+	// AND SNIFFING WOULD BE WORSE THAN EITHER. A rule that converted whatever
+	// LOOKED numeric would make the reading's type a property of the page's
+	// content: an attendee list rendering a single name that happens to be "7"
+	// would become the number seven, and the statute's protection would hold or
+	// fail by accident. The declaration is what makes "a number" a fact about
+	// the observation rather than about today's data.
+	Type string `json:"type,omitempty"`
 }
+
+// ObservedNumber and ObservedText are the two readings an element's text can
+// carry, and they are spelled ONCE here: the adapter writes one of them, the
+// engine branches on it, and a third spelling would be a type nobody converts.
+const (
+	ObservedNumber = "number"
+	ObservedText   = "text"
+
+	// ObservedCount is the number of the element's CHILD ELEMENTS, which is
+	// what the adapter has computed from the served HTML all along -- the <li>
+	// children of the toy's #attendees (fable, coop r9/124).
+	//
+	// IT EXISTS SO THE SUT DOES NOT CHANGE TO BE OBSERVED. A list has no figure
+	// in it, so reading its text as a number is a refusal and reading it as
+	// text reaches no judgement written for a count; the alternatives were to
+	// make the application RENDER a number it never showed, or to move the
+	// statute. Counting the children is the reading the other oracle already
+	// takes, so the two stay comparable and the statute holds unchanged.
+	ObservedCount = "count"
+)
 
 // Component is one part of the system under test. Stateful is what the validate
 // arm on rollback coverage compares against platform.toml's [[rollback]]
@@ -783,6 +845,48 @@ func semantics(msg Message) error {
 			default:
 				return Refusal{Kind: KindDescribe, Field: "observations",
 					Reason: fmt.Sprintf("observation %q declares a source that is not one of api, browser, direct: %q", o.Name, o.Source)}
+			}
+			// PAGE AND ELEMENT BELONG TO A BROWSER OBSERVATION AND NOTHING
+			// ELSE. They say how a BROWSER reads a page; an `api` or `direct`
+			// observation has no page, so carrying them there is the adapter
+			// being inconsistent with itself rather than a message the engine
+			// should act on.
+			if o.Source != SourceBrowser && (o.Page != "" || o.Element != "" || o.Type != "") {
+				return Refusal{Kind: KindDescribe, Field: "observations",
+					Reason: fmt.Sprintf("observation %q is source %q and carries page, element or "+
+						"type, which say how a BROWSER reads a page", o.Name, o.Source)}
+			}
+			// THE TWO READINGS AND NOTHING ELSE. A third word would be a type
+			// the engine does not convert, and an adapter that invented one
+			// would have its readings pass through as text while its describe
+			// looked deliberate.
+			switch o.Type {
+			case "", ObservedNumber, ObservedText, ObservedCount:
+			default:
+				return Refusal{Kind: KindDescribe, Field: "observations",
+					Reason: fmt.Sprintf("observation %q declares type %q: a reading is %q, %q "+
+						"or %q, and the engine converts by that declaration rather than by what "+
+						"the text looks like", o.Name, o.Type,
+						ObservedNumber, ObservedText, ObservedCount)}
+			}
+			// AN ELEMENT IS AN ID, NOT A SELECTOR (fable, coop r9/120). The
+			// driver builds "#"+element, so a selector here would be a second
+			// query language arriving through the adapter -- and `#count .n`
+			// would read as an element nobody can find.
+			if strings.ContainsAny(o.Element, "#.[]()>+~*,:\"' \t") {
+				return Refusal{Kind: KindDescribe, Field: "observations",
+					Reason: fmt.Sprintf("observation %q names element %q: an element is an ID in "+
+						"the same vocabulary as a flow's `until`, one word for one thing, and "+
+						"never a CSS selector", o.Name, o.Element)}
+			}
+			// AND THE PAGE IS RELATIVE TO `base`, which is what keeps the
+			// address in one place: a page carrying its own scheme would be a
+			// second answer to "where is the system", and the walk refuses a
+			// guessed host for exactly that reason.
+			if strings.Contains(o.Page, "://") {
+				return Refusal{Kind: KindDescribe, Field: "observations",
+					Reason: fmt.Sprintf("observation %q names page %q: a page is a path relative "+
+						"to `base`, and an absolute URL would be a second address", o.Name, o.Page)}
 			}
 		}
 	case FlowResponse:

@@ -67,6 +67,17 @@ type Sessions struct {
 	// returned is identical either way, so a cache that never cached would be
 	// invisible without a count.
 	acquired int
+
+	// browserReads counts the observations a REAL BROWSER read from the page,
+	// as opposed to the ones the adapter answered.
+	//
+	// IT IS HERE FOR acquired's REASON, exactly: the value a statute judges is
+	// identical whichever oracle produced it, so a walk that read every
+	// observation through the adapter and one that read them from the live DOM
+	// are the same record without a count -- and an arm cannot compare what the
+	// product cannot say. That lesson is already written on `Step.FlowBrowser`
+	// one layer up, where `driven.Browser` was set and read by nothing.
+	browserReads int
 }
 
 // FlowDriver drives one action's declared UI steps through a real browser and
@@ -84,6 +95,25 @@ type Sessions struct {
 type FlowDriver interface {
 	Flow(ctx context.Context, actor, base, token string, req wire.FlowRequest) (
 		resp wire.FlowResponse, detail string, err error)
+
+	// Read is a `browser` observation: the driver navigates the actor's own
+	// context to the page the adapter reported and answers two FACTS about the
+	// element from the live DOM (fable, coop r9/120 and r9/124) -- its text and
+	// how many child elements it has. The bool is PRESENCE: an element the page
+	// does not carry is the system's answer, which the caller turns into the
+	// walk's one spelling of `missing`.
+	//
+	// TWO FACTS AND NOT A VALUE, because the ENGINE converts by the declared
+	// type in one place: a driver that returned "the value" would be a second
+	// place where `number`, `text` and `count` are decided, and the ruling puts
+	// that decision in exactly one.
+	//
+	// IT IS ON THIS INTERFACE AND NOT A SECOND ONE because it is the same
+	// browser and the same session: the walk needs both halves of one actor's
+	// context, and two interfaces would let a build satisfy one while the walk
+	// requires the other.
+	Read(ctx context.Context, actor, base, page, element, token string) (
+		text string, children int, present bool, err error)
 }
 
 // Browser is the live browser a walk drives flows through, as the stage that
@@ -117,6 +147,12 @@ func (s *Sessions) Browser() (FlowDriver, string) { return s.browser, s.base }
 
 // Acquired is how many `session` requests have been sent.
 func (s *Sessions) Acquired() int { return s.acquired }
+
+// noteBrowserRead records that a browser answered one observation.
+func (s *Sessions) noteBrowserRead() { s.browserReads++ }
+
+// BrowserReads is how many observations a real browser read from the page.
+func (s *Sessions) BrowserReads() int { return s.browserReads }
 
 // Token is the token for this actor in this context, acquiring one if none is
 // held yet.

@@ -33,17 +33,37 @@ func TestAWalkDrivesADeclaredFlowThroughARealBrowser(t *testing.T) {
 		"--profile", "clicking", "--seed", "7", "--steps", "20", "--browser-check")
 
 	// A BOX WITHOUT A DRIVABLE PAIR SKIPS BY NAME, carrying the reason the
-	// product gave. This is the CI jail's state and it is not a failure: the
-	// pair is a property of the box, and a skip that did not say which half was
-	// missing would be the silent-skip class this stage exists to refuse.
+	// product gave: the pair is a property of the box, and a skip that did not
+	// say which half was missing would be the silent-skip class this stage
+	// exists to refuse.
+	//
+	// AND IT IS NOT THE CI JAIL'S STATE, which this comment claimed when it was
+	// written and MEASURED FALSE the same day: forge-01's ci jail carries
+	// /usr/local/bin/chrome WITH /usr/local/bin/chromedriver, so the skip paths
+	// below are for a box poorer than that one.
+	//
+	// WHICH MEANS WHETHER THIS ARM RAN ON THE FORGE IS STILL UNKNOWN, and the
+	// reason is the harness and not the pair: ci.yml runs the suite without
+	// `-v`, so a package line reading `ok` cannot be told from one whose arms
+	// all skipped. ci.yml's own PROOF steps are where that would be closed --
+	// one of them already asserts no arm of the licence suite skipped -- and
+	// this remainder is carried rather than fixed here, because the workflow is
+	// every head's and not this one's.
 	for _, miss := range []string{"SKIPPED, no drivable browser", "no browser for this run"} {
 		if strings.Contains(out, miss) || strings.Contains(errb, miss) {
 			t.Skipf("this box has no drivable browser, so the walk fell back to the adapter: %s",
 				miss)
 		}
 	}
-	if code != 0 {
-		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	// 0 OR 3, BY docs/cli.md'S OWN TABLE: 0 is a clean walk and 3 is "a bug was
+	// found", which is this tool's PRODUCT and not a failure. Since `clicking`
+	// began claiming `page_count` this seed reaches the toy's planted stale
+	// count at step 12 -- MEASURED through both oracles, so the finding is the
+	// plant and not an artifact of reading the page. 1 and 2 are a refusal and a
+	// could-not-run, and neither would carry the counts this arm reads.
+	if code != 0 && code != 3 {
+		t.Fatalf("exit %d, want 0 (clean) or 3 (a bug found)\nstdout:\n%s\nstderr:\n%s",
+			code, out, errb)
 	}
 
 	m := theFlowCounts.FindStringSubmatch(out)
@@ -69,6 +89,22 @@ func TestAWalkDrivesADeclaredFlowThroughARealBrowser(t *testing.T) {
 			"handed a browser the walk drives EVERY declared flow through it, and a flow that "+
 			"fell back to the adapter is the routing not happening\n%s", flows, drove, out)
 	}
+
+	// AND THE PAGE, which is the other half of deliverable 4's "the DRAW and the
+	// page" (fable, coop r9/116). One walk now witnesses both: the flow drawn
+	// and driven through a real browser, and an observation READ from the page
+	// that flow acted on. Before `clicking` claimed `page_count` this run read
+	// no page at all, so the two halves could only be seen in separate walks.
+	taken, read := observationCounts(t, out)
+	if taken < 1 {
+		t.Fatalf("the walk evaluated no observations, so this arm says nothing about the "+
+			"page\n%s", out)
+	}
+	if read < 1 {
+		t.Errorf("%d observation(s) were taken and none was read from the page: the walk drove "+
+			"the flow through a browser and then asked the adapter what the page said, which is "+
+			"deliverable 3 not reaching deliverable 4's walk\n%s", taken, out)
+	}
 }
 
 // TestWithoutTheFlagTheWalkDrivesTheAdapter is the other side, and it is what
@@ -81,8 +117,9 @@ func TestAWalkDrivesADeclaredFlowThroughARealBrowser(t *testing.T) {
 func TestWithoutTheFlagTheWalkDrivesTheAdapter(t *testing.T) {
 	out, errb, code := run(t, "run", "../../examples/toy",
 		"--profile", "clicking", "--seed", "7", "--steps", "20")
-	if code != 0 {
-		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+	if code != 0 && code != 3 {
+		t.Fatalf("exit %d, want 0 (clean) or 3 (a bug found)\nstdout:\n%s\nstderr:\n%s",
+			code, out, errb)
 	}
 	m := theFlowCounts.FindStringSubmatch(out)
 	if m == nil {
@@ -96,5 +133,13 @@ func TestWithoutTheFlagTheWalkDrivesTheAdapter(t *testing.T) {
 		t.Errorf("%s step(s) were driven by a real browser on a run that asked for none: the "+
 			"browser is OPT-IN, and a run that starts one unasked is what cost CI 1109 its "+
 			"1800s budget\n%s", m[2], out)
+	}
+
+	// AND NO PAGE WAS READ EITHER, which is the same opt-in rule for the other
+	// oracle: without the flag the adapter answers every observation from the
+	// served HTML, exactly as it did before this head.
+	if _, read := observationCounts(t, out); read != 0 {
+		t.Errorf("%d observation(s) were read from a page on a run that asked for no browser",
+			read)
 	}
 }

@@ -736,7 +736,7 @@ run:   2 member_1 tell -> member_2 <- member_1.event#1
 run:   3 member_1 join_event [member_1.join_event#1] <- [member_1.event#1]
 run:   4 member_1 join_event [member_1.join_event#2] <- [member_1.event#1]
 run:   5 member_1 create_event [member_1.event#2]
-run: walkable -- seed 42, 5 step(s), 4 handle(s), 1 session(s), 5 observation(s), 0 step(s) through `flow`, 0 through a real browser; 1 rollback provider(s) registered
+run: walkable -- seed 42, 5 step(s), 4 handle(s), 1 session(s), 5 observation(s) of which 0 read from the page, 0 step(s) through `flow`, 0 through a real browser; 1 rollback provider(s) registered
 run:   quiesce -- 0 pending(s) open at the end; reconciliation: no quiesce probes are declared, so nothing was asked and nothing reconciled
 run:   settling -- no period is declared, so the walk reconciled only at the end
 ```

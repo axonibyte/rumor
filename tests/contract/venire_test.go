@@ -153,7 +153,18 @@ func poolOf(ms []platform.Member) string {
 // `bug` because the toy reads UTC days while the project declares
 // America/Chicago. The claim scopes them to the two profiles that are about a
 // zone.
-var claimingProfiles = []string{"toy/dst-fall", "toy/dst-spring", "toy/viewing"}
+// AND R9.1b ADDED `clicking` TO THE LIST, which is this line doing its job a
+// second time: the arm below says "which profiles make one is stated here and
+// moves in the commit that does it", and this is that commit. `clicking` now
+// claims `page_count` so ONE walk witnesses both halves of deliverable 4 -- the
+// flow drawn and driven through a real browser, and the page read through one.
+//
+// IT TAKES NO NAME OUT OF ANY OTHER PROFILE'S SET, which is the property the
+// arm guards: `page_count` was ALREADY claimed, by `viewing`, so an unprofiled
+// walk did not take it before this commit and does not now. A second claimer
+// adds a profile that reads it and changes no unprofiled figure -- and the gate
+// is what said so, not the reasoning: this arm failed first, naming the list.
+var claimingProfiles = []string{"toy/clicking", "toy/dst-fall", "toy/dst-spring", "toy/viewing"}
 
 // committedObservations is the observations each committed platform's PROJECT
 // declares -- the set every profile of that package observes -- stated per

@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -513,6 +514,61 @@ func TestTheCountLeaksToARoleTheListHidesItFrom(t *testing.T) {
 	}
 }
 
+// TestTheCountElementHoldsTheNumberAlone is the cell fable asked for with the
+// toy change at coop r9/122, and it pins the property rather than the markup: a
+// `browser` observation reads #count's TEXT from the live DOM and the engine
+// converts a `number` reading in one place, refusing by name any text that is
+// not wholly numeric. So an element holding "0 of 3" is not a reading at all --
+// and that is what this page used to render.
+//
+// IT READS THE ELEMENT'S CONTENT AND NOT THE PAGE'S BYTES, which is the whole
+// difference from the arms that go through renderedCount: those say the page
+// shows the right number, and this says the ID HOLDS NOTHING BUT IT. A template
+// that moved the capacity back inside the id would keep every one of those
+// green and break every browser reading.
+func TestTheCountElementHoldsTheNumberAlone(t *testing.T) {
+	h := start(t)
+	alice := h.actor("alice")
+	id := h.createEvent(alice, "counting", 3, []string{roleAdmin, roleMember, roleGuest})
+
+	code, body := h.do(http.MethodGet, "/ui/events/"+id, alice, nil)
+	if code != http.StatusOK {
+		t.Fatalf("the page: status %d (%v)", code, body)
+	}
+	page, _ := body["raw"].(string)
+
+	inside := regexp.MustCompile(`<span id="count">([^<]*)</span>`).FindStringSubmatch(page)
+	if inside == nil {
+		t.Fatalf("the page carries no #count element whose content can be read:\n%s", page)
+	}
+	if inside[1] != "0" {
+		t.Errorf("#count holds %q, and a browser reading is the element's text alone: anything "+
+			"but the number is a refusal at the walk rather than a count", inside[1])
+	}
+
+	// AND THE SENTENCE A READER SEES IS UNCHANGED, which is why this was a
+	// template refinement and not a change to what the application says: the
+	// page still reads "0 of 3" to a person.
+	if !strings.Contains(page, renderedCount(0, 3)) {
+		t.Errorf("the page no longer shows the count in words a reader sees:\n%s", page)
+	}
+}
+
+// renderedCount is the bytes this page carries for a count of n out of capacity,
+// in ONE place.
+//
+// THE ID MOVED ONTO THE NUMBER IN R9.1b (fable, coop r9/122): a `browser`
+// observation reads #count's TEXT from the live DOM and the engine converts it
+// by declaration, so an element holding "0 of 2" would be a refusal rather than
+// a reading. What a reader SEES is unchanged -- the page still says "0 of 3" --
+// but the bytes are not, and six arms below read the bytes. They go through here
+// so the next markup move is one edit rather than six, which is the shape the
+// adapter's own fixture comment warns about: a stub that keeps serving the OLD
+// markup stays green against a page no toy produces.
+func renderedCount(n, capacity int) string {
+	return fmt.Sprintf(`<span id="count">%d</span> of %d`, n, capacity)
+}
+
 func TestThePageRendersTheEventAndItsJoinFormWorks(t *testing.T) {
 	h := start(t)
 	alice := h.actor("alice")
@@ -527,7 +583,7 @@ func TestThePageRendersTheEventAndItsJoinFormWorks(t *testing.T) {
 		`id="title"`, `id="role"`, `id="count"`, `id="join"`,
 		"a &lt;scripted&gt; title", // escaped, so the page cannot be a script
 		">" + roleAdmin + "<",
-		"0 of 3",
+		renderedCount(0, 3),
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the page does not carry %q:\n%s", want, page)
@@ -1381,7 +1437,7 @@ func TestTheCachedPageCountIsPlantedAndOnlyAReaderSeesIt(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("the page: status %d (%v)", code, body)
 	}
-	if page, _ := body["raw"].(string); !strings.Contains(page, "2 of 3") {
+	if page, _ := body["raw"].(string); !strings.Contains(page, renderedCount(2, 3)) {
 		t.Fatalf("before the leave the page reads something other than `2 of 3`, so the two "+
 			"readings never agreed and this arm cannot show them diverging:\n%s", page)
 	}
@@ -1399,12 +1455,12 @@ func TestTheCachedPageCountIsPlantedAndOnlyAReaderSeesIt(t *testing.T) {
 		t.Fatalf("the page after the leave: status %d (%v)", code, body)
 	}
 	page, _ := body["raw"].(string)
-	if !strings.Contains(page, "2 of 3") {
+	if !strings.Contains(page, renderedCount(2, 3)) {
 		t.Errorf("the page reads the UPDATED count after a leave, so the plant is GONE: the "+
 			"epic's row requires a reader to be served a count the API has already updated, and "+
 			"R9's browser stage is what catches it:\n%s", page)
 	}
-	if strings.Contains(page, "1 of 3") {
+	if strings.Contains(page, renderedCount(1, 3)) {
 		t.Errorf("the page agrees with the API after a leave, so there is no UI-only defect "+
 			"left to find:\n%s", page)
 	}
@@ -1506,7 +1562,7 @@ func TestTheRenderedCountIsMaintainedByTheAcceptPathToo(t *testing.T) {
 		t.Fatalf("the page: status %d (%v)", code, body)
 	}
 	page, _ := body["raw"].(string)
-	if !strings.Contains(page, "1 of 3") {
+	if !strings.Contains(page, renderedCount(1, 3)) {
 		t.Errorf("after an ACCEPT the page reads something other than `1 of 3`, so the accept "+
 			"path no longer maintains the page's number and the plant has a SECOND home: a "+
 			"shrink could then not say which write it had found:\n%s", page)
