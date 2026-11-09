@@ -62,6 +62,29 @@ func (d *Driver) Read(ctx context.Context, actor, base, page, element, token str
 	// once for the text and once for the children -- would read two different
 	// elements on a page that changed between the two calls, and the walk would
 	// then hold a text and a count that were never true together.
+	//
+	// AND A PAGE THAT MOVES MID-READ IS RE-READ ONCE, not reported. The find and
+	// the two reads are three calls, so a navigation landing among them makes
+	// the reference STALE -- which is not the page's answer about the
+	// observation, it is the observation having asked while the page turned. One
+	// retry reads the page that is there now; a second staleness is reported,
+	// because a page that will not hold still for two reads is a fact a reader
+	// needs rather than a loop to hide in.
+	text, kids, found, rerr := d.readOnce(ctx, session, element)
+	if isStale(rerr) {
+		text, kids, found, rerr = d.readOnce(ctx, session, element)
+	}
+	if rerr != nil {
+		return "", 0, false, rerr
+	}
+	return text, kids, found, nil
+}
+
+// readOnce finds the element and takes both facts off it, answering a stale
+// reference as the error it is so the caller can decide to re-read.
+func (d *Driver) readOnce(ctx context.Context, session, element string) (
+	string, int, bool, error) {
+
 	ref, found, ferr := d.element(ctx, session, "#"+element)
 	if ferr != nil || !found {
 		return "", 0, false, ferr

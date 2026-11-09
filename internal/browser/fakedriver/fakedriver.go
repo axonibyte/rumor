@@ -83,6 +83,7 @@ func serve(mode, journal string, args []string) {
 		_, _ = fmt.Fprintln(f, line)
 	}
 	opened := 0
+	stales := 0
 	mux := http.NewServeMux()
 	// A DRIVER CAN BE SLOW RATHER THAN DEAD, which is the state rook measured on
 	// a real chromedriver at coop r9/99: not ready, then ready. "slow" answers
@@ -119,6 +120,42 @@ func serve(mode, journal string, args []string) {
 			if mode == "refuse-close" {
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = fmt.Fprint(w, `{"value":{"error":"unknown error","message":"no"}}`)
+				return
+			}
+		}
+		// MODE "stale" ANSWERS A REFERENCE AND THEN REFUSES IT, which is the one
+		// page-shaped thing this fake does and it does it to produce a PROTOCOL
+		// ERROR rather than a page. A navigation landing between the find and
+		// the read is what chromedriver reports as "stale element reference",
+		// and it failed the forge at task 1116 once in six runs -- a race no
+		// real page can be made to lose on demand.
+		//
+		// IT CANNOT MAKE A PAGE CLAIM PASS, which is why it does not cross the
+		// line this package's arms draw: every answer here is a FAILURE, so a
+		// flow driven against it can reach no verdict about what a page shows.
+		//
+		// AND MODE "stale-once" GOES STALE EXACTLY ONCE, so the RECOVERY can be
+		// driven too: a reader that re-reads is only correct if the second read
+		// is allowed to succeed, and a fake that is always stale can never show
+		// that it did.
+		if mode == "stale" || mode == "stale-once" {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/element"):
+				_, _ = fmt.Fprint(w,
+					`{"value":{"element-6066-11e4-a52e-4f735466cecf":"stale-1"}}`)
+				return
+			case strings.HasSuffix(r.URL.Path, "/text"):
+				mu.Lock()
+				stales++
+				first := stales == 1
+				mu.Unlock()
+				if mode == "stale" || first {
+					w.WriteHeader(http.StatusNotFound)
+					_, _ = fmt.Fprint(w, `{"value":{"error":"stale element reference",`+
+						`"message":"stale element reference: stale element not found"}}`)
+					return
+				}
+				_, _ = fmt.Fprint(w, `{"value":"after the page turned"}`)
 				return
 			}
 		}

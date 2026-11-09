@@ -1615,6 +1615,30 @@ alternatives for one action and there is no fallback when a driver is absent. A
 fallback chosen by box state would be two paths for one declaration, which is
 the silent-substitution class this tree refuses by name.
 
+**A `-changed` WAIT READS ITS BEFORE-TEXT BY LOOKING AHEAD, AND THE STEP IT
+LOOKS AHEAD FROM STILL RUNS.** The condition compares against the element's text
+"immediately before the preceding step ran", which is a moment already past by
+the time the wait is reached — so the driver reads that element before
+performing the step in front of it. Where no page is open yet the before-text is
+recorded as ABSENT rather than empty, because the ruling makes an element's
+APPEARANCE a change and an empty string would reach that verdict by accident.
+This branch once ended the loop iteration, which skipped the very step it had
+looked ahead from: a flow of `[navigate, wait "x-changed"]` never navigated, and
+the wait then compared against a page nothing had opened — a `ui_timeout` for a
+page the driver never visited. It fires only where the wait follows the FIRST
+step, which is why a fixture whose wait follows a click passes over it.
+
+**AND A PAGE THAT MOVES MID-READ IS NOT A FAILURE.** An element is found and read
+in two calls, so a navigation landing between them makes the reference STALE.
+For a WAIT that is the thing it is waiting for: the tick takes no reading and the
+next one re-finds. For an OBSERVATION the page is re-read once, because a
+reading is wanted and the page that is there now is the one to report; a second
+staleness is reported rather than looped on. The matcher keys on the W3C error
+NAME and not the 404 status, since the same status also carries "no such
+element" — and swallowing that would turn a selector matching nothing into
+silence. MEASURED: this failed the forge once in six runs while the local gate
+passed, which is what a race between two calls looks like from two boxes.
+
 **AND THE ENGINE RETRIES THE WAIT, WHICH IS WHY THE RETRIER IS NOT THE ADAPTER.**
 A wait is bounded in the engine's time — checked at each seal and after each
 clock advance the engine makes — so an adapter re-checking inside one call has

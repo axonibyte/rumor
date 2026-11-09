@@ -232,23 +232,54 @@ func TestTheWaitVocabularyIsDrivenBothWays(t *testing.T) {
 				t.Fatalf("opening a session for alice: %v", serr)
 			}
 
-			// A SHORT BUDGET FOR THE CASE THAT CANNOT BE MET, so the cell costs
-			// a second rather than the flow's whole bound. The deadline IS the
-			// budget by waitBudget's reading of fable's ruling, so setting one
-			// here is the supported way to bound it and not a test-only seam.
-			ctx := context.Background()
+			steps := flowSteps(
+				map[string]any{"step": "navigate", "to": "/ui/events/e1"},
+				map[string]any{"step": "click", "target": "join"},
+				map[string]any{"step": "wait", "until": c.until},
+			)
+
+			// THE UNMEETABLE CASE IS DRIVEN IN TWO CALLS, AND THE FORGE IS WHY.
+			// The budget is the ctx deadline by waitBudget's reading of fable's
+			// ruling, so a deadline set across the WHOLE flow bounds the
+			// navigate and the click as well as the wait -- and on the forge's
+			// shared box, with 42 packages running at once, those two spent the
+			// 2s before the wait was reached. The cell then failed with a
+			// driving error about a timing fact of the BOX, reported as a
+			// verdict about a wait (task 1116, 5.70s against a 2s budget).
+			//
+			// SO THE STEPS BEFORE IT RUN UNBOUNDED and the flow is RESUMED into
+			// the wait with the budget. `from` is the product's own seam for
+			// this -- the engine resumes a stopped flow the same way -- so the
+			// cell drives the shipped path rather than a test-only one.
+			//
+			// AND 10s, NOT 2s: an unmet wait costs its whole budget, so this is
+			// the cell's price, and it has to exceed the re-navigate a resume
+			// performs on the slowest box this suite runs on. It is sized the
+			// way ReadyTimeout was -- a measured figure with room -- and the
+			// PROOF line below prints what the pre-work actually took, so the
+			// next reader has the number rather than my adjective.
+			ctx, from := context.Background(), 0
 			if c.stopped == wire.StopWait {
+				began := time.Now()
+				pre, _, perr := d.Flow(ctx, "alice", srv.URL, "t",
+					wire.FlowRequest{Action: "join_event_ui", Steps: steps[:2]})
+				if perr != nil {
+					t.Fatalf("driving the steps before the wait: %v", perr)
+				}
+				if pre.Reached != 2 {
+					t.Fatalf("the navigate and the click reached %d of 2, so the wait was never "+
+						"the subject", pre.Reached)
+				}
+				t.Logf("PROOF the pre-wait steps took %s, against the wait's 10s budget",
+					time.Since(began).Round(time.Millisecond))
+				from = 2
 				var cancel context.CancelFunc
-				ctx, cancel = context.WithTimeout(ctx, 2*time.Second)
+				ctx, cancel = context.WithTimeout(ctx, 10*time.Second)
 				defer cancel()
 			}
 
 			got, detail, err := d.Flow(ctx, "alice", srv.URL, "t",
-				wire.FlowRequest{Action: "join_event_ui", Steps: flowSteps(
-					map[string]any{"step": "navigate", "to": "/ui/events/e1"},
-					map[string]any{"step": "click", "target": "join"},
-					map[string]any{"step": "wait", "until": c.until},
-				)})
+				wire.FlowRequest{Action: "join_event_ui", From: from, Steps: steps})
 			if err != nil {
 				t.Fatalf("driving the flow: %v", err)
 			}
@@ -449,9 +480,16 @@ func TestTwoActorsSessionsDoNotLeakThroughAFlow(t *testing.T) {
 			_, _ = fmt.Fprintf(w, `<!doctype html><title>in</title><p id="who">%s</p>`, who)
 			return
 		}
-		// THE QUERY IS IGNORED HERE, deliberately: if this read the token the
-		// page would show the asker whatever it asked as, and the arm would
-		// pass on a shared cookie jar. Only the COOKIE decides.
+		// THE QUERY IS IGNORED HERE, deliberately, and ROOK MEASURED MY FIRST
+		// REASON FOR IT WRONG (rumor/1950). I wrote that a page reading the
+		// token would let this arm "pass on a shared cookie jar"; driven, it
+		// FAILS -- bob reads himself, not nobody.
+		//
+		// THE GUARD IS STILL NEEDED, for the better reason rook gave: under
+		// query-reading the verdict stops depending on the JAR at all, so the
+		// arm measures nothing about isolation, and the presence partner goes
+		// vacuous with it -- alice would read alice with no cookie anywhere.
+		// Only the COOKIE decides, so only the cookie can be shared.
 		who := "nobody"
 		if c, cerr := r.Cookie("who"); cerr == nil {
 			who = c.Value
@@ -747,5 +785,161 @@ func TestRedactionTakesWholeValuesAndNotSubstrings(t *testing.T) {
 				t.Errorf("redact(%q, %q)\n got %q\nwant %q", c.text, c.token, got, c.want)
 			}
 		})
+	}
+}
+
+// TestAPageThatMovesMidReadIsNotAFailure is the defect the FORGE found and this
+// box hid: task 1116 failed `count-changed` with "stale element reference",
+// because a wait reads an element in TWO calls -- find, then text -- and the
+// click's POST response landed between them. It reproduced 1 run in 6 here,
+// which is exactly why the gate passed and CI did not.
+//
+// A STALE REFERENCE IS THE PAGE MOVING, and for a wait that is the thing it is
+// waiting FOR. So the poll takes no reading this tick and re-finds on the next,
+// and the flow reports the wait unmet at its budget rather than a driving error.
+//
+// THE FAKE PRODUCES THE RACE ON DEMAND, which no real page can be made to do:
+// every call it answers here is a FAILURE, so nothing about a page can pass on
+// it -- the distinction that keeps it out of the rule this file's other arms
+// state.
+func TestAPageThatMovesMidReadIsNotAFailure(t *testing.T) {
+	d, _ := startFake(t, "stale", true)
+	defer func() { _ = d.Close(context.Background()) }()
+
+	// A LISTENER FOR THE NAVIGATE TO REACH, because the flow really does
+	// navigate: this arm pointed at a dead port and passed until the look-ahead
+	// stopped skipping the step it looks ahead from -- which is the defect
+	// above. Nothing is read FROM this server; the fake answers the protocol.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(w, `<!doctype html><title>x</title><p id="count">0</p>`)
+	}))
+	defer srv.Close()
+
+	// THE SESSION FIRST, outside the budget, which the guard in browser_test.go
+	// requires of every arm that bounds a flow: against this fake the open is
+	// instant, and the rule is uniform so the next arm is not asked to judge
+	// whether its own driver is fast enough.
+	if _, serr := d.SessionFor(context.Background(), "alice"); serr != nil {
+		t.Fatalf("opening a session for alice: %v", serr)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	got, detail, err := d.Flow(ctx, "alice", srv.URL, "t",
+		wire.FlowRequest{Action: "join_event_ui", From: 1, Steps: flowSteps(
+			map[string]any{"step": "navigate", "to": "/ui/events/e1"},
+			map[string]any{"step": "wait", "until": "count-changed"},
+		)})
+	if err != nil {
+		t.Fatalf("a page that moved under the read was reported as a failure: %v", err)
+	}
+	if got.Stopped != wire.StopWait {
+		t.Errorf("stopped %q, want %q: a condition that never got a reading is unmet, which the "+
+			"engine re-checks -- not an error that ends the run", got.Stopped, wire.StopWait)
+	}
+	if got.Reached != 1 {
+		t.Errorf("reached %d, want 1: the wait is where it stopped", got.Reached)
+	}
+	if detail == "" {
+		t.Error("the unmet wait carries no detail, so a reader cannot tell what it saw")
+	}
+}
+
+// AND A 404 THAT IS NOT STALENESS STAYS AN ERROR. The protocol answers 404 for
+// "no such element" and "no such window" as well, so matching the STATUS would
+// swallow a selector that matches nothing into silence -- the matcher keys on
+// the W3C error NAME, and this holds the exact message the forge produced.
+func TestOnlyAStaleReferenceIsTreatedAsAMovedPage(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		err   error
+		stale bool
+	}{
+		{"the forge's own message", fmt.Errorf(`GET /session/x/element/y/text answered 404 Not ` +
+			`Found: {"value":{"error":"stale element reference","message":"stale element ` +
+			`reference: stale element not found\n  (Session info: chrome=156.0.8078.79)"}}`), true},
+		{"no such element", fmt.Errorf(`answered 404 Not Found: {"value":{"error":"no such ` +
+			`element","message":"no such element: Unable to locate element"}}`), false},
+		{"no such window", fmt.Errorf(`answered 404 Not Found: {"value":{"error":"no such ` +
+			`window","message":"no such window: target window already closed"}}`), false},
+		{"nothing at all", nil, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isStale(c.err); got != c.stale {
+				t.Errorf("isStale is %v, want %v, for %v", got, c.stale, c.err)
+			}
+		})
+	}
+}
+
+// TestAWaitRightAfterTheNavigateStillNavigates is the defect the arm above found
+// by accident, held on purpose: the look-ahead that captures a `-changed` wait's
+// BEFORE text ended in `continue`, which continues the STEP LOOP -- so when the
+// wait followed the very first step, the step it looked ahead from was never
+// performed.
+//
+// WHY EVERY OTHER ARM PASSED OVER IT: in the toy's own flow the `-changed` wait
+// follows a CLICK, so `path` is already set by the navigate before it and the
+// branch with the `continue` was never taken. It fires only where the wait
+// follows the FIRST step, which no fixture here had until this one.
+//
+// THE DISCRIMINATOR IS THE VERDICT, not a log: with the navigate skipped the
+// element never appears, so the wait is unmet and the flow stops at it; with the
+// navigate performed the element appears, which the ruling makes a CHANGE from
+// absent, so the flow runs to the end.
+func TestAWaitRightAfterTheNavigateStillNavigates(t *testing.T) {
+	driver, found := realDriver(t)
+	if !found {
+		t.Skip("no chromedriver on PATH: a condition needs a page")
+	}
+	browserBin, bfound := realBrowser(t)
+	if !bfound {
+		t.Skip("no chromium on PATH")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(w, `<!doctype html><title>late</title><p id="count">3 of 4</p>`)
+	}))
+	defer srv.Close()
+
+	d, err := Start(context.Background(), driver, browserBin, true)
+	noteGroup(d)
+	if err != nil {
+		t.Fatalf("starting the real pair: %v", err)
+	}
+	defer func() { _ = d.Close(context.Background()) }()
+
+	// THE SESSION IS OPENED BEFORE THE BUDGET STARTS, and I had to be told
+	// twice: the cell two above this one carries the same sentence, and I wrote
+	// this one with the deadline around the WHOLE flow anyway. The gate caught
+	// it at once -- "opening a session for alice: context deadline exceeded" --
+	// which is a timing fact about the box reported as a verdict about a wait.
+	if _, serr := d.SessionFor(context.Background(), "alice"); serr != nil {
+		t.Fatalf("opening a session for alice: %v", serr)
+	}
+
+	// A SHORT BUDGET, because a flow that fails to navigate stops at the wait
+	// and spends it: the cell should cost a second, not the whole bound. It
+	// bounds the WAIT alone now, which is the only thing it is about.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	got, detail, ferr := d.Flow(ctx, "alice", srv.URL, "t",
+		wire.FlowRequest{Action: "join_event_ui", Steps: flowSteps(
+			map[string]any{"step": "navigate", "to": "/ui/events/e1"},
+			map[string]any{"step": "wait", "until": "count-changed"},
+		)})
+	if ferr != nil {
+		t.Fatalf("driving the flow: %v", ferr)
+	}
+	if got.Stopped != wire.StopNone {
+		t.Errorf("stopped %q with detail %q, want it to run through: #count is on the page the "+
+			"navigate opens, and it was ABSENT before -- which the ruling makes a change. A stop "+
+			"here means the navigate did not happen", got.Stopped, detail)
+	}
+	if got.Reached != 2 {
+		t.Errorf("reached %d of 2 steps", got.Reached)
 	}
 }

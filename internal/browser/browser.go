@@ -27,6 +27,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -280,7 +281,7 @@ func (d *Driver) SessionFor(ctx context.Context, actor string) (string, error) {
 		} `json:"value"`
 	}
 	if err := d.call(ctx, http.MethodPost, "/session", d.capabilities(), &out); err != nil {
-		return "", fmt.Errorf("opening a session for %q: %w", actor, err)
+		return "", fmt.Errorf("opening a session for %q%s: %w", actor, d.whyNoSession(), err)
 	}
 	if out.Value.Error != "" {
 		return "", fmt.Errorf("the driver refused a session for %q: %s: %s",
@@ -291,6 +292,36 @@ func (d *Driver) SessionFor(ctx context.Context, actor string) (string, error) {
 	}
 	d.sessions[actor] = out.Value.SessionID
 	return out.Value.SessionID, nil
+}
+
+// whyNoSession adds the one thing a driver's own answer cannot say: that this
+// run asked for a HEADED browser on a box with no display to draw it on.
+//
+// MEASURED, which is why the clause exists at all: `--headed` here answers
+// `POST /session` with a 500 and "Chrome instance exited. Examine ChromeDriver
+// verbose log to determine the cause" -- true, unhelpful, and it sends its
+// reader to a log the run did not keep. The run already knows the two facts
+// that explain it.
+//
+// IT IS A CLAUSE AND NOT A REFUSAL BEFORE THE RUN, deliberately: a display can
+// be reached in ways this check cannot enumerate -- an Xvfb started around the
+// run, a nested compositor, an environment a wrapper sets -- so refusing up
+// front on an absent DISPLAY would refuse runs that would have worked. The
+// driver's own failure stays the verdict; this only says what it most likely
+// means.
+//
+// AND IT SAYS NOTHING WHEN HEADLESS, because then the display is irrelevant and
+// a reader chasing a mention of it would be chasing a red herring.
+func (d *Driver) whyNoSession() string {
+	if d.headless {
+		return ""
+	}
+	if os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != "" {
+		return ""
+	}
+	return " (this run asked for a HEADED browser and neither DISPLAY nor " +
+		"WAYLAND_DISPLAY is set, so there is nothing for it to draw on: a headed browser " +
+		"needs a display, and headless is the default for exactly this reason)"
 }
 
 // Actors is who holds a session, sorted, so a caller reporting them is

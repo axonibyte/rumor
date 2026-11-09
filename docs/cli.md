@@ -418,13 +418,29 @@ that printed number is exactly what `--seed` takes.
 
 `--steps` defaults to 20.
 
-`--headed` takes no value and applies to the `browser` stage: without it the
-browser runs headless, which is the default because it is the one an unattended
-run can take -- a headless browser needs no display, and a run that drew a
-window would fail on every box without one. With it the browser draws its
-window, which is for a person watching it work. The flag is a property of the
-RUN and not of the project: the same bindings run headless in CI and headed on
-a desk.
+`--headed` takes no value and applies to the `browser` stage AND to the walk's
+own driver: without it the browser runs headless, which is the default because
+it is the one an unattended run can take -- a headless browser needs no display,
+and a run that drew a window would fail on every box without one. With it the
+browser draws its window, which is for a person watching it work. The flag is a
+property of the RUN and not of the project: the same bindings run headless in CI
+and headed on a desk.
+
+**AND A HEADED RUN ON A BOX WITH NO DISPLAY SAYS SO.** The driver's own answer
+there is a `500` on `POST /session` carrying "Chrome instance exited. Examine
+ChromeDriver verbose log to determine the cause" -- true, and it sends its reader
+to a log the run does not keep, about a cause the run already knows. So the
+refusal adds a clause naming it: this run asked for a headed browser and neither
+`DISPLAY` nor `WAYLAND_DISPLAY` is set. The `browser` stage reports the same
+state as a SKIP by name, `FOUND, NOT DRIVABLE`, and the walk reports it as a
+could-not-run -- exit 2, because what an observation would have said is unknown,
+and never a quiet fall back to the adapter.
+
+IT IS A CLAUSE ON THE DRIVER'S FAILURE AND NOT A REFUSAL BEFORE THE RUN, which
+is deliberate: a display can be reached in ways the check cannot enumerate -- an
+Xvfb started around the run, a nested compositor, a wrapper's environment -- so
+refusing up front on an absent `DISPLAY` would refuse runs that would have
+worked. The driver's verdict stands; the clause says what it most likely means.
 
 `--browser-check` also takes no value, and it is OFF by default because ON
 costs a browser launch on every run. It makes the `browser` stage actually

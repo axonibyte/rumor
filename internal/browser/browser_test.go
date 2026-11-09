@@ -750,3 +750,59 @@ func TestEveryStartRegistersItsProcessGroup(t *testing.T) {
 			"they leak is invisible to TestMain's check: %s", strings.Join(unregistered, ", "))
 	}
 }
+
+// TestABudgetNeverCoversTheSessionOpen is a guard bought by three failures in
+// one day, two of them on the forge and none on this box.
+//
+// THE SHAPE EVERY TIME: an arm sets a deadline to bound a WAIT it expects to go
+// unmet, Flow opens the actor's session inside that deadline, and on a loaded
+// box the session POST spends the budget -- so the arm fails with "context
+// deadline exceeded" on `/session`, which is a timing fact about the BOX
+// reported as a verdict about a wait. It cannot be reproduced here on demand,
+// which is exactly why it must not be left to whoever writes the next arm: I
+// wrote the lesson into one cell's comment and then made the same mistake in a
+// new arm two cells away, in the same sitting.
+//
+// SO THE RULE IS IN SOURCE: an arm that bounds a flow must acquire the session
+// first, outside the budget. Sessions are cached per actor, so the Flow then
+// reuses it and the deadline bounds only its subject.
+func TestABudgetNeverCoversTheSessionOpen(t *testing.T) {
+	sources, err := filepath.Glob("*_test.go")
+	if err != nil || len(sources) == 0 {
+		t.Fatalf("no test sources to read: %v", err)
+	}
+	// BUILT FROM PIECES so this arm's own source does not match itself, which
+	// is the trap its sibling fell into twice.
+	bound := "context." + "WithTimeout("
+	drives := []string{"d." + "Flow(", "d." + "Read("}
+	pre := "SessionFor(" + "context.Background()"
+
+	var offenders []string
+	for _, name := range sources {
+		raw, rerr := os.ReadFile(name)
+		if rerr != nil {
+			t.Fatalf("reading %s: %v", name, rerr)
+		}
+		for _, chunk := range strings.Split(string(raw), "\nfunc ") {
+			if !strings.Contains(chunk, bound) {
+				continue
+			}
+			drivesAFlow := false
+			for _, d := range drives {
+				if strings.Contains(chunk, d) {
+					drivesAFlow = true
+				}
+			}
+			if !drivesAFlow || strings.Contains(chunk, pre) {
+				continue
+			}
+			offenders = append(offenders,
+				fmt.Sprintf("%s:%s", name, strings.SplitN(chunk, "(", 2)[0]))
+		}
+	}
+	if len(offenders) > 0 {
+		t.Errorf("these arms bound a flow with a deadline and do not acquire the session first, "+
+			"so the budget covers the session open and the arm fails on a loaded box about "+
+			"something it is not testing: %s", strings.Join(offenders, ", "))
+	}
+}

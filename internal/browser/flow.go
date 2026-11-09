@@ -118,24 +118,37 @@ func (d *Driver) Flow(ctx context.Context, actor, base, token string,
 				// string instead would reach the same verdict here by accident
 				// and the WRONG one for an element whose text is legitimately
 				// empty -- found by this arm's own vacuity guard.
+				//
+				// AND IT DOES NOT SKIP THE STEP, which it did until an arm
+				// drove a flow of [navigate, wait "x-changed"]: this branch
+				// ended in `continue`, which continues the STEP LOOP and not
+				// the look-ahead, so the navigate that was about to run was
+				// never performed. The wait then compared against a page
+				// nothing had opened and the flow reported it unmet -- a
+				// `ui_timeout` for a page the driver never visited.
+				//
+				// IT ONLY FIRES WHERE THE WAIT FOLLOWS THE FIRST STEP, which is
+				// why every other arm passed over it: in the toy's own flow the
+				// `-changed` wait follows a CLICK, so `path` is set by the
+				// navigate before it and this branch is not taken.
 				if path == "" {
 					before[id] = absentBefore
-					continue
-				}
-				text, present, terr := d.text(ctx, session, "#"+id)
-				if terr != nil {
-					return wire.FlowResponse{}, "", fmt.Errorf("step %d of %q: reading #%s before step %d: %w",
-						i+1, req.Action, id, i+2, terr)
-				}
-				// AN ABSENT ELEMENT IS RECORDED AS ABSENT AND NOT AS EMPTY,
-				// because the ruling makes its APPEARANCE a change: "if the
-				// element was absent before, its appearance is a change". An
-				// empty string would make an element that appears empty read as
-				// unchanged.
-				if present {
-					before[id] = text
 				} else {
-					before[id] = absentBefore
+					text, present, terr := d.text(ctx, session, "#"+id)
+					if terr != nil {
+						return wire.FlowResponse{}, "", fmt.Errorf("step %d of %q: reading #%s before step %d: %w",
+							i+1, req.Action, id, i+2, terr)
+					}
+					// AN ABSENT ELEMENT IS RECORDED AS ABSENT AND NOT AS EMPTY,
+					// because the ruling makes its APPEARANCE a change: "if the
+					// element was absent before, its appearance is a change". An
+					// empty string would make an element that appears empty read
+					// as unchanged.
+					if present {
+						before[id] = text
+					} else {
+						before[id] = absentBefore
+					}
 				}
 			}
 		}
@@ -630,9 +643,34 @@ func (d *Driver) text(ctx context.Context, session, selector string) (string, bo
 	}
 	t, terr := d.textOf(ctx, session, el)
 	if terr != nil {
+		// A STALE REFERENCE IS NOT AN ERROR HERE, IT IS THE PAGE MOVING. The
+		// element is found and read in TWO calls, so a navigation that lands
+		// between them invalidates the reference and the driver answers 404
+		// "stale element reference". For a wait that is not a fault: the page
+		// changing is the thing it is waiting FOR, so this tick simply has no
+		// reading and the next one re-finds.
+		//
+		// MEASURED, AND IT COST A RED CI: the forge failed task 1116 on
+		// `count-changed` exactly here -- the click's POST response landed
+		// between the find and the read -- and it reproduced 1 run in 6 on this
+		// box, which is why it passed the gate and failed there.
+		if isStale(terr) {
+			return "", false, nil
+		}
 		return "", false, fmt.Errorf("reading the text of %q: %w", selector, terr)
 	}
 	return t, true, nil
+}
+
+// isStale answers whether a driver refused a reference because the element it
+// named is gone -- the page having moved under it.
+//
+// IT MATCHES THE W3C ERROR NAME AND NOT THE STATUS, which is the narrowing that
+// matters: a 404 from this protocol also means "no such element" and "no such
+// window", and treating every 404 as a moved page would swallow a selector that
+// matches nothing into silence.
+func isStale(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "stale element reference")
 }
 
 // textOf reads one element's text content by REFERENCE, and it exists so there

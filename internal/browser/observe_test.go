@@ -187,3 +187,37 @@ func TestACountIsTheChildrenAndNotTheDescendants(t *testing.T) {
 			"answer and not an absence", kids, present)
 	}
 }
+
+// TestABrowserReadingSurvivesOnePageTurn is the recovery half of the stale-read
+// fix: a browser observation finds its element and then takes two readings off
+// it, so a navigation landing among those three calls makes the reference stale.
+// One re-read answers the page that is there now.
+//
+// THE FAKE GOES STALE EXACTLY ONCE, which is what lets the RECOVERY be seen at
+// all: a fake that is always stale can only show the refusal, and this arm is
+// about the read that succeeds after it.
+func TestABrowserReadingSurvivesOnePageTurn(t *testing.T) {
+	d, _ := startFake(t, "stale-once", true)
+	defer func() { _ = d.Close(context.Background()) }()
+
+	// A LISTENER FOR THE NAVIGATE TO REACH. A read navigates first, and the
+	// address is dialed before the page is asked for -- so a dead port is a
+	// named refusal long before any reference goes stale.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(w, `<!doctype html><title>x</title><p id="count">0</p>`)
+	}))
+	defer srv.Close()
+
+	text, _, present, err := d.Read(context.Background(), "alice",
+		srv.URL, "/ui/events/e1", "count", "tok")
+	if err != nil {
+		t.Fatalf("one page turn was reported as a failure: %v", err)
+	}
+	if !present {
+		t.Fatal("the re-read found nothing, so the reading was lost to the page turning")
+	}
+	if text != "after the page turned" {
+		t.Errorf("the reading is %q, and it should be what the page said on the SECOND look", text)
+	}
+}
