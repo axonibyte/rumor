@@ -319,14 +319,21 @@ func TestTheFailureViewActuallySearchesTheLog(t *testing.T) {
 		t.Fatalf("%s has no step named `test`", path)
 	}
 
-	rx := regexp.MustCompile(`grep -nE '([^']*)' \.\./test\.log`)
+	// THE FLAGS ARE TOLERATED AND CAPTURED, not pinned. This read
+	// `grep -nE '<pat>' ../test.log` with nothing allowed between `-nE` and the
+	// quote, so adding the context flag the view needs made this arm report
+	// "0 FAIL/panic grep(s)" -- an arm whose purpose is to DRIVE the pattern
+	// failing on where a flag sits. Group 1 is now those flags, and the second
+	// half of this arm drives them (rook, coop r9/150).
+	rx := regexp.MustCompile(`grep -nE([^']*)'([^']*)' \.\./test\.log`)
 	// THE FAILURE VIEW AND NOT EVERY -nE GREP IN THE STEP: the cached-verdict
 	// refusal reads the same log with the same flags, and it is a different
 	// claim. `panic:` is the clause only the failure view carries.
-	var pats []string
+	var pats, flagSets []string
 	for _, m := range rx.FindAllStringSubmatch(test, -1) {
-		if strings.Contains(m[1], "panic") {
-			pats = append(pats, m[1])
+		if strings.Contains(m[2], "panic") {
+			flagSets = append(flagSets, m[1])
+			pats = append(pats, m[2])
 		}
 	}
 	if len(pats) != 1 {
@@ -334,6 +341,7 @@ func TestTheFailureViewActuallySearchesTheLog(t *testing.T) {
 			"drives the pattern, and two would leave one undriven", path, len(pats))
 	}
 	pattern := pats[0]
+	viewFlags := strings.Fields(flagSets[0])
 
 	// THE FIXTURE CARRIES EVERY SHAPE `go test -v` USES TO REPORT A FAILURE,
 	// and three that must not match. The indented one is a SUBTEST and it is
@@ -388,8 +396,56 @@ func TestTheFailureViewActuallySearchesTheLog(t *testing.T) {
 		t.Errorf("%s prints %q on ANY nonzero rc, which is the defect run 1012 hid: a grep that "+
 			"exits 2 reads as a clean log", path, sentence)
 	}
-	t.Logf("PROOF the step's own pattern %q ran and matched %d of %d failure shapes",
-		pattern, len(got), wantMatches)
+	// AND THE VIEW MUST CARRY THE ARM'S OWN WORDS, which is the defect this
+	// whole head exists for and which no assertion here could see.
+	//
+	// MEASURED: the view printed the matching lines ALONE, so a CI-only failure
+	// arrived with `--- FAIL` and nothing a reader could act on -- twice, and
+	// the second time 1117's cause was unrecoverable. `go test -v` prints a
+	// test's diagnostic BEFORE its `--- FAIL` line, so the first proposed fix
+	// (`-A`) recovered NONE of those words; driven here rather than read,
+	// because three of us agreed on the wrong side (coop r9/147).
+	//
+	// THE FIXTURE PUTS WORDS ON BOTH SIDES: a t.Errorf line before a
+	// `--- FAIL`, and a panic trace after a `panic:`. A one-sided flag serves
+	// one of them and fails this arm.
+	// THE TRACE SITS AT THE END WITH NO MATCH AFTER IT, and that placement is
+	// the arm rather than a detail. My first fixture put a `FAIL <pkg>` line
+	// AFTER the trace, so `-B` pulled the trace in as BEFORE-context of that
+	// line and a one-sided flag passed -- a tautology in an arm written to
+	// catch one-sidedness, found by mutating the flag to -B and watching it
+	// survive. With nothing matching below it, only AFTER-context reaches the
+	// trace. [[an-unfaithful-mutant-that-dies-is-a-false-pass]]
+	ctx := strings.Join([]string{
+		"=== RUN   TestWithWords",
+		"    f_test.go:7: THE ARMS OWN WORDS, which a reader needs",
+		"--- FAIL: TestWithWords (0.00s)",
+		"FAIL\tforge.axonibyte.com/axonibyte/rumor/tests/x\t1.000s",
+		"panic: runtime error: index out of range",
+		"\tTRACE LINE AFTER THE PANIC",
+		"\tsecond trace frame",
+		"\tthird trace frame",
+		"",
+	}, "\n")
+	ctxPath := filepath.Join(t.TempDir(), "ctx.log")
+	if err := os.WriteFile(ctxPath, []byte(ctx), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := append(append([]string{"-nE"}, viewFlags...), pattern, ctxPath)
+	cout, cerr := exec.Command("grep", args...).Output()
+	if cerr != nil {
+		t.Fatalf("the step's view (grep -nE %v) does not run: %v", viewFlags, cerr)
+	}
+	for _, want := range []string{"THE ARMS OWN WORDS", "TRACE LINE AFTER THE PANIC"} {
+		if !strings.Contains(string(cout), want) {
+			t.Errorf("the view's flags %v lose %q: a failure's own words reach no reader, "+
+				"which is what this view exists to carry. Output:\n%s",
+				viewFlags, want, cout)
+		}
+	}
+
+	t.Logf("PROOF the step's own pattern %q ran and matched %d of %d failure shapes, and its "+
+		"flags %v carry words on BOTH sides of a match", pattern, len(got), wantMatches, viewFlags)
 }
 
 // floorSeconds is the per-package watchdog's lower bound, and it is a number

@@ -45,7 +45,7 @@
 # a wedged runner gets filed as a broken build.
 #
 # `tools/check-workflows.py --self-test` refuses this file if any job or
-# invocation loses its bound; its own 21 arms are green. It is python and
+# invocation loses its bound; its own 25 arms are green. It is python and
 # LOCAL-ONLY on purpose: adding a python dependency to CI would depend on an
 # unmeasured interpreter. (The Rust header called it check-workflow-bounds.py,
 # which is not a file that exists -- corrected here.)
@@ -331,9 +331,25 @@ jobs:
           # -e does not apply to it, and the rc still reaches the case below.
           view_broken=0
           frc=0
-          grep -nE '^(--- )?FAIL|^panic:|^[[:space:]]+--- FAIL' ../test.log > ../fails.txt || frc=$?
+          # `-C` AND NOT `-A` OR `-B`, WHICH IS MEASURED (rook, coop r9/147).
+          # This view printed the matching lines ALONE, so an arm's own
+          # `t.Errorf` words never reached the log and a CI-only failure arrived
+          # with no diagnostic -- twice. The first cut of the fix said `-A`, and
+          # driven against real `go test -v` output `-A 3` captured NONE of
+          # those words: go prints a test's diagnostic BEFORE its `--- FAIL`
+          # line, not after.
+          #
+          # AND THIS PATTERN MATCHES TWO KINDS WITH OPPOSITE DIRECTIONS: a
+          # `--- FAIL`'s words come before it, a `^panic:` trace comes after it.
+          # One-sided context serves one of them, so both sides are taken.
+          grep -nE -C 5 '^(--- )?FAIL|^panic:|^[[:space:]]+--- FAIL' ../test.log > ../fails.txt || frc=$?
           case "$frc" in
-            0) sed -n '1,40p' ../fails.txt ;;
+            # THE CAP RISES WITH THE CONTEXT: at 40 lines a -C 5 view holds
+            # about three matches, and a suite failing in four packages would
+            # have its fourth scroll off the thing built to show it. The whole
+            # log is printed beneath on failure, so this stays a SUMMARY and
+            # the cap is a courtesy rather than the only copy.
+            0) sed -n '1,200p' ../fails.txt ;;
             1) echo "(no FAIL or panic line in test.log)" ;;
             *) echo "FAILURE VIEW BROKEN: the FAIL/panic grep exited $frc, so this log has NOT been searched and no verdict below rests on it"
                view_broken=1 ;;
@@ -383,7 +399,29 @@ jobs:
             echo "--- $(grep -acE '^(ok|FAIL|\?)[[:space:]]+forge\.axonibyte\.com/' ../test.log) of $(timeout 60 "$GO" list ./... | wc -l | tr -d ' ') package(s) reported; a difference here is a package still running, and NONE means the work finished and the run did not exit"
             exit 124
           }
-          test "$rc" -eq 0 || { echo "go test exited $rc"; exit "$rc"; }
+          # THE WHOLE LOG GOES INTO THE JOB LOG ON FAILURE (fable, coop
+          # r9/146), because ../test.log dies with the runner's workspace and
+          # the job log is the one place that outlives it WITHOUT a runner
+          # feature nobody here has measured. actions/upload-artifact is
+          # declined until `node --version` on the runner is measured -- it is
+          # a JavaScript action, the same class this file refuses for
+          # actions/checkout at the top.
+          #
+          # PRINTING AND SURVIVING ARE DIFFERENT HALVES: the mined view above
+          # fixes what a reader SEES FIRST, and this fixes what is still there
+          # tomorrow. A failure that cost its own words twice is why both are
+          # here rather than either.
+          test "$rc" -eq 0 || {
+            echo "go test exited $rc"
+            # NO COMMAND SUBSTITUTION AND A GUARDED cat, because this is the
+            # FAILURE path: a printer that can itself fail is worst placed
+            # exactly where the only remaining evidence is being printed. A
+            # line count would have been nice and is not worth a `wc` that can
+            # exit nonzero here.
+            echo "--- WHOLE test.log BELOW: the view above is mined, this is the copy ---"
+            cat ../test.log || echo "(test.log could not be read, so the view above is all there is)"
+            exit "$rc"
+          }
           # AND A GREEN RUN WHOSE FAILURE VIEW WAS BROKEN IS NOT GREEN. The
           # branches above exit on their own rc, so this reaches only a run that
           # passed -- where an unsearched log is the one case nothing else would
