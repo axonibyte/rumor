@@ -678,6 +678,39 @@ So each step asserts **a value only execution could have produced**: a version
 string, a count the step computed, the toolchain recorded *inside* the built
 binary by `go version -m`. Never a duration, and never the absence of red.
 
+### A failing step's words, and where they outlive the workspace
+
+A red step owes two different things: that a reader SEES the failure, and that
+the failure is still readable tomorrow. Both halves are in `ci.yml`, and they
+are there because the view that printed only the `FAIL`-matching lines cost a
+CI-only failure its own diagnostic twice — the second time with no local
+reproduction to fall back on.
+
+- **The mined view takes context on BOTH sides of a match.** `go test` prints a
+  test's own `t.Errorf` diagnostic *before* its `--- FAIL` line and a `panic:`
+  trace *after* it, so one-sided context serves one of those and silently drops
+  the other's words. The view is capped, which is a courtesy and not the only
+  copy — see the next bullet for why that distinction is safe to make.
+- **On a failure the WHOLE log goes into the job log** beneath the view (fable,
+  coop r9/146). `../test.log` lives in the runner's workspace and dies with the
+  job, so the job log is the one place that outlives it without a runner
+  feature nobody here has measured. That path uses no command substitution and
+  guards its `cat`: a printer that can itself fail is worst placed exactly
+  where the last remaining evidence is being printed.
+- **`actions/upload-artifact` is DECLINED, not unavailable.** It is a
+  JavaScript action, the same class this file already refuses for
+  `actions/checkout`, and the decline stands until `node --version` on the
+  runner is measured. The log route needs no such measurement, which is why it
+  is the one taken.
+- **A green run whose failure view was broken is not green.** A search that
+  exits neither 0 nor 1 means the log was never searched — the one case no
+  other step would ever report — so that run fails on its own account.
+
+**A GREEN RUN CANNOT PROVE ANY OF THIS**, because it never enters the failure
+path. It was proved by a CHOSEN RED: one arm failed on purpose for one commit,
+the runner's own words were read back out of the job log, and the arm was
+removed again in the commit after it.
+
 ### The licence surface, after the port
 
 `cargo deny` is gone, with the tree it judged. What survives it is the
