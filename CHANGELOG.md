@@ -3,6 +3,129 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.49 — 2026-11-10
+
+**A real browser drives a declared UI flow, reads its observations off the live
+page, and keeps two actors' sessions apart** — issue 122, R9.1b: the clauses of
+issue 120's done-when that needed a browser, opened the day cal's install landed
+(coop r9/71) and cut off v0.1.48. The check that proves a box can do it is
+OPT-IN, because proving a pair RUNS costs a launch and the aggregate bill is
+measured.
+
+- **DRIVABLE MEANS A COMPLETE PAIR, AND A BROWSER WITHOUT ITS DRIVER IS A THIRD
+  STATE.** Flows travel over W3C WebDriver, which a driver process speaks and
+  a browser does not, so the scan looks for PAIRS — chromium and its kin with
+  `chromedriver`, firefox with `geckodriver` — and reports FOUND, NOT DRIVABLE
+  with the half that is missing, which is the half that names a package. An
+  incomplete pair does not stop the scan: the first COMPLETE pair answers, and
+  a pair passed over is named only when none completes. `RUMOR_WEBDRIVER`
+  joins `RUMOR_BROWSER` because the other half of an arbitrary path cannot be
+  guessed, and a driver inferred from a browser's name would be a guess
+  presented as a resolution.
+- **THE STAGE STARTS THE PAIR IT FOUND, so FOUND becomes DRIVABLE on a launch
+  and not on presence.** A complete pair still fails on a missing shared
+  library, an unwritable HOME, or a `chromedriver` from the wrong package, and
+  each of those is a SKIP BY NAME under issue 120's deliverable 5. A session
+  that drove and then would not close is reported as its own verdict beside
+  the first — `DRIVABLE, one session opened, AND NOT CLOSED` — because a
+  leaking browser is not an absent one. **No `--no-sandbox`, ever**, asserted
+  in both capabilities: headless chromium keeps its sandbox as an ordinary
+  user with a writable HOME, measured on forge-01's ci jail, and the flag is a
+  root-only workaround no CI step should inherit.
+- **THE CHECK IS OPT-IN, AND CI RUN 1109 IS WHY.** Starting the pair on every
+  `rumor run` put `tests/run`'s 55 invocations over the step's 1800s budget:
+  the job died with nothing failing, where the same suite one commit earlier
+  finished in 21m17s. `--browser-check` now asks for the launch, and without
+  it the line says the pair is COMPLETE and whether it RUNS here is UNKNOWN —
+  because presence is all that was read.
+- **TWO FIGURES OF MINE WERE WITHDRAWN IN THIS RUN, each by the next head.** A
+  per-launch "about 12s" was a QUOTIENT of the aggregate presented as a
+  measurement; driven directly, start, session, delete and stop together take
+  0.8 to 0.9s. And the correction's own paragraph still called the bill "11 to
+  13 minutes" — a RANGE for a quantity with no upper measurement at all, since
+  run 1109 was KILLED at its cap. What stands is a FLOOR: at least 9m34s.
+  Neither the mechanism nor an upper bound is claimed, and whether a browser
+  should be the default is unmeasured against that floor.
+- **A READINESS BOUND IS SIZED FROM UNCENSORED RUNS, AND IT WENT DOWN.** A 20s
+  bound that fired once became 60s called "measured", which it was not: the
+  failing run was RIGHT-CENSORED at 20s, so its datum is "longer than 20s" and
+  no figure at all. Re-run with every answer time recorded under a 120s
+  ceiling, 0 censored in 40 runs over two boxes put the combined tail at
+  68.3ms — so the bound is **10s**, ~146× that tail, and the 60s is retracted
+  rather than kept. **The bound is a DISCRIMINATOR, not a budget**: nothing
+  takes between 68ms and 20s, so waiting longer could never have turned that
+  failure into a pass, and a driver still not ready at 10s is STUCK. The
+  message says so, where one reporting only the elapsed bound invited the next
+  reader to grant more time — which is how this was filed as slowness in the
+  first place. A driver that EXITED is answered at once instead of polled to
+  the ceiling as slow.
+- **THE WALK DRIVES THE FLOW, AND THE ADDRESS COMES OFF THE ADAPTER'S
+  `describe`.** The stage owns the browser's lifecycle and hands the walk what
+  it drives through, so one driver serves a flow AND its resume — a flow the
+  browser started and the adapter resumed would re-check its condition against
+  a page the adapter cannot see. `describe` gains an optional `base`, absent
+  by omission so the contract stays `"2"`: the adapter is the one thing that
+  knows where its world is, and there is nowhere for a guessed host to enter.
+- **A `browser` OBSERVATION IS READ FROM THE LIVE DOM, AND WHAT IT MEANS IS
+  DECLARED RATHER THAN SNIFFED.** The adapter names, per browser observation,
+  a `page` relative to `base` and an `element` in the same vocabulary as a
+  flow's `until`; the driver navigates THE ACTOR'S OWN context and reads it,
+  while the adapter's own read of the served HTML stays `direct` as the
+  engine's second oracle. Either half missing is a NAMED refusal at the walk,
+  and the product now says which oracle read each observation. Two actors'
+  sessions do not leak, because a W3C session carries its own cookie jar and
+  storage and sessions are keyed BY ACTOR.
+- **A STALE ELEMENT REFERENCE IS THE PAGE MOVING, NOT A FAILURE**, and three
+  defects behind that sentence were found by the FORGE on a head this box
+  called green. A wait reads an element in two calls, so a navigation between
+  them invalidates the reference: for a wait that is the thing being waited
+  FOR and the next tick re-finds, while an OBSERVATION re-reads once because a
+  reading is wanted. The matcher keys on the W3C error NAME and not the 404,
+  since that status also carries "no such element" and swallowing it would
+  turn a selector matching nothing into silence. Beside it, a wait's budget
+  never covers the session OPEN, and `--headed` on a box with neither
+  `DISPLAY` nor `WAYLAND_DISPLAY` says THAT, as a clause rather than a refusal
+  before the run — a display can arrive by routes this check cannot enumerate.
+- **A FAILING CI STEP'S OWN WORDS REACH THE JOB LOG, AND THE LOG OUTLIVES THE
+  WORKSPACE.** The mined view printed only `FAIL`-matching lines, so an arm's
+  `t.Errorf` text never arrived — and `go` prints a diagnostic BEFORE a test's
+  `--- FAIL` line while a `panic:` trace comes AFTER it, so context is taken
+  on both sides. On a failure the whole `test.log` is now cat'ed into the job
+  log beneath the view, because the workspace copy dies with the job;
+  `actions/upload-artifact` stays DECLINED until `node --version` on the
+  runner is measured. **It was proved by a CHOSEN RED**: one arm failed on
+  purpose for one commit, the runner's words were read back out of run 711's
+  job log, and the arm was removed in the commit after it. A green run never
+  enters that path and so could not have proved it.
+- **THE BUMP IS WHERE THIS RUN'S DOC GAP CAME DUE.** The release gate refused
+  this run for `.forgejo/workflows/ci.yml` changing while `docs/release.md`
+  did not, which was true and had no trailer because the doc genuinely owed
+  the words: the failure view's two halves, and `upload-artifact` being
+  DECLINED rather than unavailable. The remedy is the doc and not a
+  `Docs-Unchanged:` trailer claiming nothing needed writing — the same ruling
+  this project took at v0.1.48.
+
+**THE HEADS THIS TAG SPANS**, oldest first and this bump last. None is on `main`
+yet; all are on `r9.1b-driver`.
+
+| head | what it did |
+|---|---|
+| `15df330` | a browser is drivable only with its driver, so the scan looks for pairs |
+| `5270039` | the stage starts the pair it found, so FOUND becomes DRIVABLE |
+| `5010109` | the browser check is opt-in, because proving a pair runs costs a launch |
+| `dd584fe` | the per-launch figure retracted: the bill is measured, its cause is not |
+| `93a0507` | the browser bill is a lower bound, not a range |
+| `38c4267` | the found-not-drivable arm asserted what the pair table already said |
+| `1a372f1` | the readiness bound is sized from 40 uncensored runs, and names stuck |
+| `8bb8abe` | the walk drives a declared flow through a real browser |
+| `25eb8b6` | a browser observation is read from the live page, and two actors' sessions do not leak |
+| `d0e4a68` | a stale element is the page moving, and a budget never covers the session open |
+| `e9f637b` | a failure's own words reach the log, and the log outlives the workspace |
+| `3839ea3` | a CHOSEN RED: one arm fails on purpose to prove that view |
+| `7425d07` | the chosen red removed, having done its work |
+| `2ab71bf` | `docs/release.md` takes the failure view and the declined artifact route |
+| this commit | the bump |
+
 ## 0.1.48 — 2026-11-05
 
 **The browser stage exists, is dispatched, and drives a declared UI flow through
