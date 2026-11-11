@@ -459,6 +459,24 @@ def run_doc_blocks(repo: Path, ref: str) -> list[str]:
             except OSError as exc:
                 failures.append(f"{where}: a `run` block could not be started: {exc}")
                 continue
+            # WHAT THE BLOCK ACTUALLY SPENT, PRINTED ON SUCCESS TOO. The elapsed
+            # was measured here from the first commit and reported only on the
+            # FAILING path, so a block that passed left no figure and the
+            # headroom under its budget was unmeasurable -- which is why
+            # `budget_s` has sat on the road as "load-sensitive, unmeasured"
+            # since rumor/1804 and why PR 117's refusal of v0.1.46 for a TIMING
+            # could only be diagnosed after the fact.
+            #
+            # THE BUDGET AND ITS SOURCE TRAVEL WITH IT, because a reader deciding
+            # whether 60s is thin needs to know whether anyone chose it: the
+            # default is a figure nobody measured for this block, and a declared
+            # one is a figure somebody did.
+            spent = time.monotonic() - started
+            print(
+                f"PROOF {where} ran {spent:.1f}s of its {budget}s budget "
+                f"({'declared in the fence' if declared else 'the default'}), "
+                f"{budget - spent:.1f}s of headroom"
+            )
             if done.returncode != 0:
                 # BOTH STREAMS, EACH NAMED -- and this is the SIBLING of a defect
                 # this file already fixed once, at the docs-stale arm below: "`go
