@@ -2136,3 +2136,31 @@ about chromium launching, a missing shared library, or a sandbox it cannot
 enter. That claim needs the real pair and belongs to the browser-side arm, which
 runs where the pair lives. The two are named apart so neither is read as the
 other.
+
+**A BOUND THAT ENDS A CALL MUST SAY WHICH BOUND IT WAS, AND THREE OF THEM CAN.**
+A WebDriver call made under a flow can end on the flow's own budget (the context
+it was driven with), on this package's `RequestBound`, or because the run was
+cancelled — and the transport reports the first two as `context deadline
+exceeded`, which names neither. The three want different answers: raise the
+step's budget, look at the driver, or nothing at all. So the classification is
+held in one place, `whyCallEnded`, and every branch of it is driven, including
+the two no arm can afford end to end: the driver's own 30s bound would cost 30s
+a cell, and a cancelled run is not a fault to reproduce.
+
+**AND THE EXPIRY IS DRIVEN AGAINST A FAKE THAT WAITS FOR THE CALLER TO HANG UP.**
+`wedge-element` blocks on the request's own context, so the budget expires
+exactly when it is set to rather than after a sleep chosen to outlast it: a
+sleep either flakes when the box is slow or spends its whole length on every
+run. Its control is the same flow against a fake that answers, where the click
+finds no element and the flow STOPS — a stop is the page's answer and not a
+bound, so an arm that named a budget there would pass on a driver that was
+merely slow.
+
+**AN ARM'S BUDGET BOUNDS THE STEP IT MEASURES, NOT THE SETUP IN FRONT OF IT.**
+`TestTheActorsTokenReachesNoOutput` went red on the forge at load 6.8 to 9.2
+because its 2s covered two navigates as well as the wait it is about; under
+contention the navigates spent it, and the arm then refused to pass — correctly,
+by its own vacuity guard, since an error carrying no redaction marker is not
+evidence that anything was redacted. The setup now runs unbounded and the flow
+resumes into the wait through `from`, the product's own seam. A budget stretched
+over a whole flow measures the box.

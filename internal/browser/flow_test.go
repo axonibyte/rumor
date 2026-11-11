@@ -717,20 +717,41 @@ func TestTheActorsTokenReachesNoOutput(t *testing.T) {
 		t.Fatalf("opening a session for alice: %v", serr)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	// TWO NAVIGATES, so the condition has a real BEFORE to compare against: the
+	// element exists with the token in it, the second navigate leaves it the
+	// same, and the condition therefore cannot be met -- which is what produces
+	// a detail carrying the text.
+	steps := flowSteps(
+		map[string]any{"step": "navigate", "to": "/page"},
+		map[string]any{"step": "navigate", "to": "/page"},
+		map[string]any{"step": "wait", "until": "leak-changed"},
+	)
+
+	// THE BUDGET BOUNDS THE WAIT ALONE, AND THIS ARM IS WHY THE RULE EXISTS.
+	// It went RED ON THE FORGE at load 6.8 to 9.2 (rook, coop r9/154): its 2s
+	// covered two navigates AND the wait, so under contention the navigates
+	// spent it and a POST to .../element ended on the deadline. The arm then
+	// refused to pass -- correctly, by its own vacuity guard, since an error
+	// carrying no redaction marker is not evidence the token was redacted -- and
+	// the red was about the box rather than the leak.
+	//
+	// SO THE STEPS BEFORE IT RUN UNBOUNDED and the flow resumes into the wait
+	// through `from`, the product's own seam, exactly as the wait-vocabulary arm
+	// does. 1 of 2 at that load, 0 of 6 uncontended, and now 0 by construction.
+	pre, _, perr := d.Flow(context.Background(), "alice", srv.URL, token,
+		wire.FlowRequest{Action: "leaky", Steps: steps[:2]})
+	if perr != nil {
+		t.Fatalf("driving the navigates before the wait: %v", perr)
+	}
+	if pre.Reached != 2 {
+		t.Fatalf("the two navigates reached %d of 2, so the wait was never the subject",
+			pre.Reached)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	// A CONDITION THAT CANNOT BE MET, so the detail is produced and carries the
-	// text of an element the page filled with the token.
 	_, detail, ferr := d.Flow(ctx, "alice", srv.URL, token,
-		wire.FlowRequest{Action: "leaky", Steps: flowSteps(
-			// TWO NAVIGATES, so the condition has a real BEFORE to compare
-			// against: the element exists with the token in it, the second
-			// navigate leaves it the same, and the condition therefore cannot
-			// be met -- which is what produces a detail carrying the text.
-			map[string]any{"step": "navigate", "to": "/page"},
-			map[string]any{"step": "navigate", "to": "/page"},
-			map[string]any{"step": "wait", "until": "leak-changed"},
-		)})
+		wire.FlowRequest{Action: "leaky", From: 2, Steps: steps})
 
 	var text string
 	if ferr != nil {

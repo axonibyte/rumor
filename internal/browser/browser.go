@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -74,6 +75,21 @@ const StopGrace = 3 * time.Second
 // number.
 const ReadyTimeout = 10 * time.Second
 
+// RequestBound is how long ONE WebDriver call may take, and it is named because
+// a failure has to be able to say which budget it was.
+//
+// THREE BOUNDS CAN END A CALL and they are not the same fault: the FLOW's budget
+// (the caller's ctx deadline, which waitBudget reads as the step's), this one,
+// and ReadyTimeout at start. A reader told only "context deadline exceeded"
+// cannot tell which to raise, or whether the run was simply cancelled -- which
+// is the gap r9/154's contended red left: an arm's own 2s expired on a POST to
+// /element and the error named no budget at all.
+//
+// IT IS LONGER THAN ANY STEP SHOULD TAKE AND SHORTER THAN THE WIRE'S OWN
+// REQUEST BOUND (wire.DefaultRequestTimeout, 60s), so a driver that stops
+// answering is this package's finding rather than the engine's timeout.
+const RequestBound = 30 * time.Second
+
 // Driver is a running WebDriver process and the sessions opened through it.
 type Driver struct {
 	base     string
@@ -111,6 +127,46 @@ type Driver struct {
 	// no second answer. A world that dies mid-run fails at the browser instead,
 	// which is a true report of a different thing.
 	worlds map[string]error
+}
+
+// whyCallEnded names WHICH budget ended a call, because the transport's own
+// error does not.
+//
+// MEASURED, AND IT COST A RED NOBODY COULD READ: r9/154's contended red was
+// `TestTheActorsTokenReachesNoOutput` failing at load 6.8 to 9.2 with a POST to
+// .../element that "hit its deadline" -- and the arm could not tell, nor could
+// its reader, whether the FLOW's budget had run out, the driver had stopped
+// answering, or the run had been cancelled. Those three want different answers:
+// raise the flow's budget, look at the driver, or nothing at all.
+//
+// THE CALLER'S DEADLINE IS THE FLOW'S BUDGET, which is waitBudget's reading of
+// fable's ruling (coop r9/110) rather than a second meaning invented here: the
+// ctx a flow is driven with IS the step's budget, so a call that ends on it has
+// spent exactly that.
+//
+// A CANCELLED RUN IS NOT A BUDGET AT ALL and says so: a reader chasing a
+// timeout when the run was stopped is looking for a fault that never happened.
+func (d *Driver) whyCallEnded(ctx context.Context, method, path string, err error) error {
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		over := ""
+		if dl, ok := ctx.Deadline(); ok {
+			over = fmt.Sprintf(", which was %s ago", time.Since(dl).Round(time.Millisecond))
+		}
+		return fmt.Errorf("%s %s ran out of THE FLOW'S BUDGET%s: the budget is the deadline this "+
+			"flow was driven with, so this step had that long for every call it made -- the "+
+			"driver's own bound of %s and this run's readiness bound of %s are untouched: %w",
+			method, path, over, RequestBound, ReadyTimeout, err)
+	case errors.Is(ctx.Err(), context.Canceled):
+		return fmt.Errorf("%s %s stopped because THIS RUN WAS CANCELLED, which is no budget "+
+			"expiring and names no fault in the driver: %w", method, path, err)
+	case os.IsTimeout(err):
+		return fmt.Errorf("%s %s ran out of THE DRIVER'S OWN REQUEST BOUND of %s while the flow's "+
+			"budget still had time: the driver stopped answering one call, which is this "+
+			"package's fault to report and not the step's: %w", method, path, RequestBound, err)
+	default:
+		return fmt.Errorf("%s %s: %w", method, path, err)
+	}
 }
 
 // freePort asks the kernel for a port and gives it back.
@@ -171,7 +227,7 @@ func Start(ctx context.Context, driverPath, browserPath string, headless bool) (
 		path:     driverPath,
 		browser:  browserPath,
 		cmd:      cmd,
-		http:     &http.Client{Timeout: 30 * time.Second},
+		http:     &http.Client{Timeout: RequestBound},
 		headless: headless,
 		sessions: map[string]string{}, worlds: map[string]error{},
 		exited: make(chan struct{}),
@@ -418,7 +474,7 @@ func (d *Driver) call(ctx context.Context, method, path string, body any, out an
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := d.http.Do(req)
 	if err != nil {
-		return err
+		return d.whyCallEnded(ctx, method, path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	// THE STATUS IS READ, AND IT WAS NOT. A DELETE is sent with nowhere to

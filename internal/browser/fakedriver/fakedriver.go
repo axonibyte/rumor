@@ -138,6 +138,22 @@ func serve(mode, journal string, args []string) {
 		// driven too: a reader that re-reads is only correct if the second read
 		// is allowed to succeed, and a fake that is always stale can never show
 		// that it did.
+		// MODE "wedge-element" HOLDS A PAGE CALL UNTIL THE CALLER GIVES UP,
+		// which makes a BUDGET EXPIRY deterministic instead of a race.
+		//
+		// IT WAITS ON THE REQUEST'S OWN CONTEXT rather than sleeping a chosen
+		// number: a sleep has to be longer than the budget under test, so it
+		// either flakes when the box is slow or costs its whole length on every
+		// run. Waiting for the client to hang up fires exactly when the budget
+		// does, whatever the budget is -- and r9/154's red is the case it
+		// reproduces: a POST to .../element that ran out of time.
+		//
+		// IT ANSWERS NOTHING, so no page claim can rest on it: the only thing
+		// an arm can learn here is what the driver says when a call ends.
+		if mode == "wedge-element" && strings.HasSuffix(r.URL.Path, "/element") {
+			<-r.Context().Done()
+			return
+		}
 		if mode == "stale" || mode == "stale-once" {
 			switch {
 			case strings.HasSuffix(r.URL.Path, "/element"):
