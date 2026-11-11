@@ -147,8 +147,41 @@ type Driver struct {
 // A CANCELLED RUN IS NOT A BUDGET AT ALL and says so: a reader chasing a
 // timeout when the run was stopped is looking for a fault that never happened.
 func (d *Driver) whyCallEnded(ctx context.Context, method, path string, err error) error {
+	// THE ERROR AND THE CONTEXT ARE READ TOGETHER, AND READING THE CONTEXT ALONE
+	// WAS THIS FUNCTION'S OWN DEFECT. rook, coop rumor/1973, drove a
+	// "connection reset by peer" that arrived while the flow's budget happened to
+	// have expired, and got back "ran out of THE FLOW'S BUDGET ... the driver's
+	// own bound of 30s and this run's readiness bound of 10s are untouched" -- a
+	// diagnosis that clears precisely the thing that had failed. The `%w` tail
+	// kept the real error, so nothing was LOST; the sentence in front of it was
+	// wrong, which is worse than saying nothing.
+	//
+	// AND KEYING ON THE ERROR ALONE CANNOT WORK EITHER, which is rook's
+	// refutation of their own first fix (coop r9/160, go1.26) and re-measured
+	// here on go1.27.2 against a wedged server --
+	// TestTheTOOLCHAINCannotTellTheBoundsApartByErrorAlone pins it:
+	//
+	//	caller ctx deadline       errors.Is(DeadlineExceeded) TRUE   os.IsTimeout TRUE
+	//	client Timeout, ctx live  errors.Is(DeadlineExceeded) TRUE   os.IsTimeout TRUE
+	//	caller cancelled          errors.Is(Canceled)         TRUE   os.IsTimeout FALSE
+	//
+	// Go wraps the client's OWN timeout as context.DeadlineExceeded as well, and
+	// os.IsTimeout holds for both, so NO predicate over the error can say whose
+	// bound ended the call. `ctx.Err()` is the only thing that can.
+	//
+	// SO THE TEST IS CONJUNCTIVE: the ERROR says whether a bound ended the call
+	// at all, and the CONTEXT says WHOSE. Neither of them alone is a diagnosis,
+	// and the grid in budget_test.go drives all three context states against all
+	// four error shapes rather than moving one input at a time -- which is how
+	// four cells passed over this.
+	//
+	// THE CALLER'S DEADLINE IS THE FLOW'S BUDGET, which is waitBudget's reading of
+	// fable's ruling (coop r9/110) rather than a second meaning invented here: the
+	// ctx a flow is driven with IS the step's budget, so a call that ends on it has
+	// spent exactly that.
+	bound := errors.Is(err, context.DeadlineExceeded) || os.IsTimeout(err)
 	switch {
-	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+	case bound && errors.Is(ctx.Err(), context.DeadlineExceeded):
 		over := ""
 		if dl, ok := ctx.Deadline(); ok {
 			over = fmt.Sprintf(", which was %s ago", time.Since(dl).Round(time.Millisecond))
@@ -157,14 +190,24 @@ func (d *Driver) whyCallEnded(ctx context.Context, method, path string, err erro
 			"flow was driven with, so this step had that long for every call it made -- the "+
 			"driver's own bound of %s and this run's readiness bound of %s are untouched: %w",
 			method, path, over, RequestBound, ReadyTimeout, err)
-	case errors.Is(ctx.Err(), context.Canceled):
+	case errors.Is(err, context.Canceled) && errors.Is(ctx.Err(), context.Canceled):
 		return fmt.Errorf("%s %s stopped because THIS RUN WAS CANCELLED, which is no budget "+
 			"expiring and names no fault in the driver: %w", method, path, err)
-	case os.IsTimeout(err):
+	case bound:
 		return fmt.Errorf("%s %s ran out of THE DRIVER'S OWN REQUEST BOUND of %s while the flow's "+
 			"budget still had time: the driver stopped answering one call, which is this "+
 			"package's fault to report and not the step's: %w", method, path, RequestBound, err)
 	default:
+		// A FAILURE NO BOUND EXPLAINS, AND BOTH FACTS ARE NAMED WHEN BOTH ARE
+		// TRUE. A transport failure alongside a context that is already done is
+		// two true things, and neither is the other's cause: reporting only the
+		// context clears the driver, and reporting only the error hides that the
+		// step had no time left to try again either.
+		if cerr := ctx.Err(); cerr != nil {
+			return fmt.Errorf("%s %s failed on its own and NO BOUND EXPLAINS IT, though this run's "+
+				"context was ALSO already done (%v): the two are both true and neither caused "+
+				"the other, so the call is the thing to look at: %w", method, path, cerr, err)
+		}
 		return fmt.Errorf("%s %s: %w", method, path, err)
 	}
 }

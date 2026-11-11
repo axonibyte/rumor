@@ -2164,3 +2164,26 @@ by its own vacuity guard, since an error carrying no redaction marker is not
 evidence that anything was redacted. The setup now runs unbounded and the flow
 resumes into the wait through `from`, the product's own seam. A budget stretched
 over a whole flow measures the box.
+
+**A CLASSIFIER OVER TWO INPUTS NEEDS A GRID, AND FOUR CELLS THAT EACH MOVE ONE
+INPUT ARE NOT ONE.** `whyCallEnded` reads a context state and an error, and its
+first table held four: a deadline with the deadline error, a cancellation with
+the cancellation error, a transport timeout, and "anything else" against a LIVE
+context. Every cell moved one input and matched it, so the whole off-diagonal
+went undriven — and the wrong answer was there, a transport failure arriving
+while the context had expired, reported as the flow's budget in a sentence that
+then cleared the driver explicitly. Four green cells over a diagnosis that
+excluded the thing which had failed. The table is now three context states by
+four error shapes, and each cell states what the sentence must NOT say as well
+as what it must, because a classifier is only as good as the readings it
+refuses. Re-introducing the one-input reading kills 5 of the 12, three of them
+cells nobody had thought to ask about.
+
+**AND A PREMISE THAT LIVES IN A COMMENT IS PINNED BY AN ARM.** The conjunction
+exists because no predicate over the error can say whose bound ended a call: Go
+reports the client's own `Timeout` as `context.DeadlineExceeded` as well, and
+`os.IsTimeout` holds for both, so `ctx.Err()` is the only discriminator. That is
+a fact about the toolchain rather than about rumor, so it is asserted against a
+wedged server instead of written down — and if a future Go stops doing it the
+arm goes red, which is the signal that the conjunction could simplify. Nothing
+else in the tree would notice.
