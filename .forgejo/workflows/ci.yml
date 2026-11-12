@@ -62,11 +62,23 @@
 # THE GO BINARY IS RESOLVED, NOT NAMED. rook's jail carries go1.25.14 and
 # go1.26.8 as `go125` and `go126` with NO bare `go` on PATH, which is the
 # FreeBSD ports convention; forge-01_jail's Go is not yet provisioned, so its
-# naming is unknown. Each step therefore resolves the first of go, go126, go125
-# that exists and FAILS NAMING ALL THREE if none does. The resolver is repeated
-# per step rather than exported once, because carrying it between steps would
-# need $GITHUB_ENV, a runner feature nobody here has measured -- the same
+# naming is unknown. Each step therefore resolves the first of go, go127, go126,
+# go125 that exists and FAILS NAMING ALL FOUR if none does. The resolver is
+# repeated per step rather than exported once, because carrying it between steps
+# would need $GITHUB_ENV, a runner feature nobody here has measured -- the same
 # reasoning that makes timeout-minutes the backstop rather than the guarantee.
+#
+# go127 LEADS THE NUMBERED NAMES FOR A MEASURED REASON AND NOT FOR BEING NEWEST.
+# GO-2026-6859 is in net/http up to go1.26.10, which is what the ci jail had, and
+# 41 call paths in this tree reach it -- so run 718 was REFUSED by govulncheck
+# with the suite green, which is a toolchain finding wearing a code finding's
+# clothes (ibis, coop main/801). It is fixed in go1.26.11 and go1.27.4; 1.26.11
+# is in no repo this project can reach, including upstream quarterly and latest,
+# and go127-1.27.4 is, so that is what the jail now carries. MEASURED there on
+# 2026-11-12: govulncheck v1.9.0 rebuilt under go1.27.4 answers "No
+# vulnerabilities found" on this tree, where the same scan under go1.26.10
+# reported GO-2026-6859. A bare `go` still wins when one exists, unchanged: that
+# is the jail operator's choice and not this file's.
 #
 # THE TRIGGER IS EVERY BRANCH, and that is this file's own doing rather than a
 # repo setting: the Rust version fired only on push to r0.2-ci, so rows 160-164
@@ -101,13 +113,13 @@ jobs:
           echo "uname   $(uname -a)"
           echo "whoami  $(whoami)"
           echo "cwd     $(pwd)"
-          for t in git go go126 go125 gofmt gofmt126 gofmt125 node curl; do
+          for t in git go go127 go126 go125 gofmt gofmt127 gofmt126 gofmt125 node curl; do
             p=$(command -v "$t" 2>/dev/null) && echo "$t  FOUND  $p" || echo "$t  ABSENT"
           done
           # bounded even here. A `version` that cannot answer in 20 s is itself
           # the finding, and "it is instant in practice" is the exact reasoning
           # that produced the 17-minute run.
-          for c in go go126 go125; do
+          for c in go go127 go126 go125; do
             command -v "$c" >/dev/null 2>&1 \
               && { timeout 20 "$c" version 2>/dev/null || echo "$c: did not answer in 20s"; }
           done
@@ -131,10 +143,10 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go go126 go125; do
+          for c in go go127 go126 go125; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
-          test -n "$GO" || { echo "no go, go126 or go125 on PATH: this jail has no Go toolchain, which is a PROVISIONING finding and not a code one"; exit 1; }
+          test -n "$GO" || { echo "no go, go127, go126 or go125 on PATH: this jail has no Go toolchain, which is a PROVISIONING finding and not a code one"; exit 1; }
           # GOTOOLCHAIN=local, AND IT IS A GATE NOT A PREFERENCE (ratchet
           # go-port/6, reproduced here). Under the default `auto`, a go
           # directive above the installed toolchain is SILENTLY SATISFIED by
@@ -196,10 +208,10 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go go126 go125; do
+          for c in go go127 go126 go125; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
-          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          test -n "$GO" || { echo "no go, go127, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
           rc=0
@@ -485,10 +497,10 @@ jobs:
           set -o pipefail
           cd src-tree
           FMT=""
-          for c in gofmt gofmt126 gofmt125; do
+          for c in gofmt gofmt127 gofmt126 gofmt125; do
             command -v "$c" >/dev/null 2>&1 && { FMT="$c"; break; }
           done
-          test -n "$FMT" || { echo "no gofmt, gofmt126 or gofmt125 on PATH: PROVISIONING finding"; exit 1; }
+          test -n "$FMT" || { echo "no gofmt, gofmt127, gofmt126 or gofmt125 on PATH: PROVISIONING finding"; exit 1; }
           # gofmt -l LISTS unformatted files and exits 0 either way, so the
           # status cannot be the gate -- the output is. This is the one step
           # whose verdict is a count rather than an rc, and that is why it is
@@ -506,10 +518,10 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go go126 go125; do
+          for c in go go127 go126 go125; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
-          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          test -n "$GO" || { echo "no go, go127, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
           rc=0
@@ -524,10 +536,10 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go go126 go125; do
+          for c in go go127 go126 go125; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
-          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          test -n "$GO" || { echo "no go, go127, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
           rc=0
@@ -545,10 +557,10 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go go126 go125; do
+          for c in go go127 go126 go125; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
-          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          test -n "$GO" || { echo "no go, go127, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
           # THE BINARY HAS TO BE CALLED `rumor` HERE. The build step writes
@@ -621,10 +633,10 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go go126 go125; do
+          for c in go go127 go126 go125; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
-          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          test -n "$GO" || { echo "no go, go127, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
           # THE GATE ASSERTED go.mod EXISTS AND NEVER THAT IT WAS RIGHT. The
@@ -657,10 +669,10 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go go126 go125; do
+          for c in go go127 go126 go125; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
-          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          test -n "$GO" || { echo "no go, go127, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
           # PINNED, and the pin is MEASURED: v2.14.0 is what proxy.golang.org
@@ -776,10 +788,10 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go go126 go125; do
+          for c in go go127 go126 go125; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
-          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          test -n "$GO" || { echo "no go, go127, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
           # PINNED AND MEASURED, same reasoning: golang.org/x/vuln v1.9.0 is what
@@ -788,9 +800,30 @@ jobs:
           # practice" is the exact reasoning this file records as the cause of a
           # 17-minute run, and the bounds checker now reads a $VAR command as an
           # invocation, so an unbounded one here is a finding rather than a habit.
-          GOBIN_DIR="$(timeout 30 "$GO" env GOPATH)/bin"
+          # A CACHED TOOL BINARY IS ONLY VALID FOR THE TOOLCHAIN THAT BUILT
+          # IT, and this step used to reuse whatever it found. MEASURED on the
+          # ci jail 2026-11-12 while moving it to go127: the govulncheck left
+          # behind by the go1.26 runs cannot analyse go1.27 sources and says so
+          # for every package -- "This application uses version go1.26 of the
+          # source-processing packages but runs version go1.27 of `go list`" --
+          # an ANALYSIS failure in the shape of a clean scan. So the install
+          # directory is keyed BY TOOLCHAIN, which makes a stale binary a
+          # different path rather than a wrong answer, and a govulncheck found
+          # on PATH is accepted only if its own build toolchain matches. Nothing
+          # is deleted: a provisioned binary belongs to whoever provisioned it.
+          GOVER="$(timeout 30 "$GO" version | awk '{print $3}')"
+          GOBIN_DIR="$(timeout 30 "$GO" env GOPATH)/bin/$GOVER"
           BIN="$GOBIN_DIR/govulncheck"
-          command -v govulncheck >/dev/null 2>&1 && BIN="$(command -v govulncheck)"
+          if command -v govulncheck >/dev/null 2>&1; then
+            FOUND="$(command -v govulncheck)"
+            BUILT="$(timeout 30 "$GO" version "$FOUND" 2>/dev/null | awk '{print $NF}')"
+            if test "$BUILT" = "$GOVER"; then
+              BIN="$FOUND"
+              echo "PROOF reusing $FOUND, built by $BUILT, which is this step's $GOVER"
+            else
+              echo "PROOF ignoring $FOUND: built by ${BUILT:-an unreadable toolchain}, this step resolved $GOVER"
+            fi
+          fi
           test -x "$BIN" || {
                  rc=0
                  timeout 60 "$GO" list -m golang.org/x/vuln@v1.9.0 > ../vulnidx.log 2>&1 || rc=$?
@@ -799,7 +832,7 @@ jobs:
                  test "$rc" -eq 0 || { echo "go list -m exited $rc: the proxy is unreachable or refused the pin, and the install was never attempted"; exit 1; }
                  echo "PROOF the proxy answered for the pin in under 60s"
                  rc=0
-                 timeout 900 "$GO" install golang.org/x/vuln/cmd/govulncheck@v1.9.0 > ../vulninst.log 2>&1 || rc=$?
+                 GOBIN="$GOBIN_DIR" timeout 900 "$GO" install golang.org/x/vuln/cmd/govulncheck@v1.9.0 > ../vulninst.log 2>&1 || rc=$?
                  tail -20 ../vulninst.log
                  test "$rc" -eq 124 && { echo "HANG: go install govulncheck exceeded 900s. The proxy answered above, so NOT no-route. RUNNER finding."; exit 124; }
                  test "$rc" -eq 0 || { echo "go install govulncheck exited $rc"; exit "$rc"; } }
@@ -846,10 +879,10 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go go126 go125; do
+          for c in go go127 go126 go125; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
-          test -n "$GO" || { echo "no go, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
+          test -n "$GO" || { echo "no go, go127, go126 or go125 on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
           # THIS STEP REPLACED A TRIPWIRE, AND THE TRIPWIRE DID ITS JOB. Until
