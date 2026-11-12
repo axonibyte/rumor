@@ -1760,6 +1760,32 @@ outlast it; `docs/testing-methodology.md` carries why that shape and not a
 sleep, and why the classifier's arms are a grid over both inputs rather than a
 list.
 
+**THE WATCHDOG HEARS THE PAGE OVER WEBDRIVER BIDI, BECAUSE CLASSIC WEBDRIVER
+CANNOT** (R9.3, fable's ruling at coop r9/164, on the measurement at r9/163).
+A W3C classic session carries no console and no HTTP status, so issue 124's
+5xx-and-console watchdog needs a second channel. Measured with chromedriver
+156.0.8078.79 against a page that logs `console.error` and fetches a 503: both
+Chromium's `goog:loggingPrefs` log endpoint and BiDi (`webSocketUrl: true`)
+report both faults. The log endpoint is Chromium's alone, so it would give the
+stage a second path for one family, which r9/73 rules out; BiDi is the
+standard and `geckodriver` speaks it too. The two events the watchdog reads are
+`log.entryAdded` and `network.responseCompleted`.
+
+**BIDI RIDES A WEBSOCKET, AND THE WEBSOCKET IS IN-TREE RATHER THAN A THIRD
+DIRECT DEPENDENCY.** The standard library has no websocket client and neither
+direct dependency carries one. Taking a library for it would add a standing
+cost to everyone who audits this tree, as the dependency sections above put it,
+and BiDi needs only a fixed subset of RFC 6455. So `internal/websocket` is a
+client and nothing more: text frames only, masked as section 5.3 requires, with
+continuation fragments reassembled, pings answered, and close echoed. It
+offers no extension and no compression, and a server that answers with either
+is refused by name, as is a `wss://` URL. The ruling bounded it at about three
+hundred lines; an extension BiDi turned out to need would have brought the
+dependency case back to this page before the cut, not after. Its arms build
+and parse the server's frames from the RFC independently of the client's
+encoder, so the two cannot agree by sharing a mistake. The accept-key
+arithmetic is checked against section 1.3's own worked example.
+
 ## A fan-out is N processes against one world
 
 **TWO REQUESTS IN FLIGHT IS THE ONLY WAY A CHECK-THEN-ACT DEFECT CAN BE
