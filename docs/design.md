@@ -1730,6 +1730,36 @@ reason. A project declaring none is told so and the run is not failed by it —
 its declarations are correct and simply do not reach a world the stage can use,
 which is the same reading the shrink takes of the same absence.
 
+**THREE BOUNDS CAN END A WEBDRIVER CALL AND THEY WANT DIFFERENT ANSWERS, so the
+failure names WHICH.** A call made while driving a flow can end on the FLOW'S
+BUDGET — the deadline the flow was driven with, which is `waitBudget`'s reading
+of fable's ruling at coop r9/110 rather than a second meaning — on this
+package's own `RequestBound` of 30s, or because the run was CANCELLED. Raise the
+step's budget, look at the driver, or do nothing: a reader handed only "context
+deadline exceeded" cannot tell which, and that is what r9/154's contended red
+left unreadable. `RequestBound` is named rather than inlined so the sentence can
+cite it, and it sits below the wire's own 60s request timeout on purpose, so a
+driver that stops answering is this package's finding rather than the engine's.
+
+**AND THE ERROR AND THE CONTEXT ARE READ TOGETHER, because neither alone is a
+diagnosis.** Reading the CONTEXT alone dresses a dead driver as a budget: a
+`connection reset by peer` arriving while the budget happened to have expired
+was reported as the budget, in a sentence that then cleared the driver
+explicitly (rook, coop rumor/1973). Reading the ERROR alone cannot work either,
+measured on go1.26 and again on go1.27.2: Go reports the client's OWN timeout as
+`context.DeadlineExceeded` as well, and `os.IsTimeout` holds for both, so no
+predicate over the error can say whose bound fired. So the test is conjunctive —
+the error says whether a bound ended the call, the context says whose — and a
+failure no bound explains passes through naming BOTH facts when the context is
+also done, since the two are true together and neither caused the other.
+
+**A BOUND IS DRIVEN BY A FAKE THAT WAITS FOR THE CALLER TO HANG UP.** The
+protocol fake's `wedge-element` mode blocks on the request's own context, so an
+expiry fires exactly when the budget does rather than after a sleep chosen to
+outlast it; `docs/testing-methodology.md` carries why that shape and not a
+sleep, and why the classifier's arms are a grid over both inputs rather than a
+list.
+
 ## A fan-out is N processes against one world
 
 **TWO REQUESTS IN FLIGHT IS THE ONLY WAY A CHECK-THEN-ACT DEFECT CAN BE

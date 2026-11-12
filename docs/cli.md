@@ -231,6 +231,25 @@ against the released tree and not adjusted by arithmetic.
 # RAISE IT WHEN THE CORPUS GROWS, and do not raise it to silence a HANG: a budget
 # exists to stop one wedging a single-concurrency runner, which is what it is for
 # and all it is for.
+#
+# AND THE HEADROOM IS NOW MEASURABLE RATHER THAN ARGUED, because the gate prints
+# what a block SPENT on the passing path too -- it used to print the elapsed only
+# when a block FAILED, so a block that passed left no figure and this number could
+# not be checked against anything (ibis, rumor/1804's road item). Measured on an
+# 8-CPU box, three runs, the load named as the box actually carried it -- the
+# first from a real gate run and the other two from the block runner alone:
+#
+#     block in cli.md   budget           load 2.3   load 4.6   load 8.1
+#     1 (this one)      180s, declared     48.9s      54.6s      98.1s
+#     2                 60s, the default   12.3s      13.2s      21.8s
+#     3                 60s, the default    1.0s       1.2s       1.9s
+#
+# SO THE DECLARATION IS LOAD SENSITIVITY AND NOT DECORATION: under the DEFAULT 60s
+# this block is refused outright at load 8.1, where it spends 98.1s, and even at
+# load 4.6 its 54.6s sits 5.4s from that refusal. Spend is monotone in load across
+# all three blocks and roughly doubles from 2.3 to 8.1. THREE POINTS ARE STILL NOT
+# A BOUND: they say which way the number moves and how steeply, not how far it can
+# go on a box that is busier than any measured here.
 # THIS BLOCK IS THE SAMPLE AND ITS OWN CHECK. `release-gate.py` executes every
 # fenced block marked `run` and fails on a nonzero exit, so the lines quoted
 # here cannot drift from the tool without the gate saying so. The previous
