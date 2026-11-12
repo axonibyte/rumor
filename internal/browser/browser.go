@@ -111,6 +111,11 @@ type Driver struct {
 	// same session and two actors can never be handed one.
 	sessions map[string]string
 
+	// bidi is each actor's WebDriver BiDi URL, which its session answered with
+	// because capabilities() asks for one. Empty for a driver that offers none,
+	// which WatchFor refuses by name rather than watching in silence.
+	bidi map[string]string
+
 	// worlds remembers, per system address, whether anything answers there --
 	// nil for proved, an error for the refusal to repeat.
 	//
@@ -272,7 +277,7 @@ func Start(ctx context.Context, driverPath, browserPath string, headless bool) (
 		cmd:      cmd,
 		http:     &http.Client{Timeout: RequestBound},
 		headless: headless,
-		sessions: map[string]string{}, worlds: map[string]error{},
+		sessions: map[string]string{}, worlds: map[string]error{}, bidi: map[string]string{},
 		exited: make(chan struct{}),
 	}
 	go func() {
@@ -355,6 +360,11 @@ func (d *Driver) capabilities() map[string]any {
 				"goog:chromeOptions":  opts,
 				"moz:firefoxOptions":  map[string]any{"args": args},
 				"acceptInsecureCerts": false,
+				// BiDi, for the watchdog's console and statuses (coop r9/164).
+				// Asked of every session so that the actor who meets a fault is
+				// already listening; a driver that cannot is told apart at
+				// WatchFor, by the URL being absent.
+				"webSocketUrl": true,
 			},
 		},
 	}
@@ -374,9 +384,12 @@ func (d *Driver) SessionFor(ctx context.Context, actor string) (string, error) {
 	}
 	var out struct {
 		Value struct {
-			SessionID string `json:"sessionId"`
-			Error     string `json:"error"`
-			Message   string `json:"message"`
+			SessionID    string `json:"sessionId"`
+			Error        string `json:"error"`
+			Message      string `json:"message"`
+			Capabilities struct {
+				WebSocketURL string `json:"webSocketUrl"`
+			} `json:"capabilities"`
 		} `json:"value"`
 	}
 	if err := d.call(ctx, http.MethodPost, "/session", d.capabilities(), &out); err != nil {
@@ -390,6 +403,7 @@ func (d *Driver) SessionFor(ctx context.Context, actor string) (string, error) {
 		return "", fmt.Errorf("the driver answered a session for %q with no sessionId", actor)
 	}
 	d.sessions[actor] = out.Value.SessionID
+	d.bidi[actor] = out.Value.Capabilities.WebSocketURL
 	return out.Value.SessionID, nil
 }
 

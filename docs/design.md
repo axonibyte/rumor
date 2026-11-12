@@ -1786,6 +1786,37 @@ and parse the server's frames from the RFC independently of the client's
 encoder, so the two cannot agree by sharing a mistake. The accept-key
 arithmetic is checked against section 1.3's own worked example.
 
+**THE WATCH HEARS FAULTS AND RECORDS NONE** (`internal/browser/watch.go`).
+Every session asks for `webSocketUrl`, and `WatchFor` opens that actor's BiDi
+connection and subscribes it to the two events. A driver that answered with no
+URL is refused by name, because a watch that heard nothing from it would read
+as a clean page. What a fault MEANS is issue 124's deliverable 3: the
+`page_fault` finding, its attribution and the vocabulary row are the R9.3
+lead's, so this layer decides only what COUNTS, which is a fact about the
+protocol. Two rules, both measured at r9/163:
+
+- **By level and status, never by presence.** With BiDi on, chromedriver adds
+  an INFO entry of its own ("Launching Mapper instance") to every session, so a
+  watch that fired on any entry would fire on every clean page. A console entry
+  counts at level `error`; a response counts at 500 and above, so a 404 stays
+  the page's own business. A fault's text passes the same token redaction as
+  every other line, because a 5xx on a navigated page carries the token in its
+  URL.
+- **The step boundary is a barrier, not an arrival time.** BiDi delivered
+  entries logged before the subscription, so "arrived since I asked" is not
+  "caused by this step". `Since` sends a command and waits for its reply. The
+  connection is ordered, so every event the browser sent before answering has
+  arrived by then. The flow calls it before a step and discards the result,
+  then after it and keeps the result. On real chromium the events land before
+  `navigate` returns, and the real-pair arms pass with the barrier removed. A
+  fake BiDi peer that sends its fault only on receiving the barrier is the arm
+  that fails without it.
+
+**WHAT IT CANNOT SEE** is a fault the page raises after the step's closing
+barrier, such as a timer or a slow fetch. That fault lands in the next step's
+window. The alternative would be waiting for it, which is a fixed sleep, and
+this stage has none.
+
 ## A fan-out is N processes against one world
 
 **TWO REQUESTS IN FLIGHT IS THE ONLY WAY A CHECK-THEN-ACT DEFECT CAN BE
