@@ -684,9 +684,31 @@ jobs:
           # practice" is the exact reasoning this file records as the cause of a
           # 17-minute run, and the bounds checker now reads a $VAR command as an
           # invocation, so an unbounded one here is a finding rather than a habit.
-          GOBIN_DIR="$(timeout 30 "$GO" env GOPATH)/bin"
+          # THE SIBLING OF THE govulncheck FIX, AND IT COST A RED TO FIND:
+          # keying that step's cache by toolchain and leaving this one alone was
+          # half a fix. MEASURED, run 721 on c583b1f: with the toolchain finally
+          # at go1.27.4, the golangci-lint left by the go1.26 runs PANICKED
+          # inside go/types -- every frame in `/usr/local/go126/src/go/types/`,
+          # a binary type-checking sources newer than the stdlib compiled into
+          # it. A VERSION CHECK CANNOT SEE THIS: that copy IS the pinned 2.14.0
+          # and passed the assertion below. Version is not provenance.
+          GOVER="$(timeout 30 "$GO" version | awk '{print $3}')"
+          GOBIN_DIR="$(timeout 30 "$GO" env GOPATH)/bin/$GOVER"
           BIN="$GOBIN_DIR/golangci-lint"
-          command -v golangci-lint >/dev/null 2>&1 && BIN="$(command -v golangci-lint)"
+          # AND THE TOOL SAYS WHICH TOOLCHAIN BUILT IT, in the same line this
+          # step already reads for the pin: "built with go1.27.2". So a copy on
+          # PATH is accepted only when that matches, and nothing is deleted --
+          # a provisioned binary belongs to whoever provisioned it.
+          if command -v golangci-lint >/dev/null 2>&1; then
+            FOUND="$(command -v golangci-lint)"
+            BUILT="$(timeout 60 "$FOUND" --version 2>&1 | sed -n 1p | sed -n 's/.*built with \(go[0-9][0-9.]*\).*/\1/p')"
+            if test "$BUILT" = "$GOVER"; then
+              BIN="$FOUND"
+              echo "PROOF reusing $FOUND, built with $BUILT, which is this step's $GOVER"
+            else
+              echo "PROOF ignoring $FOUND: built with ${BUILT:-a toolchain it would not name}, this step resolved $GOVER"
+            fi
+          fi
           test -x "$BIN" || {
                  # THE PRE-CHECK TAKES THE CAUSAL CLAIM OUT OF THE TIMEOUT (ibis
                  # r0.2/36). A bounded install that returns 124 proves only that
@@ -700,7 +722,7 @@ jobs:
                  test "$rc" -eq 0 || { echo "go list -m exited $rc: the proxy is unreachable or refused the pin, and the install was never attempted"; exit 1; }
                  echo "PROOF the proxy answered for the pin in under 60s, so a slow install can only mean slow"
                  rc=0
-                 timeout 900 "$GO" install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 > ../lintinst.log 2>&1 || rc=$?
+                 GOBIN="$GOBIN_DIR" timeout 900 "$GO" install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 > ../lintinst.log 2>&1 || rc=$?
                  tail -20 ../lintinst.log
                  test "$rc" -eq 124 && { echo "HANG: go install golangci-lint exceeded 900s. The proxy answered above, so this is NOT no-route. RUNNER finding, and it blocks the lint gate rather than failing it."; exit 124; }
                  test "$rc" -eq 0 || { echo "go install golangci-lint exited $rc"; exit "$rc"; } }
@@ -734,7 +756,14 @@ jobs:
           timeout 900 "$BIN" run --max-same-issues=0 --max-issues-per-linter=0 ./... > ../lint.log 2>&1 || rc=$?
           tail -30 ../lint.log
           test "$rc" -eq 124 && { echo "HANG: golangci-lint exceeded 900s. RUNNER finding."; exit 124; }
-          test "$rc" -eq 0 || { echo "golangci-lint exited $rc: a linter fired, named above"; exit "$rc"; }
+          # ISSUES AND A CRASH ARE DIFFERENT VERDICTS, and this line used to call
+          # both "a linter fired, named above". `--issues-exit-code` defaults to
+          # 1, so ONE is findings and anything else is the tool failing: on run
+          # 721's panic it exited 2, and the reader was sent to look above for a
+          # linter that had never run. A gate that misnames its own failure
+          # spends the reader's time on the tree instead of on the gate.
+          test "$rc" -eq 1 && { echo "golangci-lint exited 1: a linter fired, named above"; exit 1; }
+          test "$rc" -eq 0 || { echo "golangci-lint exited $rc, which is NOT its issues-found code (1): the TOOL failed rather than the tree. Read the output above as a crash or a refusal, not as a finding"; exit "$rc"; }
           echo "PROOF lint ran with $v"
 
       - name: the verdict scripts' own batteries
