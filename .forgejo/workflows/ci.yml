@@ -811,7 +811,30 @@ jobs:
           # would make this file fail on a deliberate change to that script in
           # a run that does not touch this file. Its own PROOF line carries the
           # count, and it is printed above.
-          echo "PROOF all three verdict scripts' batteries ran on this runner"
+          # THE FOURTH BATTERY, AND IT IS HERE BECAUSE IT ROTTED WHILE IT WAS
+          # NOT (ibis, coop rumor/2005; fable's assignment at /2007). This step's
+          # own comment says a battery that never runs in CI is a battery that
+          # can rot, and tools/test_d4control.sh was the one verdict battery
+          # absent from the list: its `add-all-declared` cell went red at
+          # be91186 on 2026-11-01, when issue 111's three cases joined
+          # d4control.py's ADDED_BY and the cell's stated list was not grown
+          # with it, and it stayed red through the v0.1.49 release because
+          # nothing anywhere ran it -- `git grep test_d4control` found a
+          # coverage.toml path and one line of prose, no caller.
+          #
+          # IT IS NOT A `--self-test`: this script IS the battery, so it is
+          # invoked plainly, and its declared count is pinned like the first two
+          # siblings' rather than left out like the third's -- d4control.py and
+          # this battery are both rumor's own, so a deliberate change to either
+          # is a change this file should hear about.
+          rc=0
+          timeout 120 sh tools/test_d4control.sh > ../d4c-self.log 2>&1 || rc=$?
+          cat ../d4c-self.log
+          test "$rc" -eq 124 && { echo "HANG: the d4 control's battery exceeded 120s. RUNNER finding; the control was NOT checked."; exit 124; }
+          test "$rc" -eq 0 || { echo "the d4 control's own battery FAILED, so its reading of any checkpoint drift means nothing"; exit "$rc"; }
+          grep -qE 'D4CONTROL ARMS: 17 passed, 0 failed' ../d4c-self.log \
+            || { echo "the battery did not report all 17 arms passing: an arm stopped being reached, or the battery's arms changed without this literal"; exit 1; }
+          echo "PROOF all four verdict scripts' batteries ran on this runner"
 
       - name: govulncheck
         run: |

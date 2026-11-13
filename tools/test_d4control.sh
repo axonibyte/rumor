@@ -167,7 +167,23 @@ PYEOF
 
 # EVERY DECLARED ADDITION PRESENT: the only shape that passes. 103 plants TWO,
 # which is why ADDED_BY's values are lists.
-addcell add-all-declared ok toy/dropped-recount toy/invitation-expiry toy/invitation-honored-late toy/invitation-honored-at-the-expiry toy/accepted-then-the-clock-moved
+#
+# THE LIST IS STATED HERE AND NOT DERIVED FROM ADDED_BY, deliberately, and this
+# is the cell's whole point: reading both sides out of one source would make it
+# agree with whatever is declared, so a phase could add a case and drop its
+# plant and this would still pass. Stating it means the cell goes RED when
+# ADDED_BY grows -- which is correct, and is what it did.
+#
+# IT WENT RED ON 2026-11-01 AND NOBODY SAW IT FOR TWELVE DAYS (ibis, coop
+# rumor/2005-2009, ratchet /2008). be91186 added issue 111's three cases to
+# ADDED_BY and left this list at issue 103's five, so `d4control.py` refused
+# where the cell wants `ok`. Both ends are mine: 26542ff cut the cell green at
+# 17 of 17, be91186 turned it red, and the gate line I posted for be91186 said
+# "local gate green (go test ./... rc 0)" -- the one instrument that cannot run
+# a shell battery. ratchet's clear used the same instrument, so it could not
+# cover it either. The battery now runs in ci.yml beside its three siblings,
+# which is the half that makes this cell's redness arrive in a run.
+addcell add-all-declared ok toy/dropped-recount toy/invitation-expiry toy/invitation-honored-late toy/invitation-honored-at-the-expiry toy/accepted-then-the-clock-moved toy/viewer-reads-the-page toy/viewer-reads-a-deleted-page toy/viewer-reads-a-live-page-that-is-gone
 # ONE MISSING: a phase's row lost is a refusal, not a pass.
 addcell add-one-missing refused toy/dropped-recount toy/invitation-expiry
 # AN UNDECLARED ADDITION: a case that arrives without an ADDED_BY entry, which
