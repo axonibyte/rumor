@@ -154,6 +154,49 @@ func serve(mode, journal string, args []string) {
 			<-r.Context().Done()
 			return
 		}
+		// MODE "inspector-stale" IS STALENESS IN CHROMEDRIVER'S OWN WORDS, and
+		// it exists because the driver does not always use the W3C ones. plumb
+		// caught it on the forge at load up to 20.8 (coop r9/231): reading an
+		// element after a click, chromedriver answered 500 "unhandled inspector
+		// error: Node with given id does not belong to the document" -- the same
+		// event as a stale reference, with no W3C error name to key on, since
+		// the name in that body is the catch-all "unknown error".
+		//
+		// IT IS A SEPARATE MODE AND NOT A VARIANT OF "stale", because a
+		// predicate that matches two strings needs a cell per string: one fake
+		// answering both would let either match carry the arm.
+		if mode == "inspector-stale" {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/element"):
+				_, _ = fmt.Fprint(w,
+					`{"value":{"element-6066-11e4-a52e-4f735466cecf":"inspector-1"}}`)
+				return
+			case strings.HasSuffix(r.URL.Path, "/text"):
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = fmt.Fprint(w, `{"value":{"error":"unknown error",`+
+					`"message":"unhandled inspector error: Node with given id `+
+					`does not belong to the document"}}`)
+				return
+			}
+		}
+		// AND MODE "inspector-other" IS THE NEGATIVE PARTNER: the same 500 and
+		// the same catch-all error name, carrying a message that is NOT about a
+		// node leaving the document. A predicate widened on prose must refuse
+		// this one, or it has stopped meaning staleness and started meaning
+		// "chromedriver was unhappy".
+		if mode == "inspector-other" {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/element"):
+				_, _ = fmt.Fprint(w,
+					`{"value":{"element-6066-11e4-a52e-4f735466cecf":"other-1"}}`)
+				return
+			case strings.HasSuffix(r.URL.Path, "/text"):
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = fmt.Fprint(w, `{"value":{"error":"unknown error",`+
+					`"message":"unhandled inspector error: Target closed"}}`)
+				return
+			}
+		}
 		if mode == "stale" || mode == "stale-once" {
 			switch {
 			case strings.HasSuffix(r.URL.Path, "/element"):

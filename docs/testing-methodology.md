@@ -2187,3 +2187,24 @@ a fact about the toolchain rather than about rumor, so it is asserted against a
 wedged server instead of written down — and if a future Go stops doing it the
 arm goes red, which is the signal that the conjunction could simplify. Nothing
 else in the tree would notice.
+
+**A PREDICATE THAT MATCHES PROSE NEEDS A CELL PER STRING AND A NEGATIVE
+PARTNER.** `isStale` asks whether a driver refused a reference because the page
+moved under it, and the W3C name is only one of the answers a driver gives:
+chromedriver says it with a 500 and the catch-all name `unknown error`, putting
+the whole signal in the message. Matching a vendor's sentence is admissible here
+only because the predicate's SCOPE is structural — both callers ask it solely
+about an error from reading an element by reference — but the test is still
+lexical, so each matched string gets its own fake mode and its own cell, and a
+third cell drives the same status and the same catch-all name over a message
+that is NOT about the page moving. Without that third cell the predicate could
+widen to "the driver was unhappy" and every arm would still pass. Both mutants
+are driven: removing the new string fails the chromedriver cell alone, and
+widening it to `unhandled inspector error` fails the negative cell alone.
+
+**AND THE RACE IT CAME FROM IS NOT THE INSTRUMENT.** The fault appeared once, on
+a loaded forge gate, and 40 of 40 runs at a lower load produced neither string —
+so its rate is unmeasured and the experiment that looked for it was never
+positive. A fault nobody can summon on demand cannot arm anything, which is why
+the predicate is driven against a fake that answers each phrasing exactly and
+the race is recorded as an open residual rather than as a thing the suite holds.

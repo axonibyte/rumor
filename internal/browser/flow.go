@@ -662,15 +662,53 @@ func (d *Driver) text(ctx context.Context, session, selector string) (string, bo
 	return t, true, nil
 }
 
+// staleWords are the phrasings a driver uses for "the element you named is
+// gone", one per driver that does not use the W3C one.
+//
+// THE SECOND ENTRY IS CHROMEDRIVER'S AND IT COST A GATE. plumb's rebased gate
+// went red at load up to 20.8 (coop r9/231) on a read after a click, where
+// chromedriver answered 500 "unhandled inspector error: Node with given id does
+// not belong to the document" -- the same event as a stale reference, in the
+// driver's own words. There is no W3C name to key on in that body: the name is
+// the catch-all "unknown error", so the message is the only signal there is.
+//
+// EACH ENTRY HAS ITS OWN CELL AND ITS OWN FAKE MODE, which is the price of
+// matching prose: `stale` answers the W3C 404 and `inspector-stale` answers the
+// chromedriver 500, so neither string can carry the other's arm. And
+// `inspector-other` is the negative partner -- the same 500 and the same
+// catch-all name over a message that is NOT about a node leaving the document
+// -- because a predicate widened on prose must still refuse something.
+var staleWords = []string{
+	// The W3C error name, which a spec-following driver sends with a 404.
+	"stale element reference",
+	// chromedriver's CDP-level phrasing for the same event, with a 500.
+	"Node with given id does not belong to the document",
+}
+
 // isStale answers whether a driver refused a reference because the element it
 // named is gone -- the page having moved under it.
 //
-// IT MATCHES THE W3C ERROR NAME AND NOT THE STATUS, which is the narrowing that
-// matters: a 404 from this protocol also means "no such element" and "no such
-// window", and treating every 404 as a moved page would swallow a selector that
-// matches nothing into silence.
+// IT MATCHES WORDS AND NOT THE STATUS, which is the narrowing that matters: a
+// 404 from this protocol also means "no such element" and "no such window", and
+// treating every 404 as a moved page would swallow a selector that matches
+// nothing into silence. The same is true of the 500 above, which is why this
+// reads the message rather than the code.
+//
+// AND ITS SCOPE IS STRUCTURAL EVEN THOUGH ITS TEST IS LEXICAL, which is what
+// makes a vendor's sentence admissible here at all: both callers ask it only
+// about an error from READING AN ELEMENT BY REFERENCE -- textOf in a wait's
+// poll, readOnce in an observation -- so no error from any other operation can
+// reach it, however it is worded.
 func isStale(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "stale element reference")
+	if err == nil {
+		return false
+	}
+	for _, w := range staleWords {
+		if strings.Contains(err.Error(), w) {
+			return true
+		}
+	}
+	return false
 }
 
 // textOf reads one element's text content by REFERENCE, and it exists so there

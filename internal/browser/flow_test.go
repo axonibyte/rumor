@@ -964,3 +964,78 @@ func TestAWaitRightAfterTheNavigateStillNavigates(t *testing.T) {
 		t.Errorf("reached %d of 2 steps", got.Reached)
 	}
 }
+
+// TestEachStaleWordHasItsOwnDriver is the cell-per-string the widened isStale
+// owes, and it is the price of matching a vendor's prose instead of a protocol's
+// name.
+//
+// WHAT IT IS FOR. plumb's gate went red at load up to 20.8 (coop r9/231) on a
+// read after a click, where chromedriver answered 500 "unhandled inspector
+// error: Node with given id does not belong to the document" -- staleness in
+// the driver's own words, which the W3C-only predicate could not see. plumb then
+// measured 40 of 40 passes at load 9.9-13.0 with BiDi on and off and ZERO
+// occurrences of either string (r9/233), so the race's RATE is unmeasured and
+// the control was never positive. That is exactly why the predicate is driven
+// HERE against a fake rather than against the race: a fault nobody can summon
+// on demand cannot arm anything.
+//
+// ONE FAKE MODE PER WORD, because a single fake answering both would let either
+// match carry the arm and a dropped word would still pass. And the third cell is
+// the NEGATIVE: the same 500 and the same catch-all "unknown error" name over a
+// message that is not about a node leaving the document, which this predicate
+// must still refuse -- otherwise it has stopped meaning staleness and started
+// meaning that chromedriver was unhappy.
+func TestEachStaleWordHasItsOwnDriver(t *testing.T) {
+	for _, cell := range []struct {
+		name  string
+		mode  string
+		stale bool
+	}{
+		{"the W3C name, 404", "stale", true},
+		{"chromedriver's inspector 500", "inspector-stale", true},
+		{"an inspector 500 that is NOT staleness", "inspector-other", false},
+	} {
+		t.Run(cell.name, func(t *testing.T) {
+			d, _ := startFake(t, cell.mode, true)
+			defer func() { _ = d.Close(context.Background()) }()
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				_, _ = fmt.Fprint(w, `<!doctype html><title>x</title><p id="count">0</p>`)
+			}))
+			defer srv.Close()
+
+			if _, serr := d.SessionFor(context.Background(), "alice"); serr != nil {
+				t.Fatalf("opening a session for alice: %v", serr)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			defer cancel()
+
+			got, _, err := d.Flow(ctx, "alice", srv.URL, "t",
+				wire.FlowRequest{Action: "join_event_ui", From: 1, Steps: flowSteps(
+					map[string]any{"step": "navigate", "to": "/ui/events/e1"},
+					map[string]any{"step": "wait", "until": "count-changed"},
+				)})
+
+			if cell.stale {
+				// READ AS THE PAGE MOVING: no driving error, and the wait is
+				// simply unmet when its budget runs out.
+				if err != nil {
+					t.Fatalf("a moved page was reported as a failure: %v", err)
+				}
+				if got.Stopped != wire.StopWait {
+					t.Errorf("stopped %q, want %q", got.Stopped, wire.StopWait)
+				}
+				return
+			}
+			// NOT STALENESS: the driver's complaint reaches the caller instead
+			// of being swallowed into a quiet unmet wait.
+			if err == nil {
+				t.Fatalf("an inspector error that is not staleness was swallowed: stopped %q", got.Stopped)
+			}
+			if !strings.Contains(err.Error(), "Target closed") {
+				t.Errorf("the driver's own words did not survive: %v", err)
+			}
+		})
+	}
+}
