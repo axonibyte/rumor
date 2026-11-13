@@ -2261,3 +2261,27 @@ recorder that drives the helper's cells returns from `Fatalf` like any other
 method, so the line printed anyway -- found only because the helper is exercised
 through a fake of its own parameter type. An arm that passed it nothing but a
 live `*testing.T` would have agreed with the draft.
+
+**A DOCUMENT'S CLAIM ABOUT ITSELF IS A CLAIM, AND THIS TREE CHECKED ONLY ITS
+CLAIMS ABOUT OTHER THINGS.** `tests/vocabulary` was built on the rule that a
+comment quoting a document is a claim about that document and so needs a check.
+The rule was never turned on the document's claims about ITSELF: the sentence
+introducing the Findings table read "There are four findings in v1, and v3 adds
+the fifth this document reserved" while the table held six, because v7 added
+`ui_timeout` and did not touch the sentence. It stood false for two versions,
+in the one file in this tree whose whole subject is sentences going stale.
+
+**THE ARM READS THE TWO SIDES FROM DIFFERENT PLACES, WHICH IS WHAT MAKES IT A
+CHECK.** The count comes from the table's rows and the claim from the prose
+above it; neither is derived from the other, so it cannot agree with itself --
+the failure mode of a test whose reference is the thing under test, which this
+phase has now met four times. It pins the PHRASE rather than a numeral, because
+the document spells counts as words. Driven both ways: v7's sentence restored
+over seven rows fails, and a row deleted with the sentence left fails, each
+naming both figures.
+
+**AND THE PROOF COUNT PRICED ITS FIRST REAL ADDITION IN THE SAME HEAD.** The new
+arm prints a PROOF, so `proofgate`'s pinned site count went red at 223 against
+222 and the literal moved with it, with the sum left as three numbers a reader
+can take apart. A count pinned exactly is a nuisance exactly once per addition,
+which is the price of every other case in that arm being negative.

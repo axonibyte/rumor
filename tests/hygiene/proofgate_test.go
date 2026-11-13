@@ -79,13 +79,15 @@ func TestEveryProofLineGoesThroughTheHelper(t *testing.T) {
 	}
 
 	// AND A COUNT, because every case above is negative: a tree that lost its
-	// PROOF lines entirely would satisfy all of them. 221 of these are the
-	// sites 124's d6 moved onto the helper and the 222nd is this arm's own
-	// closing line, counted like every other rather than exempted -- an
-	// exemption would put a hole in the only check that can see this file, and
-	// the sum is two numbers a reader can take apart. Retyped deliberately when
-	// it changes.
-	const sitesInTrackedTests = 222
+	// PROOF lines entirely would satisfy all of them. The figure is a sum a
+	// reader can take apart: 221 sites 124's d6 moved onto the helper, this
+	// arm's own closing line, and one PROOF added since -- R9.2's findings-count
+	// arm in tests/vocabulary, which is what moved it from 222 to 223 and is
+	// the first time this check priced a real addition rather than a mutant.
+	// This arm's own line is counted like every other rather than exempted: an
+	// exemption would put a hole in the only check that can see this file.
+	// Retyped deliberately when it changes, which is the point of it.
+	const sitesInTrackedTests = 223
 	if sites != sitesInTrackedTests {
 		t.Errorf("%d call(s) of the helper in tracked test files, want %d: if that is "+
 			"deliberate, move the literal with it; if not, PROOF lines have been lost",

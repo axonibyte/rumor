@@ -1397,3 +1397,75 @@ func TestTheCitedRuleSweepFires(t *testing.T) {
 			len(ruleCiteForms), hits, rep.Statutes, rep.Collected)
 	}
 }
+
+// --- the findings count (R9.2, 124's deliverable 3) -----------------------
+
+// TestTheSentenceAboveTheFindingsTableCountsIt.
+//
+// WHY IT EXISTS, and it is this file's own subject rather than a new one: the
+// sentence introducing the Findings table read "There are four findings in v1,
+// and v3 adds the fifth this document reserved" while the table held SIX. v7
+// added `ui_timeout` in 2026-11-04 and did not touch the sentence, and nothing
+// here could notice, because the package comment's rule -- a comment quoting a
+// document is a claim about that document -- had never been turned on the
+// document's claims about ITSELF. A sentence that counts something is exactly
+// such a claim, and this one was false for two versions.
+//
+// THE TWO SIDES ARE INDEPENDENT, which is what makes this a check and not an
+// agreement: the number comes from the table's ROWS and the claim from the
+// PROSE above it, and neither is derived from the other. Deriving the expected
+// count from the sentence, or the sentence from the count, would pass on any
+// document.
+//
+// IT PINS THE PHRASE AND NOT THE NUMERAL. The document spells counts as words,
+// so the arm builds "which is <word> in all" and looks for it; a row added
+// without the sentence moving fails naming both figures.
+func TestTheSentenceAboveTheFindingsTableCountsIt(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(root, "docs", "vocabulary.md"))
+	if err != nil {
+		t.Fatalf("docs/vocabulary.md: %v", err)
+	}
+	doc := string(b)
+
+	const heading = "\n## Findings\n"
+	const header = "| finding | meaning |"
+	h := strings.Index(doc, heading)
+	if h < 0 {
+		t.Fatal("no \"## Findings\" heading: a parser that found none would agree with anything")
+	}
+	tbl := strings.Index(doc[h:], header)
+	if tbl < 0 {
+		t.Fatalf("no %q header under \"## Findings\"", header)
+	}
+	intro := doc[h+len(heading) : h+tbl]
+
+	// THE ROWS, which stop at the first line that is not one. The separator is
+	// skipped by requiring a backquoted word in the first cell, the form every
+	// finding row uses and the header and separator do not.
+	rows := 0
+	for _, line := range strings.Split(doc[h+tbl:], "\n")[1:] {
+		if !strings.HasPrefix(line, "|") {
+			break
+		}
+		if strings.HasPrefix(line, "| `") {
+			rows++
+		}
+	}
+	if rows < 4 {
+		t.Fatalf("read %d finding row(s) and v1 alone defines four: the table parser has stopped "+
+			"matching the document, and a low count would make the sentence agree by accident", rows)
+	}
+
+	word := map[int]string{4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten"}[rows]
+	if word == "" {
+		t.Fatalf("%d finding rows, and this arm has no word for that count: add it here with the "+
+			"sentence, rather than letting the check go quiet", rows)
+	}
+	phrase := "which is " + word + " in all"
+	if !strings.Contains(intro, phrase) {
+		t.Errorf("the Findings table holds %d row(s) and the sentence above it does not say %q: "+
+			"the count in the prose and the count in the table have come apart, which is how "+
+			"%q stood from v7 to v9", rows, phrase, "v3 adds the fifth this document reserved")
+	}
+	proof.Logf(t, "PROOF %d finding row(s), and the sentence above the table says %q", rows, phrase)
+}
