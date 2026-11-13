@@ -235,21 +235,41 @@ against the released tree and not adjusted by arithmetic.
 # AND THE HEADROOM IS NOW MEASURABLE RATHER THAN ARGUED, because the gate prints
 # what a block SPENT on the passing path too -- it used to print the elapsed only
 # when a block FAILED, so a block that passed left no figure and this number could
-# not be checked against anything (ibis, rumor/1804's road item). Measured on an
-# 8-CPU box, three runs, the load named as the box actually carried it -- the
-# first from a real gate run and the other two from the block runner alone:
+# not be checked against anything (ibis, rumor/1804's road item).
 #
-#     block in cli.md   budget           load 2.3   load 4.6   load 8.1
-#     1 (this one)      180s, declared     48.9s      54.6s      98.1s
-#     2                 60s, the default   12.3s      13.2s      21.8s
-#     3                 60s, the default    1.0s       1.2s       1.9s
+# THE CORE COUNT IS PART OF EVERY ROW, because it turned out to matter more than
+# the load. Two boxes, each block's spend against its budget:
 #
-# SO THE DECLARATION IS LOAD SENSITIVITY AND NOT DECORATION: under the DEFAULT 60s
-# this block is refused outright at load 8.1, where it spends 98.1s, and even at
-# load 4.6 its 54.6s sits 5.4s from that refusal. Spend is monotone in load across
-# all three blocks and roughly doubles from 2.3 to 8.1. THREE POINTS ARE STILL NOT
-# A BOUND: they say which way the number moves and how steeply, not how far it can
-# go on a box that is busier than any measured here.
+#     8 cpus (matrix)        budget           load 2.3  4.6   8.1   ~13
+#       block 1 (this one)   180s, declared     48.9s  54.6  98.1  148.3
+#       block 2              180s, declared     12.3s  13.2  21.8   56.6
+#       block 3              60s, the default    1.0s   1.2   1.9     2.4
+#
+#     4 cpus (sll-driver-01) budget           load 2.2-2.75   load 14.6
+#       block 1              180s, declared        88.6s        TIMED OUT
+#       block 2              60s then              19.2s        TIMED OUT
+#       block 3              60s, the default       2.1s             --
+#
+# SO THE DECLARATION IS LOAD SENSITIVITY AND NOT DECORATION, and rook's 4-cpu
+# column is the proof: at load 14.6 blocks 1 and 2 both exceeded their bounds
+# there, while on 8 cpus at a comparable load they came in at 148.3s and 56.6s.
+# Same tree, same loads, different core count -- which is why 88.6s at load 2.2
+# on four cpus sits beside 48.9s at load 2.3 on eight and is not a disagreement.
+#
+# AND BLOCK 2 IS WHY THERE IS A SECOND DECLARED BUDGET NOW. It was the thinnest
+# thing here and nothing said so until it was measured under load: at ~13 on eight
+# cpus it spent 56.6s of the DEFAULT 60, which is 3.4 seconds of headroom, and on
+# four cpus at 14.6 it was refused outright. The default is a number nobody chose
+# for this block, and this block BUILDS THREE BINARIES -- rumor, toy and
+# toy-adapter -- before it compares a transcript. Measured separately: those three
+# builds cost 25s COLD and 1s warm, so a cold run under load is the 56.6s plus
+# about that again. THE TWO HAVE NOT BEEN MEASURED TOGETHER and 180 is sized to
+# cover their sum with margin rather than derived from one reading of it, which is
+# the honest statement of where the number comes from.
+#
+# FOUR POINTS AND TWO BOXES ARE STILL NOT A BOUND: they say which way the numbers
+# move, how steeply, and that the core count moves them further than the load
+# does. They do not say what a 2-cpu runner would do.
 # THIS BLOCK IS THE SAMPLE AND ITS OWN CHECK. `release-gate.py` executes every
 # fenced block marked `run` and fails on a nonzero exit, so the lines quoted
 # here cannot drift from the tool without the gate saying so. The previous
@@ -823,7 +843,7 @@ green. So the block greps the transcript out of `docs/cli.md` and fails loudly
 if it is no longer where it looks -- the cost is that moving either sample
 breaks this block, which is the intended direction.
 
-```sh run
+```sh run budget_s=180
 # D14, and the two samples are checked against the tool rather than each other.
 GO=""
 for c in go127 go126 go125 go; do
