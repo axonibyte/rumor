@@ -1886,10 +1886,17 @@ be clean. The file names are relative to `--snapshots` and the line is
 clock-free, so the FOUND stanza stays byte-identical across attempts and
 directories (rook, r9/196).
 
-**NOT HELD END TO END: the `ui_timeout` snapshot.** The toy's only flow ends
-in a wait that always comes true, so no run here reaches a browser-driven
-`ui_timeout`. The hook is three lines beside the one that is held, and it
-calls the same snapshot.
+**THE `ui_timeout` SNAPSHOT IS HELD AT THE WALK, NOT END TO END.** The toy's
+only flow ends in a wait that always comes true, so no run here reaches a
+browser-driven `ui_timeout`. For a while nothing held the hook at all: ibis
+measured that deleting its call block survived all 43 packages (coop
+rumor/2044). `tests/wire/uitimeout_snapshot_test.go` now walks a real fake
+adapter with a stand-in browser whose wait never comes true. The arm that
+first reached the call found a defect in it: `resumeFlow` clears the pending
+flow before it reports the timeout, so the hook asked for a page belonging to
+actor "". A real driver refuses that, which would have turned the finding into
+a failed walk. The actor now comes from the step the flow was pending at.
+What stays unproven is a real browser's page at a real `ui_timeout`.
 
 **THE SHRINK REPLAYS THROUGH THE BROWSER, AND STOPS AT A COUNT** (issue 124's
 deliverable 4, fable's ruling at coop r9/204). The shrinker replayed through

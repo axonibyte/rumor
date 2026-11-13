@@ -1071,9 +1071,18 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, br Browser,
 				rec.FoundAt = rec.Steps[pendAt].N
 				// THE PAGE IS KEPT WHERE THE WAIT FAILED (124 d2): a
 				// ui_timeout is about a page, and the page is still open.
-				snap, serr := sessions.snapshot(ctx, pend.Actor, seed, rec.FoundAt, nil)
+				//
+				// THE ACTOR IS THE PENDING STEP'S, NOT pend.Actor: resumeFlow
+				// has already cleared the pending flow by the time it reports
+				// the timeout, so pend.Actor reads "" here. The first cut read
+				// it, and asked the browser for a page named "1-3-" belonging to
+				// nobody -- which a real driver refuses, turning a finding into
+				// a walk that failed. Found by the arm that reaches this call
+				// (tests/wire/uitimeout_snapshot_test.go).
+				timedOut := rec.Steps[pendAt].Actor
+				snap, serr := sessions.snapshot(ctx, timedOut, seed, rec.FoundAt, nil)
 				if serr != nil {
-					return rec, fmt.Errorf("schedule: step %d: snapshotting %s's page: %w", n, pend.Actor, serr)
+					return rec, fmt.Errorf("schedule: step %d: snapshotting %s's page: %w", n, timedOut, serr)
 				}
 				rec.Steps[pendAt].Snapshot = snap
 				// NO `stopped = true` HERE, and the linter is why rather than a
