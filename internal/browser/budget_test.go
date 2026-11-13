@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
@@ -72,7 +73,7 @@ func TestABudgetExpiryNamesWHICHBudget(t *testing.T) {
 		t.Errorf("the failure does not clear the driver's bound and the readiness bound, so a "+
 			"reader may raise either: %v", ferr)
 	}
-	t.Logf("PROOF the flow's budget of 300ms ended a wedged /element in %s, named as the flow's",
+	proof.Logf(t, "PROOF the flow's budget of 300ms ended a wedged /element in %s, named as the flow's",
 		took.Round(time.Millisecond))
 }
 
@@ -256,7 +257,7 @@ func TestTheTOOLCHAINCannotTellTheBoundsApartByErrorAlone(t *testing.T) {
 			t.Errorf("%s is no longer an os.IsTimeout, which `bound` reads: %v", label, err)
 		}
 	}
-	t.Logf("PROOF both read as a context deadline: caller %q, client %q", callers, ours)
+	proof.Logf(t, "PROOF both read as a context deadline: caller %q, client %q", callers, ours)
 }
 
 // timeoutErr is an error that IS a timeout by the interface os.IsTimeout reads,

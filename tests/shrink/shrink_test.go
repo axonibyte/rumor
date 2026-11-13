@@ -28,6 +28,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/quiesce"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback/toyrestart"
@@ -388,7 +389,7 @@ func TestTheToyBugsAreFoundByAWalkAndShrinkToUnderFiveActions(t *testing.T) {
 				t.Error("the shrunk seed was not promoted, so the regression suite would not " +
 					"carry the bug this run found")
 			}
-			t.Logf("PROOF seed %d: %d step(s) walked -> bisected to %d, kinds removed %v, "+
+			proof.Logf(t, "PROOF seed %d: %d step(s) walked -> bisected to %d, kinds removed %v, "+
 				"trace %d action(s), %d probe(s), %d replay call(s)\n%s",
 				tc.seed, len(rec.Steps), got.Reduction.Steps, got.Kinds.Removed,
 				len(got.Trace.Steps), got.Probes, probes, got.Render())

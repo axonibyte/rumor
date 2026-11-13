@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
@@ -585,13 +586,13 @@ func TestARecordedMissingIsTheOutcomeAndNotAValue(t *testing.T) {
 				if resp.Value != nil {
 					t.Errorf("a value was written beside missing: %#v", resp.Value)
 				}
-				t.Logf("PROOF %s, with no value beside it", c.what)
+				proof.Logf(t, "PROOF %s, with no value beside it", c.what)
 				return
 			}
 			if resp.Value != c.recorded {
 				t.Errorf("the value is %#v, want %q", resp.Value, c.recorded)
 			}
-			t.Logf("PROOF %s: %q came back as the value", c.what, c.recorded)
+			proof.Logf(t, "PROOF %s: %q came back as the value", c.what, c.recorded)
 		})
 	}
 }

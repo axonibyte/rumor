@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 var rumorBin string
@@ -754,7 +755,7 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 			if profile == "" {
 				profile = "default"
 			}
-			t.Logf("PROOF seed %s replayed under profile %s at %d step(s), twice and "+
+			proof.Logf(t, "PROOF seed %s replayed under profile %s at %d step(s), twice and "+
 				"byte-identical: %s", seed, profile, steps, strings.TrimSpace(findingLine(first)))
 		})
 	}

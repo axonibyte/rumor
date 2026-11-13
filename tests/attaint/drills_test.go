@@ -31,6 +31,7 @@ import (
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/attaint"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 const (
@@ -122,7 +123,7 @@ func TestTheDrillsAreAllPresent(t *testing.T) {
 	if len(drills) < 6 {
 		t.Fatalf("%d drill(s) declared; breakout-r3/0 designs five and fable /2 split D4 into two", len(drills))
 	}
-	t.Logf("PROOF %d drill(s), %d with an overlay directory, all accounted for", len(drills), len(onDisk))
+	proof.Logf(t, "PROOF %d drill(s), %d with an overlay directory, all accounted for", len(drills), len(onDisk))
 }
 
 func TestEveryDrillTripsItsOwnArm(t *testing.T) {
@@ -171,7 +172,7 @@ func TestEveryDrillTripsItsOwnArm(t *testing.T) {
 					}
 					t.Fatalf("%s is the control and it refused %d time(s)", d.id, len(rep.Refusals))
 				}
-				t.Logf("PROOF %s passes: %d rule(s) killed, %d finding(s) reached, %d control(s) corroborated",
+				proof.Logf(t, "PROOF %s passes: %d rule(s) killed, %d finding(s) reached, %d control(s) corroborated",
 					d.id, rep.KilledRules, rep.Findings, rep.Corroborated)
 				return
 			}
@@ -191,7 +192,7 @@ func TestEveryDrillTripsItsOwnArm(t *testing.T) {
 				t.Fatalf("%s refused by the right clause with the wrong detail:\n  got  %s\n  want it to contain %q",
 					d.id, got.Detail, d.contains)
 			}
-			t.Logf("PROOF %s -> %s", d.id, got)
+			proof.Logf(t, "PROOF %s -> %s", d.id, got)
 		})
 	}
 }
@@ -223,7 +224,7 @@ func TestTheReadmeNamesTheRefusal(t *testing.T) {
 	if checked != len(drills)-1 {
 		t.Fatalf("checked %d README(s) of %d drills with a clause", checked, len(drills)-1)
 	}
-	t.Logf("PROOF %d README(s) each name their clause and their refusal text", checked)
+	proof.Logf(t, "PROOF %d README(s) each name their clause and their refusal text", checked)
 }
 
 // compose builds the damaged tree: pristine examples/, then the drill's files
@@ -400,6 +401,6 @@ func TestTheInertSetAgreesWithTheDeclaredOne(t *testing.T) {
 	if len(rep.DeadMutants) != 0 {
 		t.Errorf("the pristine tree has %d dead mutant(s): %v", len(rep.DeadMutants), rep.DeadMutants)
 	}
-	t.Logf("PROOF %d declared by tests/engine, %d measured ledger-inert by attaint, sets equal, 0 dead: %v",
+	proof.Logf(t, "PROOF %d declared by tests/engine, %d measured ledger-inert by attaint, sets equal, 0 dead: %v",
 		len(declared), len(measured), rep.LedgerInert)
 }

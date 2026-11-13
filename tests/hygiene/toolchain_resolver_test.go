@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // THE TOOLCHAIN RESOLVERS IN ci.yml PICK THE FIRST NAME THAT IS ON PATH, so the
@@ -83,7 +85,7 @@ func TestEveryToolchainResolverTriesTheBareNameLast(t *testing.T) {
 	// the guard above had just found 9 -- and ci.yml MINES PROOF lines out of
 	// test.log, so a failing arm would have published a passing claim.
 	if !t.Failed() {
-		t.Logf("PROOF %d resolver(s) in ci.yml, every one trying its bare name last, and "+
+		proof.Logf(t, "PROOF %d resolver(s) in ci.yml, every one trying its bare name last, and "+
 			"every one of the file's %d GO/FMT picks recognised", sites, assignments)
 	}
 }
@@ -227,7 +229,7 @@ func TestEveryListOfGoToolchainNamesInTheTreePutsTheBareNameLast(t *testing.T) {
 			"has stopped matching the tree, and a pass here would be a pass on nothing", files)
 	}
 	if !t.Failed() {
-		t.Logf("PROOF %d list(s) of Go toolchain names across %d tracked file(s), every one with the bare name last",
+		proof.Logf(t, "PROOF %d list(s) of Go toolchain names across %d tracked file(s), every one with the bare name last",
 			lists, files)
 	}
 }

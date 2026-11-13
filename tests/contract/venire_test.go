@@ -26,6 +26,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
@@ -118,7 +119,7 @@ func TestNoCommittedProfileQuietlyChangesItsActorPool(t *testing.T) {
 			"draws a pool its committed seeds were not recorded against, so which profiles do "+
 			"it is stated here and moves in the commit that does it", got, want)
 	}
-	t.Logf("PROOF %d platform file(s) read, %d profile(s) appending", len(files), len(appending))
+	proof.Logf(t, "PROOF %d platform file(s) read, %d profile(s) appending", len(files), len(appending))
 }
 
 // poolOf renders a venire in the order the file declares it, which is the order
@@ -301,7 +302,7 @@ func TestNoCommittedProfileQuietlyChangesWhatItObserves(t *testing.T) {
 			"every other profile's set, so which profiles make one is stated here and moves in "+
 			"the commit that does it", got, want)
 	}
-	t.Logf("PROOF %d platform file(s) read, %d profile(s) claiming", len(files), len(claiming))
+	proof.Logf(t, "PROOF %d platform file(s) read, %d profile(s) claiming", len(files), len(claiming))
 }
 
 // committedProfiles is every profile a committed SEED selects, per package,
@@ -413,7 +414,7 @@ func TestNoCommittedProfileCanSeeAPage(t *testing.T) {
 	// always runs, so the proof printed beside the failure that refutes it
 	// (ratchet, coop r8/184).
 	if !t.Failed() {
-		t.Logf("PROOF %d platform file(s) read; no world a committed seed replays takes a browser "+
+		proof.Logf(t, "PROOF %d platform file(s) read; no world a committed seed replays takes a browser "+
 			"observation", len(files))
 	}
 }

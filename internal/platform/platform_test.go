@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // wellFormed is the decoded form of docs/contract.md's sample, as a TOML reader
@@ -860,7 +862,7 @@ func TestClockStartResolvesProfileThenClockThenEpoch(t *testing.T) {
 		})
 	}
 	if !t.Failed() {
-		t.Logf("PROOF the profile wins, a zero at either level inherits, and a run with " +
+		proof.Logf(t, "PROOF the profile wins, a zero at either level inherits, and a run with "+
 			"nothing declared reports the epoch as a LEVEL rather than as a silence")
 	}
 }
@@ -948,7 +950,7 @@ func TestAStartOnAProfileThatCannotWalkIsRefused(t *testing.T) {
 			rep.Refusals)
 	}
 	if !t.Failed() {
-		t.Logf("PROOF a start is carried where the profile walks, refused by name with its " +
+		proof.Logf(t, "PROOF a start is carried where the profile walks, refused by name with its "+
 			"stages where it does not, and absent or zero is refused neither way")
 	}
 }

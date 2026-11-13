@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // THE DRILLS DO NOT REACH THESE ARMS, which is why they are here rather than in
@@ -304,7 +305,7 @@ func TestTheHealthyPackagePasses(t *testing.T) {
 		t.Fatalf("killed %d of %d rule(s); the healthy package must have every rule attacked",
 			rep.KilledRules, rep.Rules)
 	}
-	t.Logf("PROOF healthy: %d rule(s) killed, %d finding(s) reached, %d control(s) corroborated",
+	proof.Logf(t, "PROOF healthy: %d rule(s) killed, %d finding(s) reached, %d control(s) corroborated",
 		rep.KilledRules, rep.Findings, rep.Corroborated)
 }
 
@@ -314,7 +315,7 @@ func TestAnEmptyDirectoryIsRefusedAndNotPassed(t *testing.T) {
 	if rep.Packages != 0 {
 		t.Fatalf("Packages %d", rep.Packages)
 	}
-	t.Logf("PROOF %s", r)
+	proof.Logf(t, "PROOF %s", r)
 }
 
 func TestAPackageWithNoCasesIsRefused(t *testing.T) {
@@ -325,7 +326,7 @@ func TestAPackageWithNoCasesIsRefused(t *testing.T) {
 	if rep.Cases != 0 || rep.Mutants == 0 || rep.Rules == 0 {
 		t.Fatalf("cases %d mutants %d rules %d", rep.Cases, rep.Mutants, rep.Rules)
 	}
-	t.Logf("PROOF %s", only(t, rep, ClauseNoCases))
+	proof.Logf(t, "PROOF %s", only(t, rep, ClauseNoCases))
 }
 
 func TestAPackageWithNoMutantsIsRefused(t *testing.T) {
@@ -335,7 +336,7 @@ func TestAPackageWithNoMutantsIsRefused(t *testing.T) {
 	if rep.Mutants != 0 || rep.Cases == 0 {
 		t.Fatalf("mutants %d cases %d", rep.Mutants, rep.Cases)
 	}
-	t.Logf("PROOF %s", only(t, rep, ClauseNoMutants))
+	proof.Logf(t, "PROOF %s", only(t, rep, ClauseNoMutants))
 }
 
 func TestAPackageDeclaringNoRulesIsRefused(t *testing.T) {
@@ -345,7 +346,7 @@ func TestAPackageDeclaringNoRulesIsRefused(t *testing.T) {
 	if rep.Rules != 0 {
 		t.Fatalf("rules %d", rep.Rules)
 	}
-	t.Logf("PROOF %s", only(t, rep, ClauseNoRules))
+	proof.Logf(t, "PROOF %s", only(t, rep, ClauseNoRules))
 }
 
 // A planted lie the statute does not notice. The ledger carries the tag and the
@@ -362,7 +363,7 @@ func TestAPlantedLieThatDoesNotProduceBugIsRefused(t *testing.T) {
 	for _, r := range rep.Refusals {
 		if r.Clause == ClauseLieNotFound {
 			found = true
-			t.Logf("PROOF %s", r)
+			proof.Logf(t, "PROOF %s", r)
 		}
 	}
 	if !found {
@@ -391,7 +392,7 @@ func TestACorpusWithNoControlIsRefused(t *testing.T) {
 	if !strings.Contains(r.Detail, "1 case(s) carry a planted claim") {
 		t.Fatalf("the refusal does not report what it found: %s", r.Detail)
 	}
-	t.Logf("PROOF %s", r)
+	proof.Logf(t, "PROOF %s", r)
 }
 
 // A rule nothing attacks. The mutant moves `believed`, so adding a rule no
@@ -411,7 +412,7 @@ func TestARuleNoMutantMovesIsNamed(t *testing.T) {
 	if len(rep.Unmutated) != 1 || rep.Unmutated[0] != "mini/untouched" {
 		t.Fatalf("Unmutated %v, wanted [mini/untouched]: the rule must be NAMED and not only counted", rep.Unmutated)
 	}
-	t.Logf("PROOF %s", r)
+	proof.Logf(t, "PROOF %s", r)
 }
 
 // A mutant the statute has absorbed: here by making the mutant a byte-for-byte
@@ -424,7 +425,7 @@ func TestAMutantIdenticalToItsStatuteIsNamed(t *testing.T) {
 	if len(rep.DeadMutants) != 1 || rep.DeadMutants[0] != "mini/m2-absorbed" {
 		t.Fatalf("DeadMutants %v", rep.DeadMutants)
 	}
-	t.Logf("PROOF %s", r)
+	proof.Logf(t, "PROOF %s", r)
 }
 
 // A finding the package can no longer produce.
@@ -439,7 +440,7 @@ func TestAnUnreachableFindingIsNamed(t *testing.T) {
 	for _, r := range rep.Refusals {
 		if r.Clause == ClauseFindingUnreachable {
 			found = true
-			t.Logf("PROOF %s", r)
+			proof.Logf(t, "PROOF %s", r)
 		}
 	}
 	if !found {
@@ -639,7 +640,7 @@ func TestEveryClauseIsExercised(t *testing.T) {
 			len(declared), len(seen), len(scenarios))
 		return
 	}
-	t.Logf("PROOF %d clause(s) declared in attaint.go, %d driven by %d scenario(s), sets equal",
+	proof.Logf(t, "PROOF %d clause(s) declared in attaint.go, %d driven by %d scenario(s), sets equal",
 		len(declared), len(seen), len(scenarios))
 }
 
@@ -766,7 +767,7 @@ func TestAFailedWriteIsAFailedPass(t *testing.T) {
 				i+1, lines, clean[i], err, want)
 		}
 	}
-	t.Logf("PROOF %d write position(s) over %d distinct site(s), each refused in turn and each naming itself",
+	proof.Logf(t, "PROOF %d write position(s) over %d distinct site(s), each refused in turn and each naming itself",
 		lines, len(seen))
 }
 
@@ -884,7 +885,7 @@ func TestEveryArmHasAPermittedTwin(t *testing.T) {
 	if derived+named != len(declared) {
 		t.Fatalf("%d twin(s) over %d declared clause(s)", derived+named, len(declared))
 	}
-	t.Logf("PROOF %d clause(s), each with a permitted twin it declines on: %d derived from the healthy package, %d named",
+	proof.Logf(t, "PROOF %d clause(s), each with a permitted twin it declines on: %d derived from the healthy package, %d named",
 		len(declared), derived, named)
 }
 
@@ -937,7 +938,7 @@ func TestAnUndefinedFindingIsNotReportedAsASurvivingBug(t *testing.T) {
 	if strings.Contains(found, "the bug survives") {
 		t.Errorf("an undefined finding is reported as a surviving bug:\n  %s", found)
 	}
-	t.Logf("PROOF %s", found)
+	proof.Logf(t, "PROOF %s", found)
 }
 
 // A REF ON BOTH A PLANTED AND AN HONEST CLAIM IS REFUSED BY NAME. quill r3/10:
@@ -968,7 +969,7 @@ func TestADuplicatedRefAcrossPlantedAndHonestIsRefused(t *testing.T) {
 	if !strings.Contains(err.Error(), "carried by both a planted and an honest claim") {
 		t.Fatalf("refused for the wrong reason: %v", err)
 	}
-	t.Logf("PROOF %v", err)
+	proof.Logf(t, "PROOF %v", err)
 }
 
 // TestEveryKillerIsNamedAndEveryMutantNamesWhatItMoves is the arm for rook's

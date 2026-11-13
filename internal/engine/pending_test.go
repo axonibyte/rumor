@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // THE CLOCK IS DRIVEN HERE, which is what docs/vocabulary.md says R2.3 does.
@@ -120,7 +121,7 @@ func TestNowIsTheLatestClockAtOrBeforeTheSeal(t *testing.T) {
 	if v, ok := Now(plain); ok {
 		t.Errorf("a ledger with no clock fact reported the time %d as present", v)
 	}
-	t.Logf("PROOF time at the seal 105 with a 999 clock past it; absent, not 0, with no clock fact")
+	proof.Logf(t, "PROOF time at the seal 105 with a 999 clock past it; absent, not 0, with no clock fact")
 }
 
 // A DISAGREEMENT INSIDE AN EVENTUAL TYPE'S BOUND IS `pending`, AND PAST IT IT
@@ -291,7 +292,7 @@ func TestADisagreementInsideTheBoundIsPendingAndPastItIsStale(t *testing.T) {
 	if none.Value != "bug" || none.Overlay != nil {
 		t.Fatalf("with no eventual declaration the finding is %v, wanted the statute's bug", none.Value)
 	}
-	t.Logf("PROOF inside the bound pending until %d over the statute's %v; past it %v; agreeing %v; undeclared %v",
+	proof.Logf(t, "PROOF inside the bound pending until %d over the statute's %v; past it %v; agreeing %v; undeclared %v",
 		inside.Overlay.Until, inside.StatuteValue, outside.Value, ok.Value, none.Value)
 }
 
@@ -429,7 +430,7 @@ func TestAPendingIsReCheckedAtTheNextObservationOfTheSameQuery(t *testing.T) {
 		t.Fatalf("a still-disagreeing re-check: rechecked %v, finding %v, register %d",
 			third.ReChecked != nil, third.Value, reg2.Len())
 	}
-	t.Logf("PROOF held open, untouched by another query, cleared by the same one, and re-held when it still disagrees")
+	proof.Logf(t, "PROOF held open, untouched by another query, cleared by the same one, and re-held when it still disagrees")
 }
 
 // A QUIESCE BOUND IS JUDGED WITH NO CLOCK AT ALL, which is what makes it the
@@ -520,7 +521,7 @@ func TestAQuiesceBoundIsJudgedWithoutAClock(t *testing.T) {
 			firstLook.Value, firstLook.Kind, firstLook.Overlay)
 	}
 
-	t.Logf("PROOF quiesce bound, no clock fact: not quiet -> %v; quiet -> %v kind %q",
+	proof.Logf(t, "PROOF quiesce bound, no clock fact: not quiet -> %v; quiet -> %v kind %q",
 		held.Value, stale.Value, stale.Kind)
 }
 
@@ -577,7 +578,7 @@ func TestAStaleIsNotHeldOpenForReCheck(t *testing.T) {
 	if regStale.Len() != 0 {
 		t.Errorf("a stale was held open for re-check: %d open, %v", regStale.Len(), regStale.Open())
 	}
-	t.Logf("PROOF pending registered 1, stale registered %d", regStale.Len())
+	proof.Logf(t, "PROOF pending registered 1, stale registered %d", regStale.Len())
 }
 
 // THE TWO STATES THAT ARE NOT ANSWERS REFUSE, and that is fable's ruling 1(b)
@@ -840,7 +841,7 @@ func TestAProbeThatGaveUpIsTheQuiesceTimeoutFinding(t *testing.T) {
 	if strings.Contains(f.Overlay.Reason, "the bound is past") {
 		t.Errorf("the reason borrows `stale`'s words: %s", f.Overlay.Reason)
 	}
-	t.Logf("PROOF %s", f.Says())
+	proof.Logf(t, "PROOF %s", f.Says())
 }
 
 // TestUntilsIsSortedDeduplicatedAndNotAMapsOrder drives R7.3's one exported
@@ -913,6 +914,6 @@ func TestUntilsIsSortedDeduplicatedAndNotAMapsOrder(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("PROOF %v from six pendings (one quiesce-bounded, one duplicate instant), "+
+	proof.Logf(t, "PROOF %v from six pendings (one quiesce-bounded, one duplicate instant), "+
 		"identical over twenty-one calls", got)
 }

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // ONE SEED RENDERS ONE PLAN, which is what D1's byte-identity rests on.
@@ -69,7 +71,7 @@ func TestSeedPlusOneMovesThePlanSoD9HasASubject(t *testing.T) {
 		t.Errorf("no adjacent seed pair moved the plan at width %d, so seed+1 cannot move the "+
 			"hashed stream", width)
 	}
-	t.Logf("PROOF %d distinct plan(s) over 40 seeds at width %d; %d of 39 adjacent pairs differ",
+	proof.Logf(t, "PROOF %d distinct plan(s) over 40 seeds at width %d; %d of 39 adjacent pairs differ",
 		len(seen), width, moved)
 }
 

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
 )
 
@@ -327,6 +328,6 @@ func TestAKindDifferenceIsNotTheSameFinding(t *testing.T) {
 		t.Fatalf("two findings with no kind did not reproduce each other, so this clause "+
 			"broke the ordinary case: %s", none.Why)
 	}
-	t.Logf("PROOF stale vs plain -> %v (%s); stale vs stale -> %v; none vs none -> %v",
+	proof.Logf(t, "PROOF stale vs plain -> %v (%s); stale vs stale -> %v; none vs none -> %v",
 		v.Reproduced, v.Why, same.Reproduced, none.Reproduced)
 }

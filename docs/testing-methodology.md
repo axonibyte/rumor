@@ -2243,3 +2243,21 @@ that the script is local-only on purpose. A grep over a document counts its
 prose — which is also why the helper skips comment lines, found by a mutant that
 deleted the battery's invocation and SURVIVED, because the step's comment names
 the script while explaining why it is there.
+
+**A PROOF IS A CLAIM ABOUT WHAT THE ARM ESTABLISHED, SO A FAILED ARM MUST PRINT
+NONE.** A PROOF line printed whenever control reached it, and `t.Errorf` does
+not stop control: an arm could fail its central comparison and still announce
+its count in the same output, where a reader scanning the log for PROOF lines
+takes the count as established. The 221 sites across 57 files now go through one
+helper that prints nothing once `t.Failed()` is true, and a hygiene arm refuses
+a bare `t.Logf("PROOF` anywhere outside it -- a convention four actors
+remembered becomes a check one of them cannot forget.
+
+**AND THE HELPER'S OWN GUARD RESTED ON A PROMISE ITS PARAMETER TYPE DOES NOT
+MAKE.** The helper refuses a format that does not begin with `PROOF`, and the
+first draft called `t.Fatalf` and then fell through to the log, because on a
+real `*testing.T` a `Fatalf` never returns. `testing.TB` is an INTERFACE. The
+recorder that drives the helper's cells returns from `Fatalf` like any other
+method, so the line printed anyway -- found only because the helper is exercised
+through a fake of its own parameter type. An arm that passed it nothing but a
+live `*testing.T` would have agreed with the draft.

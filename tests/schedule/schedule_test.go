@@ -20,6 +20,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 )
 
@@ -179,7 +180,7 @@ func TestThePreconditionInputAgreesWithARealObservation(t *testing.T) {
 				"(defined=%v) -- a walk and a case disagreeing about one world", rule, want, wok, got, gok)
 		}
 	}
-	t.Logf("PROOF %d precondition(s) agree rule by rule across both inputs", len(preconditions))
+	proof.Logf(t, "PROOF %d precondition(s) agree rule by rule across both inputs", len(preconditions))
 }
 
 // AND THE AGREEMENT HAS EXACTLY ONE EXCEPTION, which is fable's amendment to
@@ -274,7 +275,7 @@ func TestAPlantedClaimIsInvisibleToAPreconditionAndVisibleToACheck(t *testing.T)
 			"would brick every actor a suborn touched", plantedPre["may_create_user"])
 	}
 
-	t.Logf("PROOF one planted claim: has_user is %v to a check and %v to a precondition, "+
+	proof.Logf(t, "PROOF one planted claim: has_user is %v to a check and %v to a precondition, "+
 		"may_create_user %v and %v, over %d rules whose honest verdicts agree",
 		plantedObs["has_user"], plantedPre["has_user"],
 		plantedObs["may_create_user"], plantedPre["may_create_user"], len(preconditions))
@@ -317,7 +318,7 @@ func TestOmittingTheObservationWouldHaveBeenCaught(t *testing.T) {
 		t.Fatal("omitting `observation` changed no precondition's verdict, so the agreement arm " +
 			"above cannot see the shape that was ruled out and proves nothing")
 	}
-	t.Logf("PROOF omitting `observation` changes %d of %d verdicts, so the arm above discriminates",
+	proof.Logf(t, "PROOF omitting `observation` changes %d of %d verdicts, so the arm above discriminates",
 		diff, len(preconditions))
 }
 
@@ -399,7 +400,7 @@ func TestApplicableAnswersWhatThePreconditionsPermit(t *testing.T) {
 			"in declared order: an action in neither list is a silent drop from every walk",
 			gotNames, want)
 	}
-	t.Logf("PROOF applicable at the seal: %v (asserted against the corpus, both directions)", gotNames)
+	proof.Logf(t, "PROOF applicable at the seal: %v (asserted against the corpus, both directions)", gotNames)
 }
 
 // recordedVerdicts is honest-count's own `expect` block -- the committed

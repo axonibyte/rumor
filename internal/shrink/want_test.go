@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 )
 
@@ -207,7 +208,7 @@ func TestAStageVerdictIsKeptAndRenderedAsItsOwn(t *testing.T) {
 	if strings.Contains(out, "PARTIAL REPRODUCTION") {
 		t.Errorf("the report claims a partial reproduction over a stage verdict:\n%s", out)
 	}
-	t.Logf("PROOF\n%s", out)
+	proof.Logf(t, "PROOF\n%s", out)
 }
 
 // TWO ORACLES FINDING THE SAME WORD ARE NOT THE SAME FINDING, which is rook's
@@ -238,7 +239,7 @@ func TestTwoOraclesFindingTheSameWordDoNotCompareEqual(t *testing.T) {
 	if !strings.Contains(got.Why, "two oracles") {
 		t.Errorf("the refusal is not the want's own words: %q", got.Why)
 	}
-	t.Logf("PROOF %s", got.Why)
+	proof.Logf(t, "PROOF %s", got.Why)
 }
 
 // AND A VERDICT ABOUT ANOTHER SUBJECT IS REFUSED TOO, which is the half rook's
@@ -268,7 +269,7 @@ func TestOneOracleTwoSubjectsDoNotCompareEqual(t *testing.T) {
 	if !strings.Contains(got.Why, "borrow_book") || !strings.Contains(got.Why, "join_event") {
 		t.Errorf("the refusal does not name both subjects: %q", got.Why)
 	}
-	t.Logf("PROOF %s", got.Why)
+	proof.Logf(t, "PROOF %s", got.Why)
 }
 
 // THE STATUTE'S PATH IS UNCHANGED BY ALL OF THIS, and it is asserted rather
@@ -306,7 +307,7 @@ func TestTheStatutesTraceStillRendersItsOwnShape(t *testing.T) {
 	if strings.Contains(out, "trace: verdict") {
 		t.Errorf("the statute's trace prints a stage verdict's line:\n%s", out)
 	}
-	t.Logf("PROOF\n%s", out)
+	proof.Logf(t, "PROOF\n%s", out)
 }
 
 // AND A PROMOTED STAGE VERDICT WRITES THE ORACLE'S SENTENCE INTO THE LOCK.
@@ -351,5 +352,5 @@ func TestAPromotedStageVerdictCarriesTheOraclesSentence(t *testing.T) {
 	if strings.Contains(line, "no finding") {
 		t.Errorf("the promoted row says nothing was found over a verdict that was: %q", line)
 	}
-	t.Logf("PROOF %s", strings.TrimSpace(line))
+	proof.Logf(t, "PROOF %s", strings.TrimSpace(line))
 }

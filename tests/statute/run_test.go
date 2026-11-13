@@ -38,6 +38,8 @@ import (
 	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/open-policy-agent/opa/v1/topdown"
 	"github.com/open-policy-agent/opa/v1/topdown/print"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // examplesDir is relative to this test's own directory, which `go test` makes
@@ -245,7 +247,7 @@ func TestTheSuiteExaminesSomething(t *testing.T) {
 	if totalMutants != 42 {
 		t.Errorf("expected 42 mutants across the five packages, counted %d", totalMutants)
 	}
-	t.Logf("PROOF examined %d package(s), %d case(s), %d mutant(s)",
+	proof.Logf(t, "PROOF examined %d package(s), %d case(s), %d mutant(s)",
 		len(pkgs), totalCases, totalMutants)
 }
 
@@ -300,7 +302,7 @@ func TestEveryMutantIsRed(t *testing.T) {
 				if len(killedBy) == 0 {
 					t.Fatalf("THIS MUTANT SURVIVED: no case distinguishes it from the clean statute, so the clause it breaks is not exercised by any case in %s", p.name)
 				}
-				t.Logf("PROOF killed by %d of %d case(s): %s",
+				proof.Logf(t, "PROOF killed by %d of %d case(s): %s",
 					len(killedBy), len(p.cases), strings.Join(killedBy, ", "))
 			})
 		}
@@ -346,7 +348,7 @@ func TestCoverageAndTracePerCase(t *testing.T) {
 					t.Fatalf("the trace never mentions the rule it evaluated, so it is not a trace of this query:\n%s",
 						firstLines(pretty.String(), 5))
 				}
-				t.Logf("PROOF %d trace event(s), %d covered range(s), coverage %.0f%%",
+				proof.Logf(t, "PROOF %d trace event(s), %d covered range(s), coverage %.0f%%",
 					len(*tracer), len(file.Covered), file.Coverage)
 			})
 		}
@@ -411,7 +413,7 @@ func TestStatutesHaveNotDrifted(t *testing.T) {
 	if checked != len(want) {
 		t.Fatalf("checked %d of %d pinned files; a file this test cannot read is not a file it verified", checked, len(want))
 	}
-	t.Logf("PROOF %d statute and rules file(s) match their pinned blob ids", checked)
+	proof.Logf(t, "PROOF %d statute and rules file(s) match their pinned blob ids", checked)
 }
 
 // ---------------------------------------------------------------------------
@@ -560,7 +562,7 @@ func TestNoStatuteCallsPrint(t *testing.T) {
 		t.Logf("ADR 0001 REFUSED: %d print call(s) across %d module(s) and %d evaluation(s)",
 			printsFound, modulesScanned, evaluations)
 	} else {
-		t.Logf("PROOF ADR 0001 checked on %d module(s) statically and %d case evaluation(s) at runtime, 0 prints",
+		proof.Logf(t, "PROOF ADR 0001 checked on %d module(s) statically and %d case evaluation(s) at runtime, 0 prints",
 			modulesScanned, evaluations)
 	}
 }
@@ -626,7 +628,7 @@ finding := "consistent" if {
 	if len(off.seen) != 0 {
 		t.Logf("NOTE this OPA build delivers prints without EnablePrintStatements: %v", off.seen)
 	} else {
-		t.Logf("PROOF the hook alone is silent (%d captured) -- EnablePrintStatements(true) is load-bearing, not decoration", len(off.seen))
+		proof.Logf(t, "PROOF the hook alone is silent (%d captured) -- EnablePrintStatements(true) is load-bearing, not decoration", len(off.seen))
 	}
 }
 
@@ -719,7 +721,7 @@ func TestEveryMutantIsItsStatutePlusOneChange(t *testing.T) {
 	if checked < 30 {
 		t.Fatalf("only %d mutant(s) compared: the walk is broken, not the corpus", checked)
 	}
-	t.Logf("PROOF %d mutant(s) compared across %d package(s), %d declared multi-hunk",
+	proof.Logf(t, "PROOF %d mutant(s) compared across %d package(s), %d declared multi-hunk",
 		checked, len(pkgs), len(knownMultiHunkMutants))
 }
 

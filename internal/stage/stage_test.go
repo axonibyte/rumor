@@ -8,6 +8,7 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // toyPlatform loads the SHIPPED toy, not a fixture: the question is what this
@@ -95,7 +96,7 @@ func TestSelectReturnsWhatRunsAndNotWhatIsDeclared(t *testing.T) {
 			t.Errorf("%s was selected and this build marks it unrunnable: %v", unrunnable, got)
 		}
 	}
-	t.Logf("PROOF declared %d stage(s), ran %v", len(p.Stages), got)
+	proof.Logf(t, "PROOF declared %d stage(s), ran %v", len(p.Stages), got)
 }
 
 // A PROFILE NARROWS, and the toy's own `expiring` names only `api`.
@@ -128,7 +129,7 @@ func TestAnUnknownDeclaredStageIsRefusedByName(t *testing.T) {
 			t.Errorf("the refusal does not list the known stage %q: %v", known, err)
 		}
 	}
-	t.Logf("PROOF %v", err)
+	proof.Logf(t, "PROOF %v", err)
 }
 
 // AN EMPTY SELECTION IS A REFUSAL AND NAMES ITS REASON PER STAGE. Both reasons
@@ -163,7 +164,7 @@ func TestAnEmptySelectionRefusesWithTheReason(t *testing.T) {
 		if !strings.Contains(err.Error(), "api is declared with enabled = false") {
 			t.Errorf("the refusal does not name the stage beside its reason: %v", err)
 		}
-		t.Logf("PROOF %v", err)
+		proof.Logf(t, "PROOF %v", err)
 	})
 	t.Run("known but not runnable yet", func(t *testing.T) {
 		p := toyPlatform(t)
@@ -179,7 +180,7 @@ func TestAnEmptySelectionRefusesWithTheReason(t *testing.T) {
 		if !strings.Contains(err.Error(), unrunnable+" is enabled and this build cannot run it yet") {
 			t.Errorf("the refusal does not name the stage beside its reason: %v", err)
 		}
-		t.Logf("PROOF %v", err)
+		proof.Logf(t, "PROOF %v", err)
 	})
 }
 

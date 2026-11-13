@@ -7,6 +7,7 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // toyBindings is the shipped toy, loaded: the arms below read a real project
@@ -40,7 +41,7 @@ func TestAnUnprovidedKindRefusesByName(t *testing.T) {
 	if !strings.Contains(err.Error(), "event") {
 		t.Errorf("the refusal does not list the kinds that ARE declared: %v", err)
 	}
-	t.Logf("PROOF %v", err)
+	proof.Logf(t, "PROOF %v", err)
 }
 
 // A CYCLE IS REFUSED WITH ITS PATH rather than recursed into. Built from two
@@ -67,7 +68,7 @@ func TestACycleRefusesWithItsPath(t *testing.T) {
 	if !strings.Contains(err.Error(), "->") {
 		t.Errorf("the refusal carries no path: %v", err)
 	}
-	t.Logf("PROOF %v", err)
+	proof.Logf(t, "PROOF %v", err)
 }
 
 // NEEDS READS THE CORPUS AND NOT THE BINDINGS. A case that omits its only
@@ -149,7 +150,7 @@ func TestTheBootstrapHoistNeedsBothOfItsConditions(t *testing.T) {
 		t.Errorf("the order is %v; create_user is the only action here that needs no session, "+
 			"so it goes first however the kinds were asked for", got)
 	}
-	t.Logf("PROOF seat -> %v, (z, user) -> %v", names(mustOrder(t, b, "seat")),
+	proof.Logf(t, "PROOF seat -> %v, (z, user) -> %v", names(mustOrder(t, b, "seat")),
 		names(mustOrder(t, b, "z", "user")))
 }
 

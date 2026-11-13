@@ -13,6 +13,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/fuzz"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback/toyrestart"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
@@ -163,11 +164,11 @@ func TestTheFuzzStageDrivesTheToyAndFindsNo5xx(t *testing.T) {
 		t.Errorf("%d distinct message(s) from the system's own rules, expected %d", got, want)
 	}
 
-	t.Logf("PROOF setup %v; %s", rep.Setup, rep.Summary())
-	t.Logf("PROOF by layer: %d adapter, %d decoder, %d system, %d accepted; %d distinct system message(s)",
+	proof.Logf(t, "PROOF setup %v; %s", rep.Setup, rep.Summary())
+	proof.Logf(t, "PROOF by layer: %d adapter, %d decoder, %d system, %d accepted; %d distinct system message(s)",
 		origins[fuzz.OriginAdapter], origins[fuzz.OriginDecoder], origins[fuzz.OriginSystem],
 		origins[fuzz.OriginAccepted], len(msgs))
-	t.Logf("PROOF %d refused, %d accepted, %d faulted of %d sent",
+	proof.Logf(t, "PROOF %d refused, %d accepted, %d faulted of %d sent",
 		refused, accepted, faulted, len(rep.Results))
 
 	// EVERY REFUSAL NAMES SOMETHING, which is D4's subject and is measured
@@ -179,7 +180,7 @@ func TestTheFuzzStageDrivesTheToyAndFindsNo5xx(t *testing.T) {
 			silent++
 		}
 	}
-	t.Logf("PROOF %d of %d refusals carry no error text", silent, refused)
+	proof.Logf(t, "PROOF %d of %d refusals carry no error text", silent, refused)
 }
 
 // D5's PRESENCE PARTNER: a run in which nothing reached the system must not be
@@ -262,7 +263,7 @@ func TestTheFuzzStageRefusesToClearASystemThatNeverAnsweredIt(t *testing.T) {
 			len(found), found)
 	}
 
-	t.Logf("PROOF %d case(s) sent, %d reached, refused with: %v", len(rep.Results), rep.Reached(), rerr)
+	proof.Logf(t, "PROOF %d case(s) sent, %d reached, refused with: %v", len(rep.Results), rep.Reached(), rerr)
 }
 
 // THE FAN-OUT MECHANISM, AGAINST ONE PROVIDER-OWNED TOY AND TWO ADAPTERS.
@@ -417,7 +418,7 @@ func TestTheFanOutReachesOneWorldThroughTwoAdapters(t *testing.T) {
 			"sequential path and could not have reached a check-then-act defect",
 			attempts[0].InFlight(), attempts[1].InFlight())
 	}
-	t.Logf("PROOF one world through two adapters, both joins accepted; %s (in flight %v and %v)",
+	proof.Logf(t, "PROOF one world through two adapters, both joins accepted; %s (in flight %v and %v)",
 		concurrency.OverlapMeasured(attempts), attempts[0].InFlight(), attempts[1].InFlight())
 }
 

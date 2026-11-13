@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // THE SWEEP IS THE BASELINE AND THEN ONE COORDINATE AT A TIME, with the limit
@@ -53,7 +54,7 @@ func TestTheSweepMovesOneCoordinateAtATimeAndNeverTheLimit(t *testing.T) {
 			t.Errorf("world %d carries the literal `title` as a swept choice", i+1)
 		}
 	}
-	t.Logf("PROOF %v", rendered(got))
+	proof.Logf(t, "PROOF %v", rendered(got))
 }
 
 // THE LIMIT IS THE SMALLEST THE PROJECT DECLARED, which is what keeps the
@@ -96,7 +97,7 @@ func TestALimitThatIsNotACountIsRefused(t *testing.T) {
 		if _, err := limitValue(sub, arg); err == nil {
 			t.Errorf("%v returned a limit", arg)
 		} else {
-			t.Logf("PROOF %v", err)
+			proof.Logf(t, "PROOF %v", err)
 		}
 	}
 }
@@ -131,7 +132,7 @@ func TestAVenireTooSmallIsRefusedBeforeAnythingIsOpened(t *testing.T) {
 			t.Errorf("the refusal does not name %q: %v", want, err)
 		}
 	}
-	t.Logf("PROOF %v", err)
+	proof.Logf(t, "PROOF %v", err)
 }
 
 // `contended.held` NAMING NO DECLARED OBSERVATION IS REFUSED, and the refusal
@@ -159,7 +160,7 @@ func TestAHeldQueryNothingDeclaresIsRefused(t *testing.T) {
 			t.Errorf("the refusal does not name %q: %v", want, err)
 		}
 	}
-	t.Logf("PROOF %v", err)
+	proof.Logf(t, "PROOF %v", err)
 }
 
 // A HANDLE THE SETUP NEVER OBTAINED IS REFUSED RATHER THAN SENT EMPTY: a
@@ -182,7 +183,7 @@ func TestAHandleTheSetupNeverObtainedIsRefused(t *testing.T) {
 	if !strings.Contains(refused, "room") {
 		t.Errorf("the refusal does not name the kind: %v", refused)
 	}
-	t.Logf("PROOF %s", refused)
+	proof.Logf(t, "PROOF %s", refused)
 }
 
 func rendered(cs []choice) [][]string {
@@ -266,5 +267,5 @@ func TestAnAbsenceCarriesTheNumberOfFanOutsItRestsOn(t *testing.T) {
 	if n := none.Answerable(); n != 0 {
 		t.Errorf("no answerable fan-out counted as %d", n)
 	}
-	t.Logf("PROOF one answerable: %q", strings.TrimSpace(v.Render()))
+	proof.Logf(t, "PROOF one answerable: %q", strings.TrimSpace(v.Render()))
 }

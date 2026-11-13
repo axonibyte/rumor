@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/shrink"
 )
 
@@ -45,7 +46,7 @@ func TestTheOverfillVerdictIsJudgedByAMajorityOfMoreThanOneProbe(t *testing.T) {
 		t.Errorf("the threshold is %d of %d, which is not a majority: more probes may fail than "+
 			"recur and the candidate is still accepted", k, n)
 	}
-	t.Logf("PROOF %d of %d, a majority of more than one probe", k, n)
+	proof.Logf(t, "PROOF %d of %d, a majority of more than one probe", k, n)
 }
 
 // EVERY CLAUSE OF Recurs IS DRIVEN, each by the state it exists for. The four
@@ -86,7 +87,7 @@ func TestTheOverfillVerdictComparesWhoseOracleAboutWhatAndWhatItFound(t *testing
 			if !strings.Contains(why, c.says) {
 				t.Errorf("the reason does not say %q: %q", c.says, why)
 			}
-			t.Logf("PROOF %s", why)
+			proof.Logf(t, "PROOF %s", why)
 		})
 	}
 }
@@ -134,5 +135,5 @@ func TestATryBecomesAVerdictInTheOraclesWords(t *testing.T) {
 	if cv.Found || cv.Says == "" {
 		t.Errorf("a clean try's verdict is %+v", cv)
 	}
-	t.Logf("PROOF over %q; vacuous %q; clean %q", v.Says, vv.Says, cv.Says)
+	proof.Logf(t, "PROOF over %q; vacuous %q; clean %q", v.Says, vv.Says, cv.Says)
 }

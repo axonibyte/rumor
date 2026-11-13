@@ -20,6 +20,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/handle"
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 )
 
@@ -779,7 +780,7 @@ func TestAHandleTheActorDoesNotKnowDoesNotResolve(t *testing.T) {
 				"known %v, unknown %v", k, withKnown, withUnknown)
 		}
 	}
-	t.Logf("PROOF %s knows %v; pool with alice's event %v, with carol's %v",
+	proof.Logf(t, "PROOF %s knows %v; pool with alice's event %v, with carol's %v",
 		observer, known, withKnown, withUnknown)
 }
 
@@ -879,7 +880,7 @@ func TestTheHonestTellAndCanardSeparateOnPlantedness(t *testing.T) {
 		t.Errorf("carol AUTHORED the planted claim, so passing it on is not a canard; got %v", got)
 	}
 
-	t.Logf("PROOF alice tells %v canards %v; bob tells %v canards %v; carol tells %v canards %v",
+	proof.Logf(t, "PROOF alice tells %v canards %v; bob tells %v canards %v; carol tells %v canards %v",
 		aliceTells, aliceCanards, tells("bob"), canards("bob"), tells("carol"), canards("carol"))
 }
 
@@ -938,5 +939,5 @@ func TestAdvanceIsInThePoolIFFAnInstantExistsToLandOn(t *testing.T) {
 	if strings.Join(a, ",") != strings.Join(less, ",") {
 		t.Errorf("the two pools differ by more than advance: %v against %v", a, b)
 	}
-	t.Logf("PROOF %v without a target, %v with one", a, b)
+	proof.Logf(t, "PROOF %v without a target, %v with one", a, b)
 }

@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // wellFormed is one legal message per direction and kind, as a map so a test
@@ -525,7 +527,7 @@ func TestEveryKindInTheTablesIsPairedHere(t *testing.T) {
 				"to read", key, direction)
 		}
 	}
-	t.Logf("PROOF %d message type(s) paired, %d request shape(s) and %d response shape(s)",
+	proof.Logf(t, "PROOF %d message type(s) paired, %d request shape(s) and %d response shape(s)",
 		len(paired), len(requests), len(responses))
 }
 
@@ -683,7 +685,7 @@ func TestEveryRequestKindCanBeStamped(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("PROOF %d request kind(s) stamped, envelope asserted on each", len(requests))
+	proof.Logf(t, "PROOF %d request kind(s) stamped, envelope asserted on each", len(requests))
 }
 
 // AND A KIND THE SWITCH DOES NOT KNOW IS REPORTED, not stamped with a zero

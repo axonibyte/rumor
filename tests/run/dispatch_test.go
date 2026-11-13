@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // THE DISPATCH, DRIVEN THROUGH THE BINARY: a project that enables the
@@ -125,7 +127,7 @@ func TestTheDispatchRunsTheConcurrencyStage(t *testing.T) {
 						"missing\nstdout:\n%s", out)
 				}
 			}
-			t.Logf("PROOF exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+			proof.Logf(t, "PROOF exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errb)
 		})
 	}
 }
@@ -250,5 +252,5 @@ func TestTheStagesFindingIsShrunkOnACleanWorld(t *testing.T) {
 				forbidden, out)
 		}
 	}
-	t.Logf("PROOF\n%s", out)
+	proof.Logf(t, "PROOF\n%s", out)
 }

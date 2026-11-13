@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // doc is a document exercising every reader below, built rather than parsed --
@@ -504,7 +506,7 @@ func TestInt64CarriesAnInstantThatIntWouldTruncate(t *testing.T) {
 			"reader's own refusal and not a zero handed to a clock", r.Refusals())
 	}
 	if !t.Failed() {
-		t.Logf("PROOF each arm is handed a value that discriminates: an int64 at %d for the "+
+		proof.Logf(t, "PROOF each arm is handed a value that discriminates: an int64 at %d for the "+
 			"width, an int at %d for the width AND the sign, an int32 at -9 (not 4294967287) "+
 			"for the sign; and an absent key reads 0 while a non-integer is refused at its "+
 			"own path", spring, -spring)

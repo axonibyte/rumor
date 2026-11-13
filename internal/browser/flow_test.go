@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
@@ -270,7 +271,7 @@ func TestTheWaitVocabularyIsDrivenBothWays(t *testing.T) {
 					t.Fatalf("the navigate and the click reached %d of 2, so the wait was never "+
 						"the subject", pre.Reached)
 				}
-				t.Logf("PROOF the pre-wait steps took %s, against the wait's 10s budget",
+				proof.Logf(t, "PROOF the pre-wait steps took %s, against the wait's 10s budget",
 					time.Since(began).Round(time.Millisecond))
 				from = 2
 				var cancel context.CancelFunc

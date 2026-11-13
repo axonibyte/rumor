@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 const realTree = "../../examples"
@@ -87,7 +89,7 @@ func TestRunOverTheCommittedTree(t *testing.T) {
 			t.Errorf("no case produced %q, so the walk cannot be exercising the statutes", want)
 		}
 	}
-	t.Logf("PROOF %d case(s) over %d package(s), all agreeing, every line with a definition and a trace",
+	proof.Logf(t, "PROOF %d case(s) over %d package(s), all agreeing, every line with a definition and a trace",
 		res.Cases, res.Packages)
 }
 
@@ -161,7 +163,7 @@ func TestADisagreementIsCountedAndNamed(t *testing.T) {
 	if !strings.Contains(sb.String(), "DISAGREES: finding got consistent, wanted bug") {
 		t.Errorf("the line does not name the rule and both values: %q", sb.String())
 	}
-	t.Logf("PROOF one planted expect: %d of %d disagreed, named on its own line", res.Disagreed, res.Cases)
+	proof.Logf(t, "PROOF one planted expect: %d of %d disagreed, named on its own line", res.Disagreed, res.Cases)
 }
 
 // EVERY WAY THE WALK CAN EXAMINE NOTHING IS AN ERROR, read off the clause that
@@ -297,5 +299,5 @@ func TestAnUndefinedFindingIsNotPrintedAsNil(t *testing.T) {
 		t.Errorf("no line carries a real finding: a renderer answering the absence for every case "+
 			"would satisfy the two assertions above, so this arm is what tells them apart:\n%s", got)
 	}
-	t.Logf("PROOF the walk names an absent finding rather than printing nil, and still prints the defined ones")
+	proof.Logf(t, "PROOF the walk names an absent finding rather than printing nil, and still prints the defined ones")
 }

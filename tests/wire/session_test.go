@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
@@ -522,7 +523,7 @@ func TestCloseLetsTheAdapterCleanUpBeforeKilling(t *testing.T) {
 		// is a verdict written next to its own test, and this one printed
 		// exactly that while the cell was red.
 		_, statErr := os.Stat(dir)
-		t.Logf("PROOF honest adapter: directory exists=%v, child %d alive=%v, Close took %v of a "+
+		proof.Logf(t, "PROOF honest adapter: directory exists=%v, child %d alive=%v, Close took %v of a "+
 			"%v grace", statErr == nil, pid, !gone(pid), took, wire.StopGrace)
 	})
 
@@ -551,7 +552,7 @@ func TestCloseLetsTheAdapterCleanUpBeforeKilling(t *testing.T) {
 		// The child is NOT asserted dead here, and that is the honest reading:
 		// this adapter was killed, so its own cleanup could not run, which is
 		// exactly the state the honest cell exists to contrast with.
-		t.Logf("PROOF EOF-ignoring adapter: stopped in %v against a %v grace (child %d was never "+
+		proof.Logf(t, "PROOF EOF-ignoring adapter: stopped in %v against a %v grace (child %d was never "+
 			"reaped by it, which is what being killed means)", took, wire.StopGrace, pid)
 	})
 }
@@ -611,7 +612,7 @@ func TestTheKeptSessionObserves(t *testing.T) {
 	if after.Value == nil {
 		t.Error("the session answered nil after a fault")
 	}
-	t.Logf("PROOF observe on a kept session: `event` -> %v twice, an unrecorded query faults, "+
+	proof.Logf(t, "PROOF observe on a kept session: `event` -> %v twice, an unrecorded query faults, "+
 		"and the session still answers %v after it", first, after.Value)
 }
 

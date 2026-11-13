@@ -15,6 +15,7 @@ import (
 	"github.com/open-policy-agent/opa/v1/ast"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // The fixtures are the COMMITTED ledger files from R2.1, not ledgers this test
@@ -154,7 +155,7 @@ func TestInputReadsOnlyTheSealedPrefix(t *testing.T) {
 	if len(refs2) != 2 {
 		t.Fatalf("sealed at %d the prefix should hold both claims, got %v", l2.Len(), refs2)
 	}
-	t.Logf("PROOF seal %d admits %v; seal %d admits %v", s.Seal, refs, l2.Len(), refs2)
+	proof.Logf(t, "PROOF seal %d admits %v; seal %d admits %v", s.Seal, refs, l2.Len(), refs2)
 }
 
 func TestTheObservationSitsJustPastTheSeal(t *testing.T) {
@@ -176,7 +177,7 @@ func TestTheObservationSitsJustPastTheSeal(t *testing.T) {
 				c["ref"], c["position"], obs["position"])
 		}
 	}
-	t.Logf("PROOF seal %d, observation at %v, %d claim(s) all before it",
+	proof.Logf(t, "PROOF seal %d, observation at %v, %d claim(s) all before it",
 		s.Seal, obs["position"], len(in["claims"].([]map[string]any)))
 }
 
@@ -197,7 +198,7 @@ func TestAnObserverKnowsItsOwnClaimsWithNoTell(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(s.KnownInPrefix, ",") {
 		t.Fatalf("knowledge %v is not the recorded %v", got, s.KnownInPrefix)
 	}
-	t.Logf("PROOF %s knows %v from %d claim(s) and no tell", s.Observer, got, len(in["claims"].([]map[string]any)))
+	proof.Logf(t, "PROOF %s knows %v from %d claim(s) and no tell", s.Observer, got, len(in["claims"].([]map[string]any)))
 }
 
 // `planted` and `visible_to` reach the statute only where the ledger carries
@@ -238,7 +239,7 @@ func TestPlantedAndVisibleToTravelOnlyWhenPresent(t *testing.T) {
 			t.Errorf("claim %v reached the statute with no visible_to, so its role check cannot hold", c["ref"])
 		}
 	}
-	t.Logf("PROOF planted on 1 of 2 claims; visible_to on %d of %d in role-visibility",
+	proof.Logf(t, "PROOF planted on 1 of 2 claims; visible_to on %d of %d in role-visibility",
 		len(rin["claims"].([]map[string]any)), len(rin["claims"].([]map[string]any)))
 }
 
@@ -312,7 +313,7 @@ func TestAFindingNamesTheDefinitionThatFired(t *testing.T) {
 				byPkg[c.pkg] = map[string][]int{}
 			}
 			byPkg[c.pkg][c.value.(string)] = append(byPkg[c.pkg][c.value.(string)], f.Fired[0].Row)
-			t.Logf("PROOF %v from %s", f.Value, f.Fired[0])
+			proof.Logf(t, "PROOF %v from %s", f.Value, f.Fired[0])
 		})
 	}
 	// THE ARM THAT STOPS THE ABOVE PASSING VACUOUSLY: inside one package, two
@@ -383,7 +384,7 @@ func TestTheTraceIsRetainedAndNamesTheRuleItEvaluated(t *testing.T) {
 			t.Errorf("rule %s is absent from the result", r)
 		}
 	}
-	t.Logf("PROOF %d trace event(s), %d covered range(s), %.0f%%, %d rule(s) returned",
+	proof.Logf(t, "PROOF %d trace event(s), %d covered range(s), %.0f%%, %d rule(s) returned",
 		f.TraceEvents, f.Covered, f.Coverage, len(f.Rules))
 }
 
@@ -481,7 +482,7 @@ func TestNothingHandedToTheFlattenerSitsPastTheSeal(t *testing.T) {
 	if beyond == 0 {
 		t.Error("no fixture holds a fact past its seal, so this arm proved nothing")
 	}
-	t.Logf("PROOF 22 fixture(s) examined, %d of them holding facts past the seal, 0 leaked to the flattener", beyond)
+	proof.Logf(t, "PROOF 22 fixture(s) examined, %d of them holding facts past the seal, 0 leaked to the flattener", beyond)
 }
 
 // THE ENGINE REFUSES A STATUTE THAT CALLS print(), and the control inverts:
@@ -543,7 +544,7 @@ finding := "consistent" if input.observation.value == 1
 	if !defined || v != "consistent" {
 		t.Fatalf("expected the printing statute to evaluate clean and silent, got %v (defined %v)", v, defined)
 	}
-	t.Logf("PROOF bypassing the refusal, the printing statute yields %v with no diagnostic at all", v)
+	proof.Logf(t, "PROOF bypassing the refusal, the printing statute yields %v with no diagnostic at all", v)
 }
 
 // AN UNDEFINED FINDING IS NOT A FINDING OF NIL, and Says is where that is kept.
@@ -594,7 +595,7 @@ finding := "consistent" if input.observation.value == 1
 	if got := g.Says(); got != "consistent" {
 		t.Errorf("Says() on a defined finding is %q, wanted the value itself", got)
 	}
-	t.Logf("PROOF Says() answers %q undefined and %q defined", f.Says(), g.Says())
+	proof.Logf(t, "PROOF Says() answers %q undefined and %q defined", f.Says(), g.Says())
 }
 
 // THE EMPTY WORLD IS A SEALED PREFIX, and a run begins there.

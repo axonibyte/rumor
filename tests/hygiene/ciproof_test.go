@@ -9,11 +9,16 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // THE SUITE'S OWN EVIDENCE HAS TO REACH A READER, AND FOR 111 SITES IT DID NOT.
+// (111 when this was written; 221 now, and every one of them went through a
+// bare `t.Logf` until 124's deliverable 6 moved them onto the one helper that
+// will not log from a failing test -- fable, coop r9/251.)
 //
-// This tree calls `t.Logf("PROOF ...` 111 times to say what an arm actually
+// This tree calls `proof.Logf(t, "PROOF ...` 221 times to say what an arm actually
 // drove -- which seed, which profile, how many steps, which finding. None of it
 // reached CI. `go test` discards a PASSING test's log output unless -v is set,
 // and ci.yml's test step echoed `tail -20`, which under -v is the last package's
@@ -118,7 +123,7 @@ func TestCiMinesTheSuitesProofLines(t *testing.T) {
 			"cannot tell a mined zero from a step that did not run", path, mining[0])
 	}
 
-	t.Logf("PROOF ci.yml step %q mines PROOF from test.log and refuses on zero, and the "+
+	proof.Logf(t, "PROOF ci.yml step %q mines PROOF from test.log and refuses on zero, and the "+
 		"test step runs -v: all three of fable rumor/1124's conditions present",
 		mining[0])
 }
@@ -281,7 +286,7 @@ func TestTheTimeoutDiagnosticCountsTheSetItLists(t *testing.T) {
 			t.Errorf("the list omits %s, which reported", want)
 		}
 	}
-	t.Logf("PROOF one pattern on both sides of the fraction, driven over a %d-line log: %d reported, "+
+	proof.Logf(t, "PROOF one pattern on both sides of the fraction, driven over a %d-line log: %d reported, "+
 		"%d listed, and the three non-reports left out", strings.Count(log, "\n"), wantReported, len(gotLines))
 }
 
@@ -444,7 +449,7 @@ func TestTheFailureViewActuallySearchesTheLog(t *testing.T) {
 		}
 	}
 
-	t.Logf("PROOF the step's own pattern %q ran and matched %d of %d failure shapes, and its "+
+	proof.Logf(t, "PROOF the step's own pattern %q ran and matched %d of %d failure shapes, and its "+
 		"flags %v carry words on BOTH sides of a match", pattern, len(got), wantMatches, viewFlags)
 }
 
@@ -577,7 +582,7 @@ func TestTheTwoTestBudgetsAgree(t *testing.T) {
 	// hopes for. Written as `< ... ==` it printed "watchdog 1200s == budget
 	// 1800s" under the very mutant that reddened the arm above -- a false
 	// sentence in the evidence line, and the one a reader quotes.
-	t.Logf("PROOF floor %ds %s watchdog %ds %s budget %ds, all three read out of %s",
+	proof.Logf(t, "PROOF floor %ds %s watchdog %ds %s budget %ds, all three read out of %s",
 		floorSeconds, relSymbol(floorSeconds, inner), inner, relSymbol(inner, outer), outer,
 		filepath.Base(path))
 }
@@ -686,6 +691,6 @@ func TestTheFailureViewSurvivesTheRunnersErrFlag(t *testing.T) {
 				c.name, string(out), c.want)
 		}
 	}
-	t.Logf("PROOF the step's own failure view ran under -e over a clean log and a failing one, " +
+	proof.Logf(t, "PROOF the step's own failure view ran under -e over a clean log and a failing one, "+
 		"exiting 0 and reporting in both")
 }

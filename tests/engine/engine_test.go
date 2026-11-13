@@ -45,6 +45,7 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 const examplesDir = "../../examples"
@@ -330,7 +331,7 @@ func TestTheHarnessExaminesSomething(t *testing.T) {
 	if bounded == 0 {
 		t.Error("no ledger holds a fact past its seal, so no case here exercises the bound")
 	}
-	t.Logf("PROOF %d package(s), %d case(s), %d mutant(s), %d ledger(s) with facts past the seal",
+	proof.Logf(t, "PROOF %d package(s), %d case(s), %d mutant(s), %d ledger(s) with facts past the seal",
 		len(pkgs), cases, mutants, bounded)
 }
 
@@ -357,7 +358,7 @@ func TestEveryCaseIsGreenFromItsLedger(t *testing.T) {
 				if f.TraceEvents == 0 || f.Trace == "" {
 					t.Error("the finding carries no trace, which R10 needs")
 				}
-				t.Logf("PROOF %v from %s, %d trace event(s), %d rule(s) agreed",
+				proof.Logf(t, "PROOF %v from %s, %d trace event(s), %d rule(s) agreed",
 					f.Value, f.Fired[0], f.TraceEvents, len(c.expect))
 			})
 		}
@@ -397,7 +398,7 @@ func TestTheLedgerPathAndTheCasePathAgree(t *testing.T) {
 					}
 				}
 				compared += len(p.rules)
-				t.Logf("PROOF %d rule(s) equal; finding %v both ways", len(p.rules), fromLedger.Value)
+				proof.Logf(t, "PROOF %d rule(s) equal; finding %v both ways", len(p.rules), fromLedger.Value)
 			})
 		}
 	}
@@ -496,7 +497,7 @@ func TestTheMutantVerdictFires(t *testing.T) {
 	if passes != 2 {
 		t.Errorf("%d of 7 clauses pass, expected 2", passes)
 	}
-	t.Logf("PROOF 7 clause(s) each reached by a constructed outcome, 2 of them passes")
+	proof.Logf(t, "PROOF 7 clause(s) each reached by a constructed outcome, 2 of them passes")
 }
 
 // EQUIVALENT UNDER THE STRUCTURAL BOUND, declared by name with its reason.
@@ -581,11 +582,11 @@ func TestEveryMutantIsRedFromItsLedgerOrProvablyEquivalent(t *testing.T) {
 				}
 				switch c := judge(o); c {
 				case clauseKilled:
-					t.Logf("PROOF %s: killed by %d of %d case(s) on both paths: %s",
+					proof.Logf(t, "PROOF %s: killed by %d of %d case(s) on both paths: %s",
 						c, len(byLedger), len(p.cases), strings.Join(byLedger, ", "))
 				case clauseEquivalent:
 					equivalent[id] = true
-					t.Logf("PROOF %s (%s); identical on all %d case(s) from the ledger, still killed by %d case(s) from the cases: %s",
+					proof.Logf(t, "PROOF %s (%s); identical on all %d case(s) from the ledger, still killed by %d case(s) from the cases: %s",
 						c, reason, len(p.cases), len(byCase), strings.Join(byCase, ", "))
 				default:
 					t.Fatalf("REFUSED by %s: killed from the ledgers by %v, from the cases by %v, identical to the clean statute %v, declared equivalent %v",
@@ -681,7 +682,7 @@ func TestTheEngineInputMatchesTheCaseInput(t *testing.T) {
 				} else if inCase && !sameJSON(caseClock, engineClock) {
 					t.Errorf("clock: engine %s, case %s", renderClock(engineClock), renderClock(caseClock))
 				}
-				t.Logf("PROOF observation, %d known ref(s), %d claim(s) and the clock (%v) agree field for field",
+				proof.Logf(t, "PROOF observation, %d known ref(s), %d claim(s) and the clock (%v) agree field for field",
 					len(wantKnown), len(claimKeys(in["claims"])), engineClock)
 			})
 		}
@@ -873,7 +874,7 @@ func TestTheEngineAcceptsEveryCommittedStatuteAndRefusesAPlantedPrint(t *testing
 	if controls != examined {
 		t.Errorf("%d control(s) over %d module(s): every module must have one", controls, examined)
 	}
-	t.Logf("PROOF %d module(s) examined, %d refused, %d planted-print control(s) all refused",
+	proof.Logf(t, "PROOF %d module(s) examined, %d refused, %d planted-print control(s) all refused",
 		examined, refused, controls)
 }
 

@@ -49,6 +49,7 @@ import (
 	"strings"
 	"testing"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/vocabulary"
 )
 
@@ -427,7 +428,7 @@ func TestEveryAttributedQuoteIsStillInTheDocument(t *testing.T) {
 				q.File, q.Line, q.Text)
 		}
 	}
-	t.Logf("PROOF %d attributed quote(s) examined over %d char(s) of document, %d absent",
+	proof.Logf(t, "PROOF %d attributed quote(s) examined over %d char(s) of document, %d absent",
 		len(qs), len(d), absent)
 }
 
@@ -494,7 +495,7 @@ func TestTheQuoteCheckFires(t *testing.T) {
 			}
 		})
 	}
-	t.Logf("PROOF the check catches a stale quote, catches one that wraps, passes the landed wording, " +
+	proof.Logf(t, "PROOF the check catches a stale quote, catches one that wraps, passes the landed wording, "+
 		"passes through emphasis and case, and collects nothing from an unattributed quote")
 }
 
@@ -567,7 +568,7 @@ func TestNoFixtureNamesARetiredMechanism(t *testing.T) {
 		t.Fatalf("examined %d file(s) under examples/ and none mentioned the project at all, so the "+
 			"sweep did not read the corpus it reports on", len(files))
 	}
-	t.Logf("PROOF %d file(s) under examples/ examined, %d of them read as this project's, %d retired "+
+	proof.Logf(t, "PROOF %d file(s) under examples/ examined, %d of them read as this project's, %d retired "+
 		"name(s) found, %d name(s) forbidden", len(files), saw, hits, len(retired))
 }
 
@@ -594,7 +595,7 @@ func TestTheRetiredNameSweepFires(t *testing.T) {
 			t.Errorf("the corrected wording still trips %q", name)
 		}
 	}
-	t.Logf("PROOF the stale header trips %d of %d retired names and the corrected header trips none",
+	proof.Logf(t, "PROOF the stale header trips %d of %d retired names and the corrected header trips none",
 		len(found), len(retired))
 }
 
@@ -791,7 +792,7 @@ func TestTheQuoteCountsWarrantsReachTheCountTheyDeclare(t *testing.T) {
 			"file: the two patterns are not reading the same text, so neither count is "+
 			"evidence about the other", len(found), len(skipped), len(all))
 	}
-	t.Logf("PROOF %d of %d `N -> M` line(s) are warrant headers, the chain ending at %d, "+
+	proof.Logf(t, "PROOF %d of %d `N -> M` line(s) are warrant headers, the chain ending at %d, "+
 		"declaredQuotes %d; excluded as prose: %v", len(found), len(all), highest,
 		declaredQuotes, skipped)
 }
@@ -1235,7 +1236,7 @@ func TestEveryCitedRuleNameIsARule(t *testing.T) {
 	// always runs, so the proof printed beside the failure that refutes it
 	// (ratchet, coop r8/184).
 	if !t.Failed() {
-		t.Logf("PROOF %d rule citation(s) collected over %d statute(s), %d of them inside a corpus, "+
+		proof.Logf(t, "PROOF %d rule citation(s) collected over %d statute(s), %d of them inside a corpus, "+
 			"%d form(s) applied tree-wide and 1 inside a corpus only",
 			rep.Collected, rep.Statutes, rep.CorpusTier, len(ruleCiteForms)-1)
 	}
@@ -1389,7 +1390,7 @@ func TestTheCitedRuleSweepFires(t *testing.T) {
 	// always runs, so the proof printed beside the failure that refutes it
 	// (ratchet, coop r8/184).
 	if !t.Failed() {
-		t.Logf("PROOF %d form(s) each catch a citation to a name in no statute, the corrected wording "+
+		proof.Logf(t, "PROOF %d form(s) each catch a citation to a name in no statute, the corrected wording "+
 			"trips %d and every one resolves, one text yields 2 faults inside a corpus and 1 outside, "+
 			"and a built tree of %d statute(s) and %d citation(s) reports exactly the 2 bad names -- "+
 			"one held to its own corpus, one to the union",

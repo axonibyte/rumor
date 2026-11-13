@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 type claimJSON struct {
@@ -102,7 +103,7 @@ func TestTheLedgersAndTheCasesAreInBijection(t *testing.T) {
 			t.Errorf("case %s has no ledger at %s", filepath.Base(c), want)
 		}
 	}
-	t.Logf("PROOF %d case(s) and %d ledger(s), one to one", len(cases), len(led))
+	proof.Logf(t, "PROOF %d case(s) and %d ledger(s), one to one", len(cases), len(led))
 }
 
 func TestEveryLedgerAgreesWithItsCase(t *testing.T) {
@@ -249,7 +250,7 @@ func TestABoundExcludesALateTellStructurally(t *testing.T) {
 		if len(l.SealedPrefix()) >= l.Len() {
 			t.Errorf("%s: the bound excludes knowledge but nothing sits past the seal", filepath.Base(lf))
 		}
-		t.Logf("PROOF %s: case knows %d, bound allows %d, %d fact(s) past the seal",
+		proof.Logf(t, "PROOF %s: case knows %d, bound allows %d, %d fact(s) past the seal",
 			filepath.Base(lf), len(c.Input.Known), len(s.KnownInPrefix), l.Len()-len(l.SealedPrefix()))
 	}
 	if found == 0 {

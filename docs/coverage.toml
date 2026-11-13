@@ -238,6 +238,17 @@ path = "tests/hygiene/*.go"
 docs = ["docs/testing-methodology.md"]
 
 [[entry]]
+# The PROOF helper every suite's PROOF line goes through. It sits in
+# `internal/` because its callers are spread across the whole tree, not
+# because production reads it: nothing outside a _test.go file imports it.
+# Mapped to the testing methodology for the same reason tests/hygiene is --
+# what transfers is the rule it enforces, that a PROOF is a claim about what
+# the arm established and so a failed arm must print none. It adds no command,
+# so it does not name cli.md.
+path = "internal/proof/*.go"
+docs = ["docs/testing-methodology.md"]
+
+[[entry]]
 path = "tests/licences/*.go"
 docs = ["docs/testing-methodology.md", "docs/release.md"]
 

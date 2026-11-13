@@ -7,6 +7,7 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // toyBindings loads the SHIPPED toy rather than a fixture of its own. A
@@ -52,7 +53,7 @@ func TestEveryDeclaredWriteActionAppears(t *testing.T) {
 	if len(seen) != len(writes) {
 		t.Errorf("%d write action(s) declared, %d represented in the corpus", len(writes), len(seen))
 	}
-	t.Logf("PROOF %d write action(s), %d case(s), every action represented", len(writes), len(cases))
+	proof.Logf(t, "PROOF %d write action(s), %d case(s), every action represented", len(writes), len(cases))
 }
 
 // D1's PARTNER: the corpus is a FUNCTION of the declarations, so an action
@@ -89,7 +90,7 @@ func TestAnAddedWriteActionAppearsWithoutEditingTheCorpus(t *testing.T) {
 	if !found {
 		t.Error("shred_event emits a claim and earned no case")
 	}
-	t.Logf("PROOF %d -> %d case(s) on one added action", len(before), len(after))
+	proof.Logf(t, "PROOF %d -> %d case(s) on one added action", len(before), len(after))
 }
 
 // AN ACTION THAT EMITS NOTHING IS NOT A WRITE, so it earns no case. The other
@@ -130,7 +131,7 @@ func TestNoWriteActionRefusesByName(t *testing.T) {
 	if err == nil {
 		t.Fatal("a write action with no arguments returned a corpus instead of refusing")
 	}
-	t.Logf("PROOF both empty shapes refuse: %v", err)
+	proof.Logf(t, "PROOF both empty shapes refuse: %v", err)
 }
 
 // THE CLASSES ARE EARNED BY THE DECLARATION AND NOT HANDED OUT, which is what
@@ -202,7 +203,7 @@ func TestAClassIsOnlyGeneratedWhereTheDeclarationEarnsIt(t *testing.T) {
 		keys = append(keys, string(cl))
 	}
 	sort.Strings(keys)
-	t.Logf("PROOF classes %v over %d case(s)", keys, len(cases))
+	proof.Logf(t, "PROOF classes %v over %d case(s)", keys, len(cases))
 }
 
 // THE PERTURBED FIELD IS THE ONLY ONE THAT MOVES. A class that quietly

@@ -10,6 +10,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/concurrency"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback/toyrestart"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
@@ -200,8 +201,8 @@ func TestTheOverfillClauseFiresOnTheRacedActionAndNotOnTheLockedOne(t *testing.T
 		t.Fatalf("join_event accepted %d of 2 into room for 1 and no overfill was reported: the "+
 			"clause is silent over the defect it exists for", subject.Accepted)
 	}
-	t.Logf("PROOF subject: %s", finding)
-	t.Logf("PROOF subject %s", concurrency.OverlapMeasured(joins))
+	proof.Logf(t, "PROOF subject: %s", finding)
+	proof.Logf(t, "PROOF subject %s", concurrency.OverlapMeasured(joins))
 
 	// ---- THE CONTROL: accept_invitation, which holds the lock across the
 	// same check-then-act. Same width, same room, same togetherness.
@@ -255,7 +256,7 @@ func TestTheOverfillClauseFiresOnTheRacedActionAndNotOnTheLockedOne(t *testing.T
 		t.Errorf("accept_invitation holds the lock across its own check-then-act, so an overfill "+
 			"here is a SECOND defect and not this clause firing correctly: %s", f)
 	}
-	t.Logf("PROOF control: accept_invitation accepted %d of 2, the world holds %d against a "+
+	proof.Logf(t, "PROOF control: accept_invitation accepted %d of 2, the world holds %d against a "+
 		"limit of 1, no finding, %s", control.Accepted, control.Observed,
 		concurrency.OverlapMeasured(accepts))
 }

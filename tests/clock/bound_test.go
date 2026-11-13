@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // THE DURATION BOUND IS JUDGED WHERE THE RUN HOLDS A CLOCK, AND REFUSED WHERE
@@ -372,6 +373,6 @@ func TestTheHINGEFromAWalk(t *testing.T) {
 		t.Error("seed 1 ran clean with advance at zero: then the landing above was not what " +
 			"made the difference")
 	}
-	t.Logf("PROOF seed 140 landed at %d and found nothing; seed 1 landed at %d and found stale",
+	proof.Logf(t, "PROOF seed 140 landed at %d and found nothing; seed 1 landed at %d and found stale",
 		bound, bound+1)
 }

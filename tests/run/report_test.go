@@ -12,6 +12,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // `rumor report` IS WHERE A READER SEES THE STAGE FACTS, and this file replaces
@@ -750,7 +751,7 @@ func TestAPromotedRowsZoneComesFromTheProjectAndNotTheEnvironment(t *testing.T) 
 		}
 	}
 	if !t.Failed() {
-		t.Logf("PROOF %s/%s at %d steps runs identically with TOY_ZONE unset, set to %s, and "+
+		proof.Logf(t, "PROOF %s/%s at %d steps runs identically with TOY_ZONE unset, set to %s, and "+
 			"set to a wrong one -- and the toy reports %s in all three",
 			row.profile, row.seed, row.steps, declared, declared)
 	}

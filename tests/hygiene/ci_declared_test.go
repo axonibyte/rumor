@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/coverage"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // A CHECK NOBODY RUNS IS THE WORST MEMBER OF ITS CLASS, because it is silently
@@ -198,7 +199,7 @@ func TestEveryToolsEntryDeclaresWhetherCIRunsIt(t *testing.T) {
 	// that failed -- a red run carrying a green claim into the record. A proof
 	// is a thing an arm earned, not a thing it attempted.
 	if !t.Failed() {
-		t.Logf("PROOF %d tools/ entries, %d declared `check` and each mentioned by a workflow",
+		proof.Logf(t, "PROOF %d tools/ entries, %d declared `check` and each mentioned by a workflow",
 			len(tools), checks)
 	}
 }

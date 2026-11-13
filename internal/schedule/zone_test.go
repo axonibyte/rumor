@@ -3,6 +3,8 @@ package schedule
 import (
 	"testing"
 	"time"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // chicagoTransitions2026 is THE SECOND ORACLE, AND IT IS ARITHMETIC RATHER THAN
@@ -104,7 +106,7 @@ func TestNextTransitionFindsTheHourThatMOVESAndNothingElse(t *testing.T) {
 			got)
 	}
 	if !t.Failed() {
-		t.Logf("PROOF both of 2026's Chicago transitions are found to the nanosecond against "+
+		proof.Logf(t, "PROOF both of 2026's Chicago transitions are found to the nanosecond against "+
 			"the published rule (%d and %d), the window is exclusive of `from` and inclusive "+
 			"of `to`, and UTC and a single season report none", spring, fall)
 	}
@@ -210,8 +212,8 @@ func TestOnlyTheNextTransitionJoinsTheBounds(t *testing.T) {
 			"a slice the register owns", backing[1])
 	}
 	if !t.Failed() {
-		t.Logf("PROOF only the next transition joins, an empty or unresolvable zone joins " +
-			"nothing, a window with no transition joins nothing, no bound means no window, " +
+		proof.Logf(t, "PROOF only the next transition joins, an empty or unresolvable zone joins "+
+			"nothing, a window with no transition joins nothing, no bound means no window, "+
 			"and the caller's slice is left alone")
 	}
 }
@@ -273,7 +275,7 @@ func TestTheLandingsHoldTheTransitionsThreeBesideTheDeadlinesThree(t *testing.T)
 			len(bare), bare)
 	}
 	if !t.Failed() {
-		t.Logf("PROOF a declared zone and one bound past the transition give six landings -- "+
+		proof.Logf(t, "PROOF a declared zone and one bound past the transition give six landings -- "+
 			"%d±1 and %d±1 -- and no zone gives three", spring, deadline)
 	}
 }

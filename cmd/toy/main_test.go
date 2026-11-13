@@ -22,6 +22,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 type harness struct {
@@ -1464,7 +1466,7 @@ func TestTheCachedPageCountIsPlantedAndOnlyAReaderSeesIt(t *testing.T) {
 		t.Errorf("the page agrees with the API after a leave, so there is no UI-only defect "+
 			"left to find:\n%s", page)
 	}
-	t.Logf("PROOF after one leave the API's count path reads 1 and the page still renders " +
+	proof.Logf(t, "PROOF after one leave the API's count path reads 1 and the page still renders "+
 		"`2 of 3`; the leave's own reply carries both numbers, which the bytes cell asserts")
 }
 
@@ -1523,7 +1525,7 @@ func TestTheAttendeeListIsTheAdminsInTheAPIAndEveryonesOnThePage(t *testing.T) {
 			"so the plant is gone: the epic's row needs an item rendered to the wrong "+
 			"role:\n%s", page)
 	}
-	t.Logf("PROOF the API answers a guest %d for the attendee list and serves the admin one "+
+	proof.Logf(t, "PROOF the API answers a guest %d for the attendee list and serves the admin one "+
 		"entry, while the page renders that entry to the guest", http.StatusForbidden)
 }
 
@@ -1567,7 +1569,7 @@ func TestTheRenderedCountIsMaintainedByTheAcceptPathToo(t *testing.T) {
 			"path no longer maintains the page's number and the plant has a SECOND home: a "+
 			"shrink could then not say which write it had found:\n%s", page)
 	}
-	t.Logf("PROOF an accepted invitation moves the page's number as a join does, so leaveEvent " +
+	proof.Logf(t, "PROOF an accepted invitation moves the page's number as a join does, so leaveEvent "+
 		"is the only write that leaves it behind")
 }
 
@@ -1615,7 +1617,7 @@ func TestTheStaleNumberIsInTheApisOwnBytesAndNothingReadsItThere(t *testing.T) {
 	if got := h.storeCount(id); got != 1 {
 		t.Errorf("the store path reads %d, want 1", got)
 	}
-	t.Logf("PROOF the leave body carries count=1 rendered=2 while both declared read paths " +
+	proof.Logf(t, "PROOF the leave body carries count=1 rendered=2 while both declared read paths "+
 		"answer 1, so the defect is unread rather than unseen")
 }
 
@@ -1649,7 +1651,7 @@ func TestAnEmptyAttendeeListStillRendersItsElement(t *testing.T) {
 	if strings.Contains(page, "<li>") {
 		t.Errorf("an event with no attendees renders a list item:\n%s", page)
 	}
-	t.Logf("PROOF an event nobody has joined still carries #attendees, with no entries in it")
+	proof.Logf(t, "PROOF an event nobody has joined still carries #attendees, with no entries in it")
 }
 
 // TestThePageShowsEveryAttendeeTheAdminsPathServes is ratchet's second cell from
@@ -1706,7 +1708,7 @@ func TestThePageShowsEveryAttendeeTheAdminsPathServes(t *testing.T) {
 				"so what leaks is not the withheld item:\n%s", want, page)
 		}
 	}
-	t.Logf("PROOF the admin's path served %d attendee(s) and the page shows a guest the same "+
+	proof.Logf(t, "PROOF the admin's path served %d attendee(s) and the page shows a guest the same "+
 		"ids, one element each", len(served))
 }
 

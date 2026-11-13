@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
@@ -1040,7 +1041,7 @@ func TestAZoneIsDeclarableAndANameNoDatabaseHoldsIsRefused(t *testing.T) {
 		t.Errorf("a clock with no zone declares %q", rep.Bindings.ClockZone)
 	}
 	if !t.Failed() {
-		t.Logf("PROOF a zone is carried, UTC is one of them, an unknown name is refused at " +
+		proof.Logf(t, "PROOF a zone is carried, UTC is one of them, an unknown name is refused at "+
 			"clock.zone naming the value, and an empty or absent key declares none")
 	}
 }
@@ -1099,7 +1100,7 @@ func TestAClockMayDeclareWhereItStarts(t *testing.T) {
 		t.Errorf("the refusal does not name clock.start and what was wanted: %v", rep.Refusals)
 	}
 	if !t.Failed() {
-		t.Logf("PROOF a nanosecond instant is carried whole, an absent key is 0, and a "+
+		proof.Logf(t, "PROOF a nanosecond instant is carried whole, an absent key is 0, and a "+
 			"non-integer is refused at clock.start (%d)", spring)
 	}
 }

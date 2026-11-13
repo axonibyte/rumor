@@ -20,6 +20,7 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/validate"
 )
 
@@ -264,7 +265,7 @@ func TestThePermittedTwinPasses(t *testing.T) {
 		t.Errorf("the twin validated over %d action(s), %d case(s), %d rule(s): a pass over an empty set is vacuous",
 			rep.Actions, rep.Cases, rep.Rules)
 	}
-	t.Logf("PROOF twin passes over %d action(s), %d observation(s), %d case(s), %d rule(s), %d mutant(s)",
+	proof.Logf(t, "PROOF twin passes over %d action(s), %d observation(s), %d case(s), %d rule(s), %d mutant(s)",
 		rep.Actions, rep.Observations, rep.Cases, rep.Rules, rep.Mutants)
 }
 
@@ -382,7 +383,7 @@ func TestArm22sRefusalNamesTheThreeEndToEnd(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("PROOF refusal names %s, %s and %v, and nothing of the api action's",
+	proof.Logf(t, "PROOF refusal names %s, %s and %v, and nothing of the api action's",
 		subject.Name, subject.Context, subject.Creates)
 }
 
@@ -478,7 +479,7 @@ func TestEveryFixtureTripsExactlyItsOwnArm(t *testing.T) {
 			if rep.Exit() != 1 {
 				t.Errorf("%s exits %d, want 1 (refused)", f, rep.Exit())
 			}
-			t.Logf("PROOF %s -> %s", f, rep.Refusals[0])
+			proof.Logf(t, "PROOF %s -> %s", f, rep.Refusals[0])
 		})
 	}
 }
@@ -506,7 +507,7 @@ func TestADecoderFailureIsCouldNotRunAndNotRefused(t *testing.T) {
 	if rep.Exit() != 2 {
 		t.Errorf("exit %d, want 2", rep.Exit())
 	}
-	t.Logf("PROOF could-not-run: %s", rep.CouldNotRun[0])
+	proof.Logf(t, "PROOF could-not-run: %s", rep.CouldNotRun[0])
 }
 
 // TestAVacuousProjectIsRefusedAndAccountsForEveryArm is fable's D8, ruled at
@@ -565,7 +566,7 @@ func TestAVacuousProjectIsRefusedAndAccountsForEveryArm(t *testing.T) {
 				t.Errorf("%s accounts for %d arm(s), want %d: a vacuity must not leave arms unaccounted",
 					c.what, n, validate.TotalArms)
 			}
-			t.Logf("PROOF %s -> %s, %d arm(s) skipped", c.what, rep.Refusals[0], len(rep.Skipped))
+			proof.Logf(t, "PROOF %s -> %s, %d arm(s) skipped", c.what, rep.Refusals[0], len(rep.Skipped))
 		})
 	}
 }
@@ -773,7 +774,7 @@ func TestTheDocumentedArmCountIsTotalArms(t *testing.T) {
 		t.Errorf("the documents attribute a count to this command %d time(s), want %d: "+
 			"a scan that finds nothing agrees with every number", found, wantArmCountClaims)
 	}
-	t.Logf("PROOF %d documented arm count(s) read, all %s", found, want)
+	proof.Logf(t, "PROOF %d documented arm count(s) read, all %s", found, want)
 }
 
 // docCorpus is every document the prose oracles read: docs/ AND its
@@ -863,7 +864,7 @@ func TestEveryArmFigureHasTotalArmsAsItsDenominator(t *testing.T) {
 		t.Errorf("the documents and the workflow write an arm figure %d time(s), want %d: "+
 			"a scan that finds nothing agrees with every number", found, wantArmFigureClaims)
 	}
-	t.Logf("PROOF %d arm figure(s) read, every denominator %s", found, total)
+	proof.Logf(t, "PROOF %d arm figure(s) read, every denominator %s", found, total)
 }
 
 // TestTheArmFigureOracleReadsOnlyAnArmFigure is armFigureClaim's control, and
@@ -968,7 +969,7 @@ func TestAnArmCountBeforeTheNounIsAttributed(t *testing.T) {
 		t.Errorf("the corpus writes a spelled count beside the noun %d time(s), want %d: "+
 			"a scan that finds nothing accepts every unattributed count", found, wantArmNounClaims)
 	}
-	t.Logf("PROOF %d spelled arm count(s) read, every one attributed", found)
+	proof.Logf(t, "PROOF %d spelled arm count(s) read, every one attributed", found)
 }
 
 // TestTheAttributionOracleRefusesExactlyTheUnattributed is the control, and the
@@ -1035,7 +1036,7 @@ func TestANemesisKindMayBeWeighted(t *testing.T) {
 			for _, r := range rep.Refusals {
 				t.Errorf("a weight for the nemesis kind %s was refused: %s", kind, r)
 			}
-			t.Logf("PROOF %s may be weighted beside the project's own actions", kind)
+			proof.Logf(t, "PROOF %s may be weighted beside the project's own actions", kind)
 		})
 	}
 }
@@ -1071,7 +1072,7 @@ func TestTheNemesisKindsAreTheDocumentsFour(t *testing.T) {
 			t.Errorf("internal/validate declares %q and docs/design.md's sentence does not name it", k)
 		}
 	}
-	t.Logf("PROOF the document and this package name the same %d nemesis kind(s)", len(named))
+	proof.Logf(t, "PROOF the document and this package name the same %d nemesis kind(s)", len(named))
 }
 
 // TestWhatIsNotAProjectCannotRunRatherThanBeingRefused is quill's first finding
@@ -1139,7 +1140,7 @@ func TestWhatIsNotAProjectCannotRunRatherThanBeingRefused(t *testing.T) {
 				t.Errorf("%s accounts for %d arm(s), want %d: a run that measured nothing must say so "+
 					"beside every arm, not only in the tally", c.what, n, validate.TotalArms)
 			}
-			t.Logf("PROOF %s -> exit %d, %d refusal(s), %d could-not-run, %d arm(s) accounted",
+			proof.Logf(t, "PROOF %s -> exit %d, %d refusal(s), %d could-not-run, %d arm(s) accounted",
 				c.what, rep.Exit(), len(rep.Refusals), len(rep.CouldNotRun),
 				len(rep.Evaluated)+len(rep.Skipped))
 		})
@@ -1216,7 +1217,7 @@ func TestAnUnreadableDeclarationIsNotAVacuityRefusal(t *testing.T) {
 			if n := len(rep.Evaluated) + len(rep.Skipped); n != validate.TotalArms {
 				t.Errorf("%s accounts for %d arm(s), want %d", c.what, n, validate.TotalArms)
 			}
-			t.Logf("PROOF %s -> exit 2, %d could-not-run, 0 refusals, %d arm(s) accounted",
+			proof.Logf(t, "PROOF %s -> exit 2, %d could-not-run, 0 refusals, %d arm(s) accounted",
 				c.what, len(rep.CouldNotRun), len(rep.Evaluated)+len(rep.Skipped))
 		})
 	}
@@ -1243,7 +1244,7 @@ func TestTheCasesVacuityGuardFires(t *testing.T) {
 	if len(rep.Refusals) != 0 {
 		t.Errorf("it also produced %d refusal(s); an unexamined arm is not a refused one", len(rep.Refusals))
 	}
-	t.Logf("PROOF %v", rep.CouldNotRun)
+	proof.Logf(t, "PROOF %v", rep.CouldNotRun)
 }
 
 // TestBindingsStillRefusesAZeroActionFile PINS A COUPLING rather than trusting
@@ -1272,7 +1273,7 @@ func TestBindingsStillRefusesAZeroActionFile(t *testing.T) {
 		t.Fatalf("the refusal reads %q; validate relies on bindings refusing \"no actions\", so validate "+
 			"now has an unguarded vacuity", joined)
 	}
-	t.Logf("PROOF the coupling holds: %s", strings.TrimSpace(joined))
+	proof.Logf(t, "PROOF the coupling holds: %s", strings.TrimSpace(joined))
 }
 
 // TestBindingsRefusesANonPositiveBound is issue 101's added bullet, and it is
@@ -1559,7 +1560,7 @@ func TestEveryArmAccountsForItself(t *testing.T) {
 	if len(allArms) != validate.TotalArms {
 		t.Fatalf("this test names %d arms and validate.TotalArms is %d", len(allArms), validate.TotalArms)
 	}
-	t.Logf("PROOF %d of %d arms evaluated across the twin and %d fixtures",
+	proof.Logf(t, "PROOF %d of %d arms evaluated across the twin and %d fixtures",
 		len(seen), validate.TotalArms, len(fixtures(t)))
 }
 
@@ -1839,7 +1840,7 @@ func TestArm21ReadsItsOwnVerdict(t *testing.T) {
 				if got != "" {
 					t.Errorf("arm 21 refused a context it must not pair: %s", got)
 				}
-				t.Logf("PROOF %s is not paired against the describe", c.what)
+				proof.Logf(t, "PROOF %s is not paired against the describe", c.what)
 				return
 			}
 			if got == "" {
@@ -1853,7 +1854,7 @@ func TestArm21ReadsItsOwnVerdict(t *testing.T) {
 			if !strings.Contains(got, "api") {
 				t.Errorf("arm 21's refusal does not name what the describe offers: %q", got)
 			}
-			t.Logf("PROOF %s -> %s", c.what, got)
+			proof.Logf(t, "PROOF %s -> %s", c.what, got)
 		})
 	}
 }
@@ -1950,7 +1951,7 @@ func TestArm19Cell8PairsOnlyTheBrowserContext(t *testing.T) {
 						"and only a BROWSER context is pairable against a profile's stages: %s",
 						c.context, got)
 				}
-				t.Logf("PROOF a %q context under a profile that selects api is not paired", c.context)
+				proof.Logf(t, "PROOF a %q context under a profile that selects api is not paired", c.context)
 				return
 			}
 			if got == "" {
@@ -1962,7 +1963,7 @@ func TestArm19Cell8PairsOnlyTheBrowserContext(t *testing.T) {
 					t.Errorf("the refusal does not name %q: %s", want, got)
 				}
 			}
-			t.Logf("PROOF %q -> %s", c.context, got)
+			proof.Logf(t, "PROOF %q -> %s", c.context, got)
 		})
 	}
 }

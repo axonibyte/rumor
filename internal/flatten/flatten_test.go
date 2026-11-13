@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // THE UNTOLD CLAIM IS THE FIRST TEST, as issue 43 asks, and it is driven from
@@ -77,7 +79,7 @@ func TestTheUntoldClaimIsNotKnown(t *testing.T) {
 	// asserts what the failure just denied. Driven by the transitivity
 	// mutant, which made the line below contradict two errors above it.
 	if !t.Failed() {
-		t.Logf("PROOF Charlie knows %v at position %d, and Bob's claim is not in it", got, fixture.Input.Observation.Position)
+		proof.Logf(t, "PROOF Charlie knows %v at position %d, and Bob's claim is not in it", got, fixture.Input.Observation.Position)
 	}
 }
 
@@ -154,7 +156,7 @@ func TestATellCarriesTheRefAndNotTheTellersKnowledge(t *testing.T) {
 		}
 	}
 	if !t.Failed() {
-		t.Logf("PROOF Alice knows %d, Bob knows %v: the tell carried its reference and nothing else", len(alice), bob)
+		proof.Logf(t, "PROOF Alice knows %d, Bob knows %v: the tell carried its reference and nothing else", len(alice), bob)
 	}
 }
 
@@ -233,7 +235,7 @@ func TestTheAncestryExtensionPointIsExercised(t *testing.T) {
 		t.Error("the provider was never called, so this test would pass against a Known that ignores its Ancestry argument")
 	}
 	if !t.Failed() {
-		t.Logf("PROOF the extension point ran: %d call(s), knowledge closed from 1 ref to %d", anc.calls, len(got))
+		proof.Logf(t, "PROOF the extension point ran: %d call(s), knowledge closed from 1 ref to %d", anc.calls, len(got))
 	}
 
 	// A CYCLE TERMINATES. A fixture can hand a provider a loop, and a walk

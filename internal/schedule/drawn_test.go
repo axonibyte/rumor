@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // THE RECORD CARRIES WHAT THE SEED CHOSE, which is fable's ruling at coop
@@ -104,7 +105,7 @@ func TestADifferentSeedMovesTheRecordedDraw(t *testing.T) {
 		t.Fatalf("twenty seeds recorded %d distinct draw(s): a record that cannot differ between "+
 			"seeds is a constant and not evidence", len(seen))
 	}
-	t.Logf("PROOF %d distinct recorded draw(s) over 20 seeds", len(seen))
+	proof.Logf(t, "PROOF %d distinct recorded draw(s) over 20 seeds", len(seen))
 }
 
 // fmtOf renders a value the way the record does, so a comparison here and a

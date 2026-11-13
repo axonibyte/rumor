@@ -7,6 +7,7 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 func toyBindings(t *testing.T) bindings.Bindings {
@@ -65,7 +66,7 @@ func TestTheToysChainBootstrapsEveryActorAndRunsTheLimitActionOnce(t *testing.T)
 		t.Errorf("%s reads its limit from %s and the chain runs %v", subs[0].Action.Name,
 			subs[0].Action.Contended.Limit, chain.Names())
 	}
-	t.Logf("PROOF chain for %s: %v", subs[0].Action.Name, chain.Names())
+	proof.Logf(t, "PROOF chain for %s: %v", subs[0].Action.Name, chain.Names())
 }
 
 // A LIMIT ON AN ACTION THE CHAIN DOES NOT RUN IS REFUSED, and the shape is the
@@ -96,7 +97,7 @@ func TestALimitOnAnActionTheChainDoesNotRunIsRefused(t *testing.T) {
 			t.Errorf("the refusal does not name %q: %v", want, err)
 		}
 	}
-	t.Logf("PROOF %v", err)
+	proof.Logf(t, "PROOF %v", err)
 }
 
 // A LIMIT THAT IS NOT A VALUE THE SETUP SENDS IS REFUSED. `handle` and `actor`
@@ -122,7 +123,7 @@ func TestALimitOnAHandleArgumentIsRefused(t *testing.T) {
 	if !strings.Contains(err.Error(), "handle") {
 		t.Errorf("the refusal does not name the source: %v", err)
 	}
-	t.Logf("PROOF %v", err)
+	proof.Logf(t, "PROOF %v", err)
 }
 
 // AN ARGUMENT THE LIMIT ACTION DOES NOT DECLARE IS REFUSED, AND THE REFUSAL
@@ -148,7 +149,7 @@ func TestALimitArgumentTheActionDoesNotDeclareIsRefused(t *testing.T) {
 	if !strings.Contains(err.Error(), "chairs") || !strings.Contains(err.Error(), "seats") {
 		t.Errorf("the refusal names neither the missing argument nor the declared ones: %v", err)
 	}
-	t.Logf("PROOF %v", err)
+	proof.Logf(t, "PROOF %v", err)
 }
 
 // AN UNDECLARED LIMIT ACTION IS REFUSED BY NAME rather than resolved to
@@ -172,7 +173,7 @@ func TestAnUndeclaredLimitActionIsRefusedByName(t *testing.T) {
 	if !strings.Contains(err.Error(), "book_room") {
 		t.Errorf("the refusal does not name the action: %v", err)
 	}
-	t.Logf("PROOF %v", err)
+	proof.Logf(t, "PROOF %v", err)
 }
 
 // A BOOTSTRAP WITHOUT AN ACTOR ARGUMENT IS NOT RUN PER ACTOR, which is the
@@ -206,7 +207,7 @@ func TestABootstrapWithNoActorArgumentRunsOnceAndNotPerActor(t *testing.T) {
 	if got := names(chain.Once); len(got) != 2 || got[0] != "open_season" || got[1] != "open_room" {
 		t.Errorf("the once-only chain is %v; it is topological, so the season precedes the room", got)
 	}
-	t.Logf("PROOF once-only %v, per actor %v", names(chain.Once), names(chain.PerActor))
+	proof.Logf(t, "PROOF once-only %v, per actor %v", names(chain.Once), names(chain.PerActor))
 }
 
 func names(as []bindings.Action) []string {
@@ -271,5 +272,5 @@ func TestAHandleThatIsNotTheContendedThingIsRefused(t *testing.T) {
 			t.Errorf("the refusal does not name %q: %v", want, err)
 		}
 	}
-	t.Logf("PROOF %v", err)
+	proof.Logf(t, "PROOF %v", err)
 }

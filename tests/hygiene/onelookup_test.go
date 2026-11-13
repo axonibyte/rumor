@@ -52,6 +52,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 func TestTheEnginesPackagesHoldOneZoneLookupSite(t *testing.T) {
@@ -155,6 +157,6 @@ func TestTheEnginesPackagesHoldOneZoneLookupSite(t *testing.T) {
 			found, scanned, home)
 		return
 	}
-	t.Logf("PROOF `time.LoadLocation` is called once in the engine's %d non-test .go file(s), "+
+	proof.Logf(t, "PROOF `time.LoadLocation` is called once in the engine's %d non-test .go file(s), "+
 		"in %s; cmd/toy is out of scope as the system under test", scanned, home)
 }

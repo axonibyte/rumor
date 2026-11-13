@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // THE FUZZ STAGE, DRIVEN THROUGH THE BINARY: a project that enables it with the
@@ -133,7 +135,7 @@ func TestTheDispatchRunsTheFuzzStage(t *testing.T) {
 						"a key nobody declared\nstdout:\n%s", out)
 				}
 			}
-			t.Logf("PROOF exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errb)
+			proof.Logf(t, "PROOF exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errb)
 		})
 	}
 }

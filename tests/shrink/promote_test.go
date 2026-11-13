@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/shrink"
 	"forge.axonibyte.com/axonibyte/rumor/internal/validate"
 )
@@ -132,7 +133,7 @@ func TestAPromotedSeedIsReadableByTheArmThatReadsSeeds(t *testing.T) {
 		}
 	}
 
-	t.Logf("PROOF arm 10b read %d promoted seed(s) with no refusal; file:\n%s", 5, mustRead(t, path))
+	proof.Logf(t, "PROOF arm 10b read %d promoted seed(s) with no refusal; file:\n%s", 5, mustRead(t, path))
 }
 
 // AND THE ARM REFUSES WHAT THE PROMOTER WOULD NEVER WRITE, which is the

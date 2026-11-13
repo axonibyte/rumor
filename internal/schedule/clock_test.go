@@ -10,6 +10,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
@@ -339,7 +340,7 @@ func TestAnAdvanceRecordsTHEWORLDANDNotTheAsk(t *testing.T) {
 		t.Fatalf("the clock fact reads %v, want %d: the ledger records the time the WORLD "+
 			"answered, not the delta the engine asked for", facts[0].T, second)
 	}
-	t.Logf("PROOF asked 250000000ns, world answered %d, ledger reads %d", got, *facts[0].T)
+	proof.Logf(t, "PROOF asked 250000000ns, world answered %d, ledger reads %d", got, *facts[0].T)
 }
 
 // TestAnAdvanceTheRunCannotAcceptIsRefusedByName: the two answers an advance
@@ -464,7 +465,7 @@ func TestLandingsAreTheThreeAndOnlyWhatIsAHEAD(t *testing.T) {
 			t.Errorf("the mover refuses a landing this function offered (%d from %d): %v", l, now, err)
 		}
 	}
-	t.Logf("PROOF %v from bounds 1001 and 1500 at a clock of 1000, every one drivable",
+	proof.Logf(t, "PROOF %v from bounds 1001 and 1500 at a clock of 1000, every one drivable",
 		Landings([]int64{1_001, 1_500}, now))
 }
 
@@ -536,7 +537,7 @@ func TestAnAdvanceStepDrawsItsLandingAndRecordsIt(t *testing.T) {
 	if !strings.Contains(err.Error(), "no landing offered") {
 		t.Errorf("refused as %q, which does not name the empty list", err)
 	}
-	t.Logf("PROOF forty seeds over %v drew %d distinct landings", landings, len(seen))
+	proof.Logf(t, "PROOF forty seeds over %v drew %d distinct landings", landings, len(seen))
 }
 
 // TestAnInstantIsANUMBERAndNothingElse is what survives of a cell I wrote

@@ -29,6 +29,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // allowed is R0.2's licence allowlist, carried from deny.toml.
@@ -220,7 +222,7 @@ func TestTheSurfaceIsNotEmpty(t *testing.T) {
 	if len(mods) < 10 {
 		t.Fatalf("the built surface is %d module(s), which is too few to be this project's real dependency set: %v", len(mods), mods)
 	}
-	t.Logf("PROOF %d third-party module(s) are actually built, tests included", len(mods))
+	proof.Logf(t, "PROOF %d third-party module(s) are actually built, tests included", len(mods))
 }
 
 // The gate's clauses, named. A control must read the verdict off the CLAUSE
@@ -287,13 +289,13 @@ func TestEveryBuiltModuleCarriesAnAllowedLicence(t *testing.T) {
 		}
 		classified++
 		if v.clause == clauseDualApproved {
-			t.Logf("PROOF %s %s", m, v.detail)
+			proof.Logf(t, "PROOF %s %s", m, v.detail)
 		}
 	}
 	if classified != len(mods) {
 		t.Errorf("classified %d of %d module(s); an unclassified module is not an allowed one", classified, len(mods))
 	}
-	t.Logf("PROOF %d of %d built module(s) carry a licence inside R0.2's allowlist", classified, len(mods))
+	proof.Logf(t, "PROOF %d of %d built module(s) carry a licence inside R0.2's allowlist", classified, len(mods))
 }
 
 // TestTheAllowlistsAgree compares this file's list against deny.toml's while
@@ -339,7 +341,7 @@ func TestTheAllowlistsAgree(t *testing.T) {
 	if strings.Join(theirs, ",") != strings.Join(mine, ",") {
 		t.Fatalf("the document and this file disagree about R0.2's allowlist, so one of them is not the project's policy:\n  docs/design.md: %v\n  this file:      %v", theirs, mine)
 	}
-	t.Logf("PROOF the document and this file name the same %d licence(s)", len(mine))
+	proof.Logf(t, "PROOF the document and this file name the same %d licence(s)", len(mine))
 }
 
 // TestClassifyTellsTheFamiliesApart drives classify directly, because the
@@ -453,7 +455,7 @@ func TestTheGateRefuses(t *testing.T) {
 	if refusals != 5 || passes != 2 {
 		t.Errorf("drove %d refusal(s) and %d pass(es), expected 5 and 2: a table that only refuses cannot tell a discriminating gate from a loud one", refusals, passes)
 	}
-	t.Logf("PROOF the gate was seen to refuse via %d distinct clause(s) and to pass %d control(s)", refusals, passes)
+	proof.Logf(t, "PROOF the gate was seen to refuse via %d distinct clause(s) and to pass %d control(s)", refusals, passes)
 }
 
 func containsID(ids []string, want string) bool {

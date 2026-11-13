@@ -26,6 +26,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/fake"
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
@@ -149,7 +150,7 @@ func TestTwoAttemptsFromOneSeedAgreeOnHandlesAndDifferOnIDs(t *testing.T) {
 				"suite cannot tell a handle sequence from an id sequence", h, a)
 		}
 	}
-	t.Logf("PROOF one seed, two attempts: handles %v; ids %v then %v", seq, one.IDs, two.IDs)
+	proof.Logf(t, "PROOF one seed, two attempts: handles %v; ids %v then %v", seq, one.IDs, two.IDs)
 }
 
 // --seed REPRODUCES A RUN: the same seed twice against the same adapter gives
@@ -984,7 +985,7 @@ func TestAWalkedClaimCarriesTheHandlesItNames(t *testing.T) {
 		}
 		return out
 	}
-	t.Logf("PROOF %d join(s) %v; %d create(s) %v",
+	proof.Logf(t, "PROOF %d join(s) %v; %d create(s) %v",
 		len(joins), shapes(joins), len(creates), shapes(creates))
 }
 
@@ -1085,7 +1086,7 @@ func TestASubornedClaimLooksLikeTheHonestOne(t *testing.T) {
 				"the honest claim", f.Ref, f.Handles)
 		}
 	}
-	t.Logf("PROOF %d planted join(s) %v; %d honest %v", len(planted), planted[0].Handles,
+	proof.Logf(t, "PROOF %d planted join(s) %v; %d honest %v", len(planted), planted[0].Handles,
 		len(honest), honest[0].Handles)
 }
 
@@ -1190,7 +1191,7 @@ default may_join := true
 		t.Errorf("declaring an observation moved the KIND sequence:\n  without %v\n  with    %v",
 			without.KindSequence(), with.KindSequence())
 	}
-	t.Logf("PROOF %d step(s), %d observation(s) with and %d without, one kind sequence %v",
+	proof.Logf(t, "PROOF %d step(s), %d observation(s) with and %d without, one kind sequence %v",
 		steps, with.Observations, without.Observations, with.KindSequence())
 }
 
@@ -1253,7 +1254,7 @@ func TestTheFirstBugEndsTheWalkAndIsCarried(t *testing.T) {
 	if len(rec.IDs) == 0 {
 		t.Error("the record carries no ids, so nothing the walk bound can be resolved")
 	}
-	t.Logf("PROOF %q at step %d of a 6-step walk; %d step(s) in the trace, %d fact(s), %d id(s)",
+	proof.Logf(t, "PROOF %q at step %d of a 6-step walk; %d step(s) in the trace, %d fact(s), %d id(s)",
 		rec.Finding.Says(), rec.FoundAt, len(rec.Steps), len(rec.Facts), len(rec.IDs))
 }
 
@@ -1378,7 +1379,7 @@ default may_join := true
 				"would report that removing it changed nothing")
 		}
 	})
-	t.Logf("PROOF original %v; full replay identical; %d-step replay is its prefix; join_event "+
+	proof.Logf(t, "PROOF original %v; full replay identical; %d-step replay is its prefix; join_event "+
 		"dropped leaves %d step(s)", original, steps-2, steps)
 }
 
@@ -1526,7 +1527,7 @@ default may_join := false
 	// a PROOF line may only contain values taken from the subject.
 	for i, m := range observes {
 		a, _ := m["args"].(map[string]any)
-		t.Logf("PROOF observe %d: query=%v args.event=%v", i+1, m["query"], a["event"])
+		proof.Logf(t, "PROOF observe %d: query=%v args.event=%v", i+1, m["query"], a["event"])
 	}
 }
 
@@ -1857,7 +1858,7 @@ func TestTheRecordCarriesTheStageItWasDispatchedAs(t *testing.T) {
 				ran.Steps[i].Actor, ran.Steps[i].Kind, none.Steps[i].Actor, none.Steps[i].Kind)
 		}
 	}
-	t.Logf("PROOF dispatched as api -> %v, as nothing -> %v, %d steps either way",
+	proof.Logf(t, "PROOF dispatched as api -> %v, as nothing -> %v, %d steps either way",
 		ran.Stages, none.Stages, len(ran.Steps))
 }
 
@@ -1933,7 +1934,7 @@ default may_join := true
 	if rec.Observations != steps {
 		t.Errorf("%d observation(s) evaluated over %d step(s)", rec.Observations, steps)
 	}
-	t.Logf("PROOF an unservable subject read %q at every one of %d step(s), and the walk did not refuse",
+	proof.Logf(t, "PROOF an unservable subject read %q at every one of %d step(s), and the walk did not refuse",
 		wire.ValueMissing, len(rec.Steps))
 }
 
@@ -2016,6 +2017,6 @@ default may_join := true
 	if rec.Observations != steps {
 		t.Errorf("%d observation(s) evaluated over %d step(s)", rec.Observations, steps)
 	}
-	t.Logf("PROOF a served subject read the number %d at every one of %d step(s), so the walk "+
+	proof.Logf(t, "PROOF a served subject read the number %d at every one of %d step(s), so the walk "+
 		"writes %q only where the adapter reported it", served, len(rec.Steps), wire.ValueMissing)
 }

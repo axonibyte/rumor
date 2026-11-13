@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // draws is enough to make a coincidence absurd rather than merely unlikely:
@@ -43,7 +44,7 @@ func TestOneSeedDrawsOneSequence(t *testing.T) {
 			t.Fatalf("draw %d differs between two Sources of seed 42: %d vs %d", i, a[i], b[i])
 		}
 	}
-	t.Logf("PROOF %d draws identical from two Sources of one seed", draws)
+	proof.Logf(t, "PROOF %d draws identical from two Sources of one seed", draws)
 }
 
 // THE OTHER SIDE, and without it the arm above passes on a generator that
@@ -63,7 +64,7 @@ func TestADifferentSeedDrawsADifferentSequence(t *testing.T) {
 	// at n=8 over 1000 draws, matching positions cluster near 125; the arm is
 	// about "not identical", and the figure is logged so a reader can see the
 	// generator is not merely offset by one.
-	t.Logf("PROOF %d of %d positions coincide between seeds 42 and 43", same, draws)
+	proof.Logf(t, "PROOF %d of %d positions coincide between seeds 42 and 43", same, draws)
 }
 
 // REPLAY IS THE WHOLE POINT: a Source re-made from a run's printed seed draws
@@ -177,7 +178,7 @@ func TestAZeroWeightIsNeverDrawn(t *testing.T) {
 			t.Fatalf("draw %d chose a kind weighted 0: a project that writes 0 has said never", i)
 		}
 	}
-	t.Logf("PROOF %d draws, none of them the zero-weighted kind", draws)
+	proof.Logf(t, "PROOF %d draws, none of them the zero-weighted kind", draws)
 }
 
 // THE CALLER'S ORDER MUST NOT CHANGE THE RUN, which is fable's D1 reasoning
@@ -202,7 +203,7 @@ func TestTheCandidateOrderDoesNotChangeTheDraw(t *testing.T) {
 				"the caller's assembly order is reaching the run", i, x, y)
 		}
 	}
-	t.Logf("PROOF %d draws identical across two orderings of one set", draws)
+	proof.Logf(t, "PROOF %d draws identical across two orderings of one set", draws)
 }
 
 // THE WEIGHTS MUST ACTUALLY BIAS, or the arm above passes on a draw that
@@ -226,7 +227,7 @@ func TestTheWeightsBiasTheDraw(t *testing.T) {
 	if heavy < 650 || heavy > 850 {
 		t.Errorf("a 3:1 weighting drew the heavy kind %d of %d times, outside [650,850]", heavy, draws)
 	}
-	t.Logf("PROOF a 3:1 weighting drew heavy %d of %d (expected about 750)", heavy, draws)
+	proof.Logf(t, "PROOF a 3:1 weighting drew heavy %d of %d (expected about 750)", heavy, draws)
 }
 
 // A NEGATIVE WEIGHT REFUSES AND A LONE CANDIDATE IS ALWAYS DRAWN -- the two

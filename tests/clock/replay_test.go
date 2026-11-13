@@ -10,6 +10,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // A REPLAY OF A CLOCKED RUN CARRIES THE CLOCK, which is the vocabulary's own
@@ -149,7 +150,7 @@ func TestTheFirstClockFactHoldsTheProfilesDeclaredStart(t *testing.T) {
 			"seal, and a seal that carried no instant judges at the epoch", first.Position)
 	}
 	if !t.Failed() {
-		t.Logf("PROOF the first clock fact at position 1 reads %dns, which is "+
+		proof.Logf(t, "PROOF the first clock fact at position 1 reads %dns, which is "+
 			"[profiles.%s].clock_start", declared, profile)
 	}
 }
@@ -261,7 +262,7 @@ func TestAReplayCarriesTheClockThroughATransition(t *testing.T) {
 				}
 			}
 			if !t.Failed() {
-				t.Logf("PROOF %s/%d reached %s, replays its finding, its %d step(s) and all "+
+				proof.Logf(t, "PROOF %s/%d reached %s, replays its finding, its %d step(s) and all "+
 					"%d of its clock facts over %d distinct instant(s)",
 					tc.profile, tc.seed, tc.day, len(original.Steps), len(want), len(instants))
 			}

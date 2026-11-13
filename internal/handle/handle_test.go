@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // THE HANDLES IN THE FIXTURES MUST BE VALID HANDLES. The shape is duplicated
@@ -99,7 +101,7 @@ func TestTheShapeAcceptsEveryHandleTheExamplesUse(t *testing.T) {
 		}
 	}
 	if !t.Failed() {
-		t.Logf("PROOF the shape accepts all %d distinct handle(s) the example packages use", len(handles))
+		proof.Logf(t, "PROOF the shape accepts all %d distinct handle(s) the example packages use", len(handles))
 	}
 }
 
@@ -300,6 +302,6 @@ func TestRequireRefusesAnAbsentHandleAsValidationAndNotAFinding(t *testing.T) {
 		t.Errorf("after re-creation Require = %q, %v", id, err)
 	}
 	if !t.Failed() {
-		t.Logf("PROOF an absent handle refuses as validation in both attempts, and resolves to the new id once re-created")
+		proof.Logf(t, "PROOF an absent handle refuses as validation in both attempts, and resolves to the new id once re-created")
 	}
 }

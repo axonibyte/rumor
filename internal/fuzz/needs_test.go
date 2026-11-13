@@ -3,6 +3,7 @@ package fuzz
 import (
 	"testing"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/setup"
 )
 
@@ -64,7 +65,7 @@ func TestTheSetupOrderIsDerivedAndTopological(t *testing.T) {
 	for _, a := range order {
 		names = append(names, a.Name)
 	}
-	t.Logf("PROOF needs %v, order %v", need, names)
+	proof.Logf(t, "PROOF needs %v, order %v", need, names)
 }
 
 // A KIND NOTHING CREATES IS REFUSED BY NAME, not skipped: a short setup would
@@ -105,7 +106,7 @@ func TestNeedsIsDrivenByTheCasesAndNotTheDeclarations(t *testing.T) {
 		t.Errorf("missing-only cases need %v, the full corpus needs %v: "+
 			"Needs is not reading the cases", got, Needs(b, all))
 	}
-	t.Logf("PROOF full corpus needs %v, missing-only needs %v", Needs(b, all), got)
+	proof.Logf(t, "PROOF full corpus needs %v, missing-only needs %v", Needs(b, all), got)
 }
 
 // THE PROVIDER CHOICE IS DECLARATION ORDER AND NOT A MAP's, so the sequence a

@@ -38,6 +38,8 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
 // TestTheEngineCarriesAZoneDatabase asks the TOOLCHAIN what the binary is built
@@ -87,7 +89,7 @@ func TestTheEngineCarriesAZoneDatabase(t *testing.T) {
 			}
 			for _, d := range deps {
 				if d == "time/tzdata" {
-					t.Logf("PROOF `go list -deps %s` carries time/tzdata among %d "+
+					proof.Logf(t, "PROOF `go list -deps %s` carries time/tzdata among %d "+
 						"package(s): %s", subject.pkg, len(deps), subject.why)
 					return
 				}

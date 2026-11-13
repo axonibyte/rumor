@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
@@ -839,7 +840,7 @@ func TestAPageNotServedIsMissingAndNotAFault(t *testing.T) {
 				if !strings.Contains(detail, "500") {
 					t.Errorf("the fault does not name the status: %q", detail)
 				}
-				t.Logf("PROOF %s", c.what)
+				proof.Logf(t, "PROOF %s", c.what)
 				return
 			}
 			if out["kind"] != "observe" {
@@ -854,7 +855,7 @@ func TestAPageNotServedIsMissingAndNotAFault(t *testing.T) {
 			if v, present := out["value"]; present && v != nil {
 				t.Errorf("the adapter wrote a value beside missing: %#v", v)
 			}
-			t.Logf("PROOF %s, and the adapter writes no value for it", c.what)
+			proof.Logf(t, "PROOF %s, and the adapter writes no value for it", c.what)
 		})
 	}
 }
@@ -930,7 +931,7 @@ func TestTheCountPatternDISCRIMINATES(t *testing.T) {
 				if !strings.Contains(detail, "#count") {
 					t.Errorf("the fault does not name what was missing: %q", detail)
 				}
-				t.Logf("PROOF %s", c.what)
+				proof.Logf(t, "PROOF %s", c.what)
 				return
 			}
 			got, ok := out["value"].(float64)
@@ -938,7 +939,7 @@ func TestTheCountPatternDISCRIMINATES(t *testing.T) {
 				t.Errorf("the value is %#v, want %v -- the pattern read the wrong candidate",
 					out["value"], c.want)
 			}
-			t.Logf("PROOF %s: read %v", c.what, got)
+			proof.Logf(t, "PROOF %s: read %v", c.what, got)
 		})
 	}
 }
@@ -997,7 +998,7 @@ func TestAToyThatStartsAndNeverPrintsIsRefusedNotWaitedFor(t *testing.T) {
 	if elapsed > 5*time.Second {
 		t.Errorf("open took %s, so it waited for the child rather than for the bound", elapsed)
 	}
-	t.Logf("PROOF a toy that starts and stays silent is refused in %s, not waited for", elapsed)
+	proof.Logf(t, "PROOF a toy that starts and stays silent is refused in %s, not waited for", elapsed)
 }
 
 // TestThePageReadersAreTheElementsAndNotThePage is ratchet's finding at coop
@@ -1102,8 +1103,8 @@ func TestThePageReadersAreTheElementsAndNotThePage(t *testing.T) {
 	// always runs, so the proof printed beside the failure that refutes it
 	// (ratchet, coop r8/184).
 	if !t.Failed() {
-		t.Logf("PROOF both readers take their own element out of a two-list page: attendees 2 of a " +
-			"page holding 6 list items, count 2 of 3, absent reads false where empty reads true, " +
+		proof.Logf(t, "PROOF both readers take their own element out of a two-list page: attendees 2 of a "+
+			"page holding 6 list items, count 2 of 3, absent reads false where empty reads true, "+
 			"and a `#count` without a capacity is not read at all")
 	}
 }

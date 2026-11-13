@@ -11,6 +11,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/concurrency"
 	"forge.axonibyte.com/axonibyte/rumor/internal/decl"
 	"forge.axonibyte.com/axonibyte/rumor/internal/platform"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback/toyrestart"
 	"forge.axonibyte.com/axonibyte/rumor/internal/schedule"
@@ -132,7 +133,7 @@ func TestTheStageContendsTheToysDeclaredSubject(t *testing.T) {
 				i+1, tr.Choices)
 			continue
 		}
-		t.Logf("PROOF try %d (%s) NOT CONTENDED -- %s", i+1, tr.Choices, why)
+		proof.Logf(t, "PROOF try %d (%s) NOT CONTENDED -- %s", i+1, tr.Choices, why)
 	}
 	// AND THE ANSWERING TRY IS THE LAST, with the plan it was issued in obeyed.
 	answered, ok := v.Answered()
@@ -176,8 +177,8 @@ func TestTheStageContendsTheToysDeclaredSubject(t *testing.T) {
 		t.Errorf("the measured half is %v; the fan-out overlapped, so it has a duration to report "+
 			"on stderr", measured)
 	}
-	t.Logf("PROOF\n%s", out)
-	t.Logf("PROOF measured (stderr only): %v", measured)
+	proof.Logf(t, "PROOF\n%s", out)
+	proof.Logf(t, "PROOF measured (stderr only): %v", measured)
 }
 
 // D1 OVER THE STAGE's OWN STREAM: two runs of one seed, on a world put back
@@ -273,5 +274,5 @@ func TestTwoRunsOfOneSeedRenderIdentically(t *testing.T) {
 		t.Errorf("two attempts of seed 7 rendered differently:\n--- first\n%s--- second\n%s",
 			first, second)
 	}
-	t.Logf("PROOF two attempts of seed 7, byte-identical:\n%s", first)
+	proof.Logf(t, "PROOF two attempts of seed 7, byte-identical:\n%s", first)
 }
