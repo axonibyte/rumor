@@ -114,7 +114,11 @@ BOUNDED_TOOLS = {
     # binaries, so the numbered spellings are listed beside the bare ones --
     # `go126` is as much a compiler as `go` is, and the jail that has one may
     # not have the other.
-    "go", "go125", "go126", "gofmt", "gofmt125", "gofmt126",
+    # go127 joined when CI moved to go1.27.4 for GO-2026-6859, and the bare
+    # spellings sit LAST in each group to match every resolver in the tree
+    # (tests/hygiene/toolchain_resolver_test.go reads this list too). A
+    # numbered spelling missing here is a compiler this checker cannot see.
+    "go127", "go126", "go125", "go", "gofmt127", "gofmt126", "gofmt125", "gofmt",
     "golangci-lint", "govulncheck",
 }
 
@@ -776,6 +780,24 @@ jobs:
           "$GO" vet ./... > ../vet.log 2>&1 || rc=$?
 """
 
+# A NUMBERED SPELLING IS A COMPILER TOO, and the allowlist must name each one.
+# go127 was invoked by CI for a day before this list knew it, so a literal
+# `go127 build` with no timeout would have passed as bounded by omission.
+NUMBERED_GO_UNBOUNDED = """
+name: ci
+on: [push]
+jobs:
+  j:
+    runs-on: freebsd-15-jail
+    timeout-minutes: 45
+    steps:
+      - name: build
+        run: |
+          set -o pipefail
+          rc=0
+          go127 build ./... > ../build.log 2>&1 || rc=$?
+"""
+
 VAR_COMMAND_BOUNDED = """
 name: ci
 on: [push]
@@ -855,6 +877,8 @@ def self_test() -> int:
         # file is to abandon the resolver the three Go spellings require.
         ("a $VAR in command position is an invocation",
          VAR_COMMAND_UNBOUNDED, ["`$GO` runs unbounded"], []),
+        ("a literal go127 with no timeout is an unbounded compiler",
+         NUMBERED_GO_UNBOUNDED, ["`go127` runs unbounded"], []),
         ("the same $VAR with a timeout is not flagged",
          VAR_COMMAND_BOUNDED, [], ["unbounded"]),
         ("a backslash continuation is one bounded command",

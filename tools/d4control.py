@@ -529,7 +529,7 @@ def main():
     # settled the order for this repo. Hard-defaulting to `go126` here would
     # make the tool refuse on a toolchain it could have used.
     ap.add_argument("--go", default="",
-                    help="go binary (default: the first of go, go126, go125 on "
+                    help="go binary (default: the first of go127, go126, go125, go on "
                          "PATH, as tools/release-gate.py resolves it)")
     ap.add_argument("--clock-the-live-toy", action="store_true",
                     help="SELF-TEST ONLY: append `[clock]` to the CLONE's "
@@ -545,16 +545,16 @@ def main():
     a = ap.parse_args()
 
     if not a.go:
-        for _cand in ("go", "go126", "go125"):
+        for _cand in ("go127", "go126", "go125", "go"):
             if shutil.which(_cand):
                 a.go = _cand
                 break
     if not a.go:
-        refuse("no go, go126 or go125 on PATH -- this control builds the "
+        refuse("no go127, go126, go125 or go on PATH -- this control builds the "
                "subject, so there is nothing to measure without a toolchain")
     if not shutil.which(a.go):
-        refuse(f"{a.go} is not on PATH; this repo's tools resolve go, go126, "
-               f"go125 in that order")
+        refuse(f"{a.go} is not on PATH; this repo's tools resolve go127, go126, "
+               f"go125, go in that order")
 
     # A FIXTURE SEAM, OPT-IN ONLY: a directory of `seed-<N>.out` and
     # `seed-<N>.rc`, read INSTEAD of cloning and running. It exists because

@@ -1167,13 +1167,13 @@ def _docs_check(repo: Path, ref: str) -> str | None:
         )
         return None
     go = None
-    for candidate in ("go", "go126", "go125"):
+    for candidate in ("go127", "go126", "go125", "go"):
         if shutil.which(candidate):
             go = candidate
             break
     if go is None:
         print(
-            "release-gate: no go, go126 or go125 on PATH; arm docs-stale "
+            "release-gate: no go127, go126, go125 or go on PATH; arm docs-stale "
             "UNMEASURED, not passed",
             file=sys.stderr,
         )

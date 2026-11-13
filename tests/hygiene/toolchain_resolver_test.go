@@ -143,3 +143,91 @@ func TestAResolverPicksTheNumberedToolchainOverABareOldOne(t *testing.T) {
 		}
 	})
 }
+
+// TestEveryListOfGoToolchainNamesInTheTreePutsTheBareNameLast is the arm the
+// two above should have been from the start. They read ci.yml ALONE, and that
+// was a narrowing nobody stated: the same bare-first order survived in
+// tag-pipeline.yml (the RELEASE build, which did not even know go127), in three
+// docs/cli.md run blocks the release gate executes, in release-gate.py's
+// docs-stale arm, in d4control.py, in two Go suites that enumerate the build,
+// and in docsrun_test.go's hint, which PRESCRIBED the old order to whoever
+// read the failure (rook, coop rumor/2002). Every one of them was a resolver
+// whose first name wins, in four languages.
+//
+// SO THIS ARM KEYS ON THE NAMES, NOT ON A LANGUAGE'S GRAMMAR. Any run of two or
+// more Go toolchain names -- `go`, or `go` and three digits -- joined only by
+// spaces, commas, quotes and brackets is a list of toolchains, whatever syntax
+// holds it; and in every such list the bare name comes last or not at all. A
+// presence probe, whose order decides nothing, is held to the same rule rather
+// than exempted: an exemption is a judgement the arm would have to make, and
+// reordering a probe costs nothing.
+var toolchainRun = regexp.MustCompile(`\bgo(?:1[0-9]{2})?\b(?:[\s,"'()\[\]{}` + "`" + `]+\bgo(?:1[0-9]{2})?\b)+`)
+var toolchainName = regexp.MustCompile(`\bgo(?:1[0-9]{2})?\b`)
+
+// treeListExempt is EXACTLY what this arm does not read, each with its reason.
+//   - this file: it quotes the defective order in prose, and its fixtures must.
+//   - docs/testing-methodology.md's one line: a case study recording what the
+//     workflows resolved AT THE TIME. Rewriting it to today's order would make
+//     the history false; it is exempt by its exact text, so a NEW occurrence
+//     anywhere in that document is still read.
+//   - CHANGELOG.md's one line: a RELEASED entry, which describes what that
+//     version shipped. Same reason, same exactness.
+var treeListExempt = map[string]string{
+	"tests/hygiene/toolchain_resolver_test.go": "",
+	"docs/testing-methodology.md":              "settled this — resolve `go go126 go125`, then",
+	"CHANGELOG.md":                             "sites and `tag-pipeline.yml` at two: resolve the first of `go`, `go126`,",
+}
+
+func TestEveryListOfGoToolchainNamesInTheTreePutsTheBareNameLast(t *testing.T) {
+	root := filepath.Join("..", "..")
+	out, err := exec.Command("git", "-C", root, "ls-files").Output()
+	if err != nil {
+		t.Fatalf("git ls-files: %v", err)
+	}
+	lists, files := 0, 0
+	for _, rel := range strings.Fields(string(out)) {
+		exemptLine, exempt := treeListExempt[rel]
+		if exempt && exemptLine == "" {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil || strings.ContainsRune(string(raw[:min(len(raw), 8000)]), 0) {
+			continue // unreadable or binary: no list of names lives there
+		}
+		files++
+		for n, line := range strings.Split(string(raw), "\n") {
+			if exempt && strings.Contains(line, exemptLine) {
+				continue
+			}
+			for _, run := range toolchainRun.FindAllString(line, -1) {
+				names := toolchainName.FindAllString(run, -1)
+				numbered := 0
+				for _, nm := range names {
+					if nm != "go" {
+						numbered++
+					}
+				}
+				if numbered == 0 {
+					continue // "go go" in prose is not a list of toolchains
+				}
+				lists++
+				for j, nm := range names {
+					if nm == "go" && j != len(names)-1 {
+						t.Errorf("%s:%d lists Go toolchains as %v with the bare name at position %d of %d: "+
+							"wherever such a list is a resolver the first name on PATH wins, so a bare `go` "+
+							"ahead of the numbered ones shadows every newer toolchain the box carries",
+							rel, n+1, names, j+1, len(names))
+					}
+				}
+			}
+		}
+	}
+	if lists == 0 {
+		t.Fatalf("read %d file(s) and found no list of Go toolchain names at all: the arm's pattern "+
+			"has stopped matching the tree, and a pass here would be a pass on nothing", files)
+	}
+	if !t.Failed() {
+		t.Logf("PROOF %d list(s) of Go toolchain names across %d tracked file(s), every one with the bare name last",
+			lists, files)
+	}
+}

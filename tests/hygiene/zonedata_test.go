@@ -105,12 +105,12 @@ func TestTheEngineCarriesAZoneDatabase(t *testing.T) {
 // the absence reported as UNMEASURED.
 func zoneGoBin(t *testing.T) string {
 	t.Helper()
-	for _, c := range []string{"go", "go126", "go125"} {
+	for _, c := range []string{"go127", "go126", "go125", "go"} {
 		if p, err := exec.LookPath(c); err == nil {
 			return p
 		}
 	}
-	t.Fatal("no go, go126 or go125 on PATH: this arm cannot enumerate a build, which is " +
+	t.Fatal("no go127, go126, go125 or go on PATH: this arm cannot enumerate a build, which is " +
 		"UNMEASURED and not a pass")
 	return ""
 }

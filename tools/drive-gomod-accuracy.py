@@ -134,8 +134,8 @@ def main(argv):
     if not (repo / WORKFLOW).is_file():
         print(f"drive-gomod-accuracy: no {WORKFLOW} under {repo}", file=sys.stderr)
         return 2
-    if not shutil.which("go") and not shutil.which("go126") and not shutil.which("go125"):
-        print("drive-gomod-accuracy: no go, go126 or go125 on PATH -- a "
+    if not any(shutil.which(c) for c in ("go127", "go126", "go125", "go")):
+        print("drive-gomod-accuracy: no go127, go126, go125 or go on PATH -- a "
               "PROVISIONING finding, and NOT a pass", file=sys.stderr)
         return 2
 

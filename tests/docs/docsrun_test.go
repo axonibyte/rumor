@@ -19,7 +19,7 @@
 // above the installed toolchain is satisfied by downloading another one, so a
 // green run is not evidence about the toolchain that was invoked.
 //
-// ci.yml resolves `go go126 go125` and exports GOTOOLCHAIN=local at 8 sites,
+// ci.yml resolves `go127 go126 go125 go` (bare name LAST) and exports GOTOOLCHAIN=local at 8 sites,
 // tag-pipeline.yml at 2. release-gate.yml does so at none -- and it is the file
 // that runs these blocks. This suite is the missing half of that pattern,
 // applied where the gate actually reaches it.
@@ -171,8 +171,8 @@ func TestNoRunBlockInvokesABareGoToolchain(t *testing.T) {
 				"The gate executes this block, and the name is absent in at least one jail and "+
 				"answers with an unpinned version in another.\n"+
 				"Resolve it the way ci.yml does, then export GOTOOLCHAIN=local:\n"+
-				"  GO=\"\"; for c in go go126 go125; do command -v \"$c\" >/dev/null 2>&1 && { GO=\"$c\"; break; }; done\n"+
-				"  test -n \"$GO\" || { echo \"no go, go126 or go125 on PATH: PROVISIONING finding\"; exit 1; }\n"+
+				"  GO=\"\"; for c in go127 go126 go125 go; do command -v \"$c\" >/dev/null 2>&1 && { GO=\"$c\"; break; }; done\n"+
+				"  test -n \"$GO\" || { echo \"no go127, go126, go125 or go on PATH: PROVISIONING finding\"; exit 1; }\n"+
 				"  export GOTOOLCHAIN=local",
 				blk.file, blk.line, name)
 		}
@@ -205,7 +205,7 @@ func TestEveryRunBlockUsingGoPinsTheToolchain(t *testing.T) {
 // comment-stripping that keeps prose ABOUT `go run` from being read as code.
 func TestBothArmsFireOnACraftedBlock(t *testing.T) {
 	const fixed = "GO=\"\"\n" +
-		"for c in go go126 go125; do\n" +
+		"for c in go127 go126 go125 go; do\n" +
 		"  command -v \"$c\" >/dev/null 2>&1 && { GO=\"$c\"; break; }\n" +
 		"done\n" +
 		"test -n \"$GO\" || exit 1\n" +

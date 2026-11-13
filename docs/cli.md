@@ -264,11 +264,11 @@ against the released tree and not adjusted by arithmetic.
 # tag-pipeline.yml at 2; release-gate.yml, the file that EXECUTES this block,
 # does it at none, so the discipline has to live here.
 GO=""
-for c in go go126 go125; do
+for c in go127 go126 go125 go; do
   command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
 done
 test -n "$GO" || {
-  echo "no go, go126 or go125 on PATH: this box has no Go toolchain, which is a PROVISIONING finding and not a code one"
+  echo "no go127, go126, go125 or go on PATH: this box has no Go toolchain, which is a PROVISIONING finding and not a code one"
   exit 1
 }
 
@@ -826,11 +826,11 @@ breaks this block, which is the intended direction.
 ```sh run
 # D14, and the two samples are checked against the tool rather than each other.
 GO=""
-for c in go go126 go125; do
+for c in go127 go126 go125 go; do
   command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
 done
 test -n "$GO" || {
-  echo "no go, go126 or go125 on PATH: a PROVISIONING finding and not a code one"
+  echo "no go127, go126, go125 or go on PATH: a PROVISIONING finding and not a code one"
   exit 1
 }
 export GOTOOLCHAIN=local
@@ -1228,11 +1228,11 @@ the engine read a transport failure where the fault was one message.
 # (release-gate.py's run_doc_blocks); the ARGUMENT for resolving the name and
 # pinning GOTOOLCHAIN is in the attaint block above and is not restated here.
 GO=""
-for c in go go126 go125; do
+for c in go127 go126 go125 go; do
   command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
 done
 test -n "$GO" || {
-  echo "no go, go126 or go125 on PATH: this box has no Go toolchain, which is a PROVISIONING finding and not a code one"
+  echo "no go127, go126, go125 or go on PATH: this box has no Go toolchain, which is a PROVISIONING finding and not a code one"
   exit 1
 }
 export GOTOOLCHAIN=local

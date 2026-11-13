@@ -99,7 +99,7 @@ jobs:
           # also left alone: an empty one is itself information, and the step is
           # already exiting non-zero.
           echo "uname   $(uname -a)"
-          for t in git go go126 go125 gofmt sha256 sha256sum ssh-keygen python3 gpg; do
+          for t in git go127 go126 go125 go gofmt sha256 sha256sum ssh-keygen python3 gpg; do
             p=$(command -v "$t" 2>/dev/null) && echo "$t  FOUND  $p" || echo "$t  ABSENT"
           done
 
@@ -327,10 +327,10 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go go126 go125; do
+          for c in go127 go126 go125 go; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
-          test -n "$GO" || { echo "no go, go126 or go125 on PATH: this jail has no Go toolchain, which is a PROVISIONING finding and not a code one. Publishing nothing."; exit 1; }
+          test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: this jail has no Go toolchain, which is a PROVISIONING finding and not a code one. Publishing nothing."; exit 1; }
           # See ci.yml for why this is a gate: under the default `auto` a go
           # directive above the installed toolchain is satisfied by silently
           # downloading another, and a release built by a compiler nobody chose
@@ -409,10 +409,10 @@ jobs:
           # artefact from a pipeline that promises only FreeBSD amd64 -- honest
           # filename, broken contract.
           GO=""
-          for c in go go126 go125; do
+          for c in go127 go126 go125 go; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
-          test -n "$GO" || { echo "no go, go126 or go125 on PATH. Publishing nothing."; exit 1; }
+          test -n "$GO" || { echo "no go127, go126, go125 or go on PATH. Publishing nothing."; exit 1; }
           export GOTOOLCHAIN=local
           rc=0
           timeout 30 uname -s > ../host-os2.txt 2>&1 || rc=$?
