@@ -36,7 +36,22 @@ type Snapshot struct {
 // so a driver that follows it leaves that content unseen.
 const ScreenshotResidue = "canvas and image pixels cannot be checked for the token, nor a closed shadow root the driver will not hand back"
 
-// Snapshot writes the actor's page into dir as name.html, and as name.png too
+// Snapshot is Capture said as one sentence, which is what the walk records on
+// the step and the run prints under its FOUND line: the files, relative to the
+// directory, then the note about the screenshot.
+func (d *Driver) Snapshot(ctx context.Context, actor, token, dir, name string, screenshot bool) (string, error) {
+	snap, err := d.Capture(ctx, actor, token, dir, name, screenshot)
+	if err != nil {
+		return "", err
+	}
+	files := snap.HTML
+	if snap.PNG != "" {
+		files += ", " + snap.PNG
+	}
+	return files + "; " + snap.Note, nil
+}
+
+// Capture writes the actor's page into dir as name.html, and as name.png too
 // when screenshot is true and the page carries no trace of the token.
 //
 // THE DOM IS REDACTED AND THE PNG CANNOT BE (coop r9/186-190). A credential in
@@ -47,7 +62,7 @@ const ScreenshotResidue = "canvas and image pixels cannot be checked for the tok
 // reach. That is the page source, every form control's LIVE value, every frame,
 // and every shadow root, because each of those was measured painting the token
 // while a narrower check read clean.
-func (d *Driver) Snapshot(ctx context.Context, actor, token, dir, name string, screenshot bool) (Snapshot, error) {
+func (d *Driver) Capture(ctx context.Context, actor, token, dir, name string, screenshot bool) (Snapshot, error) {
 	session, ok := d.sessions[actor]
 	if !ok {
 		return Snapshot{}, fmt.Errorf("no session for %q, so there is no page to snapshot", actor)

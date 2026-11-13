@@ -360,6 +360,20 @@ type Step struct {
 	// observation declares.
 	Observed int
 
+	// readings are what this step's observations returned, by source and claim,
+	// which is what decides whether a finding here keeps the page: only where a
+	// `browser` reading and the engine's `direct` one of the SAME claim
+	// disagree (fable, coop r9/197). Unexported, since the record a reader sees
+	// is the finding and its snapshot line, not the inputs.
+	readings []reading
+
+	// Snapshot is the sentence about the page kept for the finding at this
+	// step: the files written, relative to --snapshots, and what was withheld
+	// -- or that it was not kept. Empty on every step but a finding's, and on
+	// every run no browser drove. Clock-free and directory-free, so the FOUND
+	// stanza it is printed in stays byte-identical across attempts (D1).
+	Snapshot string
+
 	// Refused is why the SYSTEM declined this step, empty where it did not.
 	//
 	// THE WORDS AND NOT A FLAG, because the disagreement is what a reader of a
@@ -966,6 +980,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, br Browser,
 	// Nothing in between gets to substitute a host: there is no parameter here
 	// to put one in.
 	sessions.UseBrowser(br.Driver, sess.Described().Base)
+	sessions.UseSnapshots(br.SnapshotDir, br.Screenshots)
 	// ONE REGISTER FOR THE WHOLE ATTEMPT, for the reason the holder is one: a
 	// `pending` opened at step 2 is re-checked at the actor's next observation
 	// of the same query, which is a fact about the attempt and not about a
@@ -1054,6 +1069,13 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, br Browser,
 				f := found
 				rec.Finding = &f
 				rec.FoundAt = rec.Steps[pendAt].N
+				// THE PAGE IS KEPT WHERE THE WAIT FAILED (124 d2): a
+				// ui_timeout is about a page, and the page is still open.
+				snap, serr := sessions.snapshot(ctx, pend.Actor, seed, rec.FoundAt, nil)
+				if serr != nil {
+					return rec, fmt.Errorf("schedule: step %d: snapshotting %s's page: %w", n, pend.Actor, serr)
+				}
+				rec.Steps[pendAt].Snapshot = snap
 				// NO `stopped = true` HERE, and the linter is why rather than a
 				// preference: that flag guards the PERIODIC RECONCILIATION later
 				// in the same iteration and is never read after the loop, so
@@ -1198,6 +1220,19 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, br Browser,
 				rec.Finding = &f
 				rec.FoundAt = n
 				stopped = true
+				// THE PAGE IS KEPT WHERE THE PAGE AND THE STORE PART (124
+				// d2, narrowed by fable at coop r9/197): a step whose
+				// `browser` reading of a claim differs from the engine's
+				// `direct` reading of the same claim. A statute finding at a
+				// step that merely read through the browser is the
+				// statute's, and its page may be clean.
+				if last := &rec.Steps[len(rec.Steps)-1]; pageDisagrees(last.readings) != nil {
+					snap, serr := sessions.snapshot(ctx, last.Actor, seed, n, pageDisagrees(last.readings).at)
+					if serr != nil {
+						return rec, fmt.Errorf("schedule: step %d: snapshotting %s's page: %w", n, last.Actor, serr)
+					}
+					last.Snapshot = snap
+				}
 				break
 			}
 		}
@@ -1629,6 +1664,17 @@ func observe(ctx context.Context, statute string, sess *wire.Session, sessions *
 		if !made1 {
 			continue
 		}
+		// THE SUBJECT IS PART OF THE CLAIM: one event's count read off the
+		// page and ANOTHER event's count read from the store are not a
+		// disagreement, and the first cut compared them as one (measured,
+		// seed 11). And a browser reading keeps the page it was read from,
+		// so a snapshot can reopen THAT page rather than whichever page the
+		// actor's last observation left open.
+		r := reading{source: decl.Source, of: decl.Of, subject: fmt.Sprint(chosen), value: value}
+		if decl.Source == wire.SourceBrowser {
+			r.at, sessions.lastRead = sessions.lastRead, nil
+		}
+		step.readings = append(step.readings, r)
 		// A PENDING CLEARED MID-WALK IS D3's FIRST PATH, and it left no
 		// sentence at all until rook drove it (coop rumor/1232). All three
 		// clearing seeds cleared at the RECONCILIATION -- "after the last
@@ -1837,6 +1883,8 @@ func observeOne(ctx context.Context, statute string, sess *wire.Session, session
 		if perr != nil {
 			return engine.Finding{}, nil, false, perr
 		}
+		sessions.noteBrowserToken(actor, token)
+		sessions.lastRead = &pageRead{page: page, element: element}
 		text, children, present, rerr := br.Read(ctx, actor, base, page, element, token)
 		if rerr != nil {
 			return engine.Finding{}, nil, false, fmt.Errorf("observing %s (%s) %s through the "+
@@ -2344,6 +2392,7 @@ func resumeFlow(ctx context.Context, sess *wire.Session, sessions *Sessions,
 	// resume, or the re-check means nothing.
 	var resp wire.FlowResponse
 	if br, base := sessions.Browser(); br != nil {
+		sessions.noteBrowserToken(pend.Actor, token)
 		resp, _, err = br.Flow(ctx, pend.Actor, base, token, wire.FlowRequest{
 			Action: a.Name, Token: token, From: pend.Reached, Steps: pend.Steps,
 		})
@@ -2613,6 +2662,7 @@ func drive(ctx context.Context, sess *wire.Session, ss *Sessions, actor string,
 					"knows where its world is, so it is the one thing that can report it",
 					a.Name, wire.ContractVersion)
 			}
+			ss.noteBrowserToken(actor, token)
 			resp, detail, ferr := br.Flow(ctx, actor, base, token, wire.FlowRequest{
 				Action: a.Name, Token: token, From: from, Steps: steps,
 			})
@@ -3704,5 +3754,42 @@ func reconcileHeld(ctx context.Context, p Project, sess *wire.Session, sessions 
 	// the step order is the evidence this field exists to carry. Sorting the
 	// whole slice would destroy the one thing a reader wants from it.
 	sort.Strings((*into)[start:])
+	return nil
+}
+
+// reading is one observation's answer at a step: where it came from, which
+// claim it tests, and what it said.
+type reading struct {
+	source  wire.Source
+	of      string
+	subject string // the handles the observation was asked about, printed
+	value   any
+	at      *pageRead // for a browser reading, the page it was read from
+}
+
+// pageRead is where a browser observation was read: the page relative to the
+// adapter's base, and the element on it.
+type pageRead struct {
+	page, element string
+}
+
+// pageDisagrees answers the `browser` reading that a `direct` reading of the
+// SAME claim -- same claim type, same subject -- contradicts, or nil: what the
+// page showed against what the store holds, which is the disagreement a
+// snapshot is for. Compared as printed, because the engine converts a page's
+// text by its declared type and a direct read arrives as JSON, so 1 and 1.0
+// are the same answer.
+func pageDisagrees(rs []reading) *reading {
+	for i, b := range rs {
+		if b.source != wire.SourceBrowser {
+			continue
+		}
+		for _, d := range rs {
+			if d.source == wire.SourceDirect && d.of == b.of && d.subject == b.subject &&
+				fmt.Sprint(d.value) != fmt.Sprint(b.value) {
+				return &rs[i]
+			}
+		}
+	}
 	return nil
 }

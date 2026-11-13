@@ -1000,3 +1000,49 @@ func TestTheProbesOutcomeNeverReachesTheHashedStream(t *testing.T) {
 	}
 	proof.Logf(t, "PROOF 2 --browser-check runs differing only in the box's own outcome, stdout byte-identical at %d bytes, stderr differing", len(closedOut))
 }
+
+// THE SNAPSHOT FLAGS (issue 124's deliverable 2, coop r9/191): --snapshots
+// wants an existing directory and a browser, and --snapshot-screenshots wants
+// --snapshots, because a screenshot is kept beside the DOM and never instead of
+// it. Each refusal is named, since an accepted flag that does nothing is the
+// silent case this tree refuses.
+func TestTheSnapshotFlagsAreParsedAndRefusedByName(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "a-file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		args        []string
+		snapshots   string
+		screenshots bool
+		bad         string // a substring of the refusal, or "" for accepted
+	}{
+		{[]string{"proj"}, "", false, ""},
+		{[]string{"proj", "--browser-check", "--snapshots", dir}, dir, false, ""},
+		{[]string{"proj", "--browser-check", "--snapshots", dir, "--snapshot-screenshots"}, dir, true, ""},
+		{[]string{"proj", "--snapshots", dir}, "", false, "needs --browser-check"},
+		{[]string{"proj", "--browser-check", "--snapshot-screenshots"}, "", false, "needs --snapshots"},
+		{[]string{"proj", "--browser-check", "--snapshots", filepath.Join(dir, "absent")}, "", false, "not an existing directory"},
+		{[]string{"proj", "--browser-check", "--snapshots", file}, "", false, "not an existing directory"},
+		{[]string{"proj", "--browser-check", "--snapshots"}, "", false, "wants a directory"},
+	} {
+		_, _, _, _, _, opts, bad := parseRunArgs(c.args)
+		if c.bad != "" {
+			if !strings.Contains(bad, c.bad) {
+				t.Errorf("%v: refusal %q, want one naming %q", c.args, bad, c.bad)
+			}
+			continue
+		}
+		if bad != "" {
+			t.Errorf("%v was refused: %s", c.args, bad)
+			continue
+		}
+		if opts.snapshots != c.snapshots || opts.screenshots != c.screenshots {
+			t.Errorf("%v parsed snapshots=%q screenshots=%t", c.args, opts.snapshots, opts.screenshots)
+		}
+	}
+	if !strings.Contains(ScreenshotsHelp, "canvas and image pixels") || !strings.Contains(ScreenshotsHelp, "closed shadow root") {
+		t.Errorf("the screenshot flag's help does not name what the check cannot see: %q", ScreenshotsHelp)
+	}
+}

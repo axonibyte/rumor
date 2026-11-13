@@ -2,6 +2,8 @@ package schedule
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -48,6 +50,8 @@ type routedFlow struct {
 	readChildren int
 	readPresent  bool
 	readErr      error
+
+	snaps []snapCall
 }
 
 type readCall struct {
@@ -64,6 +68,23 @@ func (r *routedFlow) Read(_ context.Context, actor, base, page, element, token s
 		actor: actor, base: base, page: page, element: element, token: token,
 	})
 	return r.readText, r.readChildren, r.readPresent, r.readErr
+}
+
+// snapCall records a Snapshot the walk asked for, and the stub writes the DOM
+// file the real driver would, so an arm can check WHERE a name puts it.
+type snapCall struct {
+	actor, token, dir, name string
+	screenshot              bool
+	readsBefore             int // how many browser reads had happened when it was asked
+}
+
+func (r *routedFlow) Snapshot(_ context.Context, actor, token, dir, name string, screenshot bool) (string, error) {
+	r.snaps = append(r.snaps, snapCall{actor: actor, token: token, dir: dir, name: name,
+		screenshot: screenshot, readsBefore: len(r.reads)})
+	if err := os.WriteFile(filepath.Join(dir, name+".html"), []byte("<html></html>"), 0o600); err != nil {
+		return "", err
+	}
+	return name + ".html; screenshot not asked for", nil
 }
 
 type flowCall struct {

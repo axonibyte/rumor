@@ -102,7 +102,7 @@ func TestAScreenshotIsWithheldWhereverTheTokenCanBeFound(t *testing.T) {
 				}
 			}
 			dir := t.TempDir()
-			snap, err := d.Snapshot(ctx, "alice", snapTok, dir, "7-3-alice", true)
+			snap, err := d.Capture(ctx, "alice", snapTok, dir, "7-3-alice", true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -154,7 +154,7 @@ func TestTheDOMSnapshotCarriesNoToken(t *testing.T) {
 		t.Fatal("the page under test never held the token, so this arm would pass on nothing")
 	}
 	dir := t.TempDir()
-	snap, err := d.Snapshot(ctx, "alice", snapTok, dir, "7-3-alice", false)
+	snap, err := d.Capture(ctx, "alice", snapTok, dir, "7-3-alice", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,12 +181,12 @@ func TestTheDOMSnapshotCarriesNoToken(t *testing.T) {
 func TestASnapshotNameThatIsNotAPlainFileIsRefused(t *testing.T) {
 	d := &Driver{sessions: map[string]string{"alice": "s1"}}
 	for _, name := range []string{"", "../x", "a/b", ".hidden"} {
-		if _, err := d.Snapshot(context.Background(), "alice", "", t.TempDir(), name, false); err == nil ||
+		if _, err := d.Capture(context.Background(), "alice", "", t.TempDir(), name, false); err == nil ||
 			!strings.Contains(err.Error(), "plain file name") {
 			t.Errorf("name %q: %v, want a refusal naming a plain file name", name, err)
 		}
 	}
-	if _, err := d.Snapshot(context.Background(), "bob", "", t.TempDir(), "x", false); err == nil ||
+	if _, err := d.Capture(context.Background(), "bob", "", t.TempDir(), "x", false); err == nil ||
 		!strings.Contains(err.Error(), fmt.Sprintf("no session for %q", "bob")) {
 		t.Errorf("an actor with no session: %v", err)
 	}

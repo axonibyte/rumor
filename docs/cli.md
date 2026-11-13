@@ -442,6 +442,7 @@ go test ./tests/attaint/ -v
 
 ```
 rumor run PROJECT [--seed N] [--steps N] [--headed] [--browser-check]
+          [--snapshots DIR [--snapshot-screenshots]]
 ```
 
 Walks the project: draws an actor, draws what it does from the actions its
@@ -486,6 +487,33 @@ costs a browser launch on every run. It makes the `browser` stage actually
 start the pair it found and open a session, which is the only way to tell a pair
 that is PRESENT from one that RUNS. Without it the stage reports the pair and
 says plainly that whether it runs here is unknown.
+
+`--snapshots DIR` keeps the page a finding was about (issue 124's deliverable
+2). DIR must already exist, and the flag needs `--browser-check`, because
+without a browser no step has a page to keep. A page is kept on a `ui_timeout`,
+and on a step where a `browser` observation and the engine's `direct`
+observation of the same claim, on the same subject, disagree. A statute finding
+on a page that agrees with the store keeps nothing. The FOUND stanza gains one
+line naming the files RELATIVE to DIR, so one seed written to two directories
+prints the same stdout:
+
+```
+run:   snapshot -- 40-16-guest_1.html; screenshot not asked for
+```
+
+The file is `seed-step-actor.html`: the page the disagreeing reading came
+from, reopened after the finding and written with the actor's token redacted.
+An actor name that is not a plain file name is escaped into one. Without the
+flag, a finding that would have kept a page says `snapshot not kept: no
+--snapshots`.
+
+`--snapshot-screenshots` also keeps `seed-step-actor.png`, and needs
+`--snapshots`. A screenshot is pixels and cannot be redacted, so it is
+WITHHELD, and the line says where, if the token is anywhere a check reaches.
+The places checked are the page source, any form control's live value, any
+frame, and any shadow root. Asked for, the flag says on stderr what that check
+cannot see: canvas and image pixels, and a closed shadow root the driver will
+not hand back.
 
 | status | meaning |
 |---|---|

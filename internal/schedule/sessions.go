@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
@@ -62,6 +63,16 @@ type Sessions struct {
 	browser FlowDriver
 	base    string
 
+	// snapDir and screens are the run's snapshot request, and pageToken is the
+	// token each actor's browser session last carried: the walk drives the
+	// page with it, so it is the one a snapshot must redact and check for.
+	snapDir   string
+	screens   bool
+	pageToken map[string]string
+	// lastRead is the page the browser was just asked to read, handed to the
+	// observation that asked so it can keep it (walk.go, reading.at).
+	lastRead *pageRead
+
 	// acquired counts the `session` exchanges actually sent, which is how a
 	// test can tell "held and reused" from "asked for again": the token
 	// returned is identical either way, so a cache that never cached would be
@@ -114,6 +125,13 @@ type FlowDriver interface {
 	// requires the other.
 	Read(ctx context.Context, actor, base, page, element, token string) (
 		text string, children int, present bool, err error)
+
+	// Snapshot writes the actor's page into dir as name.html, and name.png when
+	// screenshot is asked and safe, and answers the sentence naming what it
+	// wrote and what it withheld (issue 124's deliverable 2, coop r9/191). The
+	// token is what the DOM is redacted of and what the screenshot is checked
+	// against.
+	Snapshot(ctx context.Context, actor, token, dir, name string, screenshot bool) (string, error)
 }
 
 // Browser is the live browser a walk drives flows through, as the stage that
@@ -128,6 +146,14 @@ type FlowDriver interface {
 // that reports none is a named refusal at the walk, not a default.
 type Browser struct {
 	Driver FlowDriver
+
+	// SnapshotDir is where a finding's page is written (`--snapshots`), empty
+	// when the run did not ask -- and then the finding says the snapshot was
+	// not kept, rather than saying nothing (coop r9/191).
+	SnapshotDir string
+	// Screenshots asks for a PNG beside the DOM (`--snapshot-screenshots`),
+	// which the driver still withholds wherever the token is on the page.
+	Screenshots bool
 }
 
 // NewSessions holds tokens against one adapter session.
@@ -139,6 +165,49 @@ func NewSessions(sess *wire.Session) *Sessions {
 // `navigate` steps resolve against. Called once, before the walk begins.
 func (s *Sessions) UseBrowser(d FlowDriver, base string) {
 	s.browser, s.base = d, base
+}
+
+// UseSnapshots records where a finding's page is written and whether a
+// screenshot is asked for. Called once, beside UseBrowser.
+func (s *Sessions) UseSnapshots(dir string, screens bool) {
+	s.snapDir, s.screens = dir, screens
+}
+
+// noteBrowserToken remembers the token the actor's browser session carried.
+func (s *Sessions) noteBrowserToken(actor, token string) {
+	if s.pageToken == nil {
+		s.pageToken = map[string]string{}
+	}
+	s.pageToken[actor] = token
+}
+
+// snapshot is the sentence a finding's step carries about its page: what was
+// written, or why nothing was. Empty when no browser drove this run, since then
+// there is no page and nothing to say about one.
+//
+// at, when given, is the page the disagreeing reading came from, and it is
+// REOPENED first: the actor's browser shows whichever page its last
+// observation left, which need not be the one that disagreed. So the snapshot
+// is that page as it reads just after the finding -- the walk has stopped, so
+// nothing has acted on the world in between.
+func (s *Sessions) snapshot(ctx context.Context, actor string, seed uint64, step int, at *pageRead) (string, error) {
+	if s.browser == nil {
+		return "", nil
+	}
+	if s.snapDir == "" {
+		return "snapshot not kept: no --snapshots", nil
+	}
+	// THE ACTOR IS PROJECT TEXT GOING INTO A FILE NAME (rook, coop r9/196), so
+	// it is escaped: a name holding "/" or ".." becomes one plain file inside
+	// the directory, never a path out of it. Escaped rather than refused,
+	// because a refusal here would turn a finding into a run that failed.
+	name := fmt.Sprintf("%d-%d-%s", seed, step, url.PathEscape(actor))
+	if at != nil {
+		if _, _, _, err := s.browser.Read(ctx, actor, s.base, at.page, at.element, s.pageToken[actor]); err != nil {
+			return "", fmt.Errorf("reopening %s to snapshot it: %w", at.page, err)
+		}
+	}
+	return s.browser.Snapshot(ctx, actor, s.pageToken[actor], s.snapDir, name, s.screens)
 }
 
 // Browser is the live browser and its base address, or a nil driver when the

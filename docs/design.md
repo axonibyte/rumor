@@ -1869,9 +1869,27 @@ No script is run in the page to do any of it. **What it cannot see** is named
 in every kept screenshot's note: canvas and image pixels, and a closed shadow
 root the driver will not hand back. chromedriver 156 hands one back (measured);
 the WebDriver spec says a driver should not, so on a driver that follows the
-spec that content goes unseen. The walk that takes a snapshot on a finding, the
-`--snapshots` directory, and the finding's sentence are the next unit, and the
-lead's clear.
+spec that content goes unseen.
+
+**THE WALK TAKES THE SNAPSHOT, AND ONLY WHERE PAGE AND STORE PART** (fable,
+coop r9/191 and r9/197). The walk holds each actor's token, which redaction
+needs, so the snapshot is taken there and not by the command. It happens on a
+`ui_timeout`, and on a stopping finding at a step where a `browser` reading and
+a `direct` reading of the SAME claim on the SAME subject differ. Two lessons
+from the first cut shaped that sentence. It matched on the claim type alone, so
+on seed 11 one event's page and ANOTHER event's store were read as a
+disagreement. And it kept whichever page the step's last observation had left
+open. So each reading now carries its subject, and a browser reading carries
+the page it came from, which the snapshot reopens first. A statute finding at a
+step that merely read through the browser keeps nothing, because its page may
+be clean. The file names are relative to `--snapshots` and the line is
+clock-free, so the FOUND stanza stays byte-identical across attempts and
+directories (rook, r9/196).
+
+**NOT HELD END TO END: the `ui_timeout` snapshot.** The toy's only flow ends
+in a wait that always comes true, so no run here reaches a browser-driven
+`ui_timeout`. The hook is three lines beside the one that is held, and it
+calls the same snapshot.
 
 ## A fan-out is N processes against one world
 
