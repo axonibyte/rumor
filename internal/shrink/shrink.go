@@ -2,6 +2,7 @@ package shrink
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -39,6 +40,17 @@ type Request struct {
 	// candidate still holding a `pending` would be compared as though it had
 	// finished -- a reduction nobody waited for.
 	Replay func(ctx context.Context, steps int, without []string) (Candidate, error)
+
+	// MaxCandidates bounds how many candidates the shrink replays, the gate
+	// included (issue 124's deliverable 4, fable's ruling at coop r9/204).
+	// Zero is no bound, which is what this package's own arms take.
+	//
+	// A COUNT AND NOT A CLOCK, so one seed shrinks to the same reproduction on
+	// any box: a time budget would let a busy box decide how far a shrink got,
+	// which R9 rules out (r9/1). A shrink that reaches the count STOPS where it
+	// is and says how far it got -- never a silent timeout read as "not
+	// reproducible".
+	MaxCandidates int
 }
 
 // Result is what a shrink established.
@@ -81,7 +93,19 @@ type Result struct {
 	// holding what the caller needs while nothing asks, which is cmd/rumor's
 	// own R5.5 defect one layer in.
 	AttributionCompared bool
+
+	// Stopped says the shrink reached its candidate budget before it
+	// finished. Reduction and Kinds then hold the smallest reproduction
+	// established so far -- every length and every removed kind in them was
+	// RUN and reproduced -- and Trace is empty, since the final replay that
+	// would produce it is a candidate the budget did not allow.
+	Stopped bool
+	// Budget is the candidate count it stopped at.
+	Budget int
 }
+
+// ErrBudget is what a candidate past the budget answers in place of running.
+var ErrBudget = errors.New("shrink: the candidate budget is spent")
 
 // Render writes the result as the lines an operator reads: what the gate
 // decided, and then the trace.
@@ -101,6 +125,19 @@ type Result struct {
 // r5/203). The line reports what was compared, and the operator decides.
 func (r Result) Render() string {
 	var b strings.Builder
+	if r.Stopped {
+		// HOW FAR IT GOT, AND NEVER "NOT REPRODUCIBLE": the gate reproduced
+		// the failure, so a shrink that ran out of candidates has a smaller
+		// reproduction or the original, and says which.
+		fmt.Fprintf(&b, "shrink: STOPPED AT ITS BUDGET -- %d of %d candidate(s) tried; the smallest "+
+			"reproduction so far is the first %d of %d step(s), each candidate replayed on a "+
+			"verified clean world; raise shrink_candidates to go further\n",
+			r.Probes, r.Budget, r.Reduction.Steps, r.From)
+		if len(r.Kinds.Removed) > 0 {
+			fmt.Fprintf(&b, "shrink: without %s\n", strings.Join(r.Kinds.Removed, ", "))
+		}
+		return b.String()
+	}
 	if !r.Stable {
 		// NOTHING ELSE WAS ATTEMPTED, so there is no trace to render: the gate
 		// refused and design.md marks the seed unstable rather than shrinking
@@ -194,6 +231,27 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 
 	var probes int
 
+	// THE COUNT IS KEPT AT THE ONE DOOR EVERY CANDIDATE PASSES THROUGH, so no
+	// phase can spend past it and no phase needs to know it exists: a
+	// candidate past the count answers ErrBudget instead of running.
+	if req.MaxCandidates > 0 {
+		inner, ran := req.Replay, 0
+		req.Replay = func(c context.Context, steps int, without []string) (Candidate, error) {
+			if ran >= req.MaxCandidates {
+				return Candidate{}, ErrBudget
+			}
+			ran++
+			return inner(c, steps, without)
+		}
+	}
+	stopped := func(red Reduction, kr KindReduction) (Result, error) {
+		if red.Steps == 0 {
+			red.Steps = len(req.Steps) // the gate reproduced at full length and no shorter was run
+		}
+		return Result{Stable: true, Stopped: true, Budget: req.MaxCandidates, Reduction: red, Kinds: kr,
+			From: len(req.Steps), Probes: req.MaxCandidates}, nil
+	}
+
 	// 1. THE GATE.
 	v, err := Once(ctx, req.Provider, req.Checkpoint, req.Want,
 		func(c context.Context) (Candidate, error) {
@@ -214,6 +272,9 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 			return req.Replay(c, steps, nil)
 		})
 	probes += red.Probes
+	if errors.Is(err, ErrBudget) {
+		return stopped(red, KindReduction{})
+	}
 	if err != nil {
 		return Result{Stable: true, Reduction: red, From: len(req.Steps), Probes: probes,
 			AttributionCompared: v.AttributionCompared}, err
@@ -226,6 +287,9 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 			return req.Replay(c, red.Steps, without)
 		})
 	probes += kr.Probes
+	if errors.Is(err, ErrBudget) {
+		return stopped(red, kr)
+	}
 	if err != nil {
 		return Result{Stable: true, Reduction: red, Kinds: kr, From: len(req.Steps), Probes: probes,
 			AttributionCompared: v.AttributionCompared}, err
@@ -261,6 +325,9 @@ func Shrink(ctx context.Context, req Request) (Result, error) {
 			return cand, rerr
 		})
 	probes++
+	if errors.Is(err, ErrBudget) {
+		return stopped(red, kr)
+	}
 	if err == nil && !fv.Reproduced {
 		// THE REDUCTIONS SAID THIS SHAPE REPRODUCES AND NOW IT DOES NOT, which
 		// is a contradiction and not a shrink: reporting the trace anyway would

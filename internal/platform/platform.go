@@ -101,7 +101,35 @@ type Stage struct {
 	// prevent -- so the period is declared, counted in steps, and the
 	// evidence it leaves is a count and an order rather than an elapsed time.
 	ReconcileEvery int
+
+	// ShrinkCandidates is `[stages.<name>].shrink_candidates`: how many
+	// candidates a shrink of this stage's finding may replay before it stops
+	// where it got to (issue 124's deliverable 4, fable's ruling at coop
+	// r9/204). Absent, it is DefaultShrinkCandidates.
+	//
+	// A COUNT AND NOT A DURATION, for ReconcileEvery's reason above: one seed
+	// must shrink to the same reproduction on any box, and a clock would let a
+	// slower box stop sooner.
+	ShrinkCandidates int
 }
+
+// DefaultShrinkCandidates is a stage's shrink budget when it declares none.
+//
+// READ FROM THE TOY'S OWN SHRINKS, measured 2026-11-13 (coop r9/205): the
+// promoted seeds needed 6 to 15 candidates (walking 2 and 40: 8 and 7; settling
+// 12: 15; expiring 3: 14; dst-spring 1 and dst-fall 2: 6 each), and the viewing
+// and clicking bugs 10 to 14. The largest is 15, settling 12 reducing 24 steps
+// to 19. 32 is about twice that, so every shrink the ledger's bugs needed
+// finishes under the default with room, and a longer trace still stops rather
+// than running on.
+//
+// WHAT IT COSTS UNDER A BROWSER, measured the same day: a candidate is a walk
+// plus one session per actor, 1.1-1.4s a session quiet and 1.9-2.6s loaded, so
+// about 30s a candidate on a loaded 4-core box and 32 of them about 15 minutes.
+// Nothing ends a shrink sooner than its count -- `rumor run` has no clock (R15
+// owns budgets, coop r9/206-208) -- so a project that cannot spend that lowers
+// the number, and the shrink says how far it got.
+const DefaultShrinkCandidates = 32
 
 // Weights are the walk's weights: a complete default table and sparse
 // overrides per stage and per profile.
@@ -501,8 +529,20 @@ func Parse(doc map[string]any) Report {
 		for _, name := range stages.Keys() {
 			s, _ := stages.Table(name, true)
 			st := Stage{
-				Enabled:        s.Bool("enabled", true),
-				ReconcileEvery: s.Int("reconcile_every", false),
+				Enabled:          s.Bool("enabled", true),
+				ReconcileEvery:   s.Int("reconcile_every", false),
+				ShrinkCandidates: DefaultShrinkCandidates,
+			}
+			// UNDER ONE IS REFUSED BY NAME: the gate is a candidate, so a
+			// budget of 0 would stop every shrink before it learned whether the
+			// failure reproduces at all, and say so as if it had tried.
+			if s.Has("shrink_candidates") {
+				st.ShrinkCandidates = s.Int("shrink_candidates", false)
+				if st.ShrinkCandidates < 1 {
+					s.Refuse("shrink_candidates", fmt.Sprintf(
+						"%d: the replay gate is itself a candidate, so a shrink needs at least 1",
+						st.ShrinkCandidates))
+				}
 			}
 			// A NEGATIVE PERIOD IS REFUSED BY NAME rather than clamped: `n %
 			// period` with a negative period never equals 0, so the stage

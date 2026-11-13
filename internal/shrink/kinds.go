@@ -2,6 +2,7 @@ package shrink
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -85,6 +86,11 @@ func RemoveKinds(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoi
 		v, err := Once(ctx, pr, cp, want, func(c context.Context) (Candidate, error) {
 			return run(c, candidate)
 		})
+		if errors.Is(err, ErrBudget) {
+			// What was removed so far was run without and reproduced.
+			out.Removed = removed
+			return out, err
+		}
 		if err != nil {
 			return out, fmt.Errorf("shrink: the candidate without %s: %w",
 				strings.Join(candidate, ", "), err)

@@ -1891,6 +1891,44 @@ in a wait that always comes true, so no run here reaches a browser-driven
 `ui_timeout`. The hook is three lines beside the one that is held, and it
 calls the same snapshot.
 
+**THE SHRINK REPLAYS THROUGH THE BROWSER, AND STOPS AT A COUNT** (issue 124's
+deliverable 4, fable's ruling at coop r9/204). The shrinker replayed through
+the adapter even under `--browser-check`, a remainder its own comment named.
+So a defect that lived in the document could fail to reproduce, and the seed
+would go unnarrowed. Each candidate now replays through the walk's browser,
+after `Driver.Reset`, which closes every session and forgets the old world's
+address. Each candidate's world is restored to the checkpoint, so an old
+session would carry cookies from a world that no longer exists. Measured, a
+session open costs 1.1-1.4s quiet and 1.9-2.6s loaded, one per actor. On seed
+40 the 13 candidates reduce 16 steps to 9 through the browser exactly as they
+do through the adapter, in about 100s against about 18s.
+
+The budget is `shrink_candidates`, declared per stage, with a default of 32.
+It is a count and not a clock, so a seed stops at the same place on any box.
+A time budget would let load decide how far a shrink got, which R9 rules out.
+The count is kept at the one door every candidate passes, the replay
+function. A candidate past it answers `ErrBudget` without running.
+`Bisect`'s invariant, that its upper bound has always been run and
+reproduced, makes the length it holds at that moment an answer and not an
+inference. **There is no backstop clock**: `rumor run` has none, and R15 owns
+budgets (coop r9/206-208), so a shrink runs as long as its count takes.
+
+**THE FORM A CLOCK-ENDED SHRINK MUST TAKE, OWNED BY R15 AND NOT WRITTEN YET**
+(fable, coop r9/219, on rook r9/213). When R15 gives a run a wall-clock
+budget, a shrink that budget ends must end as PARTIAL, never as not
+reproducible. It says how many candidates it tried and the smallest
+reproduction so far, in the stopped shrink's shape:
+
+```
+shrink: PARTIAL -- k of N candidate(s) tried before the run's budget ended it;
+the smallest reproduction so far is the first M of T step(s)
+```
+
+That line is NOT in the code. An unreached line is checked against nothing: a
+mutant deleting it survives every run, so its wording would be wrong in some
+detail the day it became reachable. R15 cuts it, together with the arm that
+drives it.
+
 ## A fan-out is N processes against one world
 
 **TWO REQUESTS IN FLIGHT IS THE ONLY WAY A CHECK-THEN-ACT DEFECT CAN BE

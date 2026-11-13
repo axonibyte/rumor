@@ -48,7 +48,39 @@ import (
 // print and return a refusal rather than a could-not-run: the declarations say
 // a world can be put back and the pieces to do it are missing or ambiguous.
 func shrinkFound(ctx context.Context, dir string, prep platform.Report, p schedule.Project,
-	probes []bindings.Probe, seed uint64, rec schedule.Record, stdout io.Writer) (int, error) {
+	probes []bindings.Probe, br schedule.Browser, seed uint64, rec schedule.Record, stdout io.Writer) (int, error) {
+
+	// THE BROWSER COMES TOO, and each candidate gets fresh sessions (issue
+	// 124's deliverable 4). A finding the walk made through a page is
+	// reproduced through a page; replaying it through the adapter's simulation
+	// could fail to reproduce a defect that lived in the document, and the
+	// shrink would report a seed it could not narrow. Fresh, because each
+	// candidate's world is restored to the checkpoint and a session from the
+	// last candidate carries cookies a vanished world issued.
+	var reset func(context.Context) error
+	budgetStage := "api"
+	if br.Driver != nil {
+		r, ok := br.Driver.(interface{ Reset(context.Context) error })
+		if !ok {
+			return 2, fmt.Errorf("the run's browser cannot reset its sessions between candidates, and " +
+				"reusing them would replay each candidate with the last one's cookies")
+		}
+		reset = r.Reset
+		// THE BROWSER STAGE'S BUDGET, where the walk drove a browser: its
+		// candidates cost a session per actor, and the ruling makes that
+		// budget the browser's own and declared (coop r9/204).
+		if _, declared := prep.Platform.Stages["browser"]; declared {
+			budgetStage = "browser"
+		}
+	}
+	openedBefore := 0
+	if o, ok := br.Driver.(interface{ Opened() int }); ok {
+		openedBefore = o.Opened()
+	}
+	budget := platform.DefaultShrinkCandidates
+	if st, ok := prep.Platform.Stages[budgetStage]; ok {
+		budget = st.ShrinkCandidates
+	}
 
 	// WHICH PROVIDER OWNS THE WORLD IS ONE QUESTION WITH TWO ASKERS NOW, so
 	// the reading lives in soleProvider and this call site owns only its own
@@ -167,8 +199,15 @@ func shrinkFound(ctx context.Context, dir string, prep platform.Report, p schedu
 		// that gets checked in (ratchet's write-once point, coop r6/15), so
 		// what goes in it is for whoever is adding to the suite -- not for
 		// whatever happened to run last.
-		SeedsFile: "",
+		SeedsFile:     "",
+		MaxCandidates: budget,
 		Replay: func(c context.Context, steps int, without []string) (shrink.Candidate, error) {
+			if reset != nil {
+				if rerr := reset(c); rerr != nil {
+					return shrink.Candidate{}, fmt.Errorf("resetting the browser's sessions "+
+						"before a candidate: %w", rerr)
+				}
+			}
 			s, oerr := sessionNow()
 			if oerr != nil {
 				return shrink.Candidate{}, fmt.Errorf("re-opening the adapter on the "+
@@ -192,15 +231,11 @@ func shrinkFound(ctx context.Context, dir string, prep platform.Report, p schedu
 				}
 				proj.Prober = pr
 			}
-			// THE SHRINKER REPLAYS THROUGH THE ADAPTER, AND THAT IS A NAMED
-			// REMAINDER rather than a decision. A browser-driven failure
-			// shrunk here re-drives the adapter's simulation of the page, so a
-			// finding that depended on the document may not reproduce and the
-			// shrink would report a seed it could not narrow. Threading the
-			// stage's browser into the shrink is deliverable 2's successor's,
-			// not this head's: the shrink opens its own sessions and owns no
-			// browser, so there is nothing here to hand it yet.
-			f, ran, open, rerr := schedule.Replay(c, proj, s, schedule.Browser{},
+			// THROUGH THE WALK'S BROWSER WHERE THERE WAS ONE, which closes the
+			// remainder this comment used to name (124 d4): the zero Browser
+			// replays through the adapter, as every run without one always
+			// has. No snapshots: a candidate is not a finding a reader keeps.
+			f, ran, open, rerr := schedule.Replay(c, proj, s, schedule.Browser{Driver: br.Driver},
 				seed, 1, steps, without)
 			if rerr != nil {
 				return shrink.Candidate{Steps: ran, PendingOpen: open}, rerr
@@ -220,6 +255,18 @@ func shrinkFound(ctx context.Context, dir string, prep platform.Report, p schedu
 	}
 	if _, err := io.WriteString(stdout, res.Render()); err != nil {
 		return 2, err
+	}
+	// AND IT SAYS IT WENT THROUGH THE BROWSER, with the driver's own count
+	// as the witness: the reduction's lines read the same whichever way the
+	// candidates were replayed, so without this a shrink that quietly fell
+	// back to the adapter would be indistinguishable. The count is the
+	// driver's, not this function's, and a seed's candidates open the same
+	// sessions every time, so the line is as replayable as the rest (D1).
+	if o, ok := br.Driver.(interface{ Opened() int }); ok {
+		if _, err := fmt.Fprintf(stdout, "shrink: replayed through the browser, %d session(s) opened, "+
+			"fresh for every candidate\n", o.Opened()-openedBefore); err != nil {
+			return 2, err
+		}
 	}
 	return 0, nil
 }

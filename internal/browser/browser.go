@@ -111,6 +111,11 @@ type Driver struct {
 	// same session and two actors can never be handed one.
 	sessions map[string]string
 
+	// opened counts the sessions this driver has opened over its life, which
+	// is what lets a caller SHOW that work went through the browser: a shrink
+	// that replayed through the adapter instead opens none (124 d4).
+	opened int
+
 	// bidi is each actor's WebDriver BiDi URL, which its session answered with
 	// because capabilities() asks for one. Empty for a driver that offers none,
 	// which WatchFor refuses by name rather than watching in silence.
@@ -404,6 +409,7 @@ func (d *Driver) SessionFor(ctx context.Context, actor string) (string, error) {
 	}
 	d.sessions[actor] = out.Value.SessionID
 	d.bidi[actor] = out.Value.Capabilities.WebSocketURL
+	d.opened++
 	return out.Value.SessionID, nil
 }
 
@@ -466,6 +472,35 @@ func (d *Driver) Close(ctx context.Context) error {
 		delete(d.sessions, actor)
 	}
 	d.stopProcess()
+	if len(failed) > 0 {
+		return fmt.Errorf("%d session(s) would not close: %s", len(failed), strings.Join(failed, "; "))
+	}
+	return nil
+}
+
+// Opened is how many sessions this driver has opened since it started.
+func (d *Driver) Opened() int { return d.opened }
+
+// Reset deletes every session and forgets what this driver knew about the world,
+// keeping the driver process running: the next SessionFor opens a fresh
+// session with an empty cookie jar.
+//
+// IT IS WHAT A SHRINK CANDIDATE NEEDS (issue 124's deliverable 4). Each
+// candidate replays on a world restored to the checkpoint, and an actor whose
+// session survived from the previous candidate would carry cookies a world that
+// no longer exists issued -- and a restore rebinds the port, so the cached
+// "something answers there" is about a different address too. Restarting the
+// driver would do it as well and cost a process per candidate; this costs a
+// session per actor, which is the measured price (1.1-1.4s each quiet).
+func (d *Driver) Reset(ctx context.Context) error {
+	var failed []string
+	for _, actor := range d.Actors() {
+		id := d.sessions[actor]
+		if err := d.call(ctx, http.MethodDelete, "/session/"+id, nil, nil); err != nil {
+			failed = append(failed, fmt.Sprintf("%s (%s): %v", actor, id, err))
+		}
+	}
+	d.sessions, d.bidi, d.worlds = map[string]string{}, map[string]string{}, map[string]error{}
 	if len(failed) > 0 {
 		return fmt.Errorf("%d session(s) would not close: %s", len(failed), strings.Join(failed, "; "))
 	}

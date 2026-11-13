@@ -23,7 +23,16 @@ var snapLine = regexp.MustCompile(`(?m)^run:   snapshot -- (.*)$`)
 
 func snapRun(t *testing.T, seed string, extra ...string) (string, string) {
 	t.Helper()
-	args := append([]string{"run", "../../examples/toy", "--profile", snapProfile,
+	return snapRunIn(t, toyWithAGateOnlyBrowserShrink(t), seed, extra...)
+}
+
+// snapRunIn is snapRun against a named project. The snapshot arms take the
+// gate-only toy (cheapshrink_test.go), since what they assert is the page and
+// not the shrink, so THE SNAPSHOT ARMS DO NOT PROVE THE BROWSER SHRINK. The
+// browser-shrink arm takes the toy as shipped.
+func snapRunIn(t *testing.T, project, seed string, extra ...string) (string, string) {
+	t.Helper()
+	args := append([]string{"run", project, "--profile", snapProfile,
 		"--seed", seed, "--steps", snapSteps, "--browser-check"}, extra...)
 	out, errb, code := run(t, args...)
 	skipWithoutAPair(t, out, errb)

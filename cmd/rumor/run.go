@@ -722,7 +722,7 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 		// does not make a found bug unfound, and a gate reading the refusal's 1
 		// would lose a finding it exists to catch. The refusal prints, so the
 		// reader is told why there is no minimal trace.
-		if st, serr := shrinkFound(ctx, dir, prep, p, probes, seed, rec, stdout); serr != nil {
+		if st, serr := shrinkFound(ctx, dir, prep, p, probes, br, seed, rec, stdout); serr != nil {
 			_, _ = fmt.Fprintf(stderr, "run: could not shrink: %v\n", serr)
 			_ = st
 		}

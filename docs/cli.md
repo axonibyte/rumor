@@ -718,6 +718,37 @@ a reduction rests on is the reader's to weigh. `examples/toy` declares
 `rests_on_planted`, so nothing shipped here prints this line; a project of your
 own that does not declare it will.
 
+**A shrink stops at its budget and says how far it got** (issue 124's
+deliverable 4). `[stages.<name>].shrink_candidates` bounds how many candidates a
+shrink replays, the replay gate included. It defaults to 32, about twice the
+largest any of the toy's bugs needed (15), and is refused under 1. It is a
+COUNT and not a time, so one seed stops at the same place on any box. A shrink
+that reaches it prints, in place of the report above (the toy's `walking` seed
+2 with its api stage allowed 3, where it needs 8):
+
+```
+shrink: STOPPED AT ITS BUDGET -- 3 of 3 candidate(s) tried; the smallest
+reproduction so far is the first 4 of 4 step(s), each candidate replayed on a
+verified clean world; raise shrink_candidates to go further
+```
+
+Every length it names was run and reproduced, so a stopped shrink still has
+the failure. It never reads as "not reproducible". `rumor run` has no wall
+clock to end a shrink sooner (R15 owns budgets), so a shrink runs as long as
+its count takes.
+
+**Under `--browser-check` the shrink replays through the browser**, with fresh
+sessions for every candidate, so a failure the walk found through a page is
+narrowed through a page. The budget it takes is the `browser` stage's. A
+candidate then costs a walk plus a session per actor, about 1-2.5s each, so a
+shrink that takes seconds through the adapter takes minutes through a browser.
+The report gains a line whose figure is the driver's own count, since the
+reduction reads the same either way (`viewing` seed 40, 13 candidates):
+
+```
+shrink: replayed through the browser, 27 session(s) opened, fresh for every candidate
+```
+
 **Nothing is promoted by a run.** A shrink here is for a report; writing a seed
 into the project's `seeds.lock` is a decision for whoever is adding to the
 regression suite, not a side effect of whatever ran last.

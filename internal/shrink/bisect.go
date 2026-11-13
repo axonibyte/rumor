@@ -2,6 +2,7 @@ package shrink
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/rollback"
@@ -98,6 +99,12 @@ func Bisect(ctx context.Context, pr rollback.Provider, cp rollback.Checkpoint,
 	for lo < hi {
 		mid := lo + (hi-lo)/2
 		ok, err := reproduces(mid)
+		if errors.Is(err, ErrBudget) {
+			// hi HAS BEEN RUN AND REPRODUCED, which is the invariant above,
+			// so it is the smallest reproduction established when the budget
+			// stopped the search -- an answer, not an inference.
+			return Reduction{Steps: hi, Probes: probes, Found: hi < n}, err
+		}
 		if err != nil {
 			return Reduction{Probes: probes}, err
 		}

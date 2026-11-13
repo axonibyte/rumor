@@ -29,7 +29,9 @@ var theFlowCounts = regexp.MustCompile(`(\d+) step\(s\) through ` + "`flow`" + `
 // address anywhere in that chain cannot produce this count -- the navigate
 // would land nowhere and the flow would stop or refuse.
 func TestAWalkDrivesADeclaredFlowThroughARealBrowser(t *testing.T) {
-	out, errb, code := run(t, "run", "../../examples/toy",
+	// The gate-only toy (cheapshrink_test.go): this run finds, and its shrink
+	// stops at the gate, so THIS ARM DOES NOT PROVE THE BROWSER SHRINK.
+	out, errb, code := run(t, "run", toyWithAGateOnlyBrowserShrink(t),
 		"--profile", "clicking", "--seed", "7", "--steps", "20", "--browser-check")
 
 	// A BOX WITHOUT A DRIVABLE PAIR SKIPS BY NAME, carrying the reason the
