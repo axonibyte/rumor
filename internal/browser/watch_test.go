@@ -89,7 +89,8 @@ func realWatch(t *testing.T, token string, h http.HandlerFunc) (context.Context,
 	}
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	// 180s: the rate arm dwells 15s on each of five pages (rate_test.go).
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	t.Cleanup(cancel)
 	d, err := Start(ctx, driver, browserBin, true)
 	if err != nil {

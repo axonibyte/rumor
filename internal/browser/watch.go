@@ -18,7 +18,7 @@ import (
 // MEANS. What is decided here is what COUNTS as one, because that is a fact
 // about the protocol and not about a verdict.
 type Fault struct {
-	// Kind is "console" or "response".
+	// Kind is "console", "response", or "rate" (rate.go).
 	Kind string
 	// Text is the console entry's text, or the response's URL, redacted.
 	Text string
@@ -27,8 +27,11 @@ type Fault struct {
 }
 
 func (f Fault) String() string {
-	if f.Kind == "response" {
+	switch f.Kind {
+	case "response":
 		return fmt.Sprintf("response %d from %s", f.Status, f.Text)
+	case "rate":
+		return "request rate: " + f.Text
 	}
 	return "console error: " + f.Text
 }
@@ -69,6 +72,7 @@ func counts(method string, params json.RawMessage, token string) (Fault, bool) {
 type Watch struct {
 	conn  *websocket.Conn
 	token string
+	rate  rateArm
 
 	mu      sync.Mutex
 	faults  []Fault
@@ -99,7 +103,8 @@ func (d *Driver) WatchFor(ctx context.Context, actor, token string) (*Watch, err
 	if err != nil {
 		return nil, fmt.Errorf("opening %q's BiDi connection: %w", actor, err)
 	}
-	w := &Watch{conn: conn, token: token, replies: map[int]chan json.RawMessage{}, done: make(chan struct{})}
+	w := &Watch{conn: conn, token: token, rate: rateArm{r: DefaultRate},
+		replies: map[int]chan json.RawMessage{}, done: make(chan struct{})}
 	go w.read()
 	if _, err := w.command(ctx, "session.subscribe", map[string]any{
 		"events": []string{"log.entryAdded", "network.responseCompleted"},
@@ -140,8 +145,18 @@ func (w *Watch) read() {
 				ch <- msg
 				delete(w.replies, *m.ID)
 			}
-		} else if f, ok := counts(m.Method, m.Params, w.token); ok {
-			w.faults = append(w.faults, f)
+		} else {
+			if f, ok := counts(m.Method, m.Params, w.token); ok {
+				w.faults = append(w.faults, f)
+			}
+			switch m.Method {
+			case "network.responseCompleted":
+				if f, ok := w.rate.response(stamp(m.Params)); ok {
+					w.faults = append(w.faults, f)
+				}
+			case "log.entryAdded":
+				w.rate.log(stamp(m.Params))
+			}
 		}
 		w.mu.Unlock()
 	}

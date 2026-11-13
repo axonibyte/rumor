@@ -1817,6 +1817,36 @@ barrier, such as a timer or a slow fetch. That fault lands in the next step's
 window. The alternative would be waiting for it, which is a fixed sleep, and
 this stage has none.
 
+**THE THIRD ARM IS A REQUEST RATE, AND IT READS RESPONSES ALONE** (fable's
+ruling at coop r9/173, from the measurement at r9/172; `rate.go`). On chromium
+156, two seconds after load, an honest page added about one response a second
+(a 1s poll made 3 in the window). A fetch loop made 260 to 374, and a 100ms
+poll made 20. The default fires at **at least 20 responses in EVERY whole
+second of a 2-second window** (r9/179), and a binding may raise it. It was 10
+for one gate, which put the 100ms poll exactly on the line, and the gate
+measured what that costs. The poll fired 10 of 10 at load 2 and not at all at
+load 12, because chromium's timer slips under load. Load deciding a verdict is
+what R9 rules out, so the default moved off the poll interval. The 100ms poll
+is now a real page that must not fire at any load. Every second must carry the rate on its own,
+rather than the window carrying the total. A page that loads thirty assets in
+half a second puts thirty inside two seconds, and a total would fire on every
+heavy page load. Log entries are counted beside the rate and reported in the
+same sentence. They are never added to it.
+
+The window runs on the BROWSER's clock, the timestamp each BiDi event carries,
+so a slow box delays the events without changing what they say. It spans step
+boundaries, because a step usually ends when its page has loaded, well under
+two seconds, while a loop runs as long as the actor stays on the page. One
+finding per episode; the arm re-arms once a second falls short.
+
+**A RENDER LOOP THAT FETCHES NOTHING IS INVISIBLE HERE, BY DESIGN.** Measured:
+a `requestAnimationFrame` loop made 1 response and 0 log entries, the same as
+a clean page. Seeing it would take a MutationObserver installed in the page,
+and the ruling forbids code in the page under test, since a finding read off
+our own script is not the system's. If such a loop matters to a project, a
+binding's flow can assert what the page shows. A loop on a page the actor
+leaves within the window is not seen either.
+
 ## A fan-out is N processes against one world
 
 **TWO REQUESTS IN FLIGHT IS THE ONLY WAY A CHECK-THEN-ACT DEFECT CAN BE
