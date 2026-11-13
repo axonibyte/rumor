@@ -2208,3 +2208,38 @@ so its rate is unmeasured and the experiment that looked for it was never
 positive. A fault nobody can summon on demand cannot arm anything, which is why
 the predicate is driven against a fake that answers each phrasing exactly and
 the race is recorded as an open residual rather than as a thing the suite holds.
+
+**A CHECK NOBODY RUNS IS THE WORST MEMBER OF ITS CLASS, BECAUSE IT IS SILENTLY
+REASSURING.** A declaration nothing reads and an output path nothing reaches are
+inert; a check with no caller sits in the coverage map and in this document, so
+a reader looking for coverage finds it and stops. `tools/test_d4control.sh` was
+red on a released `main` for twelve days with no workflow step and no Go suite
+reaching it, while its three sibling verdict batteries ran in CI and the step's
+own comment said a battery that never runs can rot. The comment was prose: it
+told four actors a battery should be there and refused nothing when one was
+missing.
+
+**SO EACH `tools/` ENTRY DECLARES ONE BIT — `check`, `hand`, or
+`driven-by:<path>` — AND AN ARM ENFORCES IT.** The bit lives beside the path in
+`docs/coverage.toml` rather than in a second file, because a second list of the
+same paths is two lists of one thing. The arm READS THE DECLARATION AND CHECKS
+THE WORKFLOWS, never the reverse: an arm that derived which scripts matter from
+the only list that mentions them would agree with that list by construction,
+which is the same defect as deriving a cell's expected set from the table it
+tests. `driven-by` must reach an actual `check` and the named driver must
+mention the script, so it cannot become `hand` without typing it, and the count
+of `check` entries is pinned exactly, because every other case in the arm is
+negative and an emptied map would satisfy them all.
+
+**THE BIT DOES NOT MAKE THE DECISION CORRECT, AND THE ARM SAYS SO.** An author
+can write `hand` on a real check and the arm will believe it. What changes is
+that the decision becomes a word somebody typed, which a reviewer can disagree
+with, where before a missing battery was an absence nobody could see in a diff.
+
+**AND THE ARM'S FIRST REAL RUN CORRECTED THE PERSON WHO WROTE IT.** I declared
+`tools/check-workflows.py` a `check` on a census that counted three workflow
+mentions; all three are COMMENTS, and `release-gate.yml` says in its own words
+that the script is local-only on purpose. A grep over a document counts its
+prose — which is also why the helper skips comment lines, found by a mutant that
+deleted the battery's invocation and SURVIVED, because the step's comment names
+the script while explaining why it is there.

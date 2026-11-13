@@ -28,6 +28,19 @@ import (
 type Entry struct {
 	Path string
 	Docs []string
+	// CI is the OPTIONAL third key, and it answers one question about a
+	// script: must a workflow run it?
+	//
+	// WHY IT LIVES HERE AND NOT IN A SECOND FILE. This map already enumerates
+	// every tools/ path by name, and a second list of the same paths is two
+	// lists of one thing -- the class quill named at coop r9/209 and widened
+	// at rumor/2010, where a declaration and its consumer drift apart because
+	// nothing pairs them. One list, one more key.
+	//
+	// IT IS EMPTY FOR EVERY ENTRY THAT IS NOT A tools/ SCRIPT, and the arm that
+	// reads it says so: the question "must CI run this" is not meaningful for
+	// a package of Go source or a document.
+	CI string
 }
 
 // skipDirs are the directories the walk does not descend into. .git is not
@@ -45,6 +58,7 @@ func Parse(text string) ([]Entry, error) {
 	var entries []Entry
 	var path *string
 	var docs *[]string
+	var ci *string
 	open := false
 
 	flush := func(at int) error {
@@ -64,7 +78,12 @@ func Parse(text string) ([]Entry, error) {
 		if len(d) == 0 {
 			return fmt.Errorf("entry `%s` lists no docs", p)
 		}
-		entries = append(entries, Entry{Path: p, Docs: d})
+		c := ""
+		if ci != nil {
+			c = *ci
+			ci = nil
+		}
+		entries = append(entries, Entry{Path: p, Docs: d, CI: c})
 		open = false
 		return nil
 	}
@@ -95,6 +114,17 @@ func Parse(text string) ([]Entry, error) {
 				return nil, fmt.Errorf("line %d: `path` value is not a quoted string", n)
 			}
 			path = &v
+			continue
+		}
+		if rest, ok := cutPrefix(line, "ci = "); ok {
+			if ci != nil {
+				return nil, fmt.Errorf("line %d: a second `ci` in one entry", n)
+			}
+			v, ok := unquote(rest)
+			if !ok {
+				return nil, fmt.Errorf("line %d: `ci` value is not a quoted string", n)
+			}
+			ci = &v
 			continue
 		}
 		if rest, ok := cutPrefix(line, "docs = "); ok {

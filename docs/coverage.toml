@@ -503,10 +503,19 @@ docs = ["docs/release.md"]
 # run under bash -e -- is a property of how this repo RELEASES and gates, not of
 # the library.
 path = "tools/check-workflows.py"
+# ci: LOCAL-ONLY ON PURPOSE, and the reason is in .forgejo/workflows/release-gate.yml:16
+# in that file's own words -- "tools/check-workflows.py is local-only on purpose:
+# adding a python dependency ...". Its three appearances in the workflows are all
+# COMMENTS, which is why the first version of this entry said "check" and the arm
+# refused it: a grep over a document counts its prose, and quill's census at coop
+# rumor/2013 counted the same three as invocations.
+ci = "hand"
 docs = ["docs/release.md"]
 
 [[entry]]
 path = "tools/release-gate.py"
+# ci: 8 mentions, the release gate itself
+ci = "check"
 docs = ["docs/release.md", "docs/testing-methodology.md"]
 
 [[entry]]
@@ -521,6 +530,8 @@ docs = ["docs/release.md", "docs/testing-methodology.md"]
 # `examples/toy` at whatever head is being judged. A control re-derived from
 # the live tree agrees with whatever that tree became.
 path = "tools/d4control.py"
+# ci: 0 workflow mentions and that is correct: the battery runs it, 3 invocations in that script
+ci = "driven-by:tools/test_d4control.sh"
 docs = ["docs/testing-methodology.md", "docs/release.md"]
 
 [[entry]]
@@ -531,6 +542,8 @@ docs = ["docs/testing-methodology.md", "docs/release.md"]
 # than kept when its subject turned out unable to fail, and the reason is left
 # in place where the cell was.
 path = "tools/test_d4control.sh"
+# ci: 2 mentions, as of this phase -- it had NONE until 0809da8, which is why it rotted
+ci = "check"
 docs = ["docs/testing-methodology.md"]
 
 [[entry]]
@@ -541,6 +554,8 @@ docs = ["docs/testing-methodology.md"]
 # `check` and `attaint` never walk them, the same placement rule the validate
 # arm fixtures follow.
 path = "tools/fixtures/**"
+# ci: not a script at all -- a directory of fixtures, declared so the arm's refusal of an undeclared entry means something
+ci = "hand"
 docs = ["docs/testing-methodology.md"]
 
 [[entry]]
@@ -550,6 +565,8 @@ docs = ["docs/testing-methodology.md"]
 # -- and to contract.md because each drill's condition is a key that document
 # describes.
 path = "tools/drive-validate-drills.py"
+# ci: a driver, run by an author against the fixtures
+ci = "hand"
 docs = ["docs/testing-methodology.md", "docs/contract.md"]
 
 [[entry]]
@@ -560,6 +577,8 @@ docs = ["docs/testing-methodology.md", "docs/contract.md"]
 # second arm and no test noticed. Mapped to contract.md because each change it
 # makes is a key that document describes.
 path = "tools/make-validate-fixtures.py"
+# ci: a generator: it WRITES fixtures, and a workflow running it would overwrite what the suite reads
+ci = "hand"
 docs = ["docs/testing-methodology.md", "docs/contract.md"]
 
 [[entry]]
@@ -571,6 +590,8 @@ docs = ["docs/testing-methodology.md", "docs/contract.md"]
 # one-change invariant is a method, and to design.md because the mutants are the
 # statute's own rules and that is where they are described.
 path = "tools/make-toy-mutants.py"
+# ci: a generator, same reason
+ci = "hand"
 docs = ["docs/testing-methodology.md", "docs/design.md"]
 
 [[entry]]
@@ -579,6 +600,8 @@ docs = ["docs/testing-methodology.md", "docs/design.md"]
 # because its whole reason for being a file rather than four lines of YAML is
 # that a workflow step cannot be driven without pushing a tag.
 path = "tools/verify-tag-verdict.sh"
+# ci: 4 mentions: the tag pipeline and the batteries step
+ci = "check"
 docs = ["docs/release.md", "docs/testing-methodology.md"]
 
 [[entry]]
@@ -588,6 +611,8 @@ docs = ["docs/release.md", "docs/testing-methodology.md"]
 # of YAML is that a workflow step cannot be driven without pushing -- the same
 # reason verify-tag-verdict.sh is one.
 path = "tools/govulncheck-verdict.sh"
+# ci: 3 mentions, the vulnerability verdict and its battery
+ci = "check"
 docs = ["docs/release.md", "docs/testing-methodology.md"]
 
 [[entry]]
@@ -603,6 +628,8 @@ docs = ["docs/release.md", "docs/testing-methodology.md"]
 # change whenever a clause of this reading moves, which says nothing about how
 # this repo releases.
 path = "tools/gomod-accuracy-verdict.sh"
+# ci: 3 mentions, the manifest verdict and its battery
+ci = "check"
 docs = ["docs/testing-methodology.md"]
 
 [[entry]]
@@ -610,6 +637,8 @@ docs = ["docs/testing-methodology.md"]
 # ci.yml's step and runs it over four trees, including an unreachable proxy.
 # Author-local, like the arm it drives is runner-only.
 path = "tools/drive-gomod-accuracy.py"
+# ci: a driver, run by an author
+ci = "hand"
 docs = ["docs/testing-methodology.md"]
 
 [[entry]]
@@ -618,5 +647,7 @@ docs = ["docs/testing-methodology.md"]
 # part worth saying about it, which is that its FORGE half cannot be driven
 # locally and its battery says so rather than implying coverage it lacks.
 path = "tools/forge-release.py"
+# ci: 3 mentions, the tag pipeline's publisher
+ci = "check"
 docs = ["docs/release.md", "docs/testing-methodology.md"]
 
