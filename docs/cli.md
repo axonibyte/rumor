@@ -471,7 +471,7 @@ ChromeDriver verbose log to determine the cause" -- true, and it sends its reade
 to a log the run does not keep, about a cause the run already knows. So the
 refusal adds a clause naming it: this run asked for a headed browser and neither
 `DISPLAY` nor `WAYLAND_DISPLAY` is set. The `browser` stage reports the same
-state as a SKIP by name, `FOUND, NOT DRIVABLE`, and the walk reports it as a
+state as a SKIP by name, `FOUND, NOT DRIVABLE` on STDERR, and the walk reports it as a
 could-not-run -- exit 2, because what an observation would have said is unknown,
 and never a quiet fall back to the adapter.
 
@@ -536,7 +536,23 @@ launch measured end to end — driver start, session, delete, stop — is 0.8 to
 was wrong. The bill is measured; the mechanism is not. With the
 flag the line reads `DRIVABLE, one session opened and closed`, naming the
 browser, its driver, how they were found, and whether the session was headless
-or headed; a pair that will not start is a skip with its reason named.
+or headed; a pair that will not start is a skip with its reason named. That
+line is on **stderr**, for the reason below.
+
+**THE PROBE'S VERDICT IS ON STDERR, AND STDOUT SAYS WHERE TO LOOK.** `rumor
+run` hashes its stdout, and D1 — two attempts of one seed are byte-identical —
+is enforced by keeping that stream free of anything the box decides between
+runs, which is why the concurrency stage's measured half goes to stderr too
+(design.md). A launch outcome is exactly such a reading: one seed run into two
+directories differed in this line and nowhere else, `FOUND, NOT DRIVABLE` on a
+loaded box against `DRIVABLE` on a free one, so D1 held for no `--browser-check`
+run under load. Under the flag stdout therefore carries the determinable half —
+the pair is COMPLETE and WAS PROBED, and the outcome is on stderr — while the
+verdict itself, drivable or not, is written to stderr alone. It is a channel
+move and not a silent drop: the record still says the probe ran and where its
+answer is. Note that a pair whose halves were never BOTH found is a different
+state, decided by what is on PATH rather than by a launch, and its line stays on
+stdout.
 
 **A browser with no driver beside it is FOUND, NOT DRIVABLE, and the skip says
 which half is missing.** That state is not a met precondition: `no pair ... on
@@ -553,7 +569,7 @@ readiness bound, because `it exited` and `it never answered` are different
 faults and only one of them is worth waiting 20 seconds to confirm.
 
 **A session the driver refuses to delete is still reported DRIVABLE, and the
-line says `AND NOT CLOSED`.** Those are two verdicts: the pair started and took
+stderr line says `AND NOT CLOSED`.** Those are two verdicts: the pair started and took
 a session, so sending an operator to install a package they already have would
 be wrong — and a refused delete is a browser still running, which this line is
 the only place to learn about.

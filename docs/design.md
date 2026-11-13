@@ -1822,6 +1822,21 @@ printing them together, so `Overlapped` answers a bool and `OverlapMeasured`
 renders the figure for stderr alone — and is empty when nothing overlapped, so
 a caller printing it unconditionally says nothing rather than something false.
 
+**AND THE RULE HAS A SECOND STAGE UNDER IT NOW, which is how a rule stops being
+one case.** The browser stage's `--browser-check` probe starts the pair and
+reports what happened, and that outcome is a reading of THE BOX: measured on one
+seed run into two directories, the two differed in that line alone — `FOUND, NOT
+DRIVABLE ... would not open a session` under load against `DRIVABLE` on a free
+box, with every other byte including the FOUND stanza identical. So D1 held for
+no `--browser-check` run on a loaded box, and the stream was the defect rather
+than the arm that noticed. The verdict now goes to stderr as `HangMeasured()`
+does; stdout keeps the determinable half, that the pair is COMPLETE and WAS
+PROBED, so the record points at the answer instead of losing it. THE REPAIR
+OFFERED FIRST WAS AN EXCLUSION in the determinism arm, which would have narrowed
+the only check that reads this stream to accommodate a line this paragraph says
+does not belong in it — the shape worth naming, because an exclusion is cheap,
+local, and looks like diligence.
+
 **THE PLAN IS DISPATCHED AND NOT MERELY DECLARED**, which is the same defect
 R8.1 closed one level up: `[stages]` was parsed, cross-checked and never
 dispatched. The fan-out issues the k-th request to the session the plan chose,

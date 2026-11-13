@@ -307,13 +307,39 @@ func browserStage(ctx context.Context, b bindings.Bindings, opts runOpts, stdout
 			stage.Browser, browser, driver, how, mode, flows)
 		return conductVerdict(tokens, stderr)
 	}
+	// THE PROBE'S OUTCOME GOES TO STDERR AND THE FACT OF IT TO STDOUT, which
+	// is design.md:1813-1823's rule applied to a second stage rather than a new
+	// rule: a reading that moves with the box must not reach the hashed stream,
+	// because "a duration on the hashed stream moves a digest every run" and
+	// putting one there "would make D1 unreachable for every run that ends on a
+	// timeout". The concurrency stage's `HangMeasured()` already obeys it.
+	//
+	// plumb MEASURED THIS ONE (coop r9/260): one seed into two directories
+	// differed in exactly this line and nowhere else -- NOT DRIVABLE under load,
+	// DRIVABLE on a free box, the FOUND stanza and the snapshot line
+	// byte-identical -- so D1 held for NO `--browser-check` run on a loaded box.
+	// The first repair offered was an exclusion in the arm; that would have
+	// weakened the only check that reads this stream to route around a line
+	// which, by the rule above, does not belong in it (ibis r9/262, corrected
+	// at r9/263).
+	//
+	// WHAT STAYS ON STDOUT IS BOX-DEPENDENT AND RUN-STABLE, which is the line
+	// the criterion actually draws: D1 compares two attempts of ONE seed on ONE
+	// box, so which browser is on PATH may differ between boxes and must not
+	// differ between runs on one. A launch outcome differs between runs on one.
+	//
+	// AND IT IS NOT A SILENT DROP, which is the trap this stage has been rebuilt
+	// twice to avoid: stdout says the probe RAN and where its answer is, so a
+	// reader of the record alone is told there is something to go and read.
+	_, _ = fmt.Fprintf(stdout, "run:   %s -- browser %s with %s on PATH (%s), %s when driven: the pair is COMPLETE and WAS PROBED on this run; the probe's outcome is a reading of THIS BOX, so it is on stderr where a line that moves between runs belongs. %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter\n",
+		stage.Browser, browser, driver, how, mode, flows)
 	why, leaked := driveOnce(ctx, driver, browser, !opts.headed, probeBound)
 	if why != "" {
 		// STILL A SKIP, by issue 120's deliverable 5 and head 1's reason: a
 		// pair that will not start is this BOX being short of something, and
 		// the project's declarations are not wrong. The reason is named and
 		// loud, which is the whole difference between this and a silent skip.
-		_, _ = fmt.Fprintf(stdout, "run:   %s -- SKIPPED, FOUND, NOT DRIVABLE: %s with %s on PATH (%s) and %s, so no browser was driven. %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter\n",
+		_, _ = fmt.Fprintf(stderr, "run:   %s -- SKIPPED, FOUND, NOT DRIVABLE: %s with %s on PATH (%s) and %s, so no browser was driven. %d action(s) declare a flow and THIS STAGE drove none; the walk drives them through the adapter\n",
 			stage.Browser, browser, driver, how, why, flows)
 		return conductVerdict(tokens, stderr)
 	}
@@ -326,7 +352,7 @@ func browserStage(ctx context.Context, b bindings.Bindings, opts runOpts, stdout
 	if leaked != "" {
 		closed = "one session opened, AND NOT CLOSED: " + leaked
 	}
-	_, _ = fmt.Fprintf(stdout, "run:   %s -- browser %s driven by %s (%s, %s): DRIVABLE, %s. %d action(s) declare a flow and THIS STAGE drove none; the walk drives declared flows through a pair of its OWN on a run given one -- this line is the probe's and the summary's `through a real browser` count is the walk's\n",
+	_, _ = fmt.Fprintf(stderr, "run:   %s -- browser %s driven by %s (%s, %s): DRIVABLE, %s. %d action(s) declare a flow and THIS STAGE drove none; the walk drives declared flows through a pair of its OWN on a run given one -- this line is the probe's and the summary's `through a real browser` count is the walk's\n",
 		stage.Browser, browser, driver, how, mode, closed, flows)
 	return conductVerdict(tokens, stderr)
 }

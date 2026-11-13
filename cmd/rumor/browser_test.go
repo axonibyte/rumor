@@ -13,6 +13,7 @@ import (
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
 	"forge.axonibyte.com/axonibyte/rumor/internal/browser/fakedriver"
+	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 	"forge.axonibyte.com/axonibyte/rumor/internal/stage"
 )
 
@@ -152,10 +153,14 @@ func TestWithTheCheckAPairThatIsNotAWebdriverIsFoundNotDrivable(t *testing.T) {
 	if rc := browserStage(context.Background(), flowBindings(3, 2), runOpts{browserCheck: true}, &out, &errb); rc != 0 {
 		t.Fatalf("an undrivable pair exited %d, wanted the skip; stderr %q", rc, errb.String())
 	}
-	got := out.String()
+	// THE OUTCOME IS READ FROM STDERR, because a probe's verdict is a reading of
+	// THIS BOX and browser.go keeps it off the hashed stream (plumb's
+	// measurement, coop r9/260). The stdout side is asserted too, in the arm
+	// below, so moving the line back would redden something.
+	got := errb.String()
 	for _, want := range []string{"FOUND, NOT DRIVABLE", "starting the driver failed", "exited"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("a pair that is not a webdriver does not report %q: %q", want, got)
+			t.Errorf("a pair that is not a webdriver does not report %q on stderr: %q", want, got)
 		}
 	}
 }
@@ -603,10 +608,10 @@ func TestTheStageStartsAndStopsADriverThatAnswers(t *testing.T) {
 			if rc := browserStage(context.Background(), flowBindings(2, 1), runOpts{headed: c.headed, browserCheck: true}, &out, &errb); rc != 0 {
 				t.Fatalf("a working pair exited %d, stderr %q", rc, errb.String())
 			}
-			got := out.String()
+			got := errb.String()
 			for _, want := range []string{"DRIVABLE", "one session opened and closed", browserBin, c.want} {
 				if !strings.Contains(got, want) {
-					t.Errorf("the drivable line does not carry %q: %q", want, got)
+					t.Errorf("the drivable line does not carry %q on stderr: %q", want, got)
 				}
 			}
 			if strings.Contains(got, "SKIPPED") || strings.Contains(got, "NOT DRIVABLE") {
@@ -748,8 +753,9 @@ func TestTheHeadedFlagReachesTheBrowserFromTheCommandLine(t *testing.T) {
 			if rc := run(args, bytes.NewReader(nil), &out, &errb); rc != 0 {
 				t.Fatalf("`rumor %v` exited %d\n%s\n%s", args, rc, out.String(), errb.String())
 			}
-			if !strings.Contains(out.String(), "DRIVABLE") {
-				t.Fatalf("the run did not drive the pair, so this arm has no subject: %q", out.String())
+			// STDERR, for browser.go's reason: a `rumor run` hashes its stdout.
+			if !strings.Contains(errb.String(), "DRIVABLE") {
+				t.Fatalf("the run did not drive the pair, so this arm has no subject: %q", errb.String())
 			}
 			raw, err := os.ReadFile(journal)
 			if err != nil {
@@ -866,7 +872,7 @@ func TestASessionTheDriverWillNotCloseIsSaidOutLoud(t *testing.T) {
 	if rc := browserStage(context.Background(), flowBindings(1, 0), runOpts{browserCheck: true}, &out, &errb); rc != 0 {
 		t.Fatalf("a drivable pair with a refused close exited %d, stderr %q", rc, errb.String())
 	}
-	got := out.String()
+	got := errb.String()
 	// STILL DRIVABLE: the pair started and took a session, and reporting it as
 	// a skip would send an operator to install a package they already have.
 	if !strings.Contains(got, "DRIVABLE") || strings.Contains(got, "NOT DRIVABLE") {
@@ -917,4 +923,80 @@ func TestAPlainRunLaunchesNoBrowser(t *testing.T) {
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("could not tell whether the driver ran: %v", err)
 	}
+}
+
+// TestTheProbesOutcomeNeverReachesTheHashedStream is the cell the channel move
+// of r9/263 needed, and it drives D1 itself rather than a proxy for it.
+//
+// WHAT WENT WRONG WITHOUT IT (plumb, coop r9/260): one seed run into two
+// directories differed in exactly one line, the browser stage's own probe --
+// "FOUND, NOT DRIVABLE ... would not open a session" on a loaded box against
+// "DRIVABLE" on a free one -- with the FOUND stanza and the snapshot line
+// byte-identical. `rumor run` hashes its STDOUT, so D1's "two attempts of one
+// seed are byte-identical" held for NO `--browser-check` run on a busy box.
+// The repair first offered was an exclusion in the arm that noticed; that
+// weakens the only check reading this stream to route around a line which, by
+// design.md:1813-1823, does not belong in it.
+//
+// SO THE ARM ASSERTS THE PROPERTY AND NOT THE IMPLEMENTATION. Two runs of the
+// same stage differing ONLY in an outcome the box decides -- a session the
+// driver closes, and one it refuses to -- must leave stdout byte-identical and
+// must say different things on stderr. An arm that merely grepped stdout for
+// "DRIVABLE" would pass the day someone wrote the verdict to both streams.
+//
+// AND THE STDERR HALF IS WHAT STOPS IT PASSING VACUOUSLY: a stage that printed
+// NOTHING anywhere would satisfy byte-identity perfectly.
+func TestTheProbesOutcomeNeverReachesTheHashedStream(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fixture plants a shell script")
+	}
+	dir := emptyPath(t)
+	plant(t, dir, "zz-fake-browser")
+	t.Setenv(browserDriverEnv, "zz-fake-browser")
+	t.Setenv(webDriverEnv, os.Args[0])
+
+	probe := func(mode string) (string, string) {
+		t.Helper()
+		t.Setenv(fakedriver.ModeEnv, mode)
+		t.Setenv(fakedriver.JournalEnv, filepath.Join(t.TempDir(), "journal"))
+		var out, errb bytes.Buffer
+		if rc := browserStage(context.Background(), flowBindings(1, 0), runOpts{browserCheck: true}, &out, &errb); rc != 0 {
+			t.Fatalf("mode %q exited %d, stderr %q", mode, rc, errb.String())
+		}
+		return out.String(), errb.String()
+	}
+
+	closedOut, closedErr := probe("ready")
+	leakedOut, leakedErr := probe("refuse-close")
+
+	// THE TWO RUNS REALLY DID DIFFER, checked before the identity is believed:
+	// without this the arm would pass against a fake whose modes do the same
+	// thing, which is a control that is the case it controls for.
+	if closedErr == leakedErr {
+		t.Fatalf("both modes said the same thing on stderr, so this arm has no subject: %q", closedErr)
+	}
+	if !strings.Contains(leakedErr, "NOT CLOSED") {
+		t.Fatalf("the refused close is not on stderr, so the outcome under test never happened: %q", leakedErr)
+	}
+
+	if closedOut != leakedOut {
+		t.Errorf("stdout moved with an outcome the BOX decided, which is D1 broken for every "+
+			"--browser-check run on a loaded box:\n closed: %q\n leaked: %q", closedOut, leakedOut)
+	}
+	// AND THE VERDICT ITSELF IS NOT THERE, which byte-identity alone would not
+	// catch: two runs that both leaked would agree while both carrying it.
+	for _, word := range []string{"DRIVABLE", "NOT CLOSED", "one session opened"} {
+		if strings.Contains(closedOut, word) {
+			t.Errorf("stdout carries the probe's outcome word %q: %q", word, closedOut)
+		}
+	}
+	// THE DETERMINABLE HALF IS STILL SAID, so this is a channel move and not a
+	// silent drop: a reader of the record alone is told the probe ran and where
+	// its answer is.
+	for _, want := range []string{"WAS PROBED", "on stderr"} {
+		if !strings.Contains(closedOut, want) {
+			t.Errorf("stdout does not say %q, so the record points nowhere: %q", want, closedOut)
+		}
+	}
+	proof.Logf(t, "PROOF 2 --browser-check runs differing only in the box's own outcome, stdout byte-identical at %d bytes, stderr differing", len(closedOut))
 }

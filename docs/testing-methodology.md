@@ -2285,3 +2285,38 @@ arm prints a PROOF, so `proofgate`'s pinned site count went red at 223 against
 222 and the literal moved with it, with the sum left as three numbers a reader
 can take apart. A count pinned exactly is a nuisance exactly once per addition,
 which is the price of every other case in that arm being negative.
+
+**WHEN A DETERMINISM ARM GOES RED, THE FIRST QUESTION IS WHETHER THE LINE
+BELONGS IN THE STREAM.** One seed run into two directories differed in exactly
+one line, the browser stage's own probe: `FOUND, NOT DRIVABLE ... would not open
+a session` under load against `DRIVABLE` on a free box, every other byte
+identical. The repair that presents itself is an exclusion -- name the line in
+the arm, give the reason, move on -- and it is cheap, local, and looks like
+diligence. It was wrong. `rumor run` hashes its stdout, so a line the BOX
+decides between runs breaks D1 for every `--browser-check` run under load, and
+excluding it narrows the only check that reads that stream to accommodate the
+defect it found. The stream was the defect; the arm was working.
+
+**THE TREE ALREADY HELD THE RULE, WHICH IS THE PART WORTH GENERALIZING.**
+design.md had said since R8 that the concurrency stage's measured half goes to
+stderr because a duration on the hashed stream "would make D1 unreachable for
+every run that ends on a timeout". One grep found it and reversed a ruling I had
+already posted. Before inventing doctrine for a second instance, look for the
+first: a project this old usually has the answer written down by whoever hit it
+before, and reading is cheaper than reasoning.
+
+**THE ARM DRIVES THE PROPERTY, NOT THE IMPLEMENTATION.** It runs the stage twice
+with outcomes that differ only in what the box decided -- a session closed, and
+one the driver refused to close -- and requires stdout byte-identical and stderr
+different. Grepping stdout for `DRIVABLE` would have passed the day somebody
+wrote the verdict to BOTH streams, which is the realistic regression; that
+mutant fails this arm on the byte comparison. A second mutant, the verdict moved
+wholly back to stdout, fails it on the vacuity guard instead -- the guard that
+refuses to believe an identity when the two runs never differed. Two mutants,
+two different assertions, and neither reaches the other's.
+
+**AND A SILENT DROP IS NOT A FIX EITHER.** Moving the verdict off stdout and
+saying nothing there would leave a reader of the record with no sign the probe
+ran -- the silent-skip class this stage has been rebuilt twice to avoid. stdout
+keeps the determinable half and names the stream the answer is on, and the arm
+asserts that pointer, so the channel move cannot decay into a deletion.
