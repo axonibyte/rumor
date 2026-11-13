@@ -43,7 +43,9 @@ func TestEveryProofLineGoesThroughTheHelper(t *testing.T) {
 	bare := "t.Logf(" + `"` + "PROOF"
 	helper := "proof.Logf(t, " + `"` + "PROOF"
 
-	sites, bad := 0, 0
+	self := filepath.ToSlash(filepath.Join("tests", "hygiene", "proofgate_test.go"))
+
+	sites, bad, sawSelf := 0, 0, false
 	for _, f := range files {
 		b, rerr := os.ReadFile(filepath.Join(root, f))
 		if rerr != nil {
@@ -51,7 +53,8 @@ func TestEveryProofLineGoesThroughTheHelper(t *testing.T) {
 		}
 		body := string(b)
 		sites += strings.Count(body, helper)
-		if f == filepath.ToSlash(filepath.Join("tests", "hygiene", "proofgate_test.go")) {
+		if f == self {
+			sawSelf = true
 			continue
 		}
 		for n, line := range strings.Split(body, "\n") {
@@ -63,13 +66,30 @@ func TestEveryProofLineGoesThroughTheHelper(t *testing.T) {
 		}
 	}
 
+	// AND THE ARM HAS TO SEE ITSELF, because the false green this check now
+	// refuses is the one it shipped with. `ls-files` lists TRACKED files, so
+	// while this file was still untracked the scan did not include it, counted
+	// 221, and PASSED -- and `git add` alone turned the identical source red at
+	// 222 (rook, coop r9/253). An arm whose verdict depends on whether it is
+	// staged yet is measuring the index rather than the tree, and it passes in
+	// precisely the state where it has never read itself.
+	if !sawSelf {
+		t.Fatalf("%s is not tracked, so this scan did not include itself and its count is "+
+			"of a tree that does not contain this arm: a pass here would mean nothing", self)
+	}
+
 	// AND A COUNT, because every case above is negative: a tree that lost its
-	// PROOF lines entirely would satisfy all of them. The figure is the one
-	// 124's d6 moved and is retyped deliberately when it changes.
-	const moved = 221
-	if sites != moved {
-		t.Errorf("%d call(s) of the helper, and d6 moved %d: if that is deliberate, move "+
-			"the literal with it; if not, PROOF lines have been lost", sites, moved)
+	// PROOF lines entirely would satisfy all of them. 221 of these are the
+	// sites 124's d6 moved onto the helper and the 222nd is this arm's own
+	// closing line, counted like every other rather than exempted -- an
+	// exemption would put a hole in the only check that can see this file, and
+	// the sum is two numbers a reader can take apart. Retyped deliberately when
+	// it changes.
+	const sitesInTrackedTests = 222
+	if sites != sitesInTrackedTests {
+		t.Errorf("%d call(s) of the helper in tracked test files, want %d: if that is "+
+			"deliberate, move the literal with it; if not, PROOF lines have been lost",
+			sites, sitesInTrackedTests)
 	}
 	if bad == 0 {
 		proof.Logf(t, "PROOF %d tracked test file(s) scanned, %d helper call(s), 0 bare",
