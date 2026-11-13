@@ -77,15 +77,32 @@ func TestEveryToolsEntryDeclaresWhetherCIRunsIt(t *testing.T) {
 	// caller would have declared the original defect fixed by the paragraph
 	// describing it.
 	//
-	// A line whose first non-space character is `#` is a comment in YAML and in
-	// the shell inside a `run:` block alike, which is the whole of the rule.
+	// A TRAILING COMMENT COUNTS TOO, AND SKIPPING ONLY WHOLE LINES WAS THE SAME
+	// HOLE ONE SHAPE OVER (rook, coop r9/249): with only whole-line `#`
+	// skipped, replacing the invocation with `true  # was: tools/x.sh, removed`
+	// left this arm PASSING. So each line is CUT at its comment before matching
+	// -- at a `#` that opens the line or follows whitespace, which is the
+	// comment rule in YAML and in the shell inside a `run:` block alike.
+	//
+	// CUTTING ERRS STRICT, which is the safe direction: a `#` inside a quoted
+	// string truncates that line early and can only cause a mention to be
+	// MISSED, never invented, and a path named inside an echoed string was
+	// never an invocation anyway.
+	beforeComment := func(line string) string {
+		for i := 0; i < len(line); i++ {
+			if line[i] != '#' {
+				continue
+			}
+			if i == 0 || line[i-1] == ' ' || line[i-1] == '\t' {
+				return line[:i]
+			}
+		}
+		return line
+	}
 	mentionedInAWorkflow := func(path string) bool {
 		for _, body := range workflows {
 			for _, line := range strings.Split(body, "\n") {
-				if strings.HasPrefix(strings.TrimSpace(line), "#") {
-					continue
-				}
-				if strings.Contains(line, path) {
+				if strings.Contains(beforeComment(line), path) {
 					return true
 				}
 			}
@@ -175,6 +192,13 @@ func TestEveryToolsEntryDeclaresWhetherCIRunsIt(t *testing.T) {
 			"a deliberate change, move the literal with it; if it is not, a check has "+
 			"quietly stopped being one", checks, declaredChecks)
 	}
-	t.Logf("PROOF %d tools/ entries, %d declared `check` and each mentioned by a workflow",
-		len(tools), checks)
+	// THE PROOF LINE IS GATED ON THE VERDICT, and it was not (rook, coop
+	// r9/249). ci.yml MINES `PROOF` out of test.log, so an unconditional Logf
+	// here publishes "each mentioned by a workflow" from a run where exactly
+	// that failed -- a red run carrying a green claim into the record. A proof
+	// is a thing an arm earned, not a thing it attempted.
+	if !t.Failed() {
+		t.Logf("PROOF %d tools/ entries, %d declared `check` and each mentioned by a workflow",
+			len(tools), checks)
+	}
 }
