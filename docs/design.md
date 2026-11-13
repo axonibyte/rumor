@@ -1847,6 +1847,32 @@ our own script is not the system's. If such a loop matters to a project, a
 binding's flow can assert what the page shows. A loop on a page the actor
 leaves within the window is not seen either.
 
+**A SNAPSHOT KEEPS THE DOM ALWAYS AND THE SCREENSHOT ONLY WHEN ASKED**
+(issue 124's deliverable 2, fable's ruling at coop r9/191; `snapshot.go`).
+The DOM is text, so the same `redact()` takes the actor's token out of it, and
+an arm greps the written bytes. A screenshot is pixels, and nothing can be
+taken out of those, so an unsafe screenshot is one somebody asked for, never a
+default. Even when asked for, the screenshot is WITHHELD by name if the token
+is anywhere a check can reach. Each place was measured painting the token
+while a narrower check read clean (r9/187-190):
+
+- the page source, which catches an `<input value=>` attribute and CSS
+  `::after` content;
+- every form control's LIVE value, read with WebDriver's own Get Element
+  Property, since a value set by script or typed in never reaches the source;
+- every frame, entered in turn, since a frame's document is not the top
+  page's source;
+- every shadow root, with its text and controls, since the source serialises
+  the light DOM only.
+
+No script is run in the page to do any of it. **What it cannot see** is named
+in every kept screenshot's note: canvas and image pixels, and a closed shadow
+root the driver will not hand back. chromedriver 156 hands one back (measured);
+the WebDriver spec says a driver should not, so on a driver that follows the
+spec that content goes unseen. The walk that takes a snapshot on a finding, the
+`--snapshots` directory, and the finding's sentence are the next unit, and the
+lead's clear.
+
 ## A fan-out is N processes against one world
 
 **TWO REQUESTS IN FLIGHT IS THE ONLY WAY A CHECK-THEN-ACT DEFECT CAN BE
