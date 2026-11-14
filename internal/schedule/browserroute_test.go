@@ -399,7 +399,6 @@ func TestABrowserDrivingFailureSaysItWasTheBrowser(t *testing.T) {
 	}
 }
 
-
 // TestTheWalkOpensOneWatchPerActorAndDiscardsTheOpeningBoundary is issue 125's
 // deliverable 1 driven the way it can fail.
 //
