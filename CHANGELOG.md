@@ -3,6 +3,97 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.50 — 2026-11-14
+
+**The browser stage hears what a page does beneath a step, keeps the page
+when a finding needs it, shrinks through the browser at a declared count,
+and every bound that ends a call says which bound it was** — issue 124,
+R9.2, cut off v0.1.49. THIS SECTION IS A STAND-IN, written by plumb under
+fable's rule 3 (coop rumor/2074) because ibis, who leads R9.2 and would
+ordinarily write it, was silent at the cut. ibis replaces it with their own
+when back.
+
+- **A CALL THAT ENDS ON A BOUND SAYS WHICH BOUND IT WAS (d1).** Three bounds
+  can end a browser call — the flow's budget, the package's request bound,
+  a cancelled run — and the transport reports the first two in the same
+  words. The message now names the one that fired, and reads the bound and
+  the error TOGETHER: an error that arrives while the flow's budget happens
+  to have expired is no longer dressed as the budget (rook, rumor/1973).
+- **A `run` BLOCK PRINTS WHAT IT SPENT OF ITS BUDGET, AND THE BUDGETS ARE
+  MEASURED.** The release gate reported a block's elapsed only on failure,
+  so headroom under `budget_s` was unmeasurable. It prints the spend, the
+  budget and the budget's source now. Block 2 had 3.4s of headroom under
+  the default 60 on eight cpus and was refused outright on four at load
+  14.6, so it declares 180, and `docs/cli.md`'s table carries the core
+  count beside each figure.
+- **THE TOOLCHAIN RESOLVERS TRY THE BARE NAME LAST, EVERYWHERE.** GO-2026-6859
+  was a toolchain finding in a code finding's clothes: govulncheck refused
+  net/http in the runner's go1.26.10 while the suite was green. Teaching the
+  resolvers `go127` was not enough while a bare `go` was found first, and
+  the same order survived in the tag pipeline, which builds the release.
+  Every list now tries numbered names first, and a cached tool binary is
+  keyed by the toolchain that built it, for govulncheck and golangci-lint
+  alike, so a crash of a stale binary is not read as a finding.
+- **THE d4 CONTROL'S BATTERY RUNS IN CI, AND EVERY `tools/` ENTRY SAYS
+  WHETHER CI MUST RUN IT.** `add-all-declared` had been red on main since
+  2026-11-01, through v0.1.49, because nothing ran its battery. It runs, the
+  lost cell is grown, and `docs/coverage.toml` records per tool whether a
+  workflow must invoke it, with an arm that refuses an entry no workflow
+  mentions.
+- **A PROOF LINE PRINTS ONLY FROM A TEST THAT HAS NOT FAILED (d6).** 221
+  `PROOF` sites, about 198 of which could print a proof from a failing test
+  into a job log that is read on failure, go through `internal/proof.Logf`,
+  and an arm counts the helper's calls (its own line included) and refuses
+  to run while its file is untracked.
+- **`page_fault` IS THE SEVENTH FINDING, DEFINED AT VOCABULARY v9.** A 5xx or
+  a console error at an actor's step is a fault of the system under test —
+  nothing for either reader to fix and no `bug` narrowed. The definition
+  ships here; its PRODUCER does not, and the v9 row says so (62804c2): the
+  producer is issue 125, R9.3.
+- **THE BROWSER HEARS WHAT A STEP DID BENEATH IT (d3, the hearing).** An
+  in-tree RFC 6455 client carries WebDriver BiDi — no new dependency — and
+  the watch collects console errors and 5xx responses per step behind a
+  step barrier, plus a request-rate arm that fires on 20 or more responses
+  in EVERY second of two. Nothing in the walk reads the watch yet; that is
+  #125.
+- **A FINDING KEEPS THE PAGE IT NEEDS (d2).** With `--snapshots DIR`, a
+  `ui_timeout`, or a page and the store disagreeing on one claim and
+  subject, writes the actor's DOM — redacted, always — and a screenshot
+  only with `--snapshot-screenshots`, withheld if the actor's token is
+  anywhere checkable in it. Without the flag, the step says the page was
+  not kept. Writing the cell for the `ui_timeout` path found a defect before
+  release: the hook asked for the page of actor `''`, because the pending
+  flow was cleared before the timeout was reported (b4531f6).
+- **A SHRINK REPLAYS THROUGH THE BROWSER, AND STOPS AT A DECLARED COUNT
+  (d4).** A finding the walk reached through a page is shrunk through one,
+  with fresh sessions per candidate. `[stages.<name>].shrink_candidates`
+  (default 32) bounds `rumor shrink`'s replays, a count and never a clock,
+  and a shrink that reaches it prints `STOPPED AT ITS BUDGET` with the
+  smallest reproduction so far rather than `not reproducible`. The count is
+  of replays, which is of probes: a k-of-n verdict would spend up to n per
+  candidate (`docs/rollback.md`). No clock ends a shrink; R15 owns budgets.
+- **THE READINESS BOUND NOW NAMES WHICH FAULT ENDED IT (d5).** `waitReady`
+  returned ONE sentence at its bound whichever of two faults occurred,
+  asserting the driver "answered /status" on a run where nothing had. They
+  are different repairs: answered-but-never-ready is a tight bound,
+  never-answered is a port taken between being chosen and being bound, or a
+  `driver` on PATH that is not a webdriver. The bound records whether
+  /status ever parsed and says which it was. fakedriver gains `deaf` —
+  alive and never binding, outliving ReadyTimeout so the arm reaches the
+  BOUND and not the `exited` branch. 200 starts, no flake, detectable floor
+  1.5%. Three killing mutants. *(quill's words, rumor/2076.)*
+- **SMALLER FIXES.** `isStale` learns chromedriver's own phrasing for a
+  stale element; the browser probe's verdict goes to stderr so `rumor run`'s
+  hashed stdout is byte-identical across two attempts of one seed on a busy
+  box; the copyright holder in `LICENSE` is Axonibyte Innovations, LLC, as
+  it should have been since v0.1.0.
+
+NOT CLAIMED: that a real browser's page is what a `ui_timeout` snapshot
+holds (the walk-level cell uses a stand-in browser); that a browser shrink
+replays correctly above load ~13 on four cpus; that rook's 2-in-6
+readiness failure on four cpus is refuted (d5's series ran on eight). The
+producer of `page_fault` is #125.
+
 ## 0.1.49 — 2026-11-10
 
 **A real browser drives a declared UI flow, reads its observations off the live
