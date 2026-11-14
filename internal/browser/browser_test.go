@@ -806,3 +806,87 @@ func TestABudgetNeverCoversTheSessionOpen(t *testing.T) {
 			"something it is not testing: %s", strings.Join(offenders, ", "))
 	}
 }
+
+// R9.2's d5: THE BOUND MESSAGE NAMES WHICH OF TWO FAULTS IT WAS.
+//
+// Before this head waitReady returned one sentence at the bound -- "answered
+// /status but never became ready" -- whichever had happened, so a driver that
+// never bound its port produced a headline asserting it had ANSWERED with a
+// `connection refused` wrapped in the same string. rook's 2-in-6 at r9/106 is
+// "1 never readied, 1 no verdict inside my cap", and that message cannot tell
+// those apart: any series run through it inherits the conflation, which is why
+// this is d5's first act and not a tidying.
+//
+// TWO CELLS AND NOT ONE, because the pair is the point. A single cell on the
+// `deaf` case would pass against a build that printed the never-answered
+// sentence ALWAYS, which is the same defect mirrored.
+func TestTheReadinessBoundSaysWhetherTheDriverEverAnswered(t *testing.T) {
+	for _, c := range []struct {
+		what   string
+		mode   string
+		want   string
+		unwant string
+	}{
+		// NEVER REACHABLE: alive, never listening, so every call fails at the
+		// transport and nothing is ever parsed.
+		{"a driver that never answers", "deaf",
+			"never answered /status", "answered /status but never became ready"},
+		// REACHABLE AND NEVER READY: answers /status with ready:false forever.
+		{"a driver that answers and never readies", "never",
+			"answered /status but never became ready", "never answered /status"},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			// BOTH CELLS GO THROUGH Start, which is the production path: a
+			// hand-built Driver would let the cell choose a base URL and so
+			// could not reach the transport failure the `deaf` case is about.
+			// Start takes no bound by design (its own comment says why), so the
+			// cost of each cell is ReadyTimeout.
+			path, _ := fakeDriver(t, c.mode)
+			// THE GROUP IS REGISTERED ON THE NEXT LINE even though this Start is
+			// expected to FAIL, because TestEveryStartRegistersItsProcessGroup
+			// requires it within two lines and is right to: the branch below
+			// handles a start that UNEXPECTEDLY succeeds, and that is exactly
+			// the case whose browser would leak invisibly. noteGroup is
+			// nil-safe, so the expected path costs nothing -- and the comment
+			// sits ABOVE the call because the arm's window is two lines, which
+			// a comment block between them silently exhausts.
+			d, err := Start(context.Background(), path, "", true)
+			noteGroup(d)
+			if err == nil {
+				_ = d.Close(context.Background())
+				t.Fatalf("Start succeeded against the %q fake", c.mode)
+			}
+			assertBoundMessage(t, err, c.want, c.unwant)
+		})
+	}
+}
+
+// assertBoundMessage requires the sentence the branch promises and REFUSES the
+// other branch's, so neither cell can pass on a build that prints one message
+// for both.
+func assertBoundMessage(t *testing.T, err error, want, unwant string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("no error")
+	}
+	got := err.Error()
+	if !strings.Contains(got, want) {
+		t.Errorf("the message does not say %q:\n%s", want, got)
+	}
+	if strings.Contains(got, unwant) {
+		t.Errorf("the message ALSO says %q, so the two faults are not distinguished:\n%s",
+			unwant, got)
+	}
+}
+
+// AND THE deaf MODE MUST OUTLIVE THE READINESS BOUND, or the cell above takes
+// waitReady's `exited` branch and measures the wrong fault while still passing.
+// fakedriver cannot import this package (it is a child of it), so the ordering
+// is asserted here rather than enforced by a constant.
+func TestTheDeafModeOutlivesTheReadinessBound(t *testing.T) {
+	if fakedriver.DeafFor <= ReadyTimeout {
+		t.Fatalf("DeafFor is %s against a ReadyTimeout of %s: the deaf cell would hit the "+
+			"exited branch and measure a different fault than the one it names",
+			fakedriver.DeafFor, ReadyTimeout)
+	}
+}

@@ -2130,6 +2130,23 @@ asked: one open, one delete, and the capabilities the browser was actually
 handed — which is also the only place `--headed` has an effect, so a line saying
 `headed` over a headless session cannot pass.
 
+**AND ONE MODE EXISTS TO BE UNREACHABLE: `deaf` STAYS ALIVE AND NEVER BINDS**
+(R9.2's deliverable 5). Every other mode answers something; this one answers
+nothing, so the client's readiness wait fails at the TRANSPORT rather than on a
+parsed reply — which is what a stolen port looks like from the caller's side,
+and what a `driver` on PATH that is not a webdriver at all looks like when it
+happens not to exit. It is the only state the other modes cannot reach, and
+without it the arm that proves the two readiness faults are distinguished has
+nothing to drive the unreachable half with.
+
+**IT MUST OUTLIVE THE READINESS BOUND, AND THAT ORDERING IS ASSERTED RATHER THAN
+ENFORCED.** If `DeafFor` were shorter than `browser.ReadyTimeout` the fake would
+exit first, the wait would take its `exited` branch, and the cell would PASS
+having measured a different fault — a cell that silently tests the wrong thing.
+`fakedriver` cannot import `internal/browser` (it is a child of it), so no
+constant can relate them; an arm in the parent package compares the two and
+fails by name, and its mutant is the constant dropped below the bound.
+
 **WHAT A FAKE CANNOT ANSWER IS WHETHER A BROWSER STARTS.** Every arm driven
 against `fakedriver` says that rumor speaks WebDriver correctly and says nothing
 about chromium launching, a missing shared library, or a sandbox it cannot

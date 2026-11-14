@@ -539,6 +539,24 @@ browser, its driver, how they were found, and whether the session was headless
 or headed; a pair that will not start is a skip with its reason named. That
 line is on **stderr**, for the reason below.
 
+**A SKIP'S REASON SAYS WHICH OF TWO FAULTS ENDED THE READINESS WAIT** (R9.2's
+deliverable 5). A driver that never bound its port and one that answered and
+never readied fail differently, and the reason distinguishes them:
+
+- `never answered /status within 10s, so nothing proves it is listening on the
+  port it was given` — nothing on that port ever spoke WebDriver. Three causes
+  are indistinguishable from here and the sentence names all three rather than
+  implying one: a binary that is not a webdriver, a port taken between being
+  chosen and being bound, and a driver still coming up.
+- `answered /status but never became ready within 10s … so it is stuck rather
+  than slow` — the driver is there and answering, and is not going to be ready.
+  Measured readiness is tens of milliseconds, so waiting longer does not help.
+
+**Until d5 these were one sentence**, and it was the second one — so a driver
+that never answered produced a line asserting it had, with a `connection
+refused` wrapped inside the same string. A reader quoting the headline, or a
+relay written from a job log, filed a never-reachable driver as a stuck one.
+
 **THE PROBE'S VERDICT IS ON STDERR, AND STDOUT SAYS WHERE TO LOOK.** `rumor
 run` hashes its stdout, and D1 — two attempts of one seed are byte-identical —
 is enforced by keeping that stream free of anything the box decides between
