@@ -1494,6 +1494,44 @@ to report the wrong fault; the stage's own probe bound, for a browser that comes
 up and then wedges, which no readiness check can see; and the HTTP client's
 own timeout behind both.
 
+**THE READINESS BOUND NAMES WHICH OF TWO FAULTS ENDED IT, and that split is
+R9.2's deliverable 5.** A driver that never bound its port and one that answered
+and never readied are different faults, and until d5 the bound returned a single
+sentence asserting the driver had ANSWERED whichever had happened — so a
+`connection refused` arrived inside a string claiming an answer. The wait now
+records whether `/status` ever PARSED and says either "never answered /status,
+so nothing proves it is listening on the port it was given" or the stuck
+sentence. The first names its three indistinguishable causes rather than
+implying one: a binary that is not a webdriver, a port taken between being
+chosen and being bound, and a driver still coming up.
+
+**THE STUCK MODE ITSELF IS MEASURED AND OPEN.** rook saw a driver started
+through rumor's path never ready, twice in six on sll-driver-01 (`hw.ncpu` 4),
+and never on direct starts (22 of 22). Measured here on 2026-11-14,
+`quill.local`, `hw.ncpu` 8, load 2.7: **200 starts through `browser.Start` —
+the same call `cmd/rumor`'s `driveOnce` makes, so production's flags, cwd, env
+and process group — readied 200 of 200**, min 52.7 ms, median 54.6 ms, p90
+56.4 ms, max 58.7 ms, with zero failures of either kind.
+
+**THE NULL IS BOUNDED, which is what makes it a result**: 0 events in 200
+trials puts the 95% upper bound on the mode's rate at **1.5%** on this box. A 5%
+rate would have produced 200 clean starts with probability 3.5e-5. So the mode
+is not absent — it is **absent above 1.5% here**, and it is NOT refuted on
+sll-driver-01, whose core count is half this one's and whose figures are its own
+(two boxes are not one table). It stays open by name.
+
+**WHAT DIFFERS BETWEEN RUMOR'S START AND A DIRECT ONE**, read from
+`internal/browser`'s `Start` rather than inferred: the only flag is `--port=N`;
+`cmd.Dir` is unset, so the driver inherits the runner's working directory;
+`cmd.Env` is nil, so it inherits the whole parent environment; the port comes
+from a listener bound to `:0` and **closed** before the driver binds it, a race
+the package names itself; and the child is given **its own process group**
+(`Setpgid`), which a direct `exec` of chromedriver does not do. The last is not
+in the deliverable's list and is the one no earlier reading mentions. None is
+shown to cause the mode: with no failure in 200 starts there is nothing here to
+attribute, and an empirical contrast against a direct start is uninformative
+while the mediated path does not fail.
+
 **AND EVERY REPLY'S STATUS IS READ, WHICH IS WHAT MAKES A REFUSED TEARDOWN
 VISIBLE.** A `DELETE /session/{id}` is sent with nowhere to decode a body into,
 so a driver answering 500 to "close this session" was indistinguishable from one

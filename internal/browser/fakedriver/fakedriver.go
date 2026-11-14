@@ -30,13 +30,22 @@ import (
 // cheap cell and long enough that a one-second bound cannot pass it.
 const SlowFor = 3 * time.Second
 
+// DeafFor is how long the "deaf" mode stays alive without listening. It must
+// exceed browser.ReadyTimeout so waitReady reaches its BOUND rather than its
+// `exited` branch -- the two are different faults and an arm for one must not
+// silently measure the other. It is not imported from that package because
+// fakedriver is a child of it and the dependency would be a cycle; the arm that
+// needs them ordered asserts it.
+const DeafFor = 30 * time.Second
+
 const (
 	// ModeEnv carries the behavior wanted: "ready" to answer /status ready,
-	// "never" to answer it not-ready forever, "wedge" to come up ready and
-	// then never answer a session -- which is a browser that launches and
-	// hangs, the failure a readiness check cannot see -- or "refuse-close" to
-	// open sessions and then refuse to delete them. Unset means this process is
-	// not a fake driver at all.
+	// "never" to answer it not-ready forever, "deaf" to stay alive and never
+	// listen at all -- the transport-level failure a stolen port produces --
+	// "wedge" to come up ready and then never answer a session -- which is a
+	// browser that launches and hangs, the failure a readiness check cannot
+	// see -- or "refuse-close" to open sessions and then refuse to delete them.
+	// Unset means this process is not a fake driver at all.
 	ModeEnv = "RUMOR_FAKE_DRIVER_MODE"
 
 	// JournalEnv names a file the fake appends what it was asked to, so an arm
@@ -224,6 +233,21 @@ func serve(mode, journal string, args []string) {
 	// after a failed start: that is the only way to tell a driver that was
 	// cleaned up from one that was abandoned.
 	note(fmt.Sprintf("listen %d", port))
+	// "deaf" STAYS ALIVE AND NEVER BINDS, which is the one state no other mode
+	// reaches and the one R9.2's d5 needs: every /status call fails at the
+	// TRANSPORT, so waitReady reaches its bound having never parsed an answer.
+	// It is what a stolen port looks like from the caller's side, and what a
+	// `driver` on PATH that is not a webdriver at all looks like when it happens
+	// not to exit.
+	//
+	// IT MUST OUTLIVE THE BOUND, or the arm takes the `exited` path instead and
+	// measures the wrong branch: SlowFor is far too short, so this waits on a
+	// duration named for what it has to beat.
+	if mode == "deaf" {
+		note("deaf: alive and not listening")
+		time.Sleep(DeafFor)
+		return
+	}
 	srv := &http.Server{
 		Addr:              fmt.Sprintf("127.0.0.1:%d", port),
 		Handler:           mux,

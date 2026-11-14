@@ -307,6 +307,12 @@ func Start(ctx context.Context, driverPath, browserPath string, headless bool) (
 func (d *Driver) waitReady(ctx context.Context, bound time.Duration) error {
 	deadline := time.Now().Add(bound)
 	var last error
+	// answered RECORDS THAT /status PARSED AT LEAST ONCE, which is what the two
+	// bound messages below turn on. It is not "the port was reachable": a
+	// connection that opens and returns garbage leaves this false, which is the
+	// right side of the line, since what the caller needs to know is whether the
+	// thing on that port spoke WebDriver.
+	answered := false
 	for time.Now().Before(deadline) {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -327,6 +333,7 @@ func (d *Driver) waitReady(ctx context.Context, bound time.Duration) error {
 		} else if out.Value.Ready {
 			return nil
 		} else {
+			answered = true
 			last = fmt.Errorf("the driver answered /status and is not ready")
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -336,10 +343,38 @@ func (d *Driver) waitReady(ctx context.Context, bound time.Duration) error {
 	// that answered and never readied inside the bound is not behind -- it is
 	// not coming. "within 10s" alone invites the reader to grant it more time,
 	// which is the reading that cost rook a 1-in-6 failure misfiled as slowness.
+	//
+	// AND IT SAYS WHICH OF TWO FAULTS IT WAS, because one message for both made
+	// rook's 2-in-6 at r9/106 unattributable. Until R9.2's d5 this returned
+	// "answered /status but never became ready" UNCONDITIONALLY: a driver that
+	// never bound its port produced a sentence asserting it had answered, with a
+	// `connection refused` wrapped inside the same string -- the headline
+	// claiming the half that did not happen. Driven on 2026-11-13: a program
+	// accepting --port and never listening gave
+	//
+	//	deaddriver answered /status but never became ready within 10s [...]
+	//	  : GET /status: dial tcp 127.0.0.1:44848: connect: connection refused
+	//
+	// THE PARENTHETICAL WAS NOT ENOUGH. It conceded that a stolen port "reads
+	// the same way", which is true and is a weaker thing than the main clause
+	// needed: a reader quoting the headline -- or a relay written from a job
+	// log -- files a never-reachable driver as a stuck one. An ambiguity named
+	// in a clause does not repair an assertion made in the sentence.
+	//
+	// `answered` IS SET ONLY WHERE /status PARSED, which is the one place the
+	// two cases are distinguishable; a transport error cannot tell a stolen port
+	// from a driver that is not a webdriver, and this message no longer pretends
+	// it can.
+	if !answered {
+		return fmt.Errorf("%s never answered /status within %s, so nothing proves it is "+
+			"listening on the port it was given -- a driver that is not a webdriver, a port "+
+			"taken between being chosen and being bound, and a driver still coming up read "+
+			"alike here, and measured readiness is tens of milliseconds on this phase's "+
+			"boxes: %w", d.path, bound, last)
+	}
 	return fmt.Errorf("%s answered /status but never became ready within %s, and measured "+
 		"readiness is tens of milliseconds on this phase's boxes -- so it is stuck rather than "+
-		"slow, and waiting longer would not help: %w (a port taken between being chosen and "+
-		"being bound reads the same way)", d.path, bound, last)
+		"slow, and waiting longer would not help: %w", d.path, bound, last)
 }
 
 // capabilities is what a new session asks for.
