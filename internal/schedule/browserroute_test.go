@@ -64,6 +64,8 @@ type routedFlow struct {
 	// rounds is what each opened watch answers, one slice per Since in order,
 	// so a cell can plant a quiet boundary and a noisy one in the same run.
 	rounds [][]PageFault
+	// errs is the failure a given barrier answers, indexed like rounds.
+	errs []error
 }
 
 type readCall struct {
@@ -107,20 +109,30 @@ type watchCall struct{ actor, token string }
 // stubWatch is one opened watch. It answers `rounds` in order -- one slice per
 // Since -- and counts its closes, so an arm can assert that the walk closed
 // what it opened rather than leaking a connection per step.
+//
+// IT CAN ALSO FAIL A BARRIER, and before it could not. quill's clear of the
+// first head (coop r9/306) found that every Since in the tree answered
+// `nil, nil`: both doubles were incapable of an error, so the walk's "a
+// barrier that failed is unheard rather than quiet" was PROSE -- no arm could
+// tell the two apart, and ignoring either error would have passed. `errs`
+// indexes the same call sequence as `rounds`.
 type stubWatch struct {
 	rounds [][]PageFault
+	errs   []error
 	n      int
 	closed int
 }
 
 func (w *stubWatch) Since(context.Context) ([]PageFault, error) {
-	if w.n >= len(w.rounds) {
-		w.n++
+	i := w.n
+	w.n++
+	if i < len(w.errs) && w.errs[i] != nil {
+		return nil, w.errs[i]
+	}
+	if i >= len(w.rounds) {
 		return nil, nil
 	}
-	out := w.rounds[w.n]
-	w.n++
-	return out, nil
+	return w.rounds[i], nil
 }
 
 func (w *stubWatch) Close(context.Context) error { w.closed++; return nil }
@@ -130,7 +142,7 @@ func (r *routedFlow) WatchFor(_ context.Context, actor, token string) (ActorWatc
 	if r.watchErr != nil {
 		return nil, r.watchErr
 	}
-	w := &stubWatch{rounds: r.rounds}
+	w := &stubWatch{rounds: r.rounds, errs: r.errs}
 	r.opened = append(r.opened, w)
 	return w, nil
 }
@@ -554,5 +566,81 @@ func TestTheWatchesCloseAndTheQuietPageRecordsNothing(t *testing.T) {
 	}
 	if len(ss.watches) != 0 {
 		t.Errorf("a closed watch is still held, so a second close would close it twice")
+	}
+}
+
+// TestAFailedOpeningBoundaryIsUnheardAndNotQuiet closes quill's S2 (coop
+// r9/306): nothing in the tree could fail a barrier, so the walk's refusal to
+// call a failed boundary "quiet" was a comment and not a behavior.
+//
+// THE PLANTED SECOND ROUND IS WHAT MAKES IT BITE. If the walk ignored the
+// opening error and kept the watch, the CLOSING barrier would answer `under`
+// and the run would report a fault -- so a walk that swallows this error does
+// not merely lose a message, it attributes one. The arm sees both halves.
+func TestAFailedOpeningBoundaryIsUnheardAndNotQuiet(t *testing.T) {
+	under := PageFault{Kind: "console", Text: "would be misattributed"}
+	stub := &routedFlow{
+		resp:   wire.FlowResponse{Reached: 2, Stopped: wire.StopNone},
+		rounds: [][]PageFault{nil, {under}},
+		errs:   []error{errors.New("BiDi did not answer session.status"), nil},
+	}
+	ss := NewSessions(nil)
+	ss.UseBrowser(stub, "http://127.0.0.1:8431")
+
+	got, err := drive(context.Background(), nil, ss, "member_1",
+		browserAction(), "tok-7", nil, 0, composedSteps())
+	if err != nil {
+		t.Fatalf("a failed boundary stopped the walk: %v. A page that cannot be HEARD is "+
+			"still a page that can be driven", err)
+	}
+	if !got.Flowed || len(stub.calls) != 1 {
+		t.Errorf("the flow did not run after a failed opening boundary: flowed=%v calls=%d",
+			got.Flowed, len(stub.calls))
+	}
+	if h := ss.Heard(); len(h) != 0 {
+		t.Errorf("the walk recorded %v, want nothing: the opening barrier failed, so the "+
+			"closing one's answer describes a window with no known start", h)
+	}
+	un := ss.Unheard()
+	if len(un) != 1 {
+		t.Fatalf("%d step(s) unheard, want 1: a failed barrier is not a quiet page", len(un))
+	}
+	if !strings.Contains(un[0].Why, "before the step") {
+		t.Errorf("unheard says %q, want the OPENING boundary named: which barrier failed is "+
+			"the difference between a lost window and a lost connection", un[0].Why)
+	}
+}
+
+// TestAFailedClosingBoundaryIsUnheardAndNotQuiet closes quill's S3. The
+// closing barrier is the one whose answer the run keeps, so treating its
+// failure as silence is the error that reads a clean page off a run that
+// could not look.
+func TestAFailedClosingBoundaryIsUnheardAndNotQuiet(t *testing.T) {
+	stub := &routedFlow{
+		resp:   wire.FlowResponse{Reached: 2, Stopped: wire.StopNone},
+		rounds: [][]PageFault{nil, nil},
+		errs:   []error{nil, errors.New("BiDi did not answer session.status")},
+	}
+	ss := NewSessions(nil)
+	ss.UseBrowser(stub, "http://127.0.0.1:8431")
+
+	if _, err := drive(context.Background(), nil, ss, "member_1",
+		browserAction(), "tok-7", nil, 0, composedSteps()); err != nil {
+		t.Fatalf("a failed closing boundary stopped the walk: %v", err)
+	}
+	if h := ss.Heard(); len(h) != 0 {
+		t.Errorf("the walk recorded %v off a barrier that errored", h)
+	}
+	un := ss.Unheard()
+	if len(un) != 1 {
+		t.Fatalf("%d step(s) unheard, want 1: a closing barrier that did not answer leaves "+
+			"this step's page UNKNOWN, and an empty Heard would read as clean", len(un))
+	}
+	if !strings.Contains(un[0].Why, "after the step") {
+		t.Errorf("unheard says %q, want the CLOSING boundary named", un[0].Why)
+	}
+	if un[0].Actor != "member_1" || un[0].Action != "join_event" {
+		t.Errorf("unheard attributed to %q/%q, want member_1/join_event",
+			un[0].Actor, un[0].Action)
 	}
 }
