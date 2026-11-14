@@ -395,7 +395,8 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 				_, _ = fmt.Fprintf(stderr, "run: no browser for this run: %v\n", derr)
 			} else {
 				defer func() { _ = d.Close(context.WithoutCancel(ctx)) }()
-				browser = schedule.Browser{Driver: d, SnapshotDir: opts.snapshots, Screenshots: opts.screenshots}
+				browser = schedule.Browser{Driver: watchingDriver{d},
+					SnapshotDir: opts.snapshots, Screenshots: opts.screenshots}
 				// THE FLAG SAYS WHAT ITS CHECK CANNOT SEE, to the person who
 				// asked for it (coop r9/191), and on stderr: it is about this
 				// invocation, not the verdict, so it stays out of the stream
@@ -1450,3 +1451,49 @@ func periodFor(p platform.Platform, profile string) int {
 	every, _ := p.ReconcileEvery(profile)
 	return every
 }
+
+// watchingDriver gives the browser driver the shape the engine's FlowDriver
+// declares for a watch, and converts the driver's faults into the engine's.
+//
+// THE SEAM IS HERE AND IN NEITHER PACKAGE, which is a fact about Go and not a
+// preference. internal/browser's WatchFor answers its own *browser.Watch; Go
+// has no covariant return, so a driver satisfying an interface-returning
+// method would have to NAME schedule.ActorWatch and import the engine.
+// internal/schedule/sessions.go holds the opposite rule -- the engine imports
+// no driver -- and this command already imports both, so the one place that
+// can hold the conversion without adding an import edge is this one.
+//
+// The compiler states the same thing if the wrapper is removed: "have
+// WatchFor(...) (*browser.Watch, error), want WatchFor(...)
+// (schedule.ActorWatch, error)".
+type watchingDriver struct{ *webdriver.Driver }
+
+func (d watchingDriver) WatchFor(ctx context.Context, actor, token string) (schedule.ActorWatch, error) {
+	w, err := d.Driver.WatchFor(ctx, actor, token)
+	if err != nil {
+		// THE REFUSAL TRAVELS, and no watch is substituted for it. A driver
+		// that offers no BiDi is named by internal/browser; an empty watch
+		// here would reach the walk as a page that misbehaved in no way.
+		return nil, err
+	}
+	return pageWatch{w: w}, nil
+}
+
+// pageWatch converts one watch's faults at the same seam, for the reason the
+// driver is wrapped at all: schedule.PageFault and browser.Fault carry the
+// same three facts and neither package may name the other's.
+type pageWatch struct{ w *webdriver.Watch }
+
+func (p pageWatch) Since(ctx context.Context) ([]schedule.PageFault, error) {
+	heard, err := p.w.Since(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]schedule.PageFault, 0, len(heard))
+	for _, f := range heard {
+		out = append(out, schedule.PageFault{Kind: f.Kind, Text: f.Text, Status: f.Status})
+	}
+	return out, nil
+}
+
+func (p pageWatch) Close(ctx context.Context) error { return p.w.Close(ctx) }

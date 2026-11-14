@@ -41,6 +41,25 @@ func (b *waitingBrowser) Snapshot(_ context.Context, _, _, dir, name string, _ b
 	return name + ".html; screenshot not asked for", nil
 }
 
+// WatchFor is the stub half of issue 125's deliverable 1: the interface cannot
+// compile without it on every implementation. This fixture is about the
+// ui_timeout path and raises nothing on its page, so the watch it answers is
+// QUIET AND NOT REFUSING -- the two are different facts and the walk reports
+// them differently.
+//
+// THE CELLS ON THIS FIXTURE ARE plumb'S (coop r9/301): they built it at
+// b4531f6, and this head takes only the lines that make it compile.
+func (b *waitingBrowser) WatchFor(context.Context, string, string) (schedule.ActorWatch, error) {
+	return quietWatch{}, nil
+}
+
+// quietWatch hears nothing and closes clean.
+type quietWatch struct{}
+
+func (quietWatch) Since(context.Context) ([]schedule.PageFault, error) { return nil, nil }
+
+func (quietWatch) Close(context.Context) error { return nil }
+
 // waitingWalk walks the fixture project with join_event as a browser-context
 // flow whose wait never comes true, until a seed reaches the ui_timeout.
 func waitingWalk(t *testing.T, br *waitingBrowser, dir string) (schedule.Record, uint64) {

@@ -973,6 +973,12 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, br Browser,
 	// second world with its own ids, and reusing the first attempt's tokens
 	// would carry one attempt's state into another.
 	sessions := NewSessions(sess)
+	// THE WATCHES CLOSE WITH THE ATTEMPT THAT OPENED THEM, on every path out
+	// of this walk, and under a context that cannot already be cancelled: a
+	// run the operator interrupted still has connections to give back, and
+	// closing under the dying ctx would leak exactly when it is least
+	// recoverable. The sessions they watch are the driver's and outlive them.
+	defer func() { _ = sessions.CloseWatches(context.WithoutCancel(ctx)) }()
 	// THE ADDRESS COMES OFF THE ADAPTER AND NOT OFF THE CALLER (fable, coop
 	// r9/111). The adapter is the one thing that knows where its world is --
 	// it either started the system or was handed TOY_ADDR -- and it reports it
@@ -2672,9 +2678,37 @@ func drive(ctx context.Context, sess *wire.Session, ss *Sessions, actor string,
 					a.Name, wire.ContractVersion)
 			}
 			ss.noteBrowserToken(actor, token)
+			// THE OPENING BOUNDARY, AND ITS ANSWER IS DISCARDED (issue 125's
+			// deliverable 1). `Since` is a barrier and not a timestamp: the
+			// round trip puts everything the browser had already emitted on
+			// this side of the answer, so taking it here and throwing it away
+			// is what makes the NEXT answer this step's and not the run's.
+			w, why := ss.WatchFor(ctx, actor, token)
+			if w != nil {
+				if _, berr := w.Since(ctx); berr != nil {
+					// A BARRIER THAT DID NOT ANSWER IS NOT A QUIET PAGE. The
+					// window this step would have reported is gone, so the
+					// watch is dropped for this step and the step says so.
+					why = fmt.Sprintf("the boundary before the step did not answer: %v", berr)
+					w = nil
+				}
+			}
 			resp, detail, ferr := br.Flow(ctx, actor, base, token, wire.FlowRequest{
 				Action: a.Name, Token: token, From: from, Steps: steps,
 			})
+			// THE CLOSING BOUNDARY IS TAKEN BEFORE THE FLOW'S ERROR IS READ,
+			// because a flow that failed is exactly when the page's own
+			// account matters most: a 5xx under the step is the likeliest
+			// reason the step did not finish, and returning first would throw
+			// that away.
+			if w == nil {
+				ss.noteUnheard(actor, a.Name, why)
+			} else if heard, berr := w.Since(ctx); berr != nil {
+				ss.noteUnheard(actor, a.Name,
+					fmt.Sprintf("the boundary after the step did not answer: %v", berr))
+			} else {
+				ss.noteHeard(actor, a.Name, heard)
+			}
 			if ferr != nil {
 				return driven{}, fmt.Errorf("driving %s's flow from %d through the browser: %w",
 					a.Name, from, ferr)

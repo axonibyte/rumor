@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,6 +53,17 @@ type routedFlow struct {
 	readErr      error
 
 	snaps []snapCall
+
+	// watches records every watch the walk OPENED, in order, so an arm can
+	// place one per browser actor rather than count them. watchErr makes the
+	// driver refuse to watch, which is the other way this is driven: a
+	// refusal the walk must report rather than read as a quiet page.
+	watches  []watchCall
+	opened   []*stubWatch
+	watchErr error
+	// rounds is what each opened watch answers, one slice per Since in order,
+	// so a cell can plant a quiet boundary and a noisy one in the same run.
+	rounds [][]PageFault
 }
 
 type readCall struct {
@@ -85,6 +97,42 @@ func (r *routedFlow) Snapshot(_ context.Context, actor, token, dir, name string,
 		return "", err
 	}
 	return name + ".html; screenshot not asked for", nil
+}
+
+// watchCall records a watch the walk asked for. The TOKEN is recorded because
+// it is what the driver redacts a fault's text of, so an arm can see that the
+// walk handed the actor's own credential and not another actor's.
+type watchCall struct{ actor, token string }
+
+// stubWatch is one opened watch. It answers `rounds` in order -- one slice per
+// Since -- and counts its closes, so an arm can assert that the walk closed
+// what it opened rather than leaking a connection per step.
+type stubWatch struct {
+	rounds [][]PageFault
+	n      int
+	closed int
+}
+
+func (w *stubWatch) Since(context.Context) ([]PageFault, error) {
+	if w.n >= len(w.rounds) {
+		w.n++
+		return nil, nil
+	}
+	out := w.rounds[w.n]
+	w.n++
+	return out, nil
+}
+
+func (w *stubWatch) Close(context.Context) error { w.closed++; return nil }
+
+func (r *routedFlow) WatchFor(_ context.Context, actor, token string) (ActorWatch, error) {
+	r.watches = append(r.watches, watchCall{actor: actor, token: token})
+	if r.watchErr != nil {
+		return nil, r.watchErr
+	}
+	w := &stubWatch{rounds: r.rounds}
+	r.opened = append(r.opened, w)
+	return w, nil
 }
 
 type flowCall struct {
@@ -348,5 +396,164 @@ func TestABrowserDrivingFailureSaysItWasTheBrowser(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "join_event") {
 		t.Errorf("the failure reads %q, and does not name the action", err)
+	}
+}
+
+
+// TestTheWalkOpensOneWatchPerActorAndDiscardsTheOpeningBoundary is issue 125's
+// deliverable 1 driven the way it can fail.
+//
+// THE PLANTED PAIR IS THE WHOLE ARM. `rounds[0]` is answered to the boundary
+// taken BEFORE the step and `rounds[1]` to the one taken after, so a walk that
+// kept the opening answer -- the obvious way to write this wrong -- would
+// report a fault that belongs to whatever ran previously, and this arm sees it
+// because the two faults are distinguishable. A walk that took only one
+// boundary would report nothing.
+func TestTheWalkOpensOneWatchPerActorAndDiscardsTheOpeningBoundary(t *testing.T) {
+	before := PageFault{Kind: "console", Text: "this belongs to an earlier step"}
+	under := PageFault{Kind: "response", Text: "/api/events/1", Status: 503}
+	stub := &routedFlow{
+		resp:   wire.FlowResponse{Reached: 2, Stopped: wire.StopNone},
+		rounds: [][]PageFault{{before}, {under}},
+	}
+	ss := NewSessions(nil)
+	ss.UseBrowser(stub, "http://127.0.0.1:8431")
+
+	for i := 0; i < 2; i++ {
+		if _, err := drive(context.Background(), nil, ss, "member_1",
+			browserAction(), "tok-7", nil, 0, composedSteps()); err != nil {
+			t.Fatalf("drive %d: %v", i+1, err)
+		}
+	}
+
+	if len(stub.watches) != 1 {
+		t.Fatalf("the driver was asked for %d watch(es) over two steps, want exactly 1: a watch "+
+			"is per ACTOR and reopening it per step would lose the barrier's meaning and leak "+
+			"a connection a step", len(stub.watches))
+	}
+	if stub.watches[0].actor != "member_1" || stub.watches[0].token != "tok-7" {
+		t.Errorf("the watch was opened for actor %q with token %q, want member_1 and tok-7: the "+
+			"token is what the driver redacts a fault's text of, so the wrong one publishes "+
+			"another actor's credential", stub.watches[0].actor, stub.watches[0].token)
+	}
+	if len(stub.opened) != 1 {
+		t.Fatalf("%d watch(es) were actually opened, want 1", len(stub.opened))
+	}
+	if n := stub.opened[0].n; n != 4 {
+		t.Errorf("the watch was barriered %d time(s) over two steps, want 4: one before each "+
+			"step and one after, and a walk taking fewer cannot bound a step at both ends", n)
+	}
+
+	heard := ss.Heard()
+	if len(heard) != 1 {
+		t.Fatalf("the walk recorded %d fault(s), want exactly the 1 heard UNDER a step: %v",
+			len(heard), heard)
+	}
+	if heard[0].Fault != under {
+		t.Errorf("the walk recorded %v, want %v: the opening boundary's answer is discarded, so "+
+			"a fault from before the step must not be attributed to it", heard[0].Fault, under)
+	}
+	if heard[0].Actor != "member_1" || heard[0].Action != "join_event" {
+		t.Errorf("the fault is attributed to %q/%q, want member_1/join_event: a fault without "+
+			"the step it was heard under is a property of the page and not a finding",
+			heard[0].Actor, heard[0].Action)
+	}
+	if len(ss.Unheard()) != 0 {
+		t.Errorf("a step whose watch answered was recorded as unheard: %v", ss.Unheard())
+	}
+}
+
+// TestARefusedWatchIsRecordedPerStepAndStopsNothing is the other way deliverable
+// 1 is driven: the driver cannot watch.
+//
+// TWO FACTS AT ONCE, and they pull in opposite directions. The driver is asked
+// ONCE -- a driver with no BiDi will not acquire it between two steps, and
+// retrying would bury the run's output in one fact -- but EACH step records
+// that its own page went unheard, because each of them separately was not
+// heard. A refusal remembered once and reported once would lose the second
+// step; a refusal retried per step would ask a failing driver forever.
+func TestARefusedWatchIsRecordedPerStepAndStopsNothing(t *testing.T) {
+	stub := &routedFlow{
+		resp:     wire.FlowResponse{Reached: 2, Stopped: wire.StopNone},
+		watchErr: errors.New("the driver opened this session with no webSocketUrl"),
+	}
+	ss := NewSessions(nil)
+	ss.UseBrowser(stub, "http://127.0.0.1:8431")
+
+	for i := 0; i < 2; i++ {
+		got, err := drive(context.Background(), nil, ss, "member_1",
+			browserAction(), "tok-7", nil, 0, composedSteps())
+		if err != nil {
+			t.Fatalf("a watch the driver refused stopped the walk at step %d: %v. A page that "+
+				"cannot be HEARD is still a page that can be driven", i+1, err)
+		}
+		if !got.Flowed || !got.Browser {
+			t.Errorf("step %d was not recorded as browser-driven after a refused watch", i+1)
+		}
+	}
+
+	if len(stub.watches) != 1 {
+		t.Errorf("the driver was asked to watch %d time(s), want 1: the refusal is remembered, "+
+			"and asking a driver that cannot watch once per step buries the run's output in "+
+			"one fact", len(stub.watches))
+	}
+	un := ss.Unheard()
+	if len(un) != 2 {
+		t.Fatalf("%d step(s) recorded as unheard, want 2: the open is not retried, but each "+
+			"step's page separately went unheard and a single entry would lose the second",
+			len(un))
+	}
+	for i, u := range un {
+		if u.Actor != "member_1" || u.Action != "join_event" {
+			t.Errorf("unheard %d is attributed to %q/%q, want member_1/join_event",
+				i, u.Actor, u.Action)
+		}
+		if !strings.Contains(u.Why, "webSocketUrl") {
+			t.Errorf("unheard %d says %q, want the driver's own refusal: a reason the driver "+
+				"gave is the only thing that tells a box with no BiDi from a broken one",
+				i, u.Why)
+		}
+	}
+	if len(ss.Heard()) != 0 {
+		t.Errorf("a run that heard nothing recorded faults: %v", ss.Heard())
+	}
+}
+
+// TestTheWatchesCloseAndTheQuietPageRecordsNothing holds the vacuity guard for
+// the pair above and the close for the connection.
+//
+// THE QUIET HALF IS NOT DECORATION: every assertion above is about a PLANTED
+// fault, and a walk that recorded every boundary as a fault would satisfy them
+// all. A clean page has to come back empty, or "two faults were heard" is not
+// evidence that anything was heard.
+func TestTheWatchesCloseAndTheQuietPageRecordsNothing(t *testing.T) {
+	stub := &routedFlow{resp: wire.FlowResponse{Reached: 2, Stopped: wire.StopNone}}
+	ss := NewSessions(nil)
+	ss.UseBrowser(stub, "http://127.0.0.1:8431")
+
+	if _, err := drive(context.Background(), nil, ss, "member_1",
+		browserAction(), "tok-7", nil, 0, composedSteps()); err != nil {
+		t.Fatalf("driving a clean page: %v", err)
+	}
+	if len(ss.Heard()) != 0 || len(ss.Unheard()) != 0 {
+		t.Fatalf("a watched, quiet page recorded heard=%v unheard=%v, want neither: a boundary "+
+			"that answers nothing is the ordinary case", ss.Heard(), ss.Unheard())
+	}
+	if len(stub.opened) != 1 {
+		t.Fatalf("%d watch(es) opened, want 1", len(stub.opened))
+	}
+	if c := stub.opened[0].closed; c != 0 {
+		t.Fatalf("the watch was closed %d time(s) during the walk, want 0: it spans the "+
+			"attempt, and closing it per step would reopen a connection a step", c)
+	}
+	if err := ss.CloseWatches(context.Background()); err != nil {
+		t.Fatalf("closing the walk's watches: %v", err)
+	}
+	if c := stub.opened[0].closed; c != 1 {
+		t.Errorf("the watch was closed %d time(s) at the attempt's end, want exactly 1: a "+
+			"connection the walk opened and did not give back outlives the walk", c)
+	}
+	if len(ss.watches) != 0 {
+		t.Errorf("a closed watch is still held, so a second close would close it twice")
 	}
 }

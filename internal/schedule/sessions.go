@@ -89,6 +89,47 @@ type Sessions struct {
 	// product cannot say. That lesson is already written on `Step.FlowBrowser`
 	// one layer up, where `driven.Browser` was set and read by nothing.
 	browserReads int
+
+	// watches is one open watch per browser actor, and unwatched is WHY an
+	// actor has none.
+	//
+	// THEY ARE TWO MAPS BECAUSE A WATCH THAT HEARD NOTHING AND A WATCH THAT
+	// COULD NOT LISTEN ARE THE SAME BYTES AND OPPOSITE FACTS. A driver with no
+	// BiDi, a watch the driver refused, and a page that simply behaved are
+	// three states, and one empty slice would flatten them into "clean".
+	watches   map[string]ActorWatch
+	unwatched map[string]string
+
+	// heard is every fault a watch reported at a step's boundary, with the
+	// actor and the action it was heard under, in the order heard; unheard is
+	// every step whose page could not be heard, with why.
+	//
+	// THEY ACCUMULATE HERE AND NOT ON `driven`, because this project has
+	// already paid for a field set and read by nothing -- `driven.Browser`
+	// was, and the comment on browserReads above is what it cost. The
+	// RECORD's field for these is issue 125's deliverable 2 and not this
+	// head's; until it exists, `Heard` and `Unheard` are their readers.
+	heard   []HeardFault
+	unheard []UnheardStep
+}
+
+// A HeardFault is one fault a watch reported and what it was heard under. The
+// ACTION is carried because a fault's whole value is the step it belongs to:
+// "this page logged an error" is a property of the page, and "it logged it
+// while join_event ran" is a finding.
+type HeardFault struct {
+	Actor  string
+	Action string
+	Fault  PageFault
+}
+
+// An UnheardStep is a step whose page could not be heard, and why. It is a
+// separate type from HeardFault rather than a HeardFault with an empty Fault,
+// so no reader can average the two or count them together.
+type UnheardStep struct {
+	Actor  string
+	Action string
+	Why    string
 }
 
 // FlowDriver drives one action's declared UI steps through a real browser and
@@ -132,6 +173,54 @@ type FlowDriver interface {
 	// token is what the DOM is redacted of and what the screenshot is checked
 	// against.
 	Snapshot(ctx context.Context, actor, token, dir, name string, screenshot bool) (string, error)
+
+	// WatchFor opens a watch on the actor's own browser context, which hears
+	// what the PAGE does underneath a step -- a console error, a 5xx, a burst
+	// of requests -- as against what the step itself reported (issue 125's
+	// deliverable 1). The token is the actor's credential, so a fault's text
+	// never carries it.
+	//
+	// IT IS ON THIS INTERFACE for the reason Read is: it is the same browser
+	// and the same session, and a second interface would let a build satisfy
+	// one while the walk requires the other.
+	//
+	// A DRIVER THAT CANNOT WATCH REFUSES BY NAME and the walk reports the
+	// refusal. It does not answer an empty watch: a watch that heard nothing
+	// and a watch that could not listen are the same bytes and opposite facts,
+	// and the walk has no way back to the difference once it is lost.
+	WatchFor(ctx context.Context, actor, token string) (ActorWatch, error)
+}
+
+// An ActorWatch is one actor's open watch, answering at a step's boundary what
+// the page did under it.
+//
+// THE BOUNDARY IS A BARRIER AND NOT A TIMESTAMP (plumb, coop r9/163): the
+// connection is ordered, so a round trip to the browser puts every event it
+// had already emitted on this side of the answer. `Since` is called once
+// before a step with its result discarded and once after with its result
+// kept, which is what makes the second answer this step's and not the run's.
+type ActorWatch interface {
+	Since(ctx context.Context) ([]PageFault, error)
+	Close(ctx context.Context) error
+}
+
+// PageFault is one thing heard beneath a step.
+//
+// IT IS DECLARED HERE AND NOT TAKEN FROM wire, because `wire.Fault` is already
+// the error envelope's body -- could-not-run, over the adapter's own kinds --
+// and this is the opposite: the system answered, and the page misbehaved while
+// it did. Two opposite meanings in one type would make `validate` refuse the
+// old shape by a name that already means could-not-run (ibis, coop r9/300).
+//
+// The driver's own fault type is converted at the seam that holds the driver
+// import, which is the stage, so the engine still names no driver.
+type PageFault struct {
+	// Kind is "console", "response" or "rate".
+	Kind string
+	// Text is the console entry's text or the response's URL, redacted.
+	Text string
+	// Status is a "response" fault's HTTP status, 0 otherwise.
+	Status int
 }
 
 // Browser is the live browser a walk drives flows through, as the stage that
@@ -213,6 +302,69 @@ func (s *Sessions) snapshot(ctx context.Context, actor string, seed uint64, step
 // Browser is the live browser and its base address, or a nil driver when the
 // flows are to go through the adapter as they always have.
 func (s *Sessions) Browser() (FlowDriver, string) { return s.browser, s.base }
+
+// WatchFor opens the actor's watch ONCE and answers the same one after, and
+// answers the refusal's own sentence where there is no watch.
+//
+// THE REFUSAL IS REMEMBERED AND THE OPEN IS NOT RETRIED. A driver that offers
+// no BiDi will not acquire it between two steps, and retrying would ask a
+// failing driver once per step and bury the run's output in one fact. Each
+// step still records that ITS page went unheard, which is true of each of
+// them separately.
+func (s *Sessions) WatchFor(ctx context.Context, actor, token string) (ActorWatch, string) {
+	if w, ok := s.watches[actor]; ok {
+		return w, ""
+	}
+	if why, ok := s.unwatched[actor]; ok {
+		return nil, why
+	}
+	w, err := s.browser.WatchFor(ctx, actor, token)
+	if err != nil {
+		if s.unwatched == nil {
+			s.unwatched = map[string]string{}
+		}
+		s.unwatched[actor] = err.Error()
+		return nil, err.Error()
+	}
+	if s.watches == nil {
+		s.watches = map[string]ActorWatch{}
+	}
+	s.watches[actor] = w
+	return w, ""
+}
+
+// noteHeard records what one step's closing boundary heard.
+func (s *Sessions) noteHeard(actor, action string, faults []PageFault) {
+	for _, f := range faults {
+		s.heard = append(s.heard, HeardFault{Actor: actor, Action: action, Fault: f})
+	}
+}
+
+// noteUnheard records that one step's page could not be heard, and why.
+func (s *Sessions) noteUnheard(actor, action, why string) {
+	s.unheard = append(s.unheard, UnheardStep{Actor: actor, Action: action, Why: why})
+}
+
+// Heard is every fault this walk's watches reported, in the order heard.
+func (s *Sessions) Heard() []HeardFault { return s.heard }
+
+// Unheard is every step whose page could not be heard. A reader that takes
+// Heard without this one is reading "no faults" off a run that never listened.
+func (s *Sessions) Unheard() []UnheardStep { return s.unheard }
+
+// CloseWatches closes every watch this walk opened, and answers the FIRST
+// failure while still closing the rest: a connection left open outlives the
+// walk, so one refusal must not strand the others.
+func (s *Sessions) CloseWatches(ctx context.Context) error {
+	var first error
+	for actor, w := range s.watches {
+		if err := w.Close(ctx); err != nil && first == nil {
+			first = fmt.Errorf("closing %q's page watch: %w", actor, err)
+		}
+	}
+	s.watches = nil
+	return first
+}
 
 // Acquired is how many `session` requests have been sent.
 func (s *Sessions) Acquired() int { return s.acquired }
