@@ -395,7 +395,14 @@ func runProject(dir string, seed uint64, haveSeed bool, steps int, profile strin
 				_, _ = fmt.Fprintf(stderr, "run: no browser for this run: %v\n", derr)
 			} else {
 				defer func() { _ = d.Close(context.WithoutCancel(ctx)) }()
-				browser = schedule.Browser{Driver: d}
+				browser = schedule.Browser{Driver: d, SnapshotDir: opts.snapshots, Screenshots: opts.screenshots}
+				// THE FLAG SAYS WHAT ITS CHECK CANNOT SEE, to the person who
+				// asked for it (coop r9/191), and on stderr: it is about this
+				// invocation, not the verdict, so it stays out of the stream
+				// the control hashes.
+				if opts.screenshots {
+					_, _ = fmt.Fprintf(stderr, "run: %s\n", ScreenshotsHelp)
+				}
 			}
 		}
 	}
@@ -670,6 +677,19 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 				return 2
 			}
 		}
+		// AND THE PAGE, WHERE A BROWSER DROVE THE STEP (issue 124's
+		// deliverable 2): the files kept under --snapshots, named relative to
+		// it, or that none was kept. Relative and clock-free, so two attempts
+		// of one seed print the same stanza whichever directory they wrote to
+		// (rook, coop r9/196). A run no browser drove has no page and no line.
+		for _, st := range rec.Steps {
+			if st.N == rec.FoundAt && st.Snapshot != "" {
+				if _, err := fmt.Fprintf(stdout, "run:   snapshot -- %s\n", st.Snapshot); err != nil {
+					_, _ = fmt.Fprintf(stderr, "run: writing the snapshot line: %v\n", err)
+					return 2
+				}
+			}
+		}
 		// AND THE CLOCK-DERIVED HALF ON STDERR, NEVER BESIDE THE VERDICT. The
 		// comment above still describes the report, but one sentence of it
 		// moved: "how many times it was asked and over what span" is written by
@@ -702,7 +722,7 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 		// does not make a found bug unfound, and a gate reading the refusal's 1
 		// would lose a finding it exists to catch. The refusal prints, so the
 		// reader is told why there is no minimal trace.
-		if st, serr := shrinkFound(ctx, dir, prep, p, probes, seed, rec, stdout); serr != nil {
+		if st, serr := shrinkFound(ctx, dir, prep, p, probes, br, seed, rec, stdout); serr != nil {
 			_, _ = fmt.Fprintf(stderr, "run: could not shrink: %v\n", serr)
 			_ = st
 		}
@@ -1009,6 +1029,21 @@ func parseRunArgs(args []string) (dir string, seed uint64, haveSeed bool, steps 
 		case rest[0] == "--browser-check":
 			opts.browserCheck = true
 			rest = rest[1:]
+		case rest[0] == "--snapshots":
+			// THE DIRECTORY MUST ALREADY EXIST, and is not made here: a typo
+			// that created a fresh directory would put the evidence somewhere
+			// nobody looks, and say so nowhere.
+			if len(rest) < 2 || rest[1] == "" {
+				return "", 0, false, 0, "", runOpts{}, "--snapshots wants a directory"
+			}
+			if fi, err := os.Stat(rest[1]); err != nil || !fi.IsDir() {
+				return "", 0, false, 0, "", runOpts{}, fmt.Sprintf("--snapshots %s: not an existing directory", rest[1])
+			}
+			opts.snapshots = rest[1]
+			rest = rest[2:]
+		case rest[0] == "--snapshot-screenshots":
+			opts.screenshots = true
+			rest = rest[1:]
 		case len(rest[0]) > 2 && rest[0][:2] == "--":
 			return "", 0, false, 0, "", runOpts{}, fmt.Sprintf("%s is not a flag of run", rest[0])
 		default:
@@ -1021,6 +1056,15 @@ func parseRunArgs(args []string) (dir string, seed uint64, haveSeed bool, steps 
 	}
 	if dir == "" {
 		return "", 0, false, 0, "", runOpts{}, "run wants a project directory"
+	}
+	// WITHOUT --browser-check NO BROWSER DRIVES A STEP, so there is never a
+	// page to keep: the flags would be accepted and do nothing, and say so
+	// nowhere. Refused by name instead.
+	if opts.snapshots != "" && !opts.browserCheck {
+		return "", 0, false, 0, "", runOpts{}, "--snapshots needs --browser-check: without a browser no step has a page to keep"
+	}
+	if opts.screenshots && opts.snapshots == "" {
+		return "", 0, false, 0, "", runOpts{}, "--snapshot-screenshots needs --snapshots: a screenshot is kept beside the DOM, never instead of it"
 	}
 	return dir, seed, haveSeed, steps, profile, opts, ""
 }

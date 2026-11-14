@@ -297,6 +297,14 @@ path = "internal/browser/fakedriver/*.go"
 docs = ["docs/testing-methodology.md", "docs/design.md"]
 
 [[entry]]
+# The RFC 6455 client WebDriver BiDi rides on (R9.3, fable's ruling at coop
+# r9/164). design.md owns WHY it is in-tree and not a third direct dependency,
+# and what subset of the protocol it speaks; it is no part of rumor's command
+# surface, so cli.md does not describe it.
+path = "internal/websocket/*.go"
+docs = ["docs/design.md"]
+
+[[entry]]
 # The rollback trait and its registry (R5.2's C3). rollback.md owns the
 # interface and what Verify has to prove; design.md owns why a shrink step runs
 # on a verified clean world at all.

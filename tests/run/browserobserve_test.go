@@ -104,7 +104,9 @@ func TestObservationsAreReadFromThePageWhenThereIsABrowser(t *testing.T) {
 // a non-browser source would panic on rather than answer -- so the claim is held
 // where a real adapter runs, which is what I owed after retracting it.
 func TestADirectObservationIsNeverReadThroughTheBrowser(t *testing.T) {
-	out, errb, code := run(t, "run", "../../examples/toy", "--seed", "2", "--steps", "6",
+	// The gate-only toy (cheapshrink_test.go): this run finds, and its shrink
+	// stops at the gate, so THIS ARM DOES NOT PROVE THE BROWSER SHRINK.
+	out, errb, code := run(t, "run", toyWithAGateOnlyBrowserShrink(t), "--seed", "2", "--steps", "6",
 		"--browser-check")
 	skipWithoutAPair(t, out, errb)
 	// A FINDING IS THIS TOOL'S PRODUCT, so a non-zero exit is not a failure

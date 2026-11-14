@@ -442,6 +442,7 @@ go test ./tests/attaint/ -v
 
 ```
 rumor run PROJECT [--seed N] [--steps N] [--headed] [--browser-check]
+          [--snapshots DIR [--snapshot-screenshots]]
 ```
 
 Walks the project: draws an actor, draws what it does from the actions its
@@ -486,6 +487,33 @@ costs a browser launch on every run. It makes the `browser` stage actually
 start the pair it found and open a session, which is the only way to tell a pair
 that is PRESENT from one that RUNS. Without it the stage reports the pair and
 says plainly that whether it runs here is unknown.
+
+`--snapshots DIR` keeps the page a finding was about (issue 124's deliverable
+2). DIR must already exist, and the flag needs `--browser-check`, because
+without a browser no step has a page to keep. A page is kept on a `ui_timeout`,
+and on a step where a `browser` observation and the engine's `direct`
+observation of the same claim, on the same subject, disagree. A statute finding
+on a page that agrees with the store keeps nothing. The FOUND stanza gains one
+line naming the files RELATIVE to DIR, so one seed written to two directories
+prints the same stdout:
+
+```
+run:   snapshot -- 40-16-guest_1.html; screenshot not asked for
+```
+
+The file is `seed-step-actor.html`: the page the disagreeing reading came
+from, reopened after the finding and written with the actor's token redacted.
+An actor name that is not a plain file name is escaped into one. Without the
+flag, a finding that would have kept a page says `snapshot not kept: no
+--snapshots`.
+
+`--snapshot-screenshots` also keeps `seed-step-actor.png`, and needs
+`--snapshots`. A screenshot is pixels and cannot be redacted, so it is
+WITHHELD, and the line says where, if the token is anywhere a check reaches.
+The places checked are the page source, any form control's live value, any
+frame, and any shadow root. Asked for, the flag says on stderr what that check
+cannot see: canvas and image pixels, and a closed shadow root the driver will
+not hand back.
 
 | status | meaning |
 |---|---|
@@ -689,6 +717,37 @@ same finding" is four parts and this one is established on three
 a reduction rests on is the reader's to weigh. `examples/toy` declares
 `rests_on_planted`, so nothing shipped here prints this line; a project of your
 own that does not declare it will.
+
+**A shrink stops at its budget and says how far it got** (issue 124's
+deliverable 4). `[stages.<name>].shrink_candidates` bounds how many candidates a
+shrink replays, the replay gate included. It defaults to 32, about twice the
+largest any of the toy's bugs needed (15), and is refused under 1. It is a
+COUNT and not a time, so one seed stops at the same place on any box. A shrink
+that reaches it prints, in place of the report above (the toy's `walking` seed
+2 with its api stage allowed 3, where it needs 8):
+
+```
+shrink: STOPPED AT ITS BUDGET -- 3 of 3 candidate(s) tried; the smallest
+reproduction so far is the first 4 of 4 step(s), each candidate replayed on a
+verified clean world; raise shrink_candidates to go further
+```
+
+Every length it names was run and reproduced, so a stopped shrink still has
+the failure. It never reads as "not reproducible". `rumor run` has no wall
+clock to end a shrink sooner (R15 owns budgets), so a shrink runs as long as
+its count takes.
+
+**Under `--browser-check` the shrink replays through the browser**, with fresh
+sessions for every candidate, so a failure the walk found through a page is
+narrowed through a page. The budget it takes is the `browser` stage's. A
+candidate then costs a walk plus a session per actor, about 1-2.5s each, so a
+shrink that takes seconds through the adapter takes minutes through a browser.
+The report gains a line whose figure is the driver's own count, since the
+reduction reads the same either way (`viewing` seed 40, 13 candidates):
+
+```
+shrink: replayed through the browser, 27 session(s) opened, fresh for every candidate
+```
 
 **Nothing is promoted by a run.** A shrink here is for a report; writing a seed
 into the project's `seeds.lock` is a decision for whoever is adding to the

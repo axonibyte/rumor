@@ -102,6 +102,23 @@ where no reader would think to look. The restores are therefore counted against
 the probes rather than against the candidates, and the stage's arms assert that
 count.
 
+**A SHRINK'S BUDGET IS COUNTED IN REPLAYS, AND THE PROBE IS THE REPLAY.**
+`[stages.<name>].shrink_candidates` (`docs/contract.md`) bounds `rumor shrink`,
+and the count is kept at the one door every replay passes through
+(`shrink.Request.MaxCandidates`), so a budget can never let a replay skip the
+restore and verify above: a replay past the count is not run at all and answers
+`ErrBudget` instead. The shrink then stops where it is, and what it reports was
+established on verified clean worlds only -- every length and every removed
+kind in it was replayed and reproduced; the final replay that would print the
+trace is one the budget did not allow, so none is printed. Because the door is
+per replay, a candidate probed *k* of *n* spends up to *n* of the budget, and a
+budget can run out between one candidate's probes; that candidate is then
+judged by nothing and the reduction stands where the last whole judgment left
+it. Today the only budgeted shrink is `rumor shrink`'s, whose verdict probes
+once, so there a replay and a candidate are one count; the concurrency stage's
+2-of-3 verdict belongs to the contention shrink `rumor run` makes, which takes
+no budget.
+
 **A verify that checks one thing can pass over a corpse.** The shipped provider
 asks two questions: the state file is byte-for-byte the checkpoint, *and* the
 server answers. The first alone is satisfied most perfectly when nothing is

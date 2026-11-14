@@ -373,7 +373,19 @@ type runOpts struct {
 	// session, which is the only way to tell FOUND from DRIVABLE -- and costs a
 	// browser launch per run, so it is off unless asked for.
 	browserCheck bool
+
+	// snapshots is the directory a finding's page is written into, and
+	// screenshots asks for a PNG beside the DOM there (issue 124's
+	// deliverable 2, fable's ruling at coop r9/191). Both apply only where a
+	// browser drove the step, which is a run with --browser-check.
+	snapshots   string
+	screenshots bool
 }
+
+// ScreenshotsHelp is the --snapshot-screenshots line of the usage, and it names
+// what the token check cannot see, as the ruling requires of the flag itself.
+const ScreenshotsHelp = "--snapshot-screenshots also keeps a PNG of a finding's page, " +
+	"withheld wherever the actor's token is on the page; " + webdriver.ScreenshotResidue
 
 // probeBound is how long the stage gives the whole start-session-stop probe.
 //

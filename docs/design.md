@@ -1760,6 +1760,182 @@ outlast it; `docs/testing-methodology.md` carries why that shape and not a
 sleep, and why the classifier's arms are a grid over both inputs rather than a
 list.
 
+**THE WATCHDOG HEARS THE PAGE OVER WEBDRIVER BIDI, BECAUSE CLASSIC WEBDRIVER
+CANNOT** (R9.3, fable's ruling at coop r9/164, on the measurement at r9/163).
+A W3C classic session carries no console and no HTTP status, so issue 124's
+5xx-and-console watchdog needs a second channel. Measured with chromedriver
+156.0.8078.79 against a page that logs `console.error` and fetches a 503: both
+Chromium's `goog:loggingPrefs` log endpoint and BiDi (`webSocketUrl: true`)
+report both faults. The log endpoint is Chromium's alone, so it would give the
+stage a second path for one family, which r9/73 rules out; BiDi is the
+standard and `geckodriver` speaks it too. The two events the watchdog reads are
+`log.entryAdded` and `network.responseCompleted`.
+
+**BIDI RIDES A WEBSOCKET, AND THE WEBSOCKET IS IN-TREE RATHER THAN A THIRD
+DIRECT DEPENDENCY.** The standard library has no websocket client and neither
+direct dependency carries one. Taking a library for it would add a standing
+cost to everyone who audits this tree, as the dependency sections above put it,
+and BiDi needs only a fixed subset of RFC 6455. So `internal/websocket` is a
+client and nothing more: text frames only, masked as section 5.3 requires, with
+continuation fragments reassembled, pings answered, and close echoed. It
+offers no extension and no compression, and a server that answers with either
+is refused by name, as is a `wss://` URL. The ruling bounded it at about three
+hundred lines; an extension BiDi turned out to need would have brought the
+dependency case back to this page before the cut, not after. Its arms build
+and parse the server's frames from the RFC independently of the client's
+encoder, so the two cannot agree by sharing a mistake. The accept-key
+arithmetic is checked against section 1.3's own worked example.
+
+**THE WATCH HEARS FAULTS AND RECORDS NONE** (`internal/browser/watch.go`).
+Every session asks for `webSocketUrl`, and `WatchFor` opens that actor's BiDi
+connection and subscribes it to the two events. A driver that answered with no
+URL is refused by name, because a watch that heard nothing from it would read
+as a clean page. What a fault MEANS is issue 124's deliverable 3: the
+`page_fault` finding, its attribution and the vocabulary row are the R9.3
+lead's, so this layer decides only what COUNTS, which is a fact about the
+protocol. Two rules, both measured at r9/163:
+
+- **By level and status, never by presence.** With BiDi on, chromedriver adds
+  an INFO entry of its own ("Launching Mapper instance") to every session, so a
+  watch that fired on any entry would fire on every clean page. A console entry
+  counts at level `error`; a response counts at 500 and above, so a 404 stays
+  the page's own business. A fault's text passes the same token redaction as
+  every other line, because a 5xx on a navigated page carries the token in its
+  URL.
+- **The step boundary is a barrier, not an arrival time.** BiDi delivered
+  entries logged before the subscription, so "arrived since I asked" is not
+  "caused by this step". `Since` sends a command and waits for its reply. The
+  connection is ordered, so every event the browser sent before answering has
+  arrived by then. The flow calls it before a step and discards the result,
+  then after it and keeps the result. On real chromium the events land before
+  `navigate` returns, and the real-pair arms pass with the barrier removed. A
+  fake BiDi peer that sends its fault only on receiving the barrier is the arm
+  that fails without it.
+
+**WHAT IT CANNOT SEE** is a fault the page raises after the step's closing
+barrier, such as a timer or a slow fetch. That fault lands in the next step's
+window. The alternative would be waiting for it, which is a fixed sleep, and
+this stage has none.
+
+**THE THIRD ARM IS A REQUEST RATE, AND IT READS RESPONSES ALONE** (fable's
+ruling at coop r9/173, from the measurement at r9/172; `rate.go`). On chromium
+156, two seconds after load, an honest page added about one response a second
+(a 1s poll made 3 in the window). A fetch loop made 260 to 374, and a 100ms
+poll made 20. The default fires at **at least 20 responses in EVERY whole
+second of a 2-second window** (r9/179), and a binding may raise it. It was 10
+for one gate, which put the 100ms poll exactly on the line, and the gate
+measured what that costs. The poll fired 10 of 10 at load 2 and not at all at
+load 12, because chromium's timer slips under load. Load deciding a verdict is
+what R9 rules out, so the default moved off the poll interval. The 100ms poll
+is now a real page that must not fire at any load. Every second must carry the rate on its own,
+rather than the window carrying the total. A page that loads thirty assets in
+half a second puts thirty inside two seconds, and a total would fire on every
+heavy page load. Log entries are counted beside the rate and reported in the
+same sentence. They are never added to it.
+
+The window runs on the BROWSER's clock, the timestamp each BiDi event carries,
+so a slow box delays the events without changing what they say. It spans step
+boundaries, because a step usually ends when its page has loaded, well under
+two seconds, while a loop runs as long as the actor stays on the page. One
+finding per episode; the arm re-arms once a second falls short.
+
+**A RENDER LOOP THAT FETCHES NOTHING IS INVISIBLE HERE, BY DESIGN.** Measured:
+a `requestAnimationFrame` loop made 1 response and 0 log entries, the same as
+a clean page. Seeing it would take a MutationObserver installed in the page,
+and the ruling forbids code in the page under test, since a finding read off
+our own script is not the system's. If such a loop matters to a project, a
+binding's flow can assert what the page shows. A loop on a page the actor
+leaves within the window is not seen either.
+
+**A SNAPSHOT KEEPS THE DOM ALWAYS AND THE SCREENSHOT ONLY WHEN ASKED**
+(issue 124's deliverable 2, fable's ruling at coop r9/191; `snapshot.go`).
+The DOM is text, so the same `redact()` takes the actor's token out of it, and
+an arm greps the written bytes. A screenshot is pixels, and nothing can be
+taken out of those, so an unsafe screenshot is one somebody asked for, never a
+default. Even when asked for, the screenshot is WITHHELD by name if the token
+is anywhere a check can reach. Each place was measured painting the token
+while a narrower check read clean (r9/187-190):
+
+- the page source, which catches an `<input value=>` attribute and CSS
+  `::after` content;
+- every form control's LIVE value, read with WebDriver's own Get Element
+  Property, since a value set by script or typed in never reaches the source;
+- every frame, entered in turn, since a frame's document is not the top
+  page's source;
+- every shadow root, with its text and controls, since the source serialises
+  the light DOM only.
+
+No script is run in the page to do any of it. **What it cannot see** is named
+in every kept screenshot's note: canvas and image pixels, and a closed shadow
+root the driver will not hand back. chromedriver 156 hands one back (measured);
+the WebDriver spec says a driver should not, so on a driver that follows the
+spec that content goes unseen.
+
+**THE WALK TAKES THE SNAPSHOT, AND ONLY WHERE PAGE AND STORE PART** (fable,
+coop r9/191 and r9/197). The walk holds each actor's token, which redaction
+needs, so the snapshot is taken there and not by the command. It happens on a
+`ui_timeout`, and on a stopping finding at a step where a `browser` reading and
+a `direct` reading of the SAME claim on the SAME subject differ. Two lessons
+from the first cut shaped that sentence. It matched on the claim type alone, so
+on seed 11 one event's page and ANOTHER event's store were read as a
+disagreement. And it kept whichever page the step's last observation had left
+open. So each reading now carries its subject, and a browser reading carries
+the page it came from, which the snapshot reopens first. A statute finding at a
+step that merely read through the browser keeps nothing, because its page may
+be clean. The file names are relative to `--snapshots` and the line is
+clock-free, so the FOUND stanza stays byte-identical across attempts and
+directories (rook, r9/196).
+
+**THE `ui_timeout` SNAPSHOT IS HELD AT THE WALK, NOT END TO END.** The toy's
+only flow ends in a wait that always comes true, so no run here reaches a
+browser-driven `ui_timeout`. For a while nothing held the hook at all: ibis
+measured that deleting its call block survived all 43 packages (coop
+rumor/2044). `tests/wire/uitimeout_snapshot_test.go` now walks a real fake
+adapter with a stand-in browser whose wait never comes true. The arm that
+first reached the call found a defect in it: `resumeFlow` clears the pending
+flow before it reports the timeout, so the hook asked for a page belonging to
+actor "". A real driver refuses that, which would have turned the finding into
+a failed walk. The actor now comes from the step the flow was pending at.
+What stays unproven is a real browser's page at a real `ui_timeout`.
+
+**THE SHRINK REPLAYS THROUGH THE BROWSER, AND STOPS AT A COUNT** (issue 124's
+deliverable 4, fable's ruling at coop r9/204). The shrinker replayed through
+the adapter even under `--browser-check`, a remainder its own comment named.
+So a defect that lived in the document could fail to reproduce, and the seed
+would go unnarrowed. Each candidate now replays through the walk's browser,
+after `Driver.Reset`, which closes every session and forgets the old world's
+address. Each candidate's world is restored to the checkpoint, so an old
+session would carry cookies from a world that no longer exists. Measured, a
+session open costs 1.1-1.4s quiet and 1.9-2.6s loaded, one per actor. On seed
+40 the 13 candidates reduce 16 steps to 9 through the browser exactly as they
+do through the adapter, in about 100s against about 18s.
+
+The budget is `shrink_candidates`, declared per stage, with a default of 32.
+It is a count and not a clock, so a seed stops at the same place on any box.
+A time budget would let load decide how far a shrink got, which R9 rules out.
+The count is kept at the one door every candidate passes, the replay
+function. A candidate past it answers `ErrBudget` without running.
+`Bisect`'s invariant, that its upper bound has always been run and
+reproduced, makes the length it holds at that moment an answer and not an
+inference. **There is no backstop clock**: `rumor run` has none, and R15 owns
+budgets (coop r9/206-208), so a shrink runs as long as its count takes.
+
+**THE FORM A CLOCK-ENDED SHRINK MUST TAKE, OWNED BY R15 AND NOT WRITTEN YET**
+(fable, coop r9/219, on rook r9/213). When R15 gives a run a wall-clock
+budget, a shrink that budget ends must end as PARTIAL, never as not
+reproducible. It says how many candidates it tried and the smallest
+reproduction so far, in the stopped shrink's shape:
+
+```
+shrink: PARTIAL -- k of N candidate(s) tried before the run's budget ended it;
+the smallest reproduction so far is the first M of T step(s)
+```
+
+That line is NOT in the code. An unreached line is checked against nothing: a
+mutant deleting it survives every run, so its wording would be wrong in some
+detail the day it became reachable. R15 cuts it, together with the arm that
+drives it.
+
 ## A fan-out is N processes against one world
 
 **TWO REQUESTS IN FLIGHT IS THE ONLY WAY A CHECK-THEN-ACT DEFECT CAN BE

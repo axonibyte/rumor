@@ -21,6 +21,9 @@ import (
 
 var rumorBin string
 
+// suiteDir is TestMain's own directory, removed on every exit path.
+var suiteDir string
+
 // TestMain builds rumor once and puts it on PATH, because the FIXTURE's
 // [adapter].command is `rumor fake-adapter` -- what a real project writes. A
 // failed build fails the suite rather than skipping it.
@@ -44,6 +47,9 @@ func TestMain(m *testing.M) {
 		_ = os.RemoveAll(dir)
 		os.Exit(code)
 	}
+	// AND ANYTHING ELSE THE SUITE MAKES ONCE GOES IN HERE, so the closure above
+	// removes it on every exit too (issue 88's lesson): the gate-only toy copy.
+	suiteDir = dir
 
 	rumorBin = filepath.Join(dir, "rumor")
 	// THE TOY PAIR IS BUILT TOO, because `examples/toy` against

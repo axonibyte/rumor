@@ -987,3 +987,37 @@ func TestAnAdapterMayNameTheVariableThatCarriesTheZone(t *testing.T) {
 		t.Errorf("a platform declaring no zone_env carries %q", got)
 	}
 }
+
+// `shrink_candidates` (issue 124's deliverable 4, coop r9/204): absent, the
+// default; declared, its value; under 1, refused by name -- the replay gate is a
+// candidate, so 0 would stop every shrink before it learned whether the failure
+// reproduces. The default is asserted as a LITERAL, deliberately: a check that
+// read DefaultShrinkCandidates back would agree with any value it was given.
+func TestShrinkCandidatesDefaultsAndRefusesUnderOne(t *testing.T) {
+	if got := Parse(wellFormed()).Platform.Stages["api-sim"].ShrinkCandidates; got != 32 {
+		t.Errorf("an undeclared shrink_candidates parsed as %d, want the default 32", got)
+	}
+	for _, tc := range []struct {
+		value   int64
+		refused bool
+	}{
+		{-1, true}, {0, true}, {1, false}, {5, false}, {200, false},
+	} {
+		doc := wellFormed()
+		doc["stages"].(map[string]any)["api-sim"].(map[string]any)["shrink_candidates"] = tc.value
+		rep := Parse(doc)
+		if tc.refused {
+			if rep.OK() || !names(rep.Refusals, "stages.api-sim.shrink_candidates", "at least 1") {
+				t.Errorf("shrink_candidates = %d: %v, want a refusal naming the minimum", tc.value, rep.Refusals)
+			}
+			continue
+		}
+		if !rep.OK() {
+			t.Errorf("shrink_candidates = %d: refused: %v", tc.value, rep.Refusals)
+			continue
+		}
+		if got := rep.Platform.Stages["api-sim"].ShrinkCandidates; got != int(tc.value) {
+			t.Errorf("shrink_candidates = %d parsed as %d", tc.value, got)
+		}
+	}
+}
