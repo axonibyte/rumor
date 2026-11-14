@@ -21,7 +21,9 @@ import (
 // It records each snapshot asked of it and writes the DOM file a real driver
 // would, so the arm can check what the walk handed it.
 type waitingBrowser struct {
-	snaps []string // the names asked for
+	snaps  []string // the names asked for
+	opened int      // watches handed out
+	closed int      // watches the walk closed
 }
 
 func (b *waitingBrowser) Flow(_ context.Context, _, _, _ string, req wire.FlowRequest) (
@@ -50,15 +52,20 @@ func (b *waitingBrowser) Snapshot(_ context.Context, _, _, dir, name string, _ b
 // THE CELLS ON THIS FIXTURE ARE plumb'S (coop r9/301): they built it at
 // b4531f6, and this head takes only the lines that make it compile.
 func (b *waitingBrowser) WatchFor(context.Context, string, string) (schedule.ActorWatch, error) {
-	return quietWatch{}, nil
+	b.opened++
+	return quietWatch{b: b}, nil
 }
 
-// quietWatch hears nothing and closes clean.
-type quietWatch struct{}
+// quietWatch hears nothing and closes clean, and tells its browser it was
+// closed, so an arm can hold the walk to giving back what it opened.
+type quietWatch struct{ b *waitingBrowser }
 
 func (quietWatch) Since(context.Context) ([]schedule.PageFault, error) { return nil, nil }
 
-func (quietWatch) Close(context.Context) error { return nil }
+func (w quietWatch) Close(context.Context) error {
+	w.b.closed++
+	return nil
+}
 
 // waitingWalk walks the fixture project with join_event as a browser-context
 // flow whose wait never comes true, until a seed reaches the ui_timeout.
@@ -143,4 +150,23 @@ func TestAUITimeoutWithoutSnapshotsSaysThePageWasNotKept(t *testing.T) {
 		}
 	}
 	t.Fatalf("no step is numbered %d, the finding's", rec.FoundAt)
+}
+
+// THE WALK GIVES BACK EVERY WATCH IT OPENED (issue 125's deliverable 1;
+// quill's survivor S1 at coop r9/306). a47c88a's arms call
+// Sessions.CloseWatches directly, so deleting the walk's own deferred call --
+// its only production call site -- left every package green, and a real
+// driver would have held one BiDi socket per actor per attempt open until the
+// run exited. This arm goes through schedule.Walk itself. The PRECONDITION is
+// asserted first, so a walk that opened no watch cannot pass by having
+// nothing to close.
+func TestTheWalkClosesEveryWatchItOpened(t *testing.T) {
+	br := &waitingBrowser{}
+	waitingWalk(t, br, "")
+	if br.opened == 0 {
+		t.Fatal("the walk opened no watch, so this arm has no subject: a browser actor walked and was never watched")
+	}
+	if br.closed != br.opened {
+		t.Fatalf("the walk opened %d watch(es) and closed %d", br.opened, br.closed)
+	}
 }
