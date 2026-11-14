@@ -254,7 +254,14 @@ const root = "../.."
 // sentence it had to amend, "one finding beside these four", because a constant
 // that took an amendment to exist should say which words it moved. 0 absent, and
 // the sweep found it before this count did.
-const declaredQuotes = 69
+// 69 -> 70 AT R9.3's `page_fault` PRODUCER: ONE new quote, prose again rather
+// than a copied file -- `schedule.Walked`'s comment quotes the v9 row's own
+// requirement, "It names the actor, the step it is attributed to, and which of
+// the two fired", because that field exists to carry exactly those three and a
+// reader should see the sentence it answers. 0 absent, and the sweep found the
+// count before I did: the arm failed on the number while every quote it holds
+// was still in the document.
+const declaredQuotes = 70
 
 // knownChainGaps are the places where this file's warrant chain does NOT join,
 // each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which

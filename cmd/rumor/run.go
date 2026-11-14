@@ -728,6 +728,25 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 			_ = st
 		}
 	}
+
+	// AND EVERY FINDING THE WALK DID NOT STOP FOR, ONE LINE EACH (issue 125's
+	// deliverable 2; fable's ruling at coop r9/319). It names the kind, the
+	// actor and the step, because v9 requires a page_fault to name all three,
+	// and it is printed BEFORE the exit so a reader holding the binary and no
+	// toolchain sees what the record's field holds.
+	//
+	// IT IS AFTER THE STOPPER'S BLOCK ON PURPOSE: a run with both exits 3 and
+	// the verdict names the STOPPER first, which is the finding that ended the
+	// walk and the one a shrink reduces.
+	//
+	// "the walk continued" IS PART OF THE LINE, not a comment about it: the
+	// whole of this word's difference from `ui_timeout` is that the run went
+	// on afterwards, and a reader seeing FOUND twice needs to know which one
+	// stopped it.
+	if err := writeWalked(stdout, rec); err != nil {
+		_, _ = fmt.Fprintf(stderr, "run: writing a non-stopping finding: %v\n", err)
+		return 2
+	}
 	// THE SESSION COUNT IS IN THE VERDICT for the provider count's reason: a
 	// token is acquired at first use and reused after, so a holder that
 	// re-acquired every step would send identical requests and the difference
@@ -947,10 +966,14 @@ func walkStage(ctx context.Context, dir string, prep platform.Report, probes []b
 	// verb -- and "your project is malformed" is the reading a green-seeking
 	// pipeline would act on. could-not-run (2) still outranks both: when the
 	// run could not finish, what an observation would have said is unknown.
-	if rec.Finding != nil {
-		return findingStatus
-	}
-	return 0
+	// EITHER FIELD IS A FINDING, AND BOTH EXIT 3 (fable's ruling, coop r9/316).
+	// cli.md's table says 3 is "a bug was found" and 0 is "the walk completed
+	// and no observation found a bug" -- neither word is "stopped". The stop is
+	// a mechanism of the walk; this is the verdict on the run, and a
+	// `page_fault` is a finding by v9's definition. Returning 0 here would say
+	// the opposite of what the record holds, and a fourth code would widen the
+	// contract to carry a distinction the record already carries.
+	return findingExit(rec)
 }
 
 // parseRunArgs reads
@@ -1497,3 +1520,42 @@ func (p pageWatch) Since(ctx context.Context) ([]schedule.PageFault, error) {
 }
 
 func (p pageWatch) Close(ctx context.Context) error { return p.w.Close(ctx) }
+
+// findingExit is what a record's findings mean for the exit status, and it is a
+// FUNCTION so an arm can drive it (issue 125's deliverable 2).
+//
+// IT WAS THREE LINES INSIDE walkStage, which takes a project directory, a
+// platform report, probes, a browser and a seed -- so the only way to ask "what
+// does a record with a non-stopping finding exit with" was to build a project
+// that produces one. The toy cannot plant a fault until #125's deliverable 3,
+// which would have left this head's exit path asserted by nothing. A seam is
+// cheaper than an untested status.
+//
+// EITHER FIELD IS A FINDING AND BOTH EXIT 3 (fable, coop r9/316): cli.md's
+// table says 3 is "a bug was found" and 0 is "the walk completed and no
+// observation found a bug", and neither word is "stopped".
+func findingExit(rec schedule.Record) int {
+	if rec.Finding != nil || len(rec.Walked) > 0 {
+		return findingStatus
+	}
+	return 0
+}
+
+// writeWalked prints one FOUND line per finding the walk did not stop for,
+// naming the kind, the actor and the step, with `the walk continued` on it.
+//
+// THE STOPPER'S LINE IS NOT THIS FUNCTION'S and is printed before it by
+// walkStage, because a run with both names the finding that ENDED the walk
+// first -- that is the one a shrink reduces.
+//
+// IT TAKES A WRITER AND NOT A COMMAND, so an arm reads the bytes rather than
+// a process's stdout.
+func writeWalked(w io.Writer, rec schedule.Record) error {
+	for _, k := range rec.Walked {
+		if _, err := fmt.Fprintf(w, "run: FOUND %s after step %d as %s -- %s, the walk continued\n",
+			k.Finding.Says(), k.At, k.Actor, k.Finding.Rule); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -130,6 +130,9 @@ type UnheardStep struct {
 	Actor  string
 	Action string
 	Why    string
+	// At is the step, stamped by the walk when it drains these, for the reason
+	// TakeHeard gives: `drive` is handed a resume position and not an index.
+	At int
 }
 
 // FlowDriver drives one action's declared UI steps through a real browser and
@@ -347,6 +350,28 @@ func (s *Sessions) noteUnheard(actor, action, why string) {
 
 // Heard is every fault this walk's watches reported, in the order heard.
 func (s *Sessions) Heard() []HeardFault { return s.heard }
+
+// TakeHeard answers what has been heard since the last take, and clears it.
+//
+// IT DRAINS RATHER THAN ACCUMULATING because the STEP is the walk's to stamp:
+// a fault's whole value is the step it belongs to, and `drive` is handed a
+// resume position rather than the step index. So the walk takes what the
+// boundary heard while `n` is still in scope. `Heard` stays for a caller that
+// wants the whole run, and the d1 arms read it after `drive`, which drains
+// nothing.
+func (s *Sessions) TakeHeard() []HeardFault {
+	out := s.heard
+	s.heard = nil
+	return out
+}
+
+// TakeUnheard answers the steps whose page could not be heard since the last
+// take, and clears them, for TakeHeard's reason.
+func (s *Sessions) TakeUnheard() []UnheardStep {
+	out := s.unheard
+	s.unheard = nil
+	return out
+}
 
 // Unheard is every step whose page could not be heard. A reader that takes
 // Heard without this one is reading "no faults" off a run that never listened.

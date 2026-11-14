@@ -106,11 +106,55 @@ const FindingQuiesceTimedOut = "quiesce_timeout"
 // that advances it. A first failure is a retry, and only a second is a finding.
 const FindingUITimedOut = "ui_timeout"
 
+// FindingPageFault is the SEVENTH finding, defined at vocabulary v9: a 5xx
+// response or a console entry at error or above, during an actor's step.
+//
+// IT DOES NOT STOP THE WALK, which is the one structural way it differs from
+// FindingUITimedOut -- "a wait that never came true leaves the page in a state
+// the record cannot describe, while a faulting page is still a page the next
+// step acts on" (docs/vocabulary.md, v9). So it is absent from
+// schedule.stopsTheWalk on purpose, and the record carries it in a second
+// field.
+const FindingPageFault = "page_fault"
+
 // UITimedOut is the finding a flow's second failed wait produces, and it is
 // constructed HERE so the word and the shape have one home: the walk is the
 // only producer today, and a second producer writing the overlay by hand would
 // be free to differ in the rule name or to set Kind -- which would make a
 // reader keying on Value see a `bug` this is not.
+// PageFault is the walk's own construction of the seventh finding, here for
+// UITimedOut's reason exactly: the word and the shape get ONE home, so a
+// reader of the vocabulary finds the producer beside it.
+//
+// IT IS NOT THE STATUTE'S JUDGEMENT and that is why it is built here rather
+// than returned by `observe`: v9 says "no statute is consulted here because no
+// value disagreed -- the fault is a fact about the transport and the console,
+// read at a step boundary the flow marks". An `Overlay` records which engine
+// rule produced it, as the other two walk-produced findings do.
+//
+// KIND CARRIES WHICH OF THE TWO FIRED -- "console", "response" or "rate" --
+// because v9 requires the finding to name it, and Finding.Kind is documented
+// as narrowing a finding where the vocabulary gives it a kind.
+func PageFault(actor, action, kind, text string, status int) Finding {
+	what := kind
+	if status != 0 {
+		what = fmt.Sprintf("%s %d", kind, status)
+	}
+	return Finding{
+		Value:   FindingPageFault,
+		Defined: true,
+		Kind:    kind,
+		Overlay: &Overlay{
+			Rule:  "engine.page_fault",
+			Value: FindingPageFault,
+			Reason: fmt.Sprintf("the page %s acts through faulted under %s: %s (%s). The walk "+
+				"continued, because a page that faulted is still a page the next step acts "+
+				"on, and the finding stands",
+				actor, action, text, what),
+		},
+	}
+}
+
 func UITimedOut(action, actor string, at, of int, until string) Finding {
 	return Finding{
 		Value:   FindingUITimedOut,

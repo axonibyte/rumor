@@ -520,7 +520,17 @@ not hand back.
 | 0 | the walk completed and no observation found a bug |
 | 1 | refused: the project's own documents are wrong, or they declare something this build cannot judge |
 | 2 | could-not-run: an adapter that will not start, a weight the project never declared, or a usage error |
-| 3 | **a bug was found**, and the line above the verdict names it |
+| 3 | **a bug was found**, and the line above the verdict names it. A finding that did NOT stop the walk also exits 3, and gets its own `FOUND` line naming the kind, the actor and the step, with `the walk continued` on it |
+
+**A finding that does not stop the walk gets a line of its own, and the
+stopper is named first.** `page_fault` is the first such finding (vocabulary
+v9): a 5xx response or a console entry at error or above, heard at a step's
+boundary. Its line reads `run: FOUND page_fault of kind console after step 4
+as member_1 -- engine.page_fault, the walk continued`, so a reader holding the
+binary and no toolchain sees what the run recorded. A run with both kinds of
+finding prints the stopper's line first, because that is the one that ended the
+walk and the one a shrink reduces; a run with neither prints no `FOUND` line
+and exits 0.
 
 **The run takes the stages the project enables, and every one it takes says
 what it did.** `[stages]` names them and this build runs four: `api`, which is

@@ -487,6 +487,34 @@ type Record struct {
 	Finding *engine.Finding
 	FoundAt int
 
+	// Walked is every finding the walk did NOT stop for, in the order found,
+	// each with the step and actor it is attributed to.
+	//
+	// IT IS A SECOND FIELD AND NOT A LONGER `Finding`, which is `Settled`'s
+	// reason one section down: `Finding` is documented above as the FIRST bug
+	// that ENDED the walk, and `shrink.Request.Want` takes it whole. Folding
+	// non-stopping findings into it would change what every existing reader of
+	// that field means by it, and no suite asserting on it asked for the new
+	// meaning. `stopsTheWalk` stays the one place that sorts them (walk.go's
+	// predicate), so a value added to the vocabulary is still added once.
+	//
+	// WHY THE STEP AND THE ACTOR RIDE HERE rather than in engine.Finding: that
+	// type is the STATUTE's verdict and carries neither -- the record pairs
+	// `Finding` with `FoundAt` for exactly this reason -- and a page_fault
+	// without the step it was heard under is a property of the page instead of
+	// a finding (docs/vocabulary.md's v9 row: "It names the actor, the step it
+	// is attributed to, and which of the two fired").
+	Walked []Walked
+
+	// Unheard is every step whose page could not be heard, carried off the
+	// walk's Sessions so the run can say so.
+	//
+	// A PAGE THAT WAS QUIET AND A PAGE NOBODY COULD HEAR ARE THE SAME EMPTY
+	// `Walked` AND OPPOSITE FACTS. Without this the record would answer "no
+	// faults" for a run whose watch never opened, which is the reading that
+	// turns a missing instrument into a clean bill of health.
+	Unheard []UnheardStep
+
 	// Reconciled is what the end-of-run reconciliation judged, one entry per
 	// pending it re-asked, each as engine.Finding.Says renders it and sorted so
 	// two attempts of a seed cannot differ by map order.
@@ -1206,6 +1234,33 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, br Browser,
 		}
 		rec.Observations += len(seen)
 		rec.BrowserObservations = sessions.BrowserReads()
+		// WHAT THE PAGE DID UNDER THIS STEP (issue 125's deliverable 2). It is
+		// drained HERE because a fault's whole value is the step it belongs to
+		// and `n` is in scope only in this loop -- `drive` is handed a resume
+		// position, not an index.
+		//
+		// IT IS BEFORE THE STOPPER LOOP BELOW ON PURPOSE: a step that ends the
+		// walk is exactly a step whose page may have faulted first, and
+		// draining after the break would throw that away.
+		//
+		// `engine.PageFault` BUILDS IT, for `UITimedOut`'s reason -- the word
+		// and the shape get one home -- and `observe` never returns it,
+		// because v9 says no statute is consulted for a fault that is a fact
+		// about the transport and the console.
+		for _, h := range sessions.TakeHeard() {
+			rec.Walked = append(rec.Walked, Walked{
+				Finding: engine.PageFault(h.Actor, h.Action, h.Fault.Kind, h.Fault.Text, h.Fault.Status),
+				At:      n,
+				Actor:   h.Actor,
+			})
+		}
+		// AND THE STEPS WHOSE PAGE COULD NOT BE HEARD, which is a different
+		// fact from a step that heard nothing and is kept separately so no
+		// reader can average them.
+		for _, u := range sessions.TakeUnheard() {
+			u.At = n
+			rec.Unheard = append(rec.Unheard, u)
+		}
 		rec.Steps = append(rec.Steps, step)
 		if pend.waiting() {
 			pendAt = len(rec.Steps) - 1
@@ -2166,6 +2221,21 @@ func observeHandles(decl bindings.Observation, table *handle.Table,
 // are docs/vocabulary.md's: `bug` means the system and the statute disagree,
 // `consistent` and `explained` are a walk continuing, and `pending` is R9's.
 const findingBug = "bug"
+
+// A Walked is one finding the walk continued past, and what it belongs to.
+//
+// THE NAME IS THE FACT: the walk walked, and the finding stands. v9 defines
+// `page_fault` as the first such finding -- "THE WALK CONTINUES AND THE
+// FINDING STANDS, which is where it parts from `ui_timeout`" -- so this is
+// the field that word needed and the reason #125 exists.
+type Walked struct {
+	Finding engine.Finding
+	// At is the step after which it was found, `FoundAt`'s sibling.
+	At int
+	// Actor is who the step was taken as, empty where the finding belongs to
+	// no actor.
+	Actor string
+}
 
 // stopsTheWalk says whether a finding value ends the walk.
 //
