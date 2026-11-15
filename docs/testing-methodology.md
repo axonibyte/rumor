@@ -2337,3 +2337,70 @@ saying nothing there would leave a reader of the record with no sign the probe
 ran -- the silent-skip class this stage has been rebuilt twice to avoid. stdout
 keeps the determinable half and names the stream the answer is on, and the arm
 asserts that pointer, so the channel move cannot decay into a deletion.
+
+**A PROMOTED ROW CAN PASS ON A DEFECT OTHER THAN THE ONE IT NAMES, AND THEN IT
+IS WITNESSED BY NOTHING.** R9.3 promoted two seeds whose defect is a
+`page_fault` heard beneath a step through a real browser. Replayed the way the
+arm that replays every promoted row replays one -- without `--browser-check` --
+both exit 3 with ZERO `page_fault` lines: they pass on a statute bug the walk
+finds at the same step. The status was right, the row was green, and the thing
+the row exists to prove had not been measured. A row therefore DECLARES its
+witness (`witness=heard`) rather than leaving an arm to infer it from the
+profile's stages, and the arm that cannot see the defect asserts what it can and
+SAYS IN A SENTENCE that the finding is witnessed elsewhere. An arm that infers
+what a row proves has made the row say less than it reads.
+
+**AN ARM'S GREEN IS SCOPED TO THE FACTS IT LISTS, AND THE ONE IT OMITS CAN BE
+EMPTY FOR A WHOLE HEAD.** The line for a non-stopping finding printed an EMPTY
+field between the actor and its closing clause, on every fault of every run, for
+the length of a deliverable. The arm over that line asserted five things -- the
+finding, the kind, the actor, the step, the clause -- and never the field
+BETWEEN the actor and the clause, so there was nothing to fail. The fixture was
+not at fault: it called the production constructor. Being production-shaped in
+the CONSTRUCTOR and reading none of what the constructor produces is how an
+omission survives review. When an arm lists the facts it checks, the gap is
+whatever the list does not name.
+
+**MEASURED UNREACHABILITY IS A REASON TO CHANGE THE SYSTEM UNDER TEST.** A
+planted 5xx keyed on an event being at capacity could not be reached by any
+walk: sixty unprofiled seeds drove ZERO steps through a real browser, and twelve
+under the profile built for the browser action drove four flows of ONE step each
+with no faults, because the page is rendered once and before any join. The
+trigger had been chosen under a unit test's ordering, where the state is built
+by hand. The plant moved to a role-dependent break true on a reader's FIRST
+render -- not to make the arm pass, but because a defect no walk can reach
+teaches the walk nothing. Measure the reachability of a plant before trusting
+the arm that drives it directly.
+
+**STAGE A NEW TEST FILE BEFORE BELIEVING A GATE.** The full suite passed green,
+43 packages, zero failures -- and then `git add` turned one arm red at once. The
+arm that polices how PROOF lines are written reads `git ls-files`, and an
+untracked file is invisible to it, so the gate had been green in the one state
+where the arm that governs the new file could not read the new file. The defect
+it found was real: a PROOF line written with a bare `t.Logf` under a loop that
+can `Errorf`, which would print a claim beside the failure refuting it. A gate
+run over a working tree with untracked sources is a gate over a different tree.
+
+**ASSERT THE SUBJECT BEFORE THE VERDICT.** Three actors hit this in one morning
+by three mechanisms. A mutant saved without a `.py` suffix loaded as a spec with
+no loader, so two cells passed beside a control that never executed. A pre-fix
+script with its endpoint hardcoded ignored the harness's override, reached the
+real service, and returned production readings as evidence -- at rc 0, which is
+what made it look like a pass. Two mutants aimed at a document's table were
+ignored by its parser because they lacked the grammar every real row has. In
+each case the verdict was read as a fact about the subject while the subject was
+never reached. The cheap guard is a positive assertion that it was: the fixture
+records that it was contacted, the module records that it loaded, the parser
+records that it matched -- and a cell that cannot show it is VOID, not passing.
+
+**TWO SOURCES FOR ONE FACT WILL BE FOUND BY A FIXTURE THAT CANNOT KNOW ABOUT THE
+SECOND.** A fault's own words were first carried as a FIELD, set at the seam
+where the driver's type becomes the walk's, so that one composer would serve the
+whole tree. A suite reddened immediately: a fixture builds that struct
+field-for-field and cannot know to fill a field the engine has just started
+reading. The same shape is planted deliberately in this project's toy, where one
+write updates two numbers and another updates one. Computed from the fields it
+already carries, the value cannot be forgotten; the duplication that remains --
+one renderer in the driver, one in the walk, because neither package may name
+the other's type -- is pinned by an arm asserting the two agree for every kind,
+including the kind no walk produces yet.
