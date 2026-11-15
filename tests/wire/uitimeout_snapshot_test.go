@@ -2,9 +2,11 @@ package wire_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,10 +26,18 @@ type waitingBrowser struct {
 	snaps  []string // the names asked for
 	opened int      // watches handed out
 	closed int      // watches the walk closed
+
+	// plant has the watch hear one console error under EVERY flow, numbered by
+	// the flow it was heard under, so an arm can tell which step a recorded
+	// fault came from. refuse has the browser offer no watch at all.
+	plant, refuse bool
+	flows         int // flows driven
+	faulted       int // the last flow a planted fault was heard under
 }
 
 func (b *waitingBrowser) Flow(_ context.Context, _, _, _ string, req wire.FlowRequest) (
 	wire.FlowResponse, string, error) {
+	b.flows++
 	return wire.FlowResponse{Reached: 1, Stopped: wire.StopWait}, "#done read absent", nil
 }
 
@@ -52,6 +62,9 @@ func (b *waitingBrowser) Snapshot(_ context.Context, _, _, dir, name string, _ b
 // THE CELLS ON THIS FIXTURE ARE plumb'S (coop r9/301): they built it at
 // b4531f6, and this head takes only the lines that make it compile.
 func (b *waitingBrowser) WatchFor(context.Context, string, string) (schedule.ActorWatch, error) {
+	if b.refuse {
+		return nil, errors.New("this fixture offers no BiDi")
+	}
 	b.opened++
 	return quietWatch{b: b}, nil
 }
@@ -60,7 +73,18 @@ func (b *waitingBrowser) WatchFor(context.Context, string, string) (schedule.Act
 // closed, so an arm can hold the walk to giving back what it opened.
 type quietWatch struct{ b *waitingBrowser }
 
-func (quietWatch) Since(context.Context) ([]schedule.PageFault, error) { return nil, nil }
+// Since hears nothing unless the browser plants. With plant, the first
+// barrier after a flow hears that flow's numbered fault. The walk's opening
+// barrier precedes the flow and so hears nothing new, which keeps the arm
+// about the CLOSING answer, the one the walk records.
+func (w quietWatch) Since(context.Context) ([]schedule.PageFault, error) {
+	if w.b.plant && w.b.flows > w.b.faulted {
+		w.b.faulted = w.b.flows
+		return []schedule.PageFault{{Kind: "console",
+			Text: fmt.Sprintf("planted under flow %d", w.b.flows)}}, nil
+	}
+	return nil, nil
+}
 
 func (w quietWatch) Close(context.Context) error {
 	w.b.closed++
@@ -82,6 +106,9 @@ func waitingWalk(t *testing.T, br *waitingBrowser, dir string) (schedule.Record,
 	p.Actions[1].Flow = []bindings.Step{{Step: "click", Target: "join"}, {Step: "wait", Until: "done"}}
 	p.Roles = []bindings.Role{{Name: "member", Contexts: []string{"api", "browser"}}}
 	for seed := uint64(1); seed <= 10; seed++ {
+		// THE FLOW COUNT IS PER WALK, so an arm can compare it with the one
+		// record it is handed; the watch tallies stay whole-test for S1's arm.
+		br.flows, br.faulted = 0, 0
 		rec, werr := schedule.Walk(ctx, p, sess, schedule.Browser{Driver: br, SnapshotDir: dir}, seed, 12, 1)
 		if werr != nil {
 			t.Fatalf("seed %d: %v", seed, werr)
@@ -168,5 +195,104 @@ func TestTheWalkClosesEveryWatchItOpened(t *testing.T) {
 	}
 	if br.closed != br.opened {
 		t.Fatalf("the walk opened %d watch(es) and closed %d", br.opened, br.closed)
+	}
+}
+
+// flowSteps is the record's browser-flow steps, in order: the steps whose
+// action began a flow through the browser (walk.go's browser branch of drive).
+func flowSteps(rec schedule.Record) []schedule.Step {
+	var out []schedule.Step
+	for _, st := range rec.Steps {
+		if st.FlowBrowser {
+			out = append(out, st)
+		}
+	}
+	return out
+}
+
+// EVERY FLOW THE WALK DRIVES THROUGH THE BROWSER IS HEARD (issue 125's
+// deliverables 1 and 2; the remainder ibis named at coop rumor/2106).
+// 07ee2f6's arms build schedule.Walked directly, so `TakeHeard -> rec.Walked`
+// was asserted by nothing. This walks schedule.Walk through a browser that
+// hears one fault NUMBERED BY ITS FLOW under every flow, and the ui_timeout
+// path drives TWO: the flow that stops at its wait, and its RESUME on the next
+// draw, which is the one that times out. So the record must walk past one
+// fault per flow driven, in flow order, the first at the flow's own step.
+//
+// WHAT IT FOUND WHEN FIRST RUN (coop r9/320): resumeFlow drives the browser
+// with no barriers, so the resume's page was neither heard nor unheard --
+// one entry for two flows, and the fault under the wait that timed out was
+// the one lost. The resume's At is not pinned here, since whether a resume is
+// stamped at its pending step or at the draw that ran it is the lead's call.
+func TestEveryFlowTheWalkDrivesIsHeardInFlowOrder(t *testing.T) {
+	br := &waitingBrowser{plant: true}
+	rec, _ := waitingWalk(t, br, "")
+	fs := flowSteps(rec)
+	if len(fs) == 0 || br.flows < 2 {
+		t.Fatalf("the precondition failed: %d flow step(s) and %d flow(s) driven; the ui_timeout "+
+			"path drives a flow and its resume", len(fs), br.flows)
+	}
+	if rec.Finding == nil || rec.Finding.Value != engine.FindingUITimedOut {
+		t.Fatalf("the stopper is %v, want the ui_timeout: a page_fault must not displace it", rec.Finding)
+	}
+	if len(rec.Walked) != br.flows {
+		t.Fatalf("%d flow(s) were driven through the browser, each hearing one fault, and the record "+
+			"walked past %d: a flow's page went unheard and unrecorded", br.flows, len(rec.Walked))
+	}
+	for i, w := range rec.Walked {
+		want := fmt.Sprintf("planted under flow %d", i+1)
+		if w.Finding.Value != engine.FindingPageFault || w.Finding.Overlay == nil ||
+			!strings.Contains(w.Finding.Overlay.Reason, want) {
+			t.Fatalf("entry %d is %+v, want a page_fault naming %q", i, w.Finding, want)
+		}
+		if i > 0 && w.At < rec.Walked[i-1].At {
+			t.Fatalf("entry %d is at step %d, before entry %d at %d", i, w.At, i-1, rec.Walked[i-1].At)
+		}
+	}
+	if first := rec.Walked[0]; first.At != fs[0].N || first.Actor != fs[0].Actor {
+		t.Fatalf("the first flow's fault is at step %d as %q, want step %d as %q",
+			first.At, first.Actor, fs[0].N, fs[0].Actor)
+	}
+	if len(rec.Unheard) != 0 {
+		t.Fatalf("a watch that heard every flow left %v unheard", rec.Unheard)
+	}
+}
+
+// AND A BROWSER THAT CANNOT LISTEN LEAVES EVERY FLOW UNHEARD, the drain's
+// other half (`TakeUnheard`, `u.At = n`): one entry per flow driven, with a
+// reason, the first at the flow's own step, and nothing walked past.
+func TestAWatchThatCannotListenLeavesEveryFlowUnheard(t *testing.T) {
+	br := &waitingBrowser{refuse: true}
+	rec, _ := waitingWalk(t, br, "")
+	fs := flowSteps(rec)
+	if len(fs) == 0 || br.flows < 2 {
+		t.Fatalf("the precondition failed: %d flow step(s) and %d flow(s) driven", len(fs), br.flows)
+	}
+	if len(rec.Unheard) != br.flows {
+		t.Fatalf("%d flow(s) could not be heard and the record says %d", br.flows, len(rec.Unheard))
+	}
+	for i, u := range rec.Unheard {
+		if u.Why == "" {
+			t.Fatalf("unheard entry %d gives no reason: %+v", i, u)
+		}
+	}
+	if u := rec.Unheard[0]; u.At != fs[0].N || u.Actor != fs[0].Actor {
+		t.Fatalf("the first unheard entry is %+v, want step %d as %q", u, fs[0].N, fs[0].Actor)
+	}
+	if len(rec.Walked) != 0 {
+		t.Fatalf("a browser that heard nothing walked past %v", rec.Walked)
+	}
+}
+
+// AND A QUIET PAGE LEAVES BOTH LISTS EMPTY: the presence partner, so neither
+// arm above passes on a walk that fills them regardless.
+func TestAQuietPageLeavesNothingWalkedPastAndNothingUnheard(t *testing.T) {
+	br := &waitingBrowser{}
+	rec, _ := waitingWalk(t, br, "")
+	if len(flowSteps(rec)) == 0 {
+		t.Fatal("the precondition failed: no browser-flow step, so the arm has no subject")
+	}
+	if len(rec.Walked) != 0 || len(rec.Unheard) != 0 {
+		t.Fatalf("a quiet page recorded walked %v and unheard %v", rec.Walked, rec.Unheard)
 	}
 }

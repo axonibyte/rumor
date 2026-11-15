@@ -1119,6 +1119,28 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, br Browser,
 					return rec, fmt.Errorf("schedule: step %d: snapshotting %s's page: %w", n, timedOut, serr)
 				}
 				rec.Steps[pendAt].Snapshot = snap
+				// AND WHAT THE RESUMED PAGE SAID, DRAINED BEFORE THIS BREAK
+				// (plumb, coop r9/321, the second cause behind their r9/320).
+				// The step loop's own drain is BELOW this point, so a resume
+				// that ended the walk left its faults sitting in Sessions --
+				// heard and then dropped, which is worse than never having
+				// listened, because the record then says the page was quiet.
+				//
+				// STAMPED rec.FoundAt AND NOT `n`, for the reason this whole
+				// branch exists: a resume is not a draw and belongs to the step
+				// that STOPPED, which is the step this function's record
+				// updates.
+				for _, h := range sessions.TakeHeard() {
+					rec.Walked = append(rec.Walked, Walked{
+						Finding: engine.PageFault(h.Actor, h.Action, h.Fault.Kind, h.Fault.Text, h.Fault.Status),
+						At:      rec.FoundAt,
+						Actor:   h.Actor,
+					})
+				}
+				for _, u := range sessions.TakeUnheard() {
+					u.At = rec.FoundAt
+					rec.Unheard = append(rec.Unheard, u)
+				}
 				// NO `stopped = true` HERE, and the linter is why rather than a
 				// preference: that flag guards the PERIODIC RECONCILIATION later
 				// in the same iteration and is never read after the loop, so
@@ -2478,9 +2500,37 @@ func resumeFlow(ctx context.Context, sess *wire.Session, sessions *Sessions,
 	var resp wire.FlowResponse
 	if br, base := sessions.Browser(); br != nil {
 		sessions.noteBrowserToken(pend.Actor, token)
+		// THE RESUMED FLOW'S PAGE IS WATCHED TOO, AND IT WAS NOT (plumb, coop
+		// r9/320, found by the drain cell before that cell was even finished).
+		// This is the walk's SECOND `br.Flow`, and d2 instrumented only
+		// `drive`'s -- so a resumed flow's page was neither HEARD nor UNHEARD,
+		// which is the third state this record exists to refuse: a page nobody
+		// listened to, reading as a page with nothing to say.
+		//
+		// IT MATTERS MOST HERE RATHER THAN LEAST, which is why the omission was
+		// expensive: the resume is where `ui_timeout` is decided, and a 5xx
+		// under the retried step is the likeliest reason the wait never came
+		// true. The fault the run most wants was the one it could not hear.
+		w, why := sessions.WatchFor(ctx, pend.Actor, token)
+		if w != nil {
+			if _, berr := w.Since(ctx); berr != nil {
+				why = fmt.Sprintf("the boundary before the resume did not answer: %v", berr)
+				w = nil
+			}
+		}
 		resp, _, err = br.Flow(ctx, pend.Actor, base, token, wire.FlowRequest{
 			Action: a.Name, Token: token, From: pend.Reached, Steps: pend.Steps,
 		})
+		// TAKEN BEFORE `err` IS READ, for the reason it is in `drive`: a resume
+		// that failed is exactly when the page's own account matters most.
+		if w == nil {
+			sessions.noteUnheard(pend.Actor, a.Name, why)
+		} else if heard, berr := w.Since(ctx); berr != nil {
+			sessions.noteUnheard(pend.Actor, a.Name,
+				fmt.Sprintf("the boundary after the resume did not answer: %v", berr))
+		} else {
+			sessions.noteHeard(pend.Actor, a.Name, heard)
+		}
 	} else {
 		resp, err = sess.Flow(wire.FlowRequest{
 			Action: a.Name, Token: token, From: pend.Reached, Steps: pend.Steps,
