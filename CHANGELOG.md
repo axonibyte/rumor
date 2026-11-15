@@ -3,6 +3,79 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.51 — 2026-11-15
+
+**A finding that does not stop the walk reaches the record, the exit and the
+reader's line; the toy plants two page faults a walk can actually reach; and a
+promoted seed can say its defect was HEARD rather than read** — issue 125,
+R9.3, cut off v0.1.50. Eleven commits over 7293e0c on r9.3-d3-toyfault, cleared
+in one verdict by quill at 538b40a over five of them by ancestry.
+
+- **THE WALK OPENS A WATCH PER ACTOR AND BARRIERS EVERY STEP (d1).** A fault
+  heard between two steps belongs to one of them, so the watch is drained at a
+  barrier the flow marks rather than sampled whenever. `heard` and `unheard`
+  are TWO maps, not one with a sentinel: a watch that heard nothing and a watch
+  that could not listen are the same bytes and opposite facts, and the second
+  is a could-not-run rather than a quiet pass. The stage hands the walk each
+  heard fault field for field, because neither package may name the other's
+  type.
+- **AND A BARRIER THAT FAILS IS UNHEARD, WHICH AN ARM CAN NOW SAY.** plumb's
+  drain cells found two defects before d1 was finished: a RESUMED flow's page
+  was not watched at all, and a heard resume was lost when `ui_timeout` broke
+  the step loop before the drain ran. Both fixed, both pinned.
+- **A NON-STOPPING FINDING REACHES THE RECORD AND THE EXIT (d2).**
+  `rec.Finding` keeps only the finding that STOPPED the walk, so a second field
+  was needed: `rec.Walked` carries the rest with the actor and the step, and
+  `findingExit` answers 3 when EITHER is set. 3 and not a fourth code, because
+  `docs/cli.md` says 3 is "a bug was found" and 0 is "the walk completed and no
+  observation found a bug" — neither word is "stopped". The stop is a mechanism
+  of the walk; the exit status is the verdict on the run.
+- **THE TOY'S PLANTED FAULTS ARE REACHABLE IN A WALK (d3), WHICH THEY WERE
+  NOT.** Measured three ways: sixty unprofiled seeds drove ZERO steps through a
+  real browser, and twelve under `clicking` drove four flows of one step each
+  with no faults. The badge's 5xx now breaks for the one role holding no
+  relationship to the event, true on a reader's FIRST render, and the second
+  plant is exactly one `console.error` — fenced by route and by text, because
+  on real chromium six script-free ways to provoke a console entry were heard
+  as nothing, and an uncaught throw is heard a step LATE and would name the
+  wrong step.
+- **A NEW `planted` PROFILE RATHER THAN AN AMENDMENT.** seeds.lock's rows name
+  profiles, so moving `leave_event` or the stages under an existing name moves
+  what every committed row proves. It claims no observation, since the page
+  readings stop the walk at the first render and these faults are heard by the
+  WATCH, not read as values.
+- **AND seeds.lock GAINS A SECOND WITNESS WORD, `heard`.** Replayed the way the
+  promoted-seed arm replays a row — no browser — d3's two seeds exit 3 with
+  ZERO page_fault lines and would pass on a statute bug found at the same step.
+  A row that passes on a defect other than the one it names is what this file
+  exists to forbid, so the row DECLARES that its witness is the opt-in
+  browser-check arm; the arm that drives no browser asserts what it can and
+  says in a sentence that the finding is witnessed elsewhere. Seeds 13 and 38
+  are promoted: 13 hears one fault of kind `response`, 38 hears `console` and
+  `response` at one step. Of sixty scanned, six rendered a page at all — two
+  draws in three of `visible_to` exclude the only role that can render, which
+  is the application being right.
+- **THE NON-STOPPING LINE QUOTES THE FAULT.** It printed an EMPTY field for
+  every fault on every run, reading a `Finding.Rule` the engine never sets
+  while the rule it does set lives on the overlay, and no arm could see it
+  because the arm asserted the kind, the actor, the step and the clause and
+  never the field between them. The line carries the fault's own words now —
+  `console error: <text>`, or `response <status> from <path>` — and two arms
+  read them, per kind.
+- **AND THE v9 VOCABULARY ROW SAYS WHO FIRES (d4).** It had said three times
+  that nothing produced `page_fault`; those sentences are kept rather than
+  struck, because that row's own culture is that the correction is the point,
+  and the amendment names what replaced them. No term moves and the version
+  does not: what changed is the row's account of whether anything produces the
+  word.
+
+CARRIED, AND NOT THIS TREE'S: three CI tasks on these heads died at the
+workflow's `timeout 1800` with `tests/run` never reporting a line, while every
+head is green as `ci.yml` runs it on two idle 8-cpu boxes and cleared on a
+third. Every package in those runs took about three times its own recorded jail
+figure, and the ci jail shares forge-01 with the live forge. That is the
+runner's host and awaits cal's word; it is not a finding against this release.
+
 ## 0.1.50 — 2026-11-14
 
 **The browser stage hears what a page does beneath a step, keeps the page
