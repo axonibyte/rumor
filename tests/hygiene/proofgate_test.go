@@ -85,10 +85,17 @@ func TestEveryProofLineGoesThroughTheHelper(t *testing.T) {
 	// arm in tests/vocabulary and R9.2's stream arm in cmd/rumor, which moved it
 	// from 222 to 223 and then to 224 -- the first two times this check priced a
 	// real addition rather than a mutant, both within a day of its landing.
+	// 224 -> 225 is R9.3's `witness=heard` arm in tests/run, and it is the first
+	// time this check caught a line that had NOT gone through the helper: the
+	// arm's PROOF sat under a loop that can Errorf, so it could have printed a
+	// claim beside the failure refuting it. It was found only because staging
+	// the new file made `git ls-files` able to see it -- the whole suite had
+	// just passed green with the file untracked, which is this arm's blind spot
+	// and the reason a new test file is staged before the gate is believed.
 	// This arm's own line is counted like every other rather than exempted: an
 	// exemption would put a hole in the only check that can see this file.
 	// Retyped deliberately when it changes, which is the point of it.
-	const sitesInTrackedTests = 224
+	const sitesInTrackedTests = 225
 	if sites != sitesInTrackedTests {
 		t.Errorf("%d call(s) of the helper in tracked test files, want %d: if that is "+
 			"deliberate, move the literal with it; if not, PROOF lines have been lost",

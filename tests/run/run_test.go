@@ -539,45 +539,13 @@ func TestAFoundBugIsReportedAndTheStatusSaysSo(t *testing.T) {
 // outside.
 func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 	const lock = "../../examples/toy/seeds.lock"
-	raw, err := os.ReadFile(lock)
-	if err != nil {
-		t.Fatalf("reading %s: %v", lock, err)
-	}
-	// THE PARSE IS platform's, AND THE PROFILE COMES WITH IT. This arm had its
-	// own reading of the grammar -- the fourth copy in the tree -- and a seed
-	// line carrying a `profile=NAME` token broke it in the loud direction,
-	// which is the lucky one: the quiet direction was internal/shrink reading
-	// the same line as "that seed is not here" (R6.3).
-	//
-	// EACH SEED RUNS UNDER ITS OWN PROFILE, which is what makes a promotion
-	// replayable at all: R6's bug ledger says a row is caught by the feature
-	// listed for it, and seed 12's row is caught under `settling`. Replaying it
-	// under the default mix would walk a different trace entirely and this arm
-	// would report a lost promotion about a seed nobody had asked for.
-	type promoted struct {
-		seed, profile string
-		steps         int
-		// witness is the row's `witness=` word, EMPTY for a row that promotes
-		// a defect -- which is every row written before the token existed.
-		witness string
-	}
-	var seeds []promoted
-	for _, line := range strings.Split(string(raw), "\n") {
-		parsed, isSeed, perr := platform.ParseSeedLine(line)
-		if !isSeed {
-			continue
-		}
-		if perr != nil {
-			t.Fatalf("%s: %q is not a promoted seed in the format docs/contract.md declares: %v",
-				lock, strings.TrimSpace(line), perr)
-		}
-		if _, cerr := strconv.ParseUint(parsed.Seed, 10, 64); cerr != nil {
-			t.Fatalf("%s: %q is not one non-negative integer per line, which is the format "+
-				"docs/contract.md declares: %v", lock, parsed.Seed, cerr)
-		}
-		seeds = append(seeds, promoted{seed: parsed.Seed, profile: parsed.Profile,
-			steps: parsed.Steps, witness: parsed.Witness})
-	}
+	// THE ROWS COME FROM promotedRows, the one caller of the product's parser in
+	// this suite (heardrows_test.go). They were read HERE until R9.3, and this
+	// block's own comment records why that mattered -- its hand reading of the
+	// grammar was "the fourth copy in the tree" and a `profile=` token broke it.
+	// R9.3's witness arm needs the same rows keyed on `witness=`, so reading them
+	// a second time here is exactly how a fifth copy would have arrived.
+	seeds := promotedRows(t, lock)
 	if len(seeds) == 0 {
 		// THE MESSAGE NAMES WHAT THE LOCK SHOULD HOLD TODAY, not what it held
 		// when this arm was written. It said "D16 promoted seed 7" until
@@ -679,6 +647,32 @@ func TestEveryPromotedToySeedStillFindsItsBug(t *testing.T) {
 				}
 				t.Logf("seed %s witnesses %s: %d pending(s) held and cleared", seed, p.witness, held)
 				return
+			}
+
+			// A `witness=heard` ROW IS ASSERTED AS FAR AS THIS ARM CAN SEE IT,
+			// AND SAID SO IN A SENTENCE (fable's ruling, coop r9/338). Its
+			// defect is a page_fault heard beneath a step through a REAL
+			// BROWSER, and this arm drives none -- measured, R9.3's two rows
+			// exit 3 here with ZERO page_fault lines and would pass on the
+			// statute bug found at the same step (ibis, coop r9/337).
+			//
+			// SO IT DOES NOT SKIP AND DOES NOT PASS THE ROW ON ANOTHER BUG. The
+			// exit-3 and honest-finding assertions below still run, which is
+			// what this arm CAN say; what it cannot say is printed instead of
+			// being silently assumed, because a status cannot carry "witnessed
+			// elsewhere" and this arm's rule is that none of its four statuses
+			// is a skip.
+			//
+			// THE WITNESS IS NAMED BY THE COMPILER, not by this string:
+			// heardWitnessArmName derives it from the function value, so
+			// deleting or renaming that arm breaks the build rather than
+			// leaving this sentence pointing at nothing.
+			if p.witness == platform.WitnessHeard {
+				t.Logf("seed %s is promoted as `witness=%s`: its finding is a page_fault heard "+
+					"beneath a step through a real browser, and %s is the arm that witnesses "+
+					"it. THIS arm drives no browser, so what it asserts of this row is exit 3 "+
+					"and an honest finding, and no more",
+					seed, p.witness, heardWitnessArmName())
 			}
 
 			switch code {

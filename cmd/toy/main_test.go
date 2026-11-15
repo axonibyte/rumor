@@ -591,8 +591,12 @@ func TestThePageRendersTheEventAndItsJoinFormWorks(t *testing.T) {
 			t.Errorf("the page does not carry %q:\n%s", want, page)
 		}
 	}
+	// THE FENCE, NOT THE OLD BLANKET RULE (fable's ruling, coop r9/330). This
+	// page's counts agree, so it carries NO script at all -- the planted one
+	// appears only where they disagree, and TestTheOnlyScriptIsThePlantedOne
+	// below holds the fence by route and by text.
 	if strings.Contains(page, "<script") {
-		t.Errorf("the page carries a script, and R9 drives it with a real browser:\n%s", page)
+		t.Errorf("a page whose counts AGREE carries a script:\n%s", page)
 	}
 
 	bob := h.actor("bob")
@@ -2019,4 +2023,166 @@ func TestTheBinaryRefusesAZoneNoDatabaseHolds(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestTheBadgeBreaksForAReaderWithNoRelationshipAndNotForTheOthers drives
+// R9.3's FIRST planted fault (issue 125's deliverable 3) at the trigger fable
+// ruled at coop r9/333 part two: role-dependent, and therefore true on a
+// reader's FIRST render rather than only once an event is full.
+//
+// THE 200s ARE HALF THE ARM. The page requests the badge on every render, so a
+// run that hears no fault must be a run where the SERVER answered -- not one
+// where the browser never asked. Asserting only the 500 would pass against a
+// badge that was simply missing.
+//
+// AND THE FULL EVENT IS HERE AS A NEGATIVE, because capacity is what the
+// trigger USED to be. The last assertion reads the admin's badge on an event
+// with no seat left and wants 200, so an arm left behind at the old plant fails
+// here rather than passing on a state that happens to satisfy both.
+//
+// THE SAME READER TWICE IS THE POINT OF THE THIRD CASE: carol's badge breaks
+// and then stops breaking without carol changing, because what changed is her
+// ROLE relative to the event. A fresh actor in her place would leave the arm
+// unable to tell a role-dependent break from a reader-dependent one.
+func TestTheBadgeBreaksForAReaderWithNoRelationshipAndNotForTheOthers(t *testing.T) {
+	h := start(t)
+	alice := h.actor("alice")
+	id := h.createEvent(alice, "one seat", 1, []string{roleAdmin, roleMember, roleGuest})
+
+	if code, body := h.do(http.MethodGet, "/ui/events/"+id+"/badge?token="+alice, "", nil); code != http.StatusOK {
+		t.Fatalf("the admin's own badge: status %d (%v), want 200", code, body)
+	}
+	if !strings.Contains(mustPage(t, h, id, alice), `id="badge"`) {
+		t.Error("the page does not request the badge, so a quiet run proves nothing")
+	}
+
+	carol := h.actor("carol")
+	code, body := h.do(http.MethodGet, "/ui/events/"+id+"/badge?token="+carol, "", nil)
+	if code != http.StatusInternalServerError {
+		t.Errorf("the badge for a reader who holds no relationship to the event: status %d "+
+			"(%v), want 500 -- this is the plant R9's browser stage hears as a page_fault",
+			code, body)
+	}
+
+	if code, _ := h.do(http.MethodPost, "/ui/events/"+id+"/join?token="+carol, "", nil); code != http.StatusOK {
+		t.Fatalf("carol could not take the last seat")
+	}
+	h.settle(t)
+
+	if code, body := h.do(http.MethodGet, "/ui/events/"+id+"/badge?token="+carol, "", nil); code != http.StatusOK {
+		t.Errorf("the same reader's badge once she is an attendee: status %d (%v), want 200 "+
+			"-- the break is the ROLE and not the reader", code, body)
+	}
+	if code, body := h.do(http.MethodGet, "/ui/events/"+id+"/badge?token="+alice, "", nil); code != http.StatusOK {
+		t.Errorf("the admin's badge on a FULL event: status %d (%v), want 200 -- capacity is "+
+			"no longer the trigger", code, body)
+	}
+}
+
+// TestThePlantedConsoleErrorAppearsOnlyWhenTheCountsDisagree drives R9.3's
+// SECOND planted fault, whose trigger is the stale count leaveEvent plants.
+//
+// THE JOIN CASE IS THE ONE THAT CAN FAIL QUIETLY: a join raises BOTH numbers,
+// so the page must stay script-free there. Without it the arm would pass
+// against a plant that fired whenever anything had happened.
+func TestThePlantedConsoleErrorAppearsOnlyWhenTheCountsDisagree(t *testing.T) {
+	h := start(t)
+	alice := h.actor("alice")
+	id := h.createEvent(alice, "three seats", 3, []string{roleAdmin, roleMember, roleGuest})
+	bob := h.actor("bob")
+
+	if got := mustPage(t, h, id, alice); strings.Contains(got, "<script") {
+		t.Fatalf("a fresh event's page carries a script:\n%s", got)
+	}
+	if code, _ := h.do(http.MethodPost, "/ui/events/"+id+"/join?token="+bob, "", nil); code != http.StatusOK {
+		t.Fatalf("bob could not join")
+	}
+	h.settle(t)
+	if got := mustPage(t, h, id, alice); strings.Contains(got, "<script") {
+		t.Fatalf("a page after a JOIN carries a script: a join moves Rendered with Count and "+
+			"is not the planted state:\n%s", got)
+	}
+
+	// THE LEAVE IS THE API'S ROUTE AND NOT THE PAGE'S: handleUI serves `join`
+	// on POST only, and leaveEvent is routed at DELETE /events/<id>/join.
+	if code, body := h.do(http.MethodDelete, "/events/"+id+"/join", bob, nil); code != http.StatusOK {
+		t.Fatalf("bob could not leave: status %d (%v)", code, body)
+	}
+	h.settle(t)
+	got := mustPage(t, h, id, alice)
+	if !strings.Contains(got, "console.error") || !strings.Contains(got, plantedConsoleText) {
+		t.Errorf("the page after a LEAVE carries no planted console error:\n%s", got)
+	}
+}
+
+// TestTheOnlyScriptIsThePlantedOne IS THE FENCE fable's ruling asks for (coop
+// r9/330): the rule the toy amended by one line is held by ROUTE and by TEXT,
+// and nothing else may ever carry a script.
+//
+// IT IS DRIVEN BOTH WAYS. The planted line passes on its own route and in its
+// own state; a script anywhere else in this file's served pages fails, and so
+// does a SECOND occurrence on the planted route -- which is what stops the
+// amendment widening by one line at a time.
+func TestTheOnlyScriptIsThePlantedOne(t *testing.T) {
+	h := start(t)
+	alice := h.actor("alice")
+	id := h.createEvent(alice, "fenced", 2, []string{roleAdmin, roleMember, roleGuest})
+	bob := h.actor("bob")
+
+	// Every other route this toy serves, in the states this arm can reach.
+	for _, path := range []string{
+		"/ui/events/" + id,
+		"/events/" + id,
+		"/store/events/" + id,
+		"/users",
+		"/events",
+	} {
+		_, body := h.do(http.MethodGet, path, alice, nil)
+		if raw, ok := body["raw"].(string); ok && strings.Contains(raw, "<script") {
+			t.Errorf("%s carries a script, and only the planted page may:\n%s", path, raw)
+		}
+	}
+
+	// And the planted route in its planted state carries EXACTLY ONE.
+	if code, _ := h.do(http.MethodPost, "/ui/events/"+id+"/join?token="+bob, "", nil); code != http.StatusOK {
+		t.Fatalf("bob could not join")
+	}
+	h.settle(t)
+	if code, body := h.do(http.MethodDelete, "/events/"+id+"/join", bob, nil); code != http.StatusOK {
+		t.Fatalf("bob could not leave: status %d (%v)", code, body)
+	}
+	h.settle(t)
+	page := mustPage(t, h, id, alice)
+	if n := strings.Count(page, "<script"); n != 1 {
+		t.Errorf("the planted page carries %d script(s), want exactly 1:\n%s", n, page)
+	}
+	if n := strings.Count(page, "console."); n != 1 {
+		t.Errorf("the planted page makes %d console call(s), want exactly 1:\n%s", n, page)
+	}
+	// THE TEXT IS A LITERAL HERE AND NOT THE CONSTANT, which is the difference
+	// between a fence and a tautology. Asserting `plantedConsoleText` compares
+	// the page against the very constant it is built from, so the text moves
+	// with the code and the check cannot fail -- a mutant that rewrote the
+	// constant SURVIVED this arm until the literal went in. fable's fence is by
+	// route and by TEXT, and a text nothing pins is not fenced.
+	const fenced = "toy: the page count disagrees with the store"
+	if plantedConsoleText != fenced {
+		t.Errorf("the planted text is %q, want the fenced %q: changing it changes what the "+
+			"stage must hear, so it is a decision and not a detail", plantedConsoleText, fenced)
+	}
+	if !strings.Contains(page, fenced) {
+		t.Errorf("the planted script does not carry the fenced text %q:\n%s", fenced, page)
+	}
+}
+
+// mustPage fetches the UI page or fails, so the arms above can assert what it
+// requests without repeating the fetch.
+func mustPage(t *testing.T, h *harness, id, token string) string {
+	t.Helper()
+	code, body := h.do(http.MethodGet, "/ui/events/"+id, token, nil)
+	if code != http.StatusOK {
+		t.Fatalf("the page: status %d (%v)", code, body)
+	}
+	page, _ := body["raw"].(string)
+	return page
 }

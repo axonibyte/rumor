@@ -882,8 +882,9 @@ type SeedLine struct {
 	// it WITNESSES is replayed against that, and a row that says nothing keeps
 	// exit 3 and its defect comment unchanged.
 	//
-	// ONE WORD TODAY. `cleared` is a pending held and then found consistent.
-	// An unknown word is REFUSED by name with the known set printed, for the
+	// TWO WORDS TODAY. `cleared` is a pending held and then found consistent;
+	// `heard` is a finding heard BENEATH a step through a real browser. An
+	// unknown word is REFUSED by name with the known set printed, for the
 	// reason the unknown-token refusal below gives: a word this build does not
 	// know is a row asking for a check it will not get.
 	Witness string
@@ -900,11 +901,31 @@ type SeedLine struct {
 // quiet" had no committed run to read it from until seed 66 (coop rumor/1241).
 const WitnessCleared = "cleared"
 
+// WitnessHeard is R9.3's word (issue 125's deliverable 3; fable's ruling at
+// coop r9/338): the row proves a `page_fault` HEARD beneath a step through a
+// real browser, which the run reports on its own line with the kind, the actor
+// and the step, and still exits 3.
+//
+// IT EXISTS BECAUSE THE REPLAY ARM COULD NOT SEE WHAT THE ROW NAMES. The arm
+// that replays every promoted row drives no browser, and measured, d3's two
+// rows exit 3 there with ZERO `page_fault` lines -- they pass on a statute bug
+// found at the same step (ibis, coop r9/337). A row that passes on a defect
+// other than the one it names is the thing seeds.lock exists to forbid, so the
+// row declares that its witness is the opt-in browser-check arm instead of
+// leaving an arm to infer it: an arm that infers what a row proves has made the
+// row say less than it reads.
+//
+// AND A `heard` ROW STILL EXITS 3, which is what separates it from `cleared`.
+// `cleared` changed the STATUS a row is checked against; this word changes only
+// WHICH ARM can witness it. A bare row is unaffected and still promotes a
+// defect, so no committed line changes meaning by this arriving.
+const WitnessHeard = "heard"
+
 // Witnesses is the known set, in the order a refusal prints it. IT IS A
 // FUNCTION AND NOT A LITERAL IN THE MESSAGE so the refusal cannot drift from
 // the check: a message listing words the parser no longer accepts is worse
 // than no list, because a reader fixes their line to match it.
-func Witnesses() []string { return []string{WitnessCleared} }
+func Witnesses() []string { return []string{WitnessCleared, WitnessHeard} }
 
 // KnownWitness reports whether the word is one this build checks a row against.
 func KnownWitness(word string) bool {

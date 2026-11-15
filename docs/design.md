@@ -1855,6 +1855,65 @@ barrier, such as a timer or a slow fetch. That fault lands in the next step's
 window. The alternative would be waiting for it, which is a fixed sleep, and
 this stage has none.
 
+**AND THE TOY PLANTS EXACTLY ONE SCRIPT, BECAUSE THE CONSOLE PATH CANNOT BE
+REACHED WITHOUT ONE** (R9.3's deliverable 3; fable's ruling at coop r9/330 on
+the measurement at r9/329 and r9/331). `cmd/toy`'s page carried no script at
+all, on the rule that a page carrying code tests the code we put there instead
+of the stage. Measured on real chromium 2026-11-15, six script-free ways to
+provoke a console entry were heard as NOTHING: a 404 subresource, a CSP
+`img-src 'none'` refusal, an `X-Frame-Options` DENY on an iframe, a corrupt
+image, a wrong-MIME stylesheet, and a `console.warn`. Error-level
+`log.entryAdded` reaches the watch only from a console call or an uncaught
+exception, both of which need script. So the rule is amended by one line and
+FENCED: one planted script on one route, its whole body a single
+`console.error` with a fixed text, and an arm that allows that one occurrence
+by route and by text while refusing a second anywhere. `onerror=` is not the
+answer -- it passes that arm's text while doing what the old rule's reason
+forbids.
+
+It is `console.error` and not a throw, measured rather than preferred: an
+uncaught throw IS heard, but in the FOLLOWING step's window, which is the limit
+two paragraphs above. A finding must name the step it was heard under, so a
+throw would plant one that names the wrong step.
+
+**THE TWO PLANTS HAVE DIFFERENT TRIGGERS.** The badge subresource answers 500
+to a reader who holds no relationship to the event -- `roleOf` says `guest`,
+which is true on a FIRST render; the console error appears when the page's
+`Rendered` disagrees with the store's `Count`, which is the stale count
+`leaveEvent` already plants -- a join raises both numbers and is quiet, a leave
+drops one. The badge's request is made on EVERY page and only the answer
+changes, so a quiet run there is quiet because the server answered 200 and not
+because the browser never asked. The console plant's honest case is the
+ABSENCE of the script, which is a weaker negative and is why it is fenced by
+route and by text rather than by shape.
+
+**THE BADGE'S TRIGGER WAS CAPACITY AND COULD NOT BE REACHED BY A WALK** (ibis,
+coop r9/332; fable's ruling at r9/333). Measured: sixty unprofiled seeds drove
+ZERO steps through a real browser, and twelve seeds under `clicking` drove four
+flows of ONE step each with zero faults -- the page is rendered once and before
+any join, so a trigger needing it rendered AFTER capacity is reached is one only
+a unit test's ordering can satisfy. Measured unreachability is a reason to
+change the system under test, and the role-dependent trigger is reachable on the
+first page a reader opens.
+
+**IN A WALK THE TWO ARE NOT SYMMETRICAL, AND THE TOY'S ROLES ARE WHY.** A
+browser role is browser-ONLY or validate's arm 19 refuses it, so `viewer` is the
+only role that can render a page and it can take no `api` action -- it never
+creates an event and never joins one through the API. Every page a walk renders
+is therefore rendered by a reader holding no relationship to the event, so the
+badge fault fires on EVERY rendered page and the console fault rides along only
+where a leave has already happened. The arms carry the independence the walk
+cannot: the badge's is driven for an admin, an attendee and a stranger on one
+event in one state, and the console's for a join and a leave separately.
+
+**AND TWO OF THREE PAGES ARE NOT SERVED AT ALL**, which bounds how often either
+is reachable. `visible_to` is drawn from three sets and only one carries
+`guest` (`bindings.toml`), so for the only role that renders, two draws in three
+answer 404 `not visible to you` -- no page, no badge request, nothing heard, and
+the flow stops at its click for want of an element. That is the application
+being right, not a fault, and it is the reason d3's seed is found by a scan
+rather than chosen.
+
 **THE THIRD ARM IS A REQUEST RATE, AND IT READS RESPONSES ALONE** (fable's
 ruling at coop r9/173, from the measurement at r9/172; `rate.go`). On chromium
 156, two seconds after load, an honest page added about one response a second

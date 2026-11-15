@@ -57,9 +57,29 @@ import (
 // action is still never applicable -- it needs a bound `event` handle the viewer
 // KNOWS. The three unprofiled control digests are byte-identical with the
 // profile present, which is this test's own guarantee read off the tree:
-// 3428487f265ed469, 6285bfb9093d538c and 568aaa6cf989981a at seeds 2, 40 and 1,
+// bef8b7a4d66d921b, 868af2709871e901 and d319cbe20d442e87 at seeds 2, 40 and 1,
 // `--steps 10`, stdout only.
-var appendingProfiles = []string{"toy/clicking", "toy/viewing"}
+//
+// THOSE THREE FIGURES ARE NOT THE ONES THIS COMMENT CARRIED, and the drift is
+// worth more than the correction. It said 3428487f265ed469, 6285bfb9093d538c
+// and 568aaa6cf989981a, recorded at bdf72c6 on 2026-11-04; `rumor run`'s summary
+// line then gained its browser counts -- ", N step(s) through `flow`, N through
+// a real browser" -- at 8bb8abe on 11-08 and 25eb8b6 on 11-09, which moves the
+// stdout of EVERY unprofiled run. So all three had been stale for five days
+// before anyone read them. NO ARM READS THESE: they are a figure in a comment,
+// and a figure nothing asserts drifts silently, which is the one thing this
+// test's own subject is about. Re-measured 2026-11-15 on 04cf231 with d3's tree
+// (ibis).
+//
+// `toy/planted` JOINED AT R9.3's d3 (issue 125; fable's ruling at coop r9/333),
+// and it appends the same `viewer` row for a third purpose: `viewing` is the
+// browser OBSERVATIONS' world, `clicking` the browser ACTION's, and this one is
+// the world in which the toy's two PLANTED page faults can be heard -- it is
+// the only one carrying both a flow that renders and `leave_event` above zero.
+// Measured that its presence moves nothing taken elsewhere: the three digests
+// above are byte-identical with this profile and its weights table present and
+// absent, built from 04cf231 with and without d3's changes.
+var appendingProfiles = []string{"toy/clicking", "toy/planted", "toy/viewing"}
 
 func TestNoCommittedProfileQuietlyChangesItsActorPool(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join(examplesDir, "*", "platform.toml"))
@@ -322,8 +342,16 @@ func TestNoCommittedProfileQuietlyChangesWhatItObserves(t *testing.T) {
 // daylight-saving transition and find the toy's allowance computing its next
 // reset in wall time: 01:00 local on the 23-hour day, 23:00 on the 25-hour
 // one.
+// AND R9.3 PROMOTED ONE (125's d3): `planted`, two rows, and it is the FIRST
+// committed profile to select the browser STAGE -- so it is the first whose
+// world can render a page at all. The substantive check below still holds of
+// it and that is not an accident: this profile CLAIMS NO OBSERVATION, so
+// `ObservationsFor` hands it none whose source is the browser, and the two page
+// readings stay claimed by `viewing` where their committed figures are. What
+// its rows witness is heard by the WATCH beneath a step rather than read as a
+// value, which is a kind of finding no row before these carried.
 var committedProfiles = map[string][]string{
-	"toy":  {"dst-fall", "dst-spring", "expiring", "settling", "walking"},
+	"toy":  {"dst-fall", "dst-spring", "expiring", "planted", "settling", "walking"},
 	"twin": {},
 }
 

@@ -1772,12 +1772,128 @@ func (s *server) handleStore(w http.ResponseWriter, r *http.Request) {
 // R9 drives it with a real browser; R5 only has to serve it and declare it, and
 // the page is deliberately plain HTML with no script, so what a browser would
 // do and what the flow declares cannot drift.
+// eventBadge serves the page's capacity badge, and IT IS THE FIRST OF R9.3's
+// TWO PLANTED FAULTS (issue 125's deliverable 3): the badge answers 500 to a
+// reader who holds no relationship to the event.
+//
+// WHY A SUBRESOURCE AND NOT THE PAGE ITSELF: a page that 500s is not a page,
+// and the walk's `navigate` would fail rather than the step hearing a fault
+// beneath it. docs/vocabulary.md's v9 defines `page_fault` as something heard
+// DURING an actor's step on a page that still works -- "a faulting page is
+// still a page the next step acts on" -- so the fault has to ride a request
+// the page makes while rendering.
+//
+// THE REQUEST IS MADE ON EVERY PAGE and only the ANSWER changes, which is what
+// makes the clean case a real negative: a quiet run is quiet because the server
+// answered 200, not because the browser never asked. A badge rendered only when
+// full would make the plant's absence indistinguishable from a page that does
+// not have one.
+//
+// ONE TEMPLATE WIDE, this file's rule for every plant: the gates below are
+// untouched and correct -- no session is still 401, no event still 404, a role
+// the event is not visible to still gets 404 -- and the only wrong thing is
+// that a subresource refuses a role the page it hangs on serves. The honest 409
+// on a join at capacity is NOT this: that refusal is correct and stays correct,
+// and a 409 is not a fault by level (plumb's rate.go counts a response at 500
+// and above).
+func (s *server) eventBadge(w http.ResponseWriter, r *http.Request, id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := s.session(r)
+	if sess == nil {
+		http.Error(w, "the badge needs a session", http.StatusUnauthorized)
+		return
+	}
+	ev, ok := s.st.Events[id]
+	if !ok || ev.Deleted {
+		http.Error(w, "no such event", http.StatusNotFound)
+		return
+	}
+	role := roleOf(ev, sess.UserID)
+	if !visibleTo(ev, role) {
+		http.Error(w, "not visible to you", http.StatusNotFound)
+		return
+	}
+	// THE PLANT, AND IT IS ROLE-DEPENDENT RATHER THAN CAPACITY-DEPENDENT
+	// (fable's ruling, coop r9/333 part two). The badge breaks for the one role
+	// that holds no relationship to the event, so it breaks on a reader's FIRST
+	// render and says so in the shape an application breaks in rather than in a
+	// way a reader would recognize as deliberate.
+	//
+	// WHY THE TRIGGER MOVED, measured and not preferred: at capacity no walk
+	// could reach it. A browser step renders the page ONCE and before any join
+	// -- sixty unprofiled seeds drew zero browser steps, and twelve seeds under
+	// `clicking` drove four flows of ONE step each with zero faults (ibis, coop
+	// r9/332) -- so a trigger needing the page rendered AFTER capacity is
+	// reached is one only a unit test's ordering can satisfy. fable ruled
+	// measured unreachability the right reason to change the toy, and the
+	// change stays inside deliverable 3.
+	//
+	// IT MOVES NO COMMITTED READING, by stage rather than by argument: every
+	// profile a seeds.lock row names selects `stages = ["api"]` or
+	// `["concurrency"]`, and a walk with no browser stage requests no badge --
+	// so no promoted seed reaches this line under either trigger.
+	//
+	// THE CLEAN CASE IS A REAL NEGATIVE, which is the half a role-dependent
+	// break keeps: the admin of the same event in the same state gets 200, and
+	// so does an attendee, so a quiet run is quiet because the server answered
+	// and not because this role never asked.
+	if role == roleGuest {
+		fail(w, http.StatusInternalServerError,
+			fmt.Sprintf("badge: rendering %s for %s", ev.ID, sess.UserID))
+		return
+	}
+	w.Header().Set("Content-Type", "image/svg+xml")
+	if _, err := io.WriteString(w,
+		`<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>`); err != nil {
+		fmt.Fprintf(os.Stderr, "toy: writing the badge for %s: %v\n", id, err)
+	}
+}
+
+// plantedConsoleText is THE ONE PLANTED SCRIPT'S WHOLE BODY, fixed and
+// searchable so the arm that fences it can key on the text and not a shape.
+const plantedConsoleText = "toy: the page count disagrees with the store"
+
+// plantedConsole is R9.3's SECOND planted fault and THE ONLY SCRIPT THIS TOY
+// EVER SERVES (fable's ruling, coop r9/330).
+//
+// THE RULE IT AMENDS AND WHY, in one sentence as the ruling asks: this file's
+// page carried no script because a page carrying code tests the code we put
+// there instead of the stage -- but the watch hears a console error ONLY from
+// script, measured on real chromium 2026-11-15 (ibis, coop r9/329 and /331),
+// so the toy plants exactly one and the rule stands everywhere else.
+//
+// console.error AND NOT A THROW, measured rather than preferred: an uncaught
+// throw IS heard, but in the FOLLOWING step's window -- plumb's documented
+// limit, a fault raised later landing in the next step -- and d3's done-when
+// wants the finding attributed to the actor and the STEP. A throw would plant
+// one that names the wrong step. console.warn is heard by nothing, which is the
+// level filter from the other side.
+//
+// THE TRIGGER IS THE DISAGREEMENT leaveEvent already plants: a join raises both
+// numbers and is quiet, a leave drops Count and leaves Rendered behind. So the
+// console fault and the badge's 5xx have different triggers and a seed can
+// reach either alone, which is what deliverable 3 asks for.
+//
+// NOT `onerror=`: it would pass the fencing arm's text while doing exactly what
+// the old rule's reason forbids.
+func plantedConsole(ev *event) string {
+	if ev.Rendered == ev.Count {
+		return ""
+	}
+	return `<script>console.error(` + strconv.Quote(plantedConsoleText) + `);</script>` + "\n"
+}
+
 func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/ui/events/")
 	parts := strings.Split(strings.Trim(rest, "/"), "/")
 	id := parts[0]
 	if len(parts) == 2 && parts[1] == "join" && r.Method == http.MethodPost {
 		s.joinEvent(w, r, id)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "badge" && r.Method == http.MethodGet {
+		s.eventBadge(w, r, id)
 		return
 	}
 	if len(parts) != 1 || r.Method != http.MethodGet {
@@ -1831,6 +1947,7 @@ func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
 <p><span id="count">` + strconv.Itoa(ev.Rendered) + `</span> of ` + strconv.Itoa(ev.Capacity) + `</p>
 <ul id="attendees">
 ` + attendees + `</ul>
+<img id="badge" alt="" src="/ui/events/` + html.EscapeString(ev.ID) + `/badge?token=` + html.EscapeString(sess.Token) + `">` + plantedConsole(ev) + `
 <form id="join" method="post" action="/ui/events/` + html.EscapeString(ev.ID) + `/join?token=` + html.EscapeString(sess.Token) + `">
 <button type="submit">join</button>
 </form>

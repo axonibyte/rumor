@@ -204,3 +204,81 @@
 # running application.
 1 profile=dst-spring steps=24
 2 profile=dst-fall steps=24
+
+# 13 AND 38 -- R9.3'S ROWS, THE TWO PLANTED PAGE FAULTS HEARD THROUGH A REAL
+# BROWSER, under `profile=planted` at 40 steps (issue 125 deliverable 3; fable's
+# ruling at coop r9/333). These are the first rows here whose finding is heard
+# BENEATH a step rather than read as a value, so they are the first that need
+# `--browser-check`: the walk drives declared flows through the adapter without
+# it, and the adapter has no watch.
+#
+# THE TWO DEFECTS, AND THEY ARE DIFFERENT ONES. The badge subresource answers
+# 500 to a reader holding no relationship to the event, which is true on a FIRST
+# render; the planted `console.error` is served when the page's `Rendered`
+# disagrees with the store's `Count`, which is the stale count `leaveEvent`
+# leaves behind -- a join raises both numbers and is quiet, a leave drops one.
+#
+# SO THE TWO ROWS ARE A TWO-SIDED PROOF AND NOT A PAIR OF EXAMPLES:
+#
+#   13  one `page_fault` of kind RESPONSE and no console fault. admin_1 makes
+#       the event at step 35, tells viewer_1 at 36, and the render at 37 is the
+#       reader's first -- nobody has joined or left it, so the counts agree and
+#       the console plant is correctly silent. This row is what makes the badge
+#       fault attributable to the ROLE rather than to any page.
+#
+#   38  BOTH kinds at one step. guest_1 joins its own event at 12 and leaves at
+#       24, which is the state the console plant needs, and viewer_1 renders it
+#       at 30 -- so the record carries `kind console` and `kind response` for
+#       one actor at one step.
+#
+# A BOUNDED SCAN FOUND THEM, and the bound is part of the result: seeds 1-60 at
+# `--profile planted --steps 40`, driven through the adapter first because that
+# stage answers the cheaper question of whether the flow reached a page at all.
+# SIX of the sixty did -- 13, 38, 41, 44, 47 and 51 -- and the other fifty-four
+# were refused at the flow's click. Those two numbers are the result: 54 of 60
+# never render, because `visible_to` is drawn from three sets and only one
+# carries `guest`, so for the only role that can render a page two draws in
+# three answer 404 and there is no join element to click. That is the
+# application being right.
+#
+# WHY THESE TWO OF THE SIX. Of the six that rendered, 13, 41, 47 and 51 render
+# an event whose counts agree -- 41 and 47 carry joins and no leave -- and only
+# 38 and 44 render one that has had a join AND a leave. So one row of each kind
+# was available and 13 and 38 are the smallest of each.
+#
+# CONSOLE-ALONE IS NOT REACHABLE IN A WALK, and that is the toy's roles rather
+# than a gap in the scan. `viewer` is the only role holding a browser context
+# and validate's arm 19 refuses a browser role that can also reach non-browser
+# actions, so the only actor who can render a page can never join or create an
+# event through the API -- every page a walk renders is rendered by a reader
+# holding no relationship to the event, and the badge fault therefore fires on
+# EVERY rendered page. The independence of the two triggers is driven in
+# cmd/toy's arms, where one event in one state is read as an admin, as an
+# attendee and as a stranger.
+#
+# WHAT THESE ROWS DO NOT PROVE, AND ONE OF IT IS A DEFECT I RAISE SEPARATELY:
+# that the flow COMPLETED. Under a real browser `join_event_ui` emits no claim
+# on either seed -- the page's join form posts to the same handler the API
+# action uses, which answers `application/json` with no redirect, so the browser
+# navigates off the page and the flow's third step, `wait until count-changed`,
+# can never see `#count` again. The adapter models the steps as requests rather
+# than as navigation and completes the same seed, which is why no row before
+# this one could see it. The faults these rows are about are heard during the
+# NAVIGATE, before the click, so they are unaffected either way.
+#
+# AND BOTH ROWS EXIT 3 WITH A STOPPER NAMED FIRST, which cli.md's row for 3
+# requires: a statute `bug` at the same step, reached because the UI join moved
+# the world while the claim went unappended, so the next count observation read
+# a disagreement. The `page_fault` lines follow it, each carrying `the walk
+# continued`.
+#
+# SO THEY CARRY `witness=heard`, WHICH IS THE WHOLE REASON THAT WORD EXISTS
+# (fable's ruling, coop r9/338). Measured: replayed the way the promoted-seed
+# arm replays a row -- no `--browser-check` -- both of these exit 3 with ZERO
+# `page_fault` lines, passing on the statute bug above instead. A row that
+# passes on a defect other than the one it names is what this file exists to
+# forbid, so the row DECLARES that its witness is the opt-in browser-check arm.
+# The replay arm still asserts of them what it can and says in a sentence that
+# the finding is witnessed elsewhere; it does not skip them.
+13 profile=planted steps=40 witness=heard
+38 profile=planted steps=40 witness=heard

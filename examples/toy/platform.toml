@@ -698,3 +698,104 @@ delete_event = 0
 canard = 0
 palter = 0
 suborn = 0
+
+# THE PLANTED PAIR'S OWN WORLD (R9.3/125 d3; fable's ruling at coop r9/333 part
+# one), and it is a NEW profile rather than an amendment to `clicking` or to the
+# default for the reason the ruling gives: seeds.lock's rows name profiles, so
+# moving `leave_event` or the stages under an existing name moves what every
+# committed row proves.
+#
+# WHAT IT IS FOR, which is why it is not `clicking`: d3's two planted faults are
+# heard by the browser WATCH, and both need a page rendered inside a walk.
+# `clicking` renders one page and holds `leave_event` at 0, so the console
+# plant -- whose trigger is a count left behind by a leave -- cannot occur under
+# it at all, and I measured that it does not: twelve seeds there drove four
+# flows of ONE step each with zero faults (coop r9/332).
+#
+# IT MOVES NO MEASUREMENT TAKEN ELSEWHERE, by construction and by stage: a
+# profile's venire rows APPEND and its weights apply under its own name, no
+# seeds.lock row names this profile, and every profile such a row DOES name
+# selects `stages = ["api"]` or `["concurrency"]` -- so no promoted seed renders
+# a page under either this block or the plants it exists to reach.
+#
+# IT CLAIMS NO OBSERVATION, deliberately and not by omission. `page_attendees`
+# reads the template's leak, which is a STOPPING finding, and a walk that stops
+# at the first render never reaches the second one the console plant needs. The
+# faults d3 is about are heard by the watch beneath the step, not read by an
+# observation, so this profile needs none -- and `page_count` stays claimed by
+# `viewing` alone, where its committed reading is.
+[profiles.planted]
+stages = ["api", "browser"]
+seeds = 1
+budget = "2m"
+
+# THE READER, and one is enough: only the `viewer` role holds the browser
+# context (bindings.toml:607), this project's venire declares admin, member and
+# guest, and a row added to `[[venire]]` above would reach every run of every
+# profile. Appended here it reaches runs of THIS profile and nothing else.
+[[profiles.planted.venire]]
+role = "viewer"
+count = 1
+
+# THE MIX, AND EVERY NUMBER HERE IS A LINK IN ONE CHAIN. A key absent from a
+# profile's table falls back to the default, resolved per KEY and not per table:
+# Weights.Weight returns from a level only on a hit for that kind and otherwise
+# falls through profile, then stage, then default (platform.go:231-248), which
+# is why `viewing` carries `list_attendees` alone and still draws
+# `join_event_ui` at the default 12. So this table names only what must differ,
+# and says why for each.
+[weights.profile.planted]
+# FIRST, BECAUSE THE READER CANNOT ACT WITHOUT A USER. cmd/toy keys a session by
+# user NAME and `create_user` takes its name from the ACTOR, so a browser
+# session for viewer_1 exists only once viewer_1 has taken this action. It is
+# the highest weight in the table because every other link needs it first, and
+# because `join_event_ui` does NOT carry `has_user` -- so a walk that draws the
+# flow before the reader's user exists gets the toy's honest 404 and a step that
+# could not run. That omission is a defect in the declaration and not this
+# profile's to fix: it is an issue I raise after d3 (fable, r9/333 part three),
+# and the weight here is what keeps d3 one thing in the meantime.
+create_user = 40
+# THEN AN EVENT TO READ, and the number is a COMPROMISE between two measured
+# pressures rather than a maximum. `visible_to` is DRAWN from three sets and
+# only one carries `guest` (bindings.toml:86), so the walk needs more than one
+# event for one of them to be a page this reader can open at all -- but the
+# console plant needs the join, the leave and the tell to land on the SAME
+# event, and every extra event spreads them further apart. This is `settling`'s
+# reasoning for its own low `create_event`, applied to a longer chain.
+create_event = 12
+# THEN THE HANDLE, AND IT IS THE SCARCE LINK -- the one this table exists to
+# buy. The flow needs a bound `event` the reader KNOWS, and `knows_of_subject`
+# is satisfied by a held `event.created` claim alone (statute.rego:176-179), so
+# the chain is create_event, then a tell of THAT handle to the viewer, then the
+# draw.
+#
+# MEASURED, AND THIS IS WHY IT IS THE HIGHEST OF THE THREE: under the first cut
+# of this table seed 1 drew SEVEN tells in 22 steps and every one of them
+# carried a `user` handle -- `guest_1 tell -> viewer_1 <- guest_1.user#1` at
+# step 6 among them -- so the reader was told of people all run and of no event,
+# `may_join` never became true, and the walk drove ZERO steps through `flow`. A
+# tell carries a handle its teller holds and users are created first, so the
+# weight has to buy enough tells for one to carry an event to this one reader.
+tell = 40
+# THEN THE RENDER, weighted to be taken the step it becomes applicable.
+join_event_ui = 30
+# AND THE API JOIN, WHICH IS THE CONSOLE PLANT'S FIRST HALF: a leave can only
+# drop a count that a join raised, so the plant needs attendees before it needs
+# a leave. It is the default 18 made explicit, because a reader of this table
+# should not have to know the default to see the chain.
+join_event = 18
+# AND THE LEAVE, WHICH IS THE PLANT'S TRIGGER and the key fable's ruling
+# requires to be above zero here. `leaveEvent` drops `Count` and leaves
+# `Rendered` behind, so a render AFTER a leave is the one page whose two numbers
+# disagree -- and the console error is served on exactly that page.
+leave_event = 20
+# AND THE FOUR KINDS THAT END A WALK EARLY ARE ZERO, which is the weight this
+# project already uses for `essoin` and `advance`. Every unprofiled walk stops
+# on a finding at step 7 to 12 (rook, measured on b3e3f18), and this profile
+# needs a walk that lives long enough to render twice: once for the badge and
+# once more after a leave. `delete_event` is here for a second reason -- a
+# deleted event has no page, so it ends the chain rather than the walk.
+delete_event = 0
+canard = 0
+palter = 0
+suborn = 0
