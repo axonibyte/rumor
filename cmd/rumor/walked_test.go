@@ -12,9 +12,15 @@ import (
 // fault is one non-stopping finding as the walk builds it, so these arms drive
 // the SAME constructor the walk uses rather than a hand-made Finding that
 // could drift from it.
+// AND THE WORDS COME FROM THE WALK'S OWN RENDERER, not from a literal here:
+// schedule.PageFault.Words is what the walk passes to engine.PageFault, so a
+// fixture writing its own phrase would assert a rendering production never
+// emits. That is how the empty field survived its arm for a whole head -- the
+// arm was production-shaped in its CONSTRUCTOR and never read the field.
 func fault(actor, action, kind, text string, status, at int) schedule.Walked {
+	words := schedule.PageFault{Kind: kind, Text: text, Status: status}.Words()
 	return schedule.Walked{
-		Finding: engine.PageFault(actor, action, kind, text, status),
+		Finding: engine.PageFault(actor, action, kind, words),
 		At:      at,
 		Actor:   actor,
 	}
@@ -72,6 +78,12 @@ func TestTheNonStoppingLineNamesTheKindTheActorAndTheStep(t *testing.T) {
 		"member_1",      // the actor
 		"step 4",        // the step it is attributed to
 		"the walk continued",
+		// AND THE FAULT'S OWN WORDS, which this arm did not read until
+		// R9.3 (fable, coop r9/353; quill's finding at r9/350). Every
+		// line printed an empty field here and all five checks above
+		// passed over it -- the arm's green was scoped to the facts it
+		// listed, and the one a reader searches for was not among them.
+		"response 503 from /api/events/1",
 	} {
 		if !strings.Contains(line, want) {
 			t.Errorf("the line %q does not name %q", line, want)

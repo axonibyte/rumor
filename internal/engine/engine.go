@@ -135,22 +135,25 @@ const FindingPageFault = "page_fault"
 // KIND CARRIES WHICH OF THE TWO FIRED -- "console", "response" or "rate" --
 // because v9 requires the finding to name it, and Finding.Kind is documented
 // as narrowing a finding where the vocabulary gives it a kind.
-func PageFault(actor, action, kind, text string, status int) Finding {
-	what := kind
-	if status != 0 {
-		what = fmt.Sprintf("%s %d", kind, status)
-	}
+// WORDS ARE THE WATCH'S AND ARRIVE COMPOSED, which is why this takes one string
+// where it used to take text and a status and build its own phrase. There is
+// exactly one composer of a fault's own words -- browser.Fault.String, "console
+// error: <text>" or "response <status> from <path>" -- and a second copy here
+// would be two renderings of one fact, free to drift. The caller passes that
+// one through (fable's ruling on the field, coop r9/353).
+func PageFault(actor, action, kind, words string) Finding {
 	return Finding{
 		Value:   FindingPageFault,
 		Defined: true,
 		Kind:    kind,
 		Overlay: &Overlay{
-			Rule:  "engine.page_fault",
-			Value: FindingPageFault,
-			Reason: fmt.Sprintf("the page %s acts through faulted under %s: %s (%s). The walk "+
+			Rule:   "engine.page_fault",
+			Value:  FindingPageFault,
+			Detail: words,
+			Reason: fmt.Sprintf("the page %s acts through faulted under %s: %s. The walk "+
 				"continued, because a page that faulted is still a page the next step acts "+
 				"on, and the finding stands",
-				actor, action, text, what),
+				actor, action, words),
 		},
 	}
 }

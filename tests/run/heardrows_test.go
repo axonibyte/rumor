@@ -81,7 +81,11 @@ func promotedRows(t *testing.T, lock string) []promotedRow {
 // three -- "a line missing any one of the three is a finding a reader cannot act
 // on" -- so this arm reads all three rather than searching for `page_fault`.
 var theHeardLine = regexp.MustCompile(
-	`FOUND page_fault of kind (\w+) after step (\d+) as (\S+) --`)
+	`FOUND page_fault of kind (\w+) after step (\d+) as (\S+) -- (.*), the walk continued`)
+
+// theResponseWords is the watch's rendering of a response fault, which carries
+// the status and the path -- the two facts fable's r9/353 names for that kind.
+var theResponseWords = regexp.MustCompile(`^response [0-9]{3} from \S+`)
 
 // TestEveryHeardRowIsHeardThroughARealBrowser is the witness fable's ruling
 // names for a `witness=heard` row (coop r9/338).
@@ -157,7 +161,7 @@ func TestEveryHeardRowIsHeardThroughARealBrowser(t *testing.T) {
 					"stdout:\n%s", row.seed, platform.WitnessHeard, out)
 			}
 			for _, m := range found {
-				kind, step, actor := m[1], m[2], m[3]
+				kind, step, actor, words := m[1], m[2], m[3], m[4]
 				at, cerr := strconv.Atoi(step)
 				if cerr != nil || at < 1 {
 					t.Errorf("the line attributes a %s fault to step %q, which is no step: v9 "+
@@ -166,9 +170,35 @@ func TestEveryHeardRowIsHeardThroughARealBrowser(t *testing.T) {
 				if actor == "" || actor == "--" {
 					t.Errorf("the line names no actor for the %s fault at step %s", kind, step)
 				}
-				if !strings.Contains(out, "the walk continued") {
-					t.Errorf("the %s fault's line does not say the walk continued, which is the "+
-						"clause that separates it from the stopper", kind)
+				// THE FAULT'S OWN WORDS ARE ASSERTED HERE, which is the half
+				// this arm lacked when it was written: it read kind, step,
+				// actor and the clause, and the field BETWEEN the actor and
+				// the clause was empty on every line for every run (quill,
+				// coop r9/350). fable ruled at r9/353 that the words are what
+				// the line carries and that this arm asserts them, so an empty
+				// field can never again pass as a verdict.
+				if strings.TrimSpace(words) == "" {
+					t.Errorf("the %s fault at step %s quotes NOTHING: the line names a kind and "+
+						"gives the reader no words to search for", kind, step)
+					continue
+				}
+				// AND THEY ARE THE WATCH'S COMPOSED SHAPE PER KIND, not merely
+				// non-empty: browser.Fault.String renders a console fault as
+				// "console error: <text>" and a response as "response <status>
+				// from <path>". A non-empty check alone would pass on a label
+				// with no text behind it.
+				switch kind {
+				case "console":
+					if !strings.HasPrefix(words, "console error: ") ||
+						strings.TrimSpace(strings.TrimPrefix(words, "console error: ")) == "" {
+						t.Errorf("a console fault's words are %q, want `console error: <text>` "+
+							"with a text", words)
+					}
+				case "response":
+					if !theResponseWords.MatchString(words) {
+						t.Errorf("a response fault's words are %q, want `response <status> from "+
+							"<path>`", words)
+					}
 				}
 			}
 			// THROUGH proof.Logf AND NOT t.Logf, which tests/hygiene enforces and

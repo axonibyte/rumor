@@ -1132,7 +1132,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, br Browser,
 				// updates.
 				for _, h := range sessions.TakeHeard() {
 					rec.Walked = append(rec.Walked, Walked{
-						Finding: engine.PageFault(h.Actor, h.Action, h.Fault.Kind, h.Fault.Text, h.Fault.Status),
+						Finding: engine.PageFault(h.Actor, h.Action, h.Fault.Kind, h.Fault.Words()),
 						At:      rec.FoundAt,
 						Actor:   h.Actor,
 					})
@@ -1271,7 +1271,7 @@ func Walk(ctx context.Context, p Project, sess *wire.Session, br Browser,
 		// about the transport and the console.
 		for _, h := range sessions.TakeHeard() {
 			rec.Walked = append(rec.Walked, Walked{
-				Finding: engine.PageFault(h.Actor, h.Action, h.Fault.Kind, h.Fault.Text, h.Fault.Status),
+				Finding: engine.PageFault(h.Actor, h.Action, h.Fault.Kind, h.Fault.Words()),
 				At:      n,
 				Actor:   h.Actor,
 			})

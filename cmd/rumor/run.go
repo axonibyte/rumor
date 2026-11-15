@@ -1552,8 +1552,25 @@ func findingExit(rec schedule.Record) int {
 // a process's stdout.
 func writeWalked(w io.Writer, rec schedule.Record) error {
 	for _, k := range rec.Walked {
+		// THE FAULT'S OWN WORDS, NOT THE RULE THAT PRODUCED THEM (fable's
+		// ruling, coop r9/353, on quill's finding at r9/350). This read
+		// `k.Finding.Rule`, which engine.PageFault never sets -- it sets
+		// Overlay.Rule, a different field -- so the line printed an EMPTY
+		// field between the actor and the clause, for every fault, and no arm
+		// could see it because the arm asserted the kind, the step, the actor
+		// and the clause and never what sat between them.
+		//
+		// AND THE RULE WOULD HAVE BEEN THE WRONG MEND: "engine.page_fault" is
+		// a name for the kind this line already prints, while the fault's text
+		// is the half a reader can search for -- which is what r9/330 required
+		// of the planted script, in the one artifact a reader without a
+		// toolchain ever sees.
+		words := ""
+		if k.Finding.Overlay != nil {
+			words = k.Finding.Overlay.Detail
+		}
 		if _, err := fmt.Fprintf(w, "run: FOUND %s after step %d as %s -- %s, the walk continued\n",
-			k.Finding.Says(), k.At, k.Actor, k.Finding.Rule); err != nil {
+			k.Finding.Says(), k.At, k.Actor, words); err != nil {
 			return err
 		}
 	}

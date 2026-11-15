@@ -226,6 +226,35 @@ type PageFault struct {
 	Status int
 }
 
+// Words is the fault in ITS OWN WORDS -- "console error: <text>", or "response
+// <status> from <path>" -- and it is what the non-stopping finding's line prints
+// (fable, coop r9/353): the reader holding the binary and no toolchain sees this
+// and nothing else of the fault, so a line without it names a kind and quotes
+// nothing.
+//
+// A METHOD AND NOT A FIELD, which cost a red gate to learn. It WAS a field, set
+// at the seam in cmd/rumor from the driver's own composer so the tree would hold
+// one rendering -- and tests/wire went red at once, because a fixture builds
+// this struct field-for-field and cannot know to fill a field the engine now
+// reads. That is two sources for one fact, which is the shape of the very defect
+// this project plants in the toy's `Rendered`. Computed from the three fields it
+// already carries, a fault cannot be built without its words.
+//
+// THE DUPLICATION IS REAL AND IT IS PINNED: browser.Fault.String renders the
+// same three cases for the driver's own messages, and this package may not name
+// that type (see Browser below). tests/wire asserts the two agree for every
+// kind, so they cannot drift apart unobserved -- which is the remedy this tree
+// used for wire.UnservedKind when one refusal lived in two adapters.
+func (f PageFault) Words() string {
+	switch f.Kind {
+	case "response":
+		return fmt.Sprintf("response %d from %s", f.Status, f.Text)
+	case "rate":
+		return "request rate: " + f.Text
+	}
+	return "console error: " + f.Text
+}
+
 // Browser is the live browser a walk drives flows through, as the stage that
 // started it hands it over (fable, coop r9/110). The zero value drives nothing,
 // which is every project without browser flows and every box without a

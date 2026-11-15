@@ -526,8 +526,18 @@ not hand back.
 stopper is named first.** `page_fault` is the first such finding (vocabulary
 v9): a 5xx response or a console entry at error or above, heard at a step's
 boundary. Its line reads `run: FOUND page_fault of kind console after step 4
-as member_1 -- engine.page_fault, the walk continued`, so a reader holding the
-binary and no toolchain sees what the run recorded. A run with both kinds of
+as member_1 -- console error: the page count disagrees with the store, the walk
+continued`, so a reader holding the binary and no toolchain sees what the run
+recorded.
+
+**The field between the actor and the clause is the FAULT'S OWN WORDS**, as the
+watch composed them: `console error: <text>` for a console entry, and `response
+<status> from <path>` for a response. It is not the name of the engine rule that
+produced the finding -- that names the kind the line already prints, while the
+text is the half a reader can SEARCH for, which is the whole point of a planted
+fault carrying a fixed text. This line read the rule field until R9.3 and that
+field is never set for a walk-produced finding, so it printed nothing at all
+there, for every fault, on every run. A run with both kinds of
 finding prints the stopper's line first, because that is the one that ended the
 walk and the one a shrink reduces; a run with neither prints no `FOUND` line
 and exits 0.

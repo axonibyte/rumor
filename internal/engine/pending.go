@@ -106,6 +106,21 @@ type Overlay struct {
 	// out of Reason would be parsing prose.
 	Value any
 	Kind  string
+
+	// Detail is THE SUBJECT'S OWN WORDS, when the engine rule has them, as
+	// against Reason which is the engine's sentence ABOUT them: for a
+	// `page_fault` it is the fault as the watch composed it -- the console
+	// text, or the status and the path for a response.
+	//
+	// IT IS A FIELD AND NOT A SLICE OF Reason, for the reason stated eight
+	// lines up about Value and Kind: a caller that read the words out of
+	// Reason would be parsing prose. Reason ends with its own "The walk
+	// continued" clause, so a line printing it whole would say that twice.
+	//
+	// EMPTY FOR EVERY OTHER OVERLAY, which is the honest default: a pending
+	// has no subject words of its own, and a renderer must not print a label
+	// where there is nothing to quote (fable, coop r9/353).
+	Detail string
 }
 
 // Now is the run's time at the seal: the latest clock fact at or before it.
