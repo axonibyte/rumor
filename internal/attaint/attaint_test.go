@@ -1144,15 +1144,24 @@ func TestTheCounterfactualCarriesTheRunsClockDeclarations(t *testing.T) {
 // compiling per call would have passed every test in the tree (quill, coop
 // r9/373).
 //
-// TWO MODULES AND TWO RULES, so the arm separates the ways the key can be
-// wrong instead of just counting. Cold must be modules x rules = 4:
+// THREE MODULES AND TWO RULES, so the cold count separates the ways the key
+// can be wrong by COMPONENT and not merely by class. Cold must be
+// modules x rules = 6, and each way of being wrong lands on its own number:
 //
-//	a key that ignores the module  -> 2
-//	a key that ignores the rule    -> 2
+//	a key that ignores the module  -> 2  (one key per rule)
+//	a key that ignores the rule    -> 3  (one key per module)
 //	a key that ignores both        -> 1
-//	no cache at all                -> 8
 //
-// Each of those is a distinct number, so the arm says WHICH failure it saw.
+// IT WAS 2 x 2 AND THE DISTINCTION WAS A FICTION. At two modules both the
+// module-blind and the rule-blind key collapse four keys to two, so those two
+// mutants emitted BYTE-IDENTICAL failure lines and this arm could name only
+// the class. quill caught the claim in this comment (coop r9/375). The third
+// module is what makes it true: 6, 2, 3 and 1 are four distinct numbers.
+//
+// NO CACHE AT ALL IS A DIFFERENT ASSERTION, not a fourth row here. It does not
+// move the cold count -- six compiles is exactly right for six cold keys -- so
+// the cold check PASSES against it. The warm check below is what catches it,
+// and that is where it is named.
 func TestTheCasePathCompilesEachModuleOncePerRule(t *testing.T) {
 	const one = `package rumor.statute
 
@@ -1168,7 +1177,15 @@ finding := "inconsistent" if input.observation.value == 1
 
 also_holds := false if input.observation.value == 1
 `
-	modules := []string{one, two}
+	// A third, so a module-blind key (2) and a rule-blind key (3) cannot land
+	// on the same number.
+	const three = `package rumor.statute
+
+finding := "unproven" if input.observation.value == 1
+
+also_holds := true if input.observation.value == 2
+`
+	modules := []string{one, two, three}
 	rules := []string{"finding", "also_holds"}
 	input := map[string]any{"observation": map[string]any{"value": 1}}
 	ctx := context.Background()
@@ -1194,7 +1211,9 @@ also_holds := false if input.observation.value == 1
 			len(modules), len(rules), cold, want)
 	}
 
-	// And the hoist on this path: the same modules again compile nothing.
+	// And the hoist on this path: the same modules again compile nothing. THIS
+	// is the assertion that catches a cache which does not cache -- the cold
+	// count above is correct for an uncached path and passes against it.
 	for _, m := range modules {
 		if _, err := evalCasePath(ctx, m, rules, input); err != nil {
 			t.Fatal(err)
