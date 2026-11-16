@@ -94,10 +94,21 @@ func preparedFor(ctx context.Context, statute, rule string) (rego.PreparedEvalQu
 	return fresh, nil
 }
 
-// resetPrepared empties the cache. For arms that need a cold cache to count
+// ResetPrepared empties the cache. For arms that need a cold cache to count
 // compiles: the count is per-process, so a test that did not clear this would
 // measure whichever tests ran before it.
-func resetPrepared() {
+//
+// EXPORTED BECAUSE THE ARM THAT NEEDS IT MOST IS IN ANOTHER PACKAGE. This was
+// unexported, and tests/attaint's pass-scale arm -- which counts compiles over
+// a whole attaint.Run -- therefore could not obtain the cold cache this very
+// comment requires. It read 0 and failed as "measured nothing" whenever an
+// earlier drill in its package had already warmed the caches, which is every
+// package run and no `-run` run (quill, coop r9/390). The requirement was
+// stated here and the means to meet it were sealed off one package away.
+//
+// It sits beside RecordCompile, Compiles and ResetCompiles: the counter's
+// surface is measurement scaffolding, and this belongs to it.
+func ResetPrepared() {
 	preparedMu.Lock()
 	defer preparedMu.Unlock()
 	preparedQ = map[preparedKey]rego.PreparedEvalQuery{}

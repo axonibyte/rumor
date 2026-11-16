@@ -1190,7 +1190,7 @@ also_holds := true if input.observation.value == 2
 	input := map[string]any{"observation": map[string]any{"value": 1}}
 	ctx := context.Background()
 
-	resetCasePrepared()
+	ResetCasePrepared()
 	engine.ResetCompiles()
 	if n := engine.Compiles(); n != 0 {
 		t.Fatalf("the counter did not reset: it reads %d", n)

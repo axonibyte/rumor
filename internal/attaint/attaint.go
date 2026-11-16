@@ -1000,8 +1000,8 @@ func casePrepared(ctx context.Context, module, rule string) (rego.PreparedEvalQu
 	return fresh, nil
 }
 
-// resetCasePrepared empties the case path's cache. Arms only, and the sibling
-// of engine's resetPrepared: a count of compiles needs a cold cache, because
+// ResetCasePrepared empties the case path's cache. Arms only, and the sibling
+// of engine's ResetPrepared: a count of compiles needs a cold cache, because
 // the prepared queries live for the process and an arm without this would
 // measure whichever tests ran before it.
 //
@@ -1010,7 +1010,7 @@ func casePrepared(ctx context.Context, module, rule string) (rego.PreparedEvalQu
 // engine.RecordCompile() above was read by nothing and a regression to
 // compiling per call would have gone unnoticed on this path (quill, coop
 // r9/373).
-func resetCasePrepared() {
+func ResetCasePrepared() {
 	casePreparedMu.Lock()
 	defer casePreparedMu.Unlock()
 	casePreparedQ = map[casePreparedKey]rego.PreparedEvalQuery{}

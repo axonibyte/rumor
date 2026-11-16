@@ -421,6 +421,14 @@ func TestTheInertSetAgreesWithTheDeclaredOne(t *testing.T) {
 // #128 wants most. A figure that vanishes when the assertion it accompanies
 // fails is no use for a before/after.
 func TestTheCompileCountAndItsCostComeFromOneRun(t *testing.T) {
+	// BOTH CACHES AND THE COUNTER, or this arm measures whichever test ran
+	// before it. The caches are process-global and an earlier drill in this
+	// package warms them, so without these the pass compiles nothing, the
+	// count reads 0 and the arm fails as "measured nothing" -- which is what
+	// it did on every package run between 3c8b48d and here. The counter reset
+	// alone was never enough; it was just the only one reachable.
+	engine.ResetPrepared()
+	attaint.ResetCasePrepared()
 	engine.ResetCompiles()
 	var out bytes.Buffer
 	start := time.Now()
@@ -456,7 +464,7 @@ func TestTheCompileCountAndItsCostComeFromOneRun(t *testing.T) {
 			"nothing: the increment is not on the path the pass took")
 	}
 	if elapsed <= 0 {
-		t.Fatal("the pass took no measurable time, so the per-compile figure has no denominator")
+		t.Fatal("the pass took no measurable time, so the figure logged above is not one")
 	}
 
 	// THE HOIST'S INVARIANT AT PASS SCALE: run the pass AGAIN in this same

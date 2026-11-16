@@ -442,7 +442,7 @@ also_holds := true if input.observation.value == 1
 	// order-dependent: the prepared queries live for the process, so whether
 	// this statute is already compiled depends on which tests ran first. It
 	// passed on a cold cache by luck once; that is not a measurement.
-	resetPrepared()
+	ResetPrepared()
 	ResetCompiles()
 	if n := Compiles(); n != 0 {
 		t.Fatalf("the counter did not reset: it reads %d", n)
