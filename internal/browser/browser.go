@@ -99,6 +99,11 @@ type Driver struct {
 	http     *http.Client
 	headless bool
 
+	// tmpdir is a directory this process made and owns, handed to the driver
+	// as TMPDIR so everything it and the browser scatter lands INSIDE it. See
+	// Start for why that is the fix and teardown discipline is not.
+	tmpdir string
+
 	// exited is closed when the driver process has been reaped, and it is the
 	// ONLY place cmd.Wait is called. Two Waits on one Cmd is a bug -- the
 	// second answers an error and the first's result is lost -- so the reaper
@@ -258,6 +263,38 @@ func Start(ctx context.Context, driverPath, browserPath string, headless bool) (
 		return nil, fmt.Errorf("no local port for the webdriver: %w", err)
 	}
 	cmd := exec.Command(driverPath, fmt.Sprintf("--port=%d", port))
+
+	// A TMPDIR THIS PROCESS OWNS, because NO teardown stops the scattering.
+	// DRIVEN, four arms, swept to zero before each (quill, coop r9/399):
+	//
+	//	DELETE + SIGTERM the driver only       3 dirs left, 7 chrome ALIVE
+	//	DELETE + SIGTERM the driver and chrome 3 dirs left, none alive
+	//	no DELETE + SIGKILL everything         4 dirs left, none alive
+	//	the second teardown + TMPDIR owned     0 in /tmp, 3 inside the owned tree
+	//
+	// The cleanest possible stop -- session deleted, both processes asked
+	// politely -- still leaves three, so this is not something teardown can be
+	// disciplined into. It is three per session: 1,921 dirs in quill's jail is
+	// about 640 sessions, and the 4,576 in CI's is the same arithmetic at CI's
+	// volume.
+	//
+	// AND IT HAS TO BE TMPDIR RATHER THAN --user-data-dir, which was the first
+	// proposal. The session profile is one of the four shapes; the others are
+	// org.chromium.Chromium.chromium_chrome_url_fetcher_* and bare
+	// org.chromium.Chromium.*, which belong to CHROME and not to any session,
+	// so no user-data-dir can name them. TMPDIR catches all four because it
+	// changes where they are made rather than trying to name them afterwards.
+	//
+	// THAT IS ALSO WHAT MAKES CLEANUP SAFE IN A SHARED JAIL. The removal is
+	// one path this process chose, so it cannot reach another tenant's files:
+	// isolex had 9,041 entries beside ours in the ci jail, and a glob over
+	// someone else's naming scheme is the instrument that already misread this
+	// leak twice.
+	tmpdir, err := os.MkdirTemp("", "rumor-browser-")
+	if err != nil {
+		return nil, fmt.Errorf("making a temporary directory for the browser: %w", err)
+	}
+	cmd.Env = append(os.Environ(), "TMPDIR="+tmpdir)
 	// ITS OWN PROCESS GROUP, SO THE WHOLE TREE CAN BE STOPPED. A webdriver
 	// SPAWNS THE BROWSER, and signalling the driver alone does not take the
 	// browser with it -- MEASURED 2026-11-08 while driving the flow arms: with
@@ -273,6 +310,10 @@ func Start(ctx context.Context, driverPath, browserPath string, headless bool) (
 	// and everything it started.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
+		// The directory was made before the process existed, so the one path
+		// that returns without a Driver has to remove it itself: nothing else
+		// holds a reference to it from here.
+		_ = os.RemoveAll(tmpdir)
 		return nil, fmt.Errorf("starting %s: %w", driverPath, err)
 	}
 	d := &Driver{
@@ -282,6 +323,7 @@ func Start(ctx context.Context, driverPath, browserPath string, headless bool) (
 		cmd:      cmd,
 		http:     &http.Client{Timeout: RequestBound},
 		headless: headless,
+		tmpdir:   tmpdir,
 		sessions: map[string]string{}, worlds: map[string]error{}, bidi: map[string]string{},
 		exited: make(chan struct{}),
 	}
@@ -573,6 +615,14 @@ func (d *Driver) stopProcess() {
 	// what makes this cheap rather than conditional.
 	signalGroup(pid, syscall.SIGKILL)
 	d.cmd = nil
+
+	// AFTER the group is gone, never before: removing it while chrome still
+	// held files there would be deleting a live process's state, and the whole
+	// point is that this is the one tree whose lifetime we control.
+	if d.tmpdir != "" {
+		_ = os.RemoveAll(d.tmpdir)
+		d.tmpdir = ""
+	}
 }
 
 // signalGroup signals a whole process group and says nothing about the result:

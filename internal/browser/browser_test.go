@@ -890,3 +890,50 @@ func TestTheDeafModeOutlivesTheReadinessBound(t *testing.T) {
 			fakedriver.DeafFor, ReadyTimeout)
 	}
 }
+
+// THE DRIVER GETS A TMPDIR THIS PROCESS OWNS, AND IT GOES WHEN THE DRIVER
+// GOES. Everything chromedriver and chrome scatter is made under TMPDIR, so
+// owning that one path is what makes the scattering collectable -- no
+// teardown does it, which quill drove four ways at coop r9/399: even the
+// cleanest stop leaves three directories behind.
+//
+// WHAT THIS ARM CAN AND CANNOT SEE. The fake driver spawns no browser, so this
+// holds the MECHANISM -- a directory made, handed over as TMPDIR, and removed
+// once the process group is gone -- and not the chrome shapes landing inside
+// it. That half is quill's measurement and belongs to the record, not to a
+// unit test that would have to run a real browser to repeat it.
+func TestTheDriverIsHandedATmpdirWeOwnAndItIsRemoved(t *testing.T) {
+	d, _ := startFake(t, "ready", true)
+
+	dir := d.tmpdir
+	if dir == "" {
+		t.Fatal("no tmpdir was recorded, so nothing owns what the driver scatters")
+	}
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		t.Fatalf("the tmpdir %s is not a directory that exists: %v", dir, err)
+	}
+
+	// HANDED OVER, not merely made: a directory this process creates and does
+	// not pass on changes nothing about where the driver writes.
+	want := "TMPDIR=" + dir
+	found := false
+	for _, kv := range d.cmd.Env {
+		if kv == want {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("the driver's environment does not carry %q, so it writes wherever "+
+			"the inherited TMPDIR points and the directory is decoration", want)
+	}
+
+	if err := d.Close(context.Background()); err != nil {
+		t.Fatalf("closing: %v", err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("%s survived the teardown (stat err %v): the owned tree is the "+
+			"only thing that collects what the browser leaves, so leaving it is "+
+			"the leak with one more step", dir, err)
+	}
+}
