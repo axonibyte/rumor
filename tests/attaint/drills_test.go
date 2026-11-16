@@ -459,16 +459,28 @@ func TestTheCompileCountAndItsCostComeFromOneRun(t *testing.T) {
 		t.Fatal("the pass took no measurable time, so the per-compile figure has no denominator")
 	}
 
-	// THE HOIST'S INVARIANT AT PASS SCALE, and the one thing here a regression
-	// trips. Pre-hoist the pass compiled once per rule per case on each of two
-	// paths, so the count EXCEEDED cases x rules; hoisted, a statute compiles
-	// once per rule however many cases use it, so the count stops scaling with
-	// the cases. This is a property of the whole pass, which neither of the
-	// unit arms can see: they each prove one cache reuses one query.
-	if ceiling := rep.Cases * rep.Rules; compiles >= uint64(ceiling) {
-		t.Errorf("%d compile(s) against %d case(s) x %d rule(s) = %d: the count still "+
-			"scales with the cases, so statutes are being recompiled per case",
-			compiles, rep.Cases, rep.Rules, ceiling)
+	// THE HOIST'S INVARIANT AT PASS SCALE: run the pass AGAIN in this same
+	// process and nothing may compile. The caches live for the process, so a
+	// second pass over the same corpus finds every (statute, rule) already
+	// prepared. That is the whole claim, and it holds however the corpus grows.
+	//
+	// IT REPLACES A THRESHOLD THAT WAS UNITS-MISMATCHED. The first version
+	// asserted compiles < Cases x Rules -- a product of two TOTALS -- against a
+	// count that actually tracks MUTANTS: the sum over packages of
+	// (1+mutants) x rules on each path. quill drove both failures it allowed
+	// (coop r9/385). It MISSED A PARTIAL REGRESSION: un-hoisting one package
+	// entirely moved the count 816 -> 1047 and the arm PASSED, because
+	// 1047 < 1457. And it would FALSE-ALARM on growth, since toy contributes
+	// roughly 620 of the 816 against a ceiling fixed by cases, so a correctly
+	// hoisted tree trips it at about 40 mutants in toy. A bound a whole
+	// package's regression fits inside is not a bound.
+	before := engine.Compiles()
+	if _, err := attaint.Run(context.Background(), examplesDir, &out); err != nil {
+		t.Fatalf("the second pass did not run: %v", err)
+	}
+	if again := engine.Compiles() - before; again != 0 {
+		t.Errorf("a second pass of the same corpus compiled %d more time(s), want 0: "+
+			"the prepared queries are not being reused across the pass", again)
 	}
 	proof.Logf(t, "PROOF %d compile(s) in %s from ONE pass of %d case(s) x %d rule(s)",
 		compiles, elapsed.Round(time.Millisecond), rep.Cases, rep.Rules)
