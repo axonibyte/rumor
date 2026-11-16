@@ -31,6 +31,13 @@ import (
 // The server itself lives in internal/browser/fakedriver because cmd/rumor's
 // stage arms need the same one, and a protocol fake kept in two places drifts.
 func TestMain(m *testing.M) {
+	// BEFORE the fake driver's branch: the kill-proof child sets the fake
+	// driver's env ITSELF, for the grandchild it is about to start, so a child
+	// that checked the fake's branch first would serve the protocol instead of
+	// running the arm.
+	if KillProofChildIfAsked() {
+		return
+	}
 	if fakedriver.MainIfAsked() {
 		return
 	}

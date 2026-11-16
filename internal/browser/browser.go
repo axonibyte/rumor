@@ -32,6 +32,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -103,6 +104,14 @@ type Driver struct {
 	// as TMPDIR so everything it and the browser scatter lands INSIDE it. See
 	// Start for why that is the fix and teardown discipline is not.
 	tmpdir string
+
+	// stopOnce makes teardown idempotent, which it has to be now that a
+	// termination signal can start one: the handler's goroutine and a caller
+	// in Close would otherwise both signal the group and both read d.exited,
+	// and this type has no other lock. Once also BLOCKS the second caller
+	// until the first has finished, so a Close racing the handler returns
+	// after the browsers are actually gone rather than beside them.
+	stopOnce sync.Once
 
 	// exited is closed when the driver process has been reaped, and it is the
 	// ONLY place cmd.Wait is called. Two Waits on one Cmd is a bug -- the
@@ -290,7 +299,11 @@ func Start(ctx context.Context, driverPath, browserPath string, headless bool) (
 	// isolex had 9,041 entries beside ours in the ci jail, and a glob over
 	// someone else's naming scheme is the instrument that already misread this
 	// leak twice.
-	tmpdir, err := os.MkdirTemp("", "rumor-browser-")
+	// AND THE SWEEP, before this run makes its own: a SIGKILLed predecessor
+	// strands its tree where nothing in-process can reach it, so the next run
+	// reclaims it. See orphans.go for why the pid is in the name.
+	sweepOnFirstStart()
+	tmpdir, err := ownedTmpdir()
 	if err != nil {
 		return nil, fmt.Errorf("making a temporary directory for the browser: %w", err)
 	}
@@ -331,6 +344,16 @@ func Start(ctx context.Context, driverPath, browserPath string, headless bool) (
 		_ = cmd.Wait()
 		close(d.exited)
 	}()
+	// FROM HERE THERE IS A GROUP TO LOSE, so the signal handler must be able
+	// to find it. Registered before the readiness wait and not after: a driver
+	// that never reports ready has still STARTED, and that is exactly the
+	// window CI's timeout lands in.
+	rememberDriver(d)
+	// AND THE GROUP GOES INTO THE TREE, because a SIGKILL runs none of this
+	// and the only thing that can reach these processes afterwards is a later
+	// run reading the handle off disk. Setpgid made the driver its own group
+	// leader, so the pid IS the pgid. See orphans.go.
+	recordPGID(tmpdir, cmd.Process.Pid)
 	if err := d.waitReady(ctx, ReadyTimeout); err != nil {
 		d.stopProcess()
 		return nil, err
@@ -594,7 +617,15 @@ func (d *Driver) Reset(ctx context.Context) error {
 // to stop, while a webdriver reads HTTP and would never notice. os.Interrupt is
 // the portable ask -- chromedriver and geckodriver both stop on it -- and Kill
 // is what makes the wait bounded whether or not it was heard.
+// A TERMINATION SIGNAL CAN ALSO START THIS, so it runs at most once per
+// driver and a second caller waits for the first rather than racing it. See
+// orphans.go.
 func (d *Driver) stopProcess() {
+	d.stopOnce.Do(d.stopProcessOnce)
+}
+
+func (d *Driver) stopProcessOnce() {
+	forgetDriver(d)
 	if d.cmd == nil || d.cmd.Process == nil {
 		return
 	}
