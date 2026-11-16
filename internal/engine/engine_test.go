@@ -438,6 +438,11 @@ also_holds := true if input.observation.value == 1
 	rules := []string{"also_holds"}
 	input := map[string]any{"observation": map[string]any{"value": 1}}
 
+	// THE CACHE IS RESET WITH THE COUNTER, and without this the arm is
+	// order-dependent: the prepared queries live for the process, so whether
+	// this statute is already compiled depends on which tests ran first. It
+	// passed on a cold cache by luck once; that is not a measurement.
+	resetPrepared()
 	ResetCompiles()
 	if n := Compiles(); n != 0 {
 		t.Fatalf("the counter did not reset: it reads %d", n)
@@ -446,17 +451,31 @@ also_holds := true if input.observation.value == 1
 		t.Fatal(err)
 	}
 
-	got := Compiles()
-	if got == 0 {
-		t.Fatalf("the counter reads 0 after one Evaluate, so this arm measured " +
-			"nothing: the increment is not on the path the evaluation took")
+	cold := Compiles()
+	if cold == 0 {
+		t.Fatalf("the counter reads 0 after one Evaluate on a cold cache, so this " +
+			"arm measured nothing: the increment is not on the path the evaluation took")
 	}
-	if want := uint64(len(rules) + 1); got != want {
-		t.Errorf("one Evaluate over %d rule(s) compiled %d time(s), want %d "+
-			"(one per rule, one more for %s)", len(rules), got, want, FindingRule)
+	if want := uint64(len(rules) + 1); cold != want {
+		t.Errorf("the first Evaluate over %d rule(s) compiled %d time(s), want %d "+
+			"(one per rule, one more for %s)", len(rules), cold, want, FindingRule)
 	}
-	proof.Logf(t, "PROOF one Evaluate over %d rule(s) compiled %d time(s)",
-		len(rules), got)
+
+	// AND THE HOIST ITSELF: the second Evaluate of the same statute compiles
+	// NOTHING. This is the assertion the hoist has to earn -- before it, this
+	// number was another len(rules)+1, so an arm that stopped at the line above
+	// would have passed identically on the unhoisted tree and proved nothing
+	// about the change it is here to hold.
+	if _, err := EvaluateWith(context.Background(), st, rules, input); err != nil {
+		t.Fatal(err)
+	}
+	again := Compiles() - cold
+	if again != 0 {
+		t.Errorf("a second Evaluate of the same statute compiled %d more time(s), "+
+			"want 0: the prepared query is not being reused", again)
+	}
+	proof.Logf(t, "PROOF first Evaluate over %d rule(s) compiled %d, the second compiled %d",
+		len(rules), cold, again)
 }
 
 // allFixtures names every committed ledger fixture, as (package, case) pairs.

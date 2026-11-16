@@ -48,6 +48,8 @@ package attaint
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
@@ -58,6 +60,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/open-policy-agent/opa/v1/rego"
 
@@ -923,12 +926,11 @@ func moved(clean, mutant map[string]any, rule string) bool {
 func evalCasePath(ctx context.Context, module string, rules []string, input any) (map[string]any, error) {
 	got := map[string]any{}
 	for _, rule := range rules {
-		engine.RecordCompile()
-		rs, err := rego.New(
-			rego.Query(engine.StatutePackage+"."+rule),
-			rego.Module("statute.rego", module),
-			rego.Input(input),
-		).Eval(ctx)
+		pq, err := casePrepared(ctx, module, rule)
+		if err != nil {
+			return nil, err
+		}
+		rs, err := pq.Eval(ctx, rego.EvalInput(input))
 		if err != nil {
 			return nil, fmt.Errorf("rule %s: %w", rule, err)
 		}
@@ -938,6 +940,58 @@ func evalCasePath(ctx context.Context, module string, rules []string, input any)
 		got[rule] = rs[0].Expressions[0].Value
 	}
 	return got, nil
+}
+
+// THE CASE PATH GETS ITS OWN PREPARED-QUERY CACHE, deliberately separate from
+// internal/engine's. R10 d1 hoists the compile out of both paths, and the
+// tempting shape is one shared cache -- but this pass EXISTS to compare the
+// two: `cleanLedger[i]` against `cleanCase[i]`, the ledger path through the
+// engine against this one. Sharing the cache would put a single compile behind
+// both sides of that comparison, so a defect in the hoist would move both
+// answers together and the disagreement this pass is built to notice would
+// read as agreement. Two evaluators, two caches; the duplication is the point.
+//
+// The counter is engine's, because the figure d1 reports is compiles per pass
+// across the whole tree, not per package. The increment sits on the miss path
+// here for the same reason it does there: the call moves where the compile
+// moves.
+type casePreparedKey struct {
+	module string
+	rule   string
+}
+
+var (
+	casePreparedMu sync.RWMutex
+	casePreparedQ  = map[casePreparedKey]rego.PreparedEvalQuery{}
+)
+
+func casePrepared(ctx context.Context, module, rule string) (rego.PreparedEvalQuery, error) {
+	sum := sha256.Sum256([]byte(module))
+	key := casePreparedKey{module: hex.EncodeToString(sum[:]), rule: rule}
+
+	casePreparedMu.RLock()
+	pq, ok := casePreparedQ[key]
+	casePreparedMu.RUnlock()
+	if ok {
+		return pq, nil
+	}
+
+	casePreparedMu.Lock()
+	defer casePreparedMu.Unlock()
+	if pq, ok = casePreparedQ[key]; ok {
+		return pq, nil
+	}
+
+	engine.RecordCompile()
+	fresh, err := rego.New(
+		rego.Query(engine.StatutePackage+"."+rule),
+		rego.Module("statute.rego", module),
+	).PrepareForEval(ctx)
+	if err != nil {
+		return rego.PreparedEvalQuery{}, fmt.Errorf("preparing rule %s: %w", rule, err)
+	}
+	casePreparedQ[key] = fresh
+	return fresh, nil
 }
 
 func declares(rules []string, name string) bool {

@@ -551,7 +551,7 @@ func EvaluateWith(ctx context.Context, statute string, rules []string, input map
 	cov := cover.New()
 	tracer := topdown.NewBufferTracer()
 	v, defined, err := evalOne(ctx, statute, FindingRule, input,
-		rego.QueryTracer(cov), rego.QueryTracer(tracer))
+		rego.EvalQueryTracer(cov), rego.EvalQueryTracer(tracer))
 	if err != nil {
 		return out, err
 	}
@@ -573,14 +573,19 @@ func EvaluateWith(ctx context.Context, statute string, rules []string, input map
 
 // evalOne returns one rule's value, and whether it was defined at all.
 func evalOne(ctx context.Context, statute, rule string, input any,
-	opts ...func(*rego.Rego)) (any, bool, error) {
-	args := append([]func(*rego.Rego){
-		rego.Query(StatutePackage + "." + rule),
-		rego.Module(moduleName, statute),
-		rego.Input(input),
-	}, opts...)
-	RecordCompile()
-	rs, err := rego.New(args...).Eval(ctx)
+	evalOpts ...rego.EvalOption) (any, bool, error) {
+	// Compiled once per (statute, rule) and reused; see prepared.go. Input and
+	// the instruments are Eval options now, not New options, because the
+	// compiled query outlives this call and anything attached at prepare time
+	// would be shared by every later evaluation of the same rule.
+	pq, err := preparedFor(ctx, statute, rule)
+	if err != nil {
+		return nil, false, err
+	}
+	opts := make([]rego.EvalOption, 0, len(evalOpts)+1)
+	opts = append(opts, rego.EvalInput(input))
+	opts = append(opts, evalOpts...)
+	rs, err := pq.Eval(ctx, opts...)
 	if err != nil {
 		return nil, false, fmt.Errorf("engine: rule %s: %w", rule, err)
 	}
