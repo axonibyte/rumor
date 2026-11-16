@@ -29,8 +29,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"forge.axonibyte.com/axonibyte/rumor/internal/attaint"
+	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
@@ -403,4 +405,71 @@ func TestTheInertSetAgreesWithTheDeclaredOne(t *testing.T) {
 	}
 	proof.Logf(t, "PROOF %d declared by tests/engine, %d measured ledger-inert by attaint, sets equal, 0 dead: %v",
 		len(declared), len(measured), rep.LedgerInert)
+}
+
+// THE COUNT AND ITS COST, FROM ONE RUN. #128 d1's done-when asks for the count
+// and ms-per-compile "taken once in the same run", and provenance is the whole
+// reason: every per-compile figure this room produced was withdrawn because it
+// divided a wall clock by a count nobody had measured beside it. wren's went,
+// mine went, quill's went. One Run, one counter read, one elapsed, so the
+// ratio cannot be a quotient of two different observations.
+//
+// THE FIGURES ARE LOGGED BEFORE ANYTHING IS ASSERTED, with a plain t.Logf and
+// deliberately not a PROOF line. proof.Logf will not print from a failing
+// test, which is correct and is exactly why it cannot carry these: on the
+// PRE-HOIST tree the invariant below fails, and that is the run whose count
+// #128 wants most. A figure that vanishes when the assertion it accompanies
+// fails is no use for a before/after.
+func TestTheCompileCountAndItsCostComeFromOneRun(t *testing.T) {
+	engine.ResetCompiles()
+	var out bytes.Buffer
+	start := time.Now()
+	rep, err := attaint.Run(context.Background(), examplesDir, &out)
+	elapsed := time.Since(start)
+	compiles := engine.Compiles()
+	if err != nil {
+		t.Fatalf("attaint on the pristine tree: %v", err)
+	}
+
+	// NO ms-PER-COMPILE IS COMPUTED HERE, and that is the point of this block.
+	// elapsed/compiles would attribute the WHOLE pass to its compiles, and a
+	// pass is overwhelmingly evaluation: 816 compiles against roughly 10^5
+	// evaluations post-hoist. Dividing one by the other yields a number that
+	// looks like a compile's cost and is nothing of the kind -- which is the
+	// figure wren, quill and I each withdrew, and it would be re-committed
+	// here in a new costume.
+	//
+	// THE HONEST PER-COMPILE COST IS A DIFFERENCE, not a quotient of one run:
+	// CPU-seconds saved divided by compiles REMOVED, across the pre-hoist and
+	// hoisted trees. This arm's job is to supply one side of each term --
+	// a count, and the pass time beside it from the same run -- so the
+	// subtraction has matched provenance. It does not do the division.
+	t.Logf("COMPILES %d in %s over %d package(s), %d case(s), %d rule(s), %d mutant(s)",
+		compiles, elapsed.Round(time.Millisecond), rep.Packages, rep.Cases,
+		rep.Rules, rep.Mutants)
+
+	if !rep.OK() {
+		t.Fatalf("the pristine tree refused; this arm's premise is d0 passing")
+	}
+	if compiles == 0 {
+		t.Fatal("the counter reads 0 after a whole attaint pass, so this arm measured " +
+			"nothing: the increment is not on the path the pass took")
+	}
+	if elapsed <= 0 {
+		t.Fatal("the pass took no measurable time, so the per-compile figure has no denominator")
+	}
+
+	// THE HOIST'S INVARIANT AT PASS SCALE, and the one thing here a regression
+	// trips. Pre-hoist the pass compiled once per rule per case on each of two
+	// paths, so the count EXCEEDED cases x rules; hoisted, a statute compiles
+	// once per rule however many cases use it, so the count stops scaling with
+	// the cases. This is a property of the whole pass, which neither of the
+	// unit arms can see: they each prove one cache reuses one query.
+	if ceiling := rep.Cases * rep.Rules; compiles >= uint64(ceiling) {
+		t.Errorf("%d compile(s) against %d case(s) x %d rule(s) = %d: the count still "+
+			"scales with the cases, so statutes are being recompiled per case",
+			compiles, rep.Cases, rep.Rules, ceiling)
+	}
+	proof.Logf(t, "PROOF %d compile(s) in %s from ONE pass of %d case(s) x %d rule(s)",
+		compiles, elapsed.Round(time.Millisecond), rep.Cases, rep.Rules)
 }
