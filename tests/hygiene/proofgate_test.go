@@ -98,7 +98,10 @@ func TestEveryProofLineGoesThroughTheHelper(t *testing.T) {
 	// 225 -> 226 is R10 d1's compile-counter arm in internal/engine, whose
 	// PROOF names the count one Evaluate produced. It prices a real
 	// addition, not a mutant.
-	const sitesInTrackedTests = 226
+	// 226 -> 227 is R10 d1's case-path compile arm in internal/attaint, which
+	// the hoist shipped without: the engine path had an arm and its sibling did
+	// not, so one of the two counters was read by nothing.
+	const sitesInTrackedTests = 227
 	if sites != sitesInTrackedTests {
 		t.Errorf("%d call(s) of the helper in tracked test files, want %d: if that is "+
 			"deliberate, move the literal with it; if not, PROOF lines have been lost",

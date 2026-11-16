@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"forge.axonibyte.com/axonibyte/rumor/internal/engine"
 	"forge.axonibyte.com/axonibyte/rumor/internal/ledger"
 	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
@@ -1134,4 +1135,75 @@ func TestTheCounterfactualCarriesTheRunsClockDeclarations(t *testing.T) {
 		t.Errorf("the counterfactual's zone is %v (nil=%v), so `input.clock.local` is "+
 			"undefined on one side of the comparison", out.Zone(), out.Zone() == nil)
 	}
+}
+
+// THE CASE PATH'S OWN COMPILE ARM, which this package shipped without. R10 d1
+// hoists the compile out of BOTH evaluators and reports the count per path;
+// internal/engine's arm exercises the engine path alone, so engine.RecordCompile
+// on this side was read by nothing and a casePrepared that regressed to
+// compiling per call would have passed every test in the tree (quill, coop
+// r9/373).
+//
+// TWO MODULES AND TWO RULES, so the arm separates the ways the key can be
+// wrong instead of just counting. Cold must be modules x rules = 4:
+//
+//	a key that ignores the module  -> 2
+//	a key that ignores the rule    -> 2
+//	a key that ignores both        -> 1
+//	no cache at all                -> 8
+//
+// Each of those is a distinct number, so the arm says WHICH failure it saw.
+func TestTheCasePathCompilesEachModuleOncePerRule(t *testing.T) {
+	const one = `package rumor.statute
+
+finding := "consistent" if input.observation.value == 1
+
+also_holds := true if input.observation.value == 1
+`
+	// Differs from `one` in what it yields, so the digests differ and sharing a
+	// prepared query between them would be wrong rather than merely wasteful.
+	const two = `package rumor.statute
+
+finding := "inconsistent" if input.observation.value == 1
+
+also_holds := false if input.observation.value == 1
+`
+	modules := []string{one, two}
+	rules := []string{"finding", "also_holds"}
+	input := map[string]any{"observation": map[string]any{"value": 1}}
+	ctx := context.Background()
+
+	resetCasePrepared()
+	engine.ResetCompiles()
+	if n := engine.Compiles(); n != 0 {
+		t.Fatalf("the counter did not reset: it reads %d", n)
+	}
+	for _, m := range modules {
+		if _, err := evalCasePath(ctx, m, rules, input); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cold := engine.Compiles()
+	if cold == 0 {
+		t.Fatalf("the counter reads 0 after %d case-path evaluations, so this arm "+
+			"measured nothing: the increment is not on the path they took", len(modules))
+	}
+	if want := uint64(len(modules) * len(rules)); cold != want {
+		t.Errorf("%d module(s) x %d rule(s) compiled %d time(s) cold, want %d",
+			len(modules), len(rules), cold, want)
+	}
+
+	// And the hoist on this path: the same modules again compile nothing.
+	for _, m := range modules {
+		if _, err := evalCasePath(ctx, m, rules, input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if again := engine.Compiles() - cold; again != 0 {
+		t.Errorf("re-evaluating the same modules compiled %d more time(s), want 0: "+
+			"the case path's prepared queries are not being reused", again)
+	}
+	proof.Logf(t, "PROOF the case path compiled %d time(s) for %d module(s) x %d rule(s), "+
+		"then 0 on reuse", cold, len(modules), len(rules))
 }

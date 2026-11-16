@@ -955,6 +955,12 @@ func evalCasePath(ctx context.Context, module string, rules []string, input any)
 // across the whole tree, not per package. The increment sits on the miss path
 // here for the same reason it does there: the call moves where the compile
 // moves.
+//
+// LATENT, AS A CONDITION RATHER THAN A DEFECT: the key is (digest, rule) and
+// does NOT include compile-affecting options, because this call site passes
+// none and neither does engine's. Add an option that changes compilation
+// without extending the key and two call sites would share a query compiled
+// with the wrong one. The same holds for engine's preparedKey.
 type casePreparedKey struct {
 	module string
 	rule   string
@@ -992,6 +998,22 @@ func casePrepared(ctx context.Context, module, rule string) (rego.PreparedEvalQu
 	}
 	casePreparedQ[key] = fresh
 	return fresh, nil
+}
+
+// resetCasePrepared empties the case path's cache. Arms only, and the sibling
+// of engine's resetPrepared: a count of compiles needs a cold cache, because
+// the prepared queries live for the process and an arm without this would
+// measure whichever tests ran before it.
+//
+// IT WAS MISSING AND THAT COST THE CLEAR. prepared.go states the requirement
+// and internal/engine's arm honors it; this cache shipped with neither, so
+// engine.RecordCompile() above was read by nothing and a regression to
+// compiling per call would have gone unnoticed on this path (quill, coop
+// r9/373).
+func resetCasePrepared() {
+	casePreparedMu.Lock()
+	defer casePreparedMu.Unlock()
+	casePreparedQ = map[casePreparedKey]rego.PreparedEvalQuery{}
 }
 
 func declares(rules []string, name string) bool {
