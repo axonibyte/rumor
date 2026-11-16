@@ -104,7 +104,12 @@ func TestEveryProofLineGoesThroughTheHelper(t *testing.T) {
 	// 227 -> 228 is R10 d1's pass-scale compile count in tests/attaint, whose
 	// PROOF names the count one whole attaint pass produced -- the figure
 	// #128's done-when asks for, which neither unit arm could supply.
-	const sitesInTrackedTests = 228
+	// 228 -> 230 is R10 d2's timeline, two arms in this package: one drives the
+	// tool over a stamped stream carrying NO Package fields, which is the shape
+	// CI's tee actually produces and the one a `go test -json` fixture would
+	// have hidden; the other holds that a stream mixing JSON with a plain build
+	// error still reports and says it was mixed.
+	const sitesInTrackedTests = 230
 	if sites != sitesInTrackedTests {
 		t.Errorf("%d call(s) of the helper in tracked test files, want %d: if that is "+
 			"deliberate, move the literal with it; if not, PROOF lines have been lost",

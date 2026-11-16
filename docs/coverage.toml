@@ -538,6 +538,23 @@ ci = "check"
 docs = ["docs/release.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# The test step's timeline. Mapped to the testing methodology because what it
+# carries is a METHOD for reading a suite's contention: per-package start, end
+# and overlap, which the job log could not answer before.
+#
+# WHY A TOOL AND NOT A LINE OF SHELL. The runner emits a step's output in one
+# flush, so every line of a 1400-second suite carries the same wall-clock
+# stamp -- diagnosing task 1240 meant reading per-package elapsed figures and
+# GUESSING at overlap, because the stamps had erased it. `go test -json`
+# carries a real Time per event, and this turns that into a timeline AND
+# rebuilds the plain log the failure view mines, so the two views cannot drift
+# from one run.
+path = "tools/test-timeline.py"
+# ci: 2 mentions, the test step -- it rebuilds ../test.log and prints the timeline
+ci = "check"
+docs = ["docs/testing-methodology.md"]
+
+[[entry]]
 # The D4 control. Mapped to the testing methodology because what it carries is
 # a METHOD -- a release control whose figures are a property of its inputs
 # rather than of the tree it is run from -- and to release.md because what it

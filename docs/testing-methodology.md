@@ -2404,3 +2404,44 @@ already carries, the value cannot be forgotten; the duplication that remains --
 one renderer in the driver, one in the walk, because neither package may name
 the other's type -- is pinned by an arm asserting the two agree for every kind,
 including the kind no walk produces yet.
+
+## R10
+
+**A JOB LOG THAT CANNOT SAY *WHEN* A PACKAGE RAN CANNOT ANSWER A CONTENTION
+QUESTION, AND THE RUNNER ERASES IT.** The forge runner emits a step's output in
+one flush, so every line of a 1400-second suite arrives carrying the same
+wall-clock stamp. Task 1240's browser arm failed on `POST /session` timing out,
+and diagnosing it meant reading per-package *elapsed* figures and guessing at
+overlap — because overlap was precisely what the flush had destroyed. Elapsed
+alone cannot distinguish a slow package from a starved one.
+
+**SO THE SUITE IS TEE'D INTO A STAMPING READER WHILE IT RUNS.** `go tool
+test2json -t` stamps each event as it reads it, and `tools/test-timeline.py`
+turns those stamps into per-package start, end, verdict and peak concurrency,
+printed into the job log. It is taken live rather than from the finished log
+because a later pass over `../test.log` would stamp every line with the moment
+the parser read it — the same erasure, one step further on.
+
+**THE READ-TIME IS THE *END*, AND THAT IS A PROPERTY OF HOW `go test` BUFFERS.**
+With `-v ./...` go runs packages concurrently but holds each package's output
+and prints it as one block when that package finishes. So a verdict line's
+stamp is the package's end, and its start is that minus the elapsed it reports.
+The overlap recovered this way is real rather than inferred.
+
+**`../test.log` STAYS THE OUTPUT OF `go test` AND OF NOTHING ELSE.** The
+failure view and the rc-124 diagnostic both mine it, and every pattern they use
+is driven by an arm here, so the log is written by `tee` straight from the
+suite: not by an interpreter, not by a parser, and not conditional on the
+module building. A broken build fills it exactly as before. The JSON branch is
+allowed to die and `|| cat > /dev/null` keeps the pipe draining, because a
+consumer that exits early sends EPIPE back to `tee` and would cut the log off
+mid-suite. The timeline can cost only itself.
+
+**AND THE ARM DRIVES THE SHAPE CI ACTUALLY PRODUCES.** `go tool test2json`
+invoked standalone has no `-p`, so it attributes nothing: every event carries a
+Time and no `Package` field. The first cut of the tool read `Package` only, and
+against the real tee'd stream it printed "no package events" — a feature that
+looked implemented and did nothing. A fixture built from `go test -json` would
+have passed over that, so `tests/hygiene` drives the Package-less stream
+instead, and a second arm holds that a stream mixing JSON with a plain build
+error still reports and says it was mixed.

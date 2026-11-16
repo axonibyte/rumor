@@ -303,7 +303,55 @@ jobs:
           # waits on a pipe that cannot reach EOF -- every package reported, and
           # the process does not exit. That is the shape the rc-124 diagnostic
           # below reports as "the work finished and the run did not exit".
-          timeout 1800 "$GO" test -count=1 -timeout 30m -v ./... > ../test.log 2>&1 || rc=$?
+          # THE SUITE'S OUTPUT IS TEE'D SO A TIMELINE CAN BE TAKEN LIVE, and
+          # `-v` REMAINS THE PRIMARY. The runner emits a step in one flush, so
+          # every line of a 1400-second suite arrives carrying the same stamp:
+          # diagnosing task 1240 meant reading per-package elapsed figures and
+          # GUESSING at overlap, because the flush had erased WHEN anything
+          # ran. `go tool test2json -t` stamps each event as it reads it, which
+          # recovers the ordering -- but only while the suite is running, which
+          # is why this is a tee and not a later pass over ../test.log.
+          #
+          # ../test.log IS STILL WRITTEN BY `go test` THROUGH tee AND BY
+          # NOTHING ELSE. The failure view and the rc-124 diagnostic below both
+          # mine it, and every pattern they use is driven by an arm in
+          # tests/hygiene, so the one thing this change must not do is make
+          # that file depend on an interpreter, a parser, or the module
+          # building. A broken build still fills it, exactly as before.
+          #
+          # AND THE JSON BRANCH CANNOT TRUNCATE IT: `|| cat > /dev/null` keeps
+          # the tail of the pipe DRAINING if test2json dies, because a consumer
+          # that exits early sends EPIPE back to `tee` and would cut the log
+          # off mid-suite. The branch is allowed to fail and cost only itself.
+          #
+          # THE rc TRAVELS THROUGH A FILE BECAUSE A PIPELINE'S rc IS ITS LAST
+          # STAGE'S. `timeout`'s status is the verdict of this whole step, and
+          # in a pipeline it would be test2json's instead -- a green report
+          # over a failed suite. `if` carries it rather than `||` because the
+          # runner invokes the step with -e, under which a bare failing command
+          # ends the script where it stands.
+          { if timeout 1800 "$GO" test -count=1 -timeout 30m -v ./... 2>&1
+            then echo 0 > ../test.rc
+            else echo $? > ../test.rc
+            fi
+          # BOUNDED ABOVE THE SUITE'S OWN BUDGET, not below it: this consumer
+          # must outlive the thing it is reading, so its bound is the outer
+          # 1800 plus a minute of margin. Below the suite's budget it would be
+          # a second watchdog on the suite, which is the mistake the two-budget
+          # comment above records.
+          } | tee ../test.log | { timeout 1860 "$GO" tool test2json -t > ../test.json 2>/dev/null || cat > /dev/null; }
+          rc=$(cat ../test.rc 2>/dev/null || echo 1)
+          # THE TIMELINE IS A REPORT AND NEVER A GATE, so every way it can fail
+          # is swallowed: no interpreter, no JSON, a tool that throws. It is
+          # printed BEFORE the failure view because it is the cheap orientation
+          # -- which packages overlapped, and which never finished -- and the
+          # view below is the expensive one.
+          PY=$(command -v python3.12 || command -v python3 || true)
+          if [ -n "$PY" ] && [ -s ../test.json ]; then
+            timeout 120 "$PY" tools/test-timeline.py --json ../test.json || echo "(timeline failed; the verdict below does not rest on it)"
+          else
+            echo "(no timeline: python3 or ../test.json is absent; the verdict below does not rest on it)"
+          fi
           # THE FAILURE VIEW IS MINED AND NOT ONLY TAILED, because -v moved what
           # the last 20 lines contain: under -v a tail is the verbose output of
           # whichever package finished last, so a FAIL twenty packages earlier

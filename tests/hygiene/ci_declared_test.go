@@ -187,7 +187,13 @@ func TestEveryToolsEntryDeclaresWhetherCIRunsIt(t *testing.T) {
 	// appearances in the workflows are all comments. quill's census at coop
 	// rumor/2013 counted those same three as invocations, so the arm corrected
 	// a declaration of mine and a row of theirs on its first real run.
-	const declaredChecks = 6
+	// SIX -> SEVEN is tools/test-timeline.py, R10 d2's timeline half: the test
+	// step tees the suite into `go tool test2json -t` and this prints the
+	// per-package start, end and overlap into the JOB log. It is declared
+	// `check` because the test step invokes it, and it earns the bit the hard
+	// way -- the runner emits a step in one flush, so before it every line of
+	// a 1400-second suite carried the same stamp and overlap was unreadable.
+	const declaredChecks = 7
 	if checks != declaredChecks {
 		t.Errorf("%d tools/ entries are declared `check`, and this arm pins %d: if that is "+
 			"a deliberate change, move the literal with it; if it is not, a check has "+

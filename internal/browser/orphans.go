@@ -206,6 +206,49 @@ func readPGID(tree string) int {
 //
 // POLITE THEN FINAL, the same bargain stopProcess makes, and against the same
 // hazard: a browser mid-teardown can outlive the first signal.
+//
+// REFUSING IS A MISS AND NOT A HAZARD, which is the property worth being clear
+// about: if the check is wrong the group is LEFT, never wrongly signalled, so
+// the guard bounds completeness rather than safety. The two worlds a stale
+// tree can be in:
+//
+//	orphans alive   the group exists, so its id cannot be handed to anyone
+//	                else, the members are all ours, and the reap fires
+//	group emptied   the id is reusable and may now read foreign -- and there
+//	                is nothing left to reap, so collecting the tree is right
+//
+// The harmful case needs live orphans AND a reused group id at once. That is
+// what the kernel forbids, and the second world needs no measurement at all
+// (quill, coop r9/409, withdrawing their own residual).
+//
+// WHAT IS DELIBERATELY NOT HERE: a reap of groups this process never
+// recorded. It was proposed and refused on a measurement (quill r9/411, ibis
+// r9/412, withdrawn r9/413). The ci jail has ONE unix user for every repo's
+// jobs -- 236 of 243 processes in jid 2 are act_runner -- and a neighbour with
+// 9,043 /tmp entries beside ours. So "a browser group no tree of ours claims"
+// does not mean stray; it also means that neighbour's LIVE browsers, same
+// user and same binaries. That substitutes ours-BY-NAME for ours-BY-
+// CONSTRUCTION, which is the instrument that misread this leak twice.
+//
+// THE SAFE FORM, IF IT IS EVER WANTED, IS ARGV AND NOT A NAME: with TMPDIR
+// owned, chrome's --user-data-dir sits INSIDE a tree we made, so a stray can
+// prove its own provenance with no name test and even after its tree is gone.
+// It is not built here because widening what this tool may kill is a decision
+// about the tool and not a refactor. It also cannot reach the strays that
+// already exist: of the 234 in the jail, 0 named a tree of ours, 226 named
+// /tmp/org.chromium.*, and the 7 drivers carried no data-dir at all. Code
+// cannot own what was made before the provenance did, so draining those is a
+// one-time act by a human rather than anything this file should attempt.
+//
+// RECORDED AS AN ASSUMPTION WITH ITS SCOPE, because "closed" would quietly
+// inherit a box it was never measured on. MEASURED on FreeBSD 15.1-STABLE at
+// kern.randompid=0: a group whose leader was reaped but which still held a
+// member kept its id across 163,095 forks and TWO FULL WRAPS of the 99,999 pid
+// space -- the allocator passed it twice and skipped it both times. RELIED
+// UPON, UNMEASURED, on 15.1-RELEASE-p2 at kern.randompid=313, which is CI's
+// box: randompid=0 is what made the skip legible as a sequential gap, so the
+// reading cannot be taken there the same way, and no kernel source is on
+// either box to cite the allocator from instead.
 func reapGroup(pgid int) {
 	if pgid <= 1 || !groupIsOurs(pgid) {
 		return
