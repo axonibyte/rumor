@@ -579,6 +579,7 @@ func evalOne(ctx context.Context, statute, rule string, input any,
 		rego.Module(moduleName, statute),
 		rego.Input(input),
 	}, opts...)
+	RecordCompile()
 	rs, err := rego.New(args...).Eval(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("engine: rule %s: %w", rule, err)

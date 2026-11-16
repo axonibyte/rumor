@@ -412,6 +412,53 @@ never_holds := 1 if false
 	}
 }
 
+// THE COUNTER'S OWN ARM. R10 d1's figure for how often a statute is compiled
+// rests on this counter, so the counter needs a cell of its own: four hand
+// counts of the same quantity disagreed, and an uninstrumented counter would
+// make a fifth wrong number that merely looked authoritative.
+//
+// IT ASSERTS THE RATE, NOT A TOTAL. One Evaluate compiles once per rule in the
+// list and once more for the finding, because EvaluateWith loops the rules and
+// then evaluates FindingRule separately. Pinning that shape is what makes the
+// hoist measurable: after PrepareForEval the same Evaluate must compile ONCE,
+// and an arm that only checked "more than zero" would pass before and after.
+//
+// AND A ZERO IS A FAILURE, NOT A PASS. If the increment is removed or moved
+// off the one-shot path, the count reads 0 -- which satisfies every "no more
+// than" bound anybody might write here. The explicit zero check is what stops
+// this arm from going green by measuring nothing, the shape the proofgate arm
+// shipped with.
+func TestOneEvaluateCompilesOncePerRuleAndOnceMoreForTheFinding(t *testing.T) {
+	const st = `package rumor.statute
+
+finding := "consistent" if input.observation.value == 1
+
+also_holds := true if input.observation.value == 1
+`
+	rules := []string{"also_holds"}
+	input := map[string]any{"observation": map[string]any{"value": 1}}
+
+	ResetCompiles()
+	if n := Compiles(); n != 0 {
+		t.Fatalf("the counter did not reset: it reads %d", n)
+	}
+	if _, err := EvaluateWith(context.Background(), st, rules, input); err != nil {
+		t.Fatal(err)
+	}
+
+	got := Compiles()
+	if got == 0 {
+		t.Fatalf("the counter reads 0 after one Evaluate, so this arm measured " +
+			"nothing: the increment is not on the path the evaluation took")
+	}
+	if want := uint64(len(rules) + 1); got != want {
+		t.Errorf("one Evaluate over %d rule(s) compiled %d time(s), want %d "+
+			"(one per rule, one more for %s)", len(rules), got, want, FindingRule)
+	}
+	proof.Logf(t, "PROOF one Evaluate over %d rule(s) compiled %d time(s)",
+		len(rules), got)
+}
+
 // allFixtures names every committed ledger fixture, as (package, case) pairs.
 // Derived from the tree rather than listed here: a hand-written list would
 // quietly stop covering a case somebody added.

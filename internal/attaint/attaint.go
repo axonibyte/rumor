@@ -923,6 +923,7 @@ func moved(clean, mutant map[string]any, rule string) bool {
 func evalCasePath(ctx context.Context, module string, rules []string, input any) (map[string]any, error) {
 	got := map[string]any{}
 	for _, rule := range rules {
+		engine.RecordCompile()
 		rs, err := rego.New(
 			rego.Query(engine.StatutePackage+"."+rule),
 			rego.Module("statute.rego", module),

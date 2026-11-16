@@ -95,7 +95,10 @@ func TestEveryProofLineGoesThroughTheHelper(t *testing.T) {
 	// This arm's own line is counted like every other rather than exempted: an
 	// exemption would put a hole in the only check that can see this file.
 	// Retyped deliberately when it changes, which is the point of it.
-	const sitesInTrackedTests = 225
+	// 225 -> 226 is R10 d1's compile-counter arm in internal/engine, whose
+	// PROOF names the count one Evaluate produced. It prices a real
+	// addition, not a mutant.
+	const sitesInTrackedTests = 226
 	if sites != sitesInTrackedTests {
 		t.Errorf("%d call(s) of the helper in tracked test files, want %d: if that is "+
 			"deliberate, move the literal with it; if not, PROOF lines have been lost",
