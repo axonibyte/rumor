@@ -2439,14 +2439,55 @@ ends +10.5 while `internal/decl` second ends +0.0 — so the figure is available
 there and returns automatically if CI is ever fed that shape. It is not fed it
 today, because that would put a parser between the suite and `../test.log`.
 
-**`../test.log` STAYS THE OUTPUT OF `go test` AND OF NOTHING ELSE.** The
-failure view and the rc-124 diagnostic both mine it, and every pattern they use
-is driven by an arm here, so the log is written by `tee` straight from the
-suite: not by an interpreter, not by a parser, and not conditional on the
-module building. A broken build fills it exactly as before. The JSON branch is
-allowed to die and `|| cat > /dev/null` keeps the pipe draining, because a
-consumer that exits early sends EPIPE back to `tee` and would cut the log off
-mid-suite. The timeline can cost only itself.
+**~~`../test.log` STAYS THE OUTPUT OF `go test` AND OF NOTHING ELSE.~~ THE
+RECORD IS `../test.json` AND `../test.log` IS A RENDERING OF IT.** The rule's
+words are superseded and its intent stands, which is the distinction fable drew
+in ruling it (coop r10/18): the rule was never about the file's NAME, it was
+that the record is what `go test` wrote with nothing of ours between. `go test
+-json` captured raw is still exactly that, and it carries two fields the tee'd
+shape could not — a `Package` on every event and a real `Time` — which is the
+overlap figure #128 asked for and which the old shape could only refuse.
+
+The sentence as written had a hazard in it, and **the hazard is measured
+false**: it argued a parser in the path could swallow a broken build's output.
+Driven 2026-11-17 with go1.27.2, a package that does not compile emits
+`build-output` and `build-fail` **as JSON events**, with stderr empty and every
+stdout line parsing. The premise was never tested when I wrote it.
+
+**NOTHING OF OURS COMPOSES THE RECORD, AND NOTHING OF OURS GREPS THE
+RENDERING.** That pair is what keeps the property, and the second half is
+quill's (r10/19): four of one day's five instrument gaps were a grep over a
+file that could not hold its subject, so a rendering that checks read would be
+the same defect wearing the ruling's clothes. A redirect writes the record —
+one syscall, no process, less than the tee the ruling allowed. Every instrument
+reads the record: the failure view, the `N of M packages reported` fraction,
+the sweep and kept-group views, the cached-verdict refusal, the ok-package
+check and the PROOF mining. `../test.log` is for eyes.
+
+**THE ANCHORS COULD NOT MAKE THE MOVE, AND THAT IS WHY THE INSTRUMENTS WERE
+RECOMPUTED RATHER THAN REPOINTED.** Every line of the record is a JSON object,
+so `^ok`, `^(--- )?FAIL` and `^panic:` match nothing in it — measured, a
+`grep -cE '^ok[[:space:]]'` over `test.json` answers 0. A view repointed with
+its pattern intact would have read zero packages and called it a shortfall. So
+each claim is now computed from the fields that carry it, which is strictly
+more than the text could say: a package reaches a verdict by emitting `pass`,
+`fail` or `skip` with a `Package` and no `Test`, and that counts a package with
+**no test files** (it emits `skip`) and one that **failed to build** (it emits
+`fail`) — the two kinds that made the fraction lie, once each.
+
+**ONE DIFFERENCE FROM `go test -v`, NAMED AND NOT PAPERED.** The trailing bare
+`FAIL` the go command prints after the stream ends is carried by no event, so
+the rendering cannot hold it. Every per-package `FAIL<TAB>pkg` line is there,
+and so is the build-error text that `-v` sends to stderr. Measured by diffing
+both forms over the same packages.
+
+**AND THE FAILURE VIEW'S CONTEXT IS BETTER FOR BEING SCOPED.** `-C 5` was never
+the right context under package parallelism: the five lines either side belong
+to whatever else was printing, while the lines that explain a failure may be
+fifty back in its own package. A failing package's own output is its context,
+by construction, which also means there are no longer two sides for a one-sided
+flag to lose — the property the old arm had to be driven for is now structural,
+and the arm asserts it anyway.
 
 **AND THE ARM DRIVES THE SHAPE CI ACTUALLY PRODUCES.** `go tool test2json`
 invoked standalone has no `-p`, so it attributes nothing: every event carries a

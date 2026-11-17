@@ -77,30 +77,47 @@ func TestCiMinesTheSuitesProofLines(t *testing.T) {
 	// and its ORDER, so a dropped -v, a reordering, or a watchdog quietly
 	// removed all fail -- which is the whole-invocation keying the comment above
 	// asks for.
-	invocation := regexp.MustCompile(`test\s+-count=1\s+-timeout\s+\S+\s+-v\s+\./\.\.\.`)
+	// THE VERBOSE FLAG IS `-v` OR `-json`, WHICH IS A MEASUREMENT AND NOT A
+	// LOOSENING. This arm required `-v` because without it the harness discards
+	// a PASSING arm's log line and the mining step greps an empty subject. Go's
+	// own `go help testflag` says -json presents "the same information as the -v
+	// flag in a machine-readable format", and driven on this box with go1.27.2
+	// against a control: `go test -json` carries a passing arm's PROOF line and
+	// plain `go test` does not. So -json satisfies what this arm is ACTUALLY
+	// about, and the requirement now reads as that -- the passing arms' output
+	// must survive -- rather than as one spelling of it.
+	invocation := regexp.MustCompile(`test\s+-count=1\s+-timeout\s+\S+\s+(-v|-json)\s+\./\.\.\.`)
 	if !invocation.MatchString(test) {
-		t.Errorf("%s's test step does not run `test -count=1 -timeout <d> -v ./...`: without -v "+
-			"the harness discards every passing arm's PROOF line, so the mining step below "+
-			"greps an empty subject and the whole gate reports nothing; without -timeout the "+
-			"per-binary watchdog is the toolchain's silent default", path)
+		t.Errorf("%s's test step does not run `test -count=1 -timeout <d> (-v|-json) ./...`: with "+
+			"neither flag the harness discards every passing arm's PROOF line, so the mining "+
+			"step below greps an empty subject and the whole gate reports nothing; without "+
+			"-timeout the per-binary watchdog is the toolchain's silent default", path)
 	}
 	if !strings.Contains(test, "test.log") {
 		t.Errorf("%s's test step does not write test.log, which is the file the mining "+
 			"step reads", path)
 	}
 
-	// CONDITION TWO: exactly one step mines PROOF out of the FILE. Out of the
+	// CONDITION TWO: exactly one step mines PROOF out of the RECORD. Out of a
 	// file and not out of the job's output: ci.yml's own shell echoes the word,
-	// so a grep over anything but test.log would be satisfied by this file's
-	// own lines and would pass with the suite silent.
+	// so a grep over anything but the suite's own artifact would be satisfied
+	// by this file's lines and would pass with the suite silent.
+	//
+	// THE ARTIFACT IS test.json SINCE coop r10/22's condition (5). This step
+	// DECIDES -- it exits 1 when it finds nothing -- so it reads the record and
+	// not the rendering. `PROOF ` is a mid-line literal inside an Output
+	// string, so the grep keeps its meaning with no anchor to lose; the arm
+	// accepts either name because what it is really about is that the mining
+	// reads the SUITE'S artifact, and pinning one filename here would make a
+	// rename look like a missing gate.
 	var mining []string
 	for name, body := range steps {
-		if regexp.MustCompile(`grep[^\n]*PROOF[^\n]*test\.log`).MatchString(body) {
+		if regexp.MustCompile(`grep[^\n]*PROOF[^\n]*test\.(log|json)`).MatchString(body) {
 			mining = append(mining, name)
 		}
 	}
 	if len(mining) != 1 {
-		t.Fatalf("%s has %d step(s) grepping PROOF out of test.log, want exactly 1: %v. "+
+		t.Fatalf("%s has %d step(s) grepping PROOF out of test.json, want exactly 1: %v. "+
 			"Zero means the suite's evidence reaches no reader; more than one means two "+
 			"gates can disagree about whether it did", path, len(mining), mining)
 	}
@@ -187,47 +204,21 @@ func TestTheTimeoutDiagnosticCountsTheSetItLists(t *testing.T) {
 		t.Fatalf("%s has no step named `test`", path)
 	}
 
-	// THE TWO HALVES, as the step spells them: the list is `grep -aE` and the
-	// count is `grep -acE`, both over ../test.log.
-	rx := regexp.MustCompile(`grep -a(c?)E '([^']*)' \.\./test\.log`)
-	var list, count []string
-	for _, m := range rx.FindAllStringSubmatch(test, -1) {
-		pat := m[2]
-		// THE REPORTED-SET PAIR AND NOT EVERY GREP IN THE STEP. The step also
-		// greps for an ok-line and for a cached verdict, which are different
-		// claims; the pair this arm is about is the one naming a FAILED
-		// package as reported, which is what makes it the fraction's set.
-		if !strings.Contains(pat, "ok") || !strings.Contains(pat, "FAIL") {
-			continue
-		}
-		if m[1] == "c" {
-			count = append(count, pat)
-		} else {
-			list = append(list, pat)
-		}
-	}
-	if len(list) != 1 || len(count) != 1 {
-		t.Fatalf("%s spells %d list grep(s) and %d count grep(s) over the reported set, want one "+
-			"of each: this arm reads the pair, and two of either would leave one unread",
-			path, len(list), len(count))
-	}
-	if list[0] != count[0] {
-		t.Errorf("the list counts %q and the figure counts %q: a numerator and a denominator over "+
-			"different sets is the defect this arm exists for, and it has shipped twice",
-			list[0], count[0])
-	}
-
-	// AND THE DENOMINATOR IS EVERY PACKAGE, which is the other side of the same
-	// fraction: `go list ./...` counts a package with no test files, so the
-	// numerator must count its `?` line or the figure reads short on a run
-	// where nothing was running at all.
+	// THE NUMERATOR MOVED OFF THE TEXT AND ONTO THE RECORD, so this arm moved
+	// with it. It used to extract the step's `grep -aE` / `grep -acE` pair over
+	// ../test.log and assert the two patterns were identical -- a real defect
+	// twice over (ratchet, coop r8/162; and the `?` omission). The fraction now
+	// takes its numerator from `tools/test-timeline.py --reported` over
+	// ../test.json, because the old anchors match NOTHING in the record: a
+	// `grep -cE '^ok[[:space:]]'` over test.json answers 0, so a repointed
+	// pattern would have read zero packages and called it a shortfall.
 	//
-	// ON THE FIGURE'S OWN LINE AND NOT ANYWHERE IN THE STEP, which is this
-	// clause's second draft and the reason is a measurement. The first spelled
-	// `strings.Contains(test, "list ./...")`, and the step uses `go list`
-	// elsewhere -- so replacing the denominator with the literal `echo 42` left
-	// this arm green. A clause that passes while the thing it names is gone is
-	// the defect this file is about.
+	// WHAT THE ARM STILL ASSERTS IS THE SAME CLAIM: the numerator counts every
+	// kind of package the denominator counts. It is now driven on the thing
+	// that computes it rather than on two spellings of a regex, which is
+	// strictly more than the old shape could see -- a pattern can be identical
+	// on both sides and still miss a KIND of package, which is exactly how the
+	// `?` case shipped.
 	var figure string
 	for _, line := range strings.Split(test, "\n") {
 		if strings.Contains(line, "package(s) reported;") {
@@ -244,50 +235,74 @@ func TestTheTimeoutDiagnosticCountsTheSetItLists(t *testing.T) {
 			"A literal or a narrower list cannot be said to count the same packages as the "+
 			"numerator", strings.TrimSpace(figure))
 	}
-	if !strings.Contains(figure, count[0]) {
-		t.Errorf("the figure's numerator is not the pattern this arm read (%q): %q",
-			count[0], strings.TrimSpace(figure))
+	// THE NUMERATOR IS NAMED ON THE FIGURE'S OWN LINE, for the reason the old
+	// clause's second draft recorded: `strings.Contains(test, ...)` anywhere in
+	// the step left this arm green when the denominator was replaced by a
+	// literal. $reported is the shell variable the step fills from the record.
+	if !strings.Contains(figure, "$reported") {
+		t.Errorf("the figure's numerator is not the record's count: %q", strings.TrimSpace(figure))
+	}
+	if !strings.Contains(test, "--reported") || !strings.Contains(test, "--json ../test.json --reported") {
+		t.Errorf("%s fills the numerator from something other than "+
+			"`tools/test-timeline.py --json ../test.json --reported`", path)
 	}
 
-	// THE FIXTURE: one line of each kind `go test` reports, one package absent
-	// entirely, and three lines that must NOT count -- a verbose FAIL header,
-	// an indented line carrying the word, and a package of another module.
-	log := strings.Join([]string{
-		"ok  \tforge.axonibyte.com/axonibyte/rumor/internal/wire\t0.201s",
-		"FAIL\tforge.axonibyte.com/axonibyte/rumor/tests/clock\t7.134s",
-		"?   \tforge.axonibyte.com/axonibyte/rumor/internal/vocabulary\t[no test files]",
-		"--- FAIL: TestSomething (0.01s)",
-		"    walk_test.go:189: ok  forge.axonibyte.com/axonibyte/rumor/internal/quoted",
-		"ok  \tsome.other.host/not/ours\t1.000s",
+	// THE FIXTURE IS A RECORD AND NOT A LOG, carrying one of every kind of
+	// package `go list ./...` counts -- a pass, a FAIL, a package with NO TEST
+	// FILES (which emits `skip`, measured 2026-11-17), and one that fails to
+	// BUILD -- plus three events that must NOT count: a per-TEST pass, a
+	// `start`, and a build event with no Package at all. A non-JSON line is in
+	// there too, because a cut record must not take the count with it.
+	events := strings.Join([]string{
+		`{"Action":"start","Package":"m/internal/wire"}`,
+		`{"Action":"run","Package":"m/internal/wire","Test":"TestA"}`,
+		`{"Action":"pass","Package":"m/internal/wire","Test":"TestA"}`,
+		`{"Action":"pass","Package":"m/internal/wire","Elapsed":0.2}`,
+		`{"Action":"fail","Package":"m/tests/clock","Elapsed":7.1}`,
+		`{"Action":"skip","Package":"m/internal/vocabulary","Elapsed":0}`,
+		`{"Action":"build-output","Output":"# m/internal/broken\n"}`,
+		`{"Action":"build-fail"}`,
+		`{"Action":"fail","Package":"m/internal/broken","Elapsed":0}`,
+		`this line is not a record at all`,
 		"",
 	}, "\n")
-	logPath := filepath.Join(t.TempDir(), "test.log")
-	if err := os.WriteFile(logPath, []byte(log), 0o600); err != nil {
+	recPath := filepath.Join(t.TempDir(), "test.json")
+	if err := os.WriteFile(recPath, []byte(events), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	const wantReported = 3
-	out, _ := exec.Command("sh", "-c",
-		"grep -acE '"+count[0]+"' "+logPath).Output()
-	got := strings.TrimSpace(string(out))
-	if got != strconv.Itoa(wantReported) {
-		t.Errorf("the figure reads %q over a log carrying ok, FAIL and `?` for this module and "+
-			"three lines that are not package reports; want %d", got, wantReported)
-	}
-	lines, _ := exec.Command("sh", "-c",
-		"grep -aE '"+list[0]+"' "+logPath).Output()
-	gotLines := strings.Split(strings.TrimSpace(string(lines)), "\n")
-	if len(gotLines) != wantReported {
-		t.Fatalf("the list printed %d line(s) over that log, want %d: %q",
-			len(gotLines), wantReported, gotLines)
-	}
-	for _, want := range []string{"internal/wire", "tests/clock", "internal/vocabulary"} {
-		if !strings.Contains(strings.Join(gotLines, "\n"), want) {
-			t.Errorf("the list omits %s, which reported", want)
+	// RESOLVED HERE AND NOT THROUGH timeline_test.go's pythonOrSkip: that file
+	// is `package hygiene` and this one is `package hygiene_test`, two packages
+	// in one directory, so the helper is not visible. Six lines beat a second
+	// named helper that would have to be kept in step with the first.
+	py := ""
+	for _, name := range []string{"python3.12", "python3"} {
+		if found, err := exec.LookPath(name); err == nil {
+			py = found
+			break
 		}
 	}
-	proof.Logf(t, "PROOF one pattern on both sides of the fraction, driven over a %d-line log: %d reported, "+
-		"%d listed, and the three non-reports left out", strings.Count(log, "\n"), wantReported, len(gotLines))
+	if py == "" {
+		t.Skip("no python3 on this box, so the numerator's instrument cannot be driven; " +
+			"CI's jail was measured to carry python3.12 before this was written")
+	}
+
+	const wantReported = 4
+	out, err := exec.Command(py, filepath.Join("..", "..", "tools", "test-timeline.py"),
+		"--json", recPath, "--reported").Output()
+	if err != nil {
+		t.Fatalf("counting the fixture record: %v", err)
+	}
+	got := strings.TrimSpace(string(out))
+	if got != strconv.Itoa(wantReported) {
+		t.Fatalf("the numerator reads %q over a record carrying a pass, a FAIL, a no-test-files "+
+			"skip and a BUILD FAILURE, with a per-test pass, a start, a Package-less build "+
+			"event and a non-JSON line beside them; want %d", got, wantReported)
+	}
+	proof.Logf(t, "PROOF the fraction's numerator is computed from the record and counts %d of "+
+		"%d package kinds -- pass, FAIL, no-test-files and build-failed -- while a per-test "+
+		"event, a start, a Package-less build event and a non-JSON line count for none",
+		wantReported, wantReported)
 }
 
 // TestTheFailureViewActuallySearchesTheLog RUNS the test step's FAIL/panic
@@ -324,133 +339,108 @@ func TestTheFailureViewActuallySearchesTheLog(t *testing.T) {
 		t.Fatalf("%s has no step named `test`", path)
 	}
 
-	// THE FLAGS ARE TOLERATED AND CAPTURED, not pinned. This read
-	// `grep -nE '<pat>' ../test.log` with nothing allowed between `-nE` and the
-	// quote, so adding the context flag the view needs made this arm report
-	// "0 FAIL/panic grep(s)" -- an arm whose purpose is to DRIVE the pattern
-	// failing on where a flag sits. Group 1 is now those flags, and the second
-	// half of this arm drives them (rook, coop r9/150).
-	rx := regexp.MustCompile(`grep -nE([^']*)'([^']*)' \.\./test\.log`)
-	// THE FAILURE VIEW AND NOT EVERY -nE GREP IN THE STEP: the cached-verdict
-	// refusal reads the same log with the same flags, and it is a different
-	// claim. `panic:` is the clause only the failure view carries.
-	var pats, flagSets []string
-	for _, m := range rx.FindAllStringSubmatch(test, -1) {
-		if strings.Contains(m[2], "panic") {
-			flagSets = append(flagSets, m[1])
-			pats = append(pats, m[2])
+	// THE VIEW IS A TOOL MODE NOW, AND THIS ARM STILL DRIVES WHAT SHIPS. It
+	// used to extract the step's `grep -nE <flags> '<pat>' ../test.log` and run
+	// that exact pattern, because run 1012's pattern did not COMPILE under BSD
+	// grep and a text assertion that it "contains FAIL" passed over it. The
+	// view now reads ../test.json -- condition (5) at coop r10/22, since its rc
+	// gates the step -- so the thing to drive is the invocation, and it is
+	// taken out of ci.yml rather than copied here.
+	if !strings.Contains(test, "--json ../test.json --failures") {
+		t.Fatalf("%s does not run `tools/test-timeline.py --json ../test.json --failures`, so "+
+			"this arm would drive a view the step does not use", path)
+	}
+	py := ""
+	for _, name := range []string{"python3.12", "python3"} {
+		if found, err := exec.LookPath(name); err == nil {
+			py = found
+			break
 		}
 	}
-	if len(pats) != 1 {
-		t.Fatalf("%s spells %d FAIL/panic grep(s) over ../test.log, want exactly one: this arm "+
-			"drives the pattern, and two would leave one undriven", path, len(pats))
+	if py == "" {
+		t.Skip("no python3 on this box, so the failure view cannot be driven")
 	}
-	pattern := pats[0]
-	viewFlags := strings.Fields(flagSets[0])
 
-	// THE FIXTURE CARRIES EVERY SHAPE `go test -v` USES TO REPORT A FAILURE,
-	// and three that must not match. The indented one is a SUBTEST and it is
-	// the clause the broken pattern was written for -- so a fix that merely
-	// deleted `\t` would pass the compile and lose the case.
-	log := strings.Join([]string{
-		"ok  \tforge.axonibyte.com/axonibyte/rumor/internal/wire\t0.201s",
-		"--- PASS: TestSomethingFine (0.01s)",
-		"=== RUN   TestSomethingElse",
-		"--- FAIL: TestTopLevel (0.01s)",
-		"\t--- FAIL: TestTopLevel/the_subtest (0.00s)",
-		"panic: runtime error: index out of range",
-		"FAIL\tforge.axonibyte.com/axonibyte/rumor/tests/run\t607.258s",
+	// THE FIXTURE CARRIES EVERY SHAPE A FAILURE TAKES IN THE RECORD, and the
+	// properties the old flag-based view had to be driven for:
+	//
+	//   a test's OWN WORDS, which arrive BEFORE its `--- FAIL` line -- the
+	//   defect that reached CI twice, where a reader got `--- FAIL` and
+	//   nothing to act on (coop r9/147)
+	//   a SUBTEST failure, the clause a careless fix loses
+	//   a PANIC TRACE, which arrives AFTER its `panic:` line, so a one-sided
+	//   context served one of the two and failed the other
+	//   a PASSING package, which must not appear at all
+	//
+	// AND THE TWO-SIDED PROPERTY IS NOW STRUCTURAL rather than a flag: a
+	// failing package's own output IS its context, so there are no sides. That
+	// is a claim and so it is asserted, not assumed -- the words sit before the
+	// FAIL line and the trace after the panic, and both must come out.
+	record := strings.Join([]string{
+		`{"Action":"output","Package":"m/x","Test":"TestWithWords","Output":"=== RUN   TestWithWords\n"}`,
+		`{"Action":"output","Package":"m/x","Test":"TestWithWords","Output":"    f_test.go:7: THE ARMS OWN WORDS, which a reader needs\n"}`,
+		`{"Action":"output","Package":"m/x","Test":"TestWithWords","Output":"--- FAIL: TestWithWords (0.00s)\n"}`,
+		`{"Action":"fail","Package":"m/x","Test":"TestWithWords","Elapsed":0}`,
+		`{"Action":"output","Package":"m/x","Test":"TestTop/the_subtest","Output":"    --- FAIL: TestTop/the_subtest (0.00s)\n"}`,
+		`{"Action":"fail","Package":"m/x","Test":"TestTop/the_subtest","Elapsed":0}`,
+		`{"Action":"output","Package":"m/x","Output":"panic: runtime error: index out of range\n"}`,
+		`{"Action":"output","Package":"m/x","Output":"\tTRACE LINE AFTER THE PANIC\n"}`,
+		`{"Action":"fail","Package":"m/x","Elapsed":1.0}`,
+		`{"Action":"output","Package":"m/quiet","Output":"ok  \tm/quiet\t0.100s\n"}`,
+		`{"Action":"pass","Package":"m/quiet","Elapsed":0.1}`,
 		"",
 	}, "\n")
-	logPath := filepath.Join(t.TempDir(), "test.log")
-	if err := os.WriteFile(logPath, []byte(log), 0o600); err != nil {
+	recPath := filepath.Join(t.TempDir(), "test.json")
+	if err := os.WriteFile(recPath, []byte(record), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	// rc 0 AND FOUR LINES. The rc is asserted separately from the count
-	// because they fail differently: rc 2 is the pattern not compiling (today's
-	// defect) and a short count is the pattern compiling and missing a shape.
-	cmd := exec.Command("grep", "-nE", pattern, logPath)
-	out, err := cmd.Output()
+	out, err := exec.Command(py, filepath.Join("..", "..", "tools", "test-timeline.py"),
+		"--json", recPath, "--failures").Output()
 	if err != nil {
-		t.Fatalf("the step's own FAIL/panic pattern %q does not run: %v. A pattern grep cannot "+
-			"compile searches nothing, and the step's `rc 1` branch prints `(no FAIL or panic "+
-			"line in test.log)` over whatever the log actually holds", pattern, err)
+		t.Fatalf("the step's own failure view does not run: %v. A view that cannot run searches "+
+			"nothing, and the step's empty-file branch then prints its reassuring sentence "+
+			"over whatever the record actually holds", err)
 	}
-	got := strings.Split(strings.TrimSpace(string(out)), "\n")
-	const wantMatches = 4
-	if len(got) != wantMatches {
-		t.Errorf("the pattern matched %d line(s) of the fixture, want %d: %q",
-			len(got), wantMatches, got)
-	}
-	for _, want := range []string{"--- FAIL: TestTopLevel (", "the_subtest", "panic:", "tests/run"} {
-		if !strings.Contains(strings.Join(got, "\n"), want) {
-			t.Errorf("the pattern misses %q, which `go test -v` prints for a failure", want)
+	view := string(out)
+	for _, want := range []string{
+		"THE ARMS OWN WORDS",         // the words before the FAIL line
+		"TRACE LINE AFTER THE PANIC", // the trace after the panic
+		"the_subtest",                // the subtest clause
+		"panic: runtime error",
+		"m/x",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("the failure view loses %q, which a reader needs to act on a failure. "+
+				"Output:\n%s", want, view)
 		}
 	}
+	if strings.Contains(view, "m/quiet") {
+		t.Errorf("the failure view printed a package that PASSED, so the view is not scoped to "+
+			"what failed. Output:\n%s", view)
+	}
 
-	// AND THE STEP BRANCHES ON THE rc. Keyed on the sentence: it may appear in
-	// the arm for rc 1 and nowhere else, so a future edit that moves it back
-	// behind a bare `||` fails here.
-	const sentence = "(no FAIL or panic line in test.log)"
+	// AND THE STEP STILL BRANCHES ON THE VIEW'S OWN rc, which is the half of
+	// run 1012's defect that outlives any pattern: a broken search and a clean
+	// record must not print the same sentence.
+	const sentence = "(no failing package or test in the record)"
 	if !strings.Contains(test, "frc") || !strings.Contains(test, `case "$frc" in`) {
-		t.Errorf("%s does not capture the FAIL grep's own rc, so it cannot tell a broken search "+
-			"from a clean log", path)
+		t.Errorf("%s does not capture the failure view's own rc, so it cannot tell a broken "+
+			"search from a clean record", path)
 	}
 	if strings.Contains(test, "|| echo \""+sentence) {
-		t.Errorf("%s prints %q on ANY nonzero rc, which is the defect run 1012 hid: a grep that "+
-			"exits 2 reads as a clean log", path, sentence)
+		t.Errorf("%s prints %q on ANY nonzero rc, which is the defect run 1012 hid: a view "+
+			"that exits nonzero reads as a clean record", path, sentence)
 	}
-	// AND THE VIEW MUST CARRY THE ARM'S OWN WORDS, which is the defect this
-	// whole head exists for and which no assertion here could see.
-	//
-	// MEASURED: the view printed the matching lines ALONE, so a CI-only failure
-	// arrived with `--- FAIL` and nothing a reader could act on -- twice, and
-	// the second time 1117's cause was unrecoverable. `go test -v` prints a
-	// test's diagnostic BEFORE its `--- FAIL` line, so the first proposed fix
-	// (`-A`) recovered NONE of those words; driven here rather than read,
-	// because three of us agreed on the wrong side (coop r9/147).
-	//
-	// THE FIXTURE PUTS WORDS ON BOTH SIDES: a t.Errorf line before a
-	// `--- FAIL`, and a panic trace after a `panic:`. A one-sided flag serves
-	// one of them and fails this arm.
-	// THE TRACE SITS AT THE END WITH NO MATCH AFTER IT, and that placement is
-	// the arm rather than a detail. My first fixture put a `FAIL <pkg>` line
-	// AFTER the trace, so `-B` pulled the trace in as BEFORE-context of that
-	// line and a one-sided flag passed -- a tautology in an arm written to
-	// catch one-sidedness, found by mutating the flag to -B and watching it
-	// survive. With nothing matching below it, only AFTER-context reaches the
-	// trace. [[an-unfaithful-mutant-that-dies-is-a-false-pass]]
-	ctx := strings.Join([]string{
-		"=== RUN   TestWithWords",
-		"    f_test.go:7: THE ARMS OWN WORDS, which a reader needs",
-		"--- FAIL: TestWithWords (0.00s)",
-		"FAIL\tforge.axonibyte.com/axonibyte/rumor/tests/x\t1.000s",
-		"panic: runtime error: index out of range",
-		"\tTRACE LINE AFTER THE PANIC",
-		"\tsecond trace frame",
-		"\tthird trace frame",
-		"",
-	}, "\n")
-	ctxPath := filepath.Join(t.TempDir(), "ctx.log")
-	if err := os.WriteFile(ctxPath, []byte(ctx), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	args := append(append([]string{"-nE"}, viewFlags...), pattern, ctxPath)
-	cout, cerr := exec.Command("grep", args...).Output()
-	if cerr != nil {
-		t.Fatalf("the step's view (grep -nE %v) does not run: %v", viewFlags, cerr)
-	}
-	for _, want := range []string{"THE ARMS OWN WORDS", "TRACE LINE AFTER THE PANIC"} {
-		if !strings.Contains(string(cout), want) {
-			t.Errorf("the view's flags %v lose %q: a failure's own words reach no reader, "+
-				"which is what this view exists to carry. Output:\n%s",
-				viewFlags, want, cout)
-		}
+	if !strings.Contains(test, sentence) {
+		t.Errorf("%s never prints %q, so a run with no failures says nothing and the view's "+
+			"silence cannot be told from its absence", path, sentence)
 	}
 
-	proof.Logf(t, "PROOF the step's own pattern %q ran and matched %d of %d failure shapes, and its "+
-		"flags %v carry words on BOTH sides of a match", pattern, len(got), wantMatches, viewFlags)
+	proof.Logf(t, "PROOF the step's own failure view ran over a record carrying a test's own "+
+		"words, a subtest, a panic trace and a passing package: all four failure shapes "+
+		"reached the reader, the passing package did not, and the step branches on the "+
+		"view's rc")
 }
 
 // floorSeconds is the per-package watchdog's lower bound, and it is a number
@@ -644,6 +634,22 @@ func TestTheFailureViewSurvivesTheRunnersErrFlag(t *testing.T) {
 	}
 	fragment := test[i : i+j+len("esac")]
 
+	// THE STEP RESOLVES ITS OWN INTERPRETER FROM PATH and the fragment inherits
+	// $PY from earlier in the step, which a fragment run alone does not have.
+	// Without this the view takes its no-python3 branch and this arm asserts
+	// nothing about the view at all -- it passed that way for exactly one run
+	// of this file, which is why the branch is named here.
+	viewPython := ""
+	for _, name := range []string{"python3.12", "python3"} {
+		if found, lookErr := exec.LookPath(name); lookErr == nil {
+			viewPython = found
+			break
+		}
+	}
+	if viewPython == "" {
+		t.Skip("no python3 on this box, so the step's failure view cannot be driven")
+	}
+
 	// THE rc REACHES `frc`, and this is a text clause because the execution
 	// below cannot distinguish "captured correctly" from "captured by luck".
 	//
@@ -662,18 +668,31 @@ func TestTheFailureViewSurvivesTheRunnersErrFlag(t *testing.T) {
 	for _, c := range []struct {
 		name, log, want string
 	}{
-		{"a clean log", "ok  \tforge.axonibyte.com/axonibyte/rumor/internal/wire\t0.201s\n",
-			"(no FAIL or panic line in test.log)"},
-		{"a log with a failure", "--- FAIL: TestTopLevel (0.01s)\nFAIL\tforge/x\t2.0s\n",
-			"--- FAIL: TestTopLevel"},
+		{"a clean record", `{"Action":"pass","Package":"m/wire","Elapsed":0.2}` + "\n",
+			"(no failing package or test in the record)"},
+		{"a record with a failure",
+			`{"Action":"output","Package":"m/x","Output":"--- FAIL: TestTopLevel (0.01s)\n"}` + "\n" +
+				`{"Action":"fail","Package":"m/x","Elapsed":2.0}` + "\n",
+			"--- FAILED: m/x"},
 	} {
 		dir := t.TempDir()
-		logPath := filepath.Join(dir, "test.log")
-		if err := os.WriteFile(logPath, []byte(c.log), 0o600); err != nil {
+		recPath := filepath.Join(dir, "test.json")
+		if err := os.WriteFile(recPath, []byte(c.log), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		script := strings.ReplaceAll(fragment, "../test.log", logPath)
+		// THE FRAGMENT IS RUN AS THE STEP SPELLS IT, with only the things a
+		// temp directory cannot supply substituted: the record's path, the
+		// scratch file, the interpreter the step resolves from PATH, and the
+		// tool's path, which is relative to the repo root in the step and to
+		// this package's directory here.
+		script := strings.ReplaceAll(fragment, "../test.json", recPath)
 		script = strings.ReplaceAll(script, "../fails.txt", filepath.Join(dir, "fails.txt"))
+		tool, err := filepath.Abs(filepath.Join("..", "..", "tools", "test-timeline.py"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		script = strings.ReplaceAll(script, "tools/test-timeline.py", tool)
+		script = "PY=" + viewPython + "\n" + script
 		scriptPath := filepath.Join(dir, "view.sh")
 		if err := os.WriteFile(scriptPath, []byte(script+"\n"), 0o600); err != nil {
 			t.Fatal(err)

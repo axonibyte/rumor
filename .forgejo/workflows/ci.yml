@@ -311,55 +311,73 @@ jobs:
           # waits on a pipe that cannot reach EOF -- every package reported, and
           # the process does not exit. That is the shape the rc-124 diagnostic
           # below reports as "the work finished and the run did not exit".
-          # THE SUITE'S OUTPUT IS TEE'D SO A TIMELINE CAN BE TAKEN LIVE, and
-          # `-v` REMAINS THE PRIMARY. The runner emits a step in one flush, so
-          # every line of a 1400-second suite arrives carrying the same stamp:
-          # diagnosing task 1240 meant reading per-package elapsed figures and
-          # GUESSING at overlap, because the flush had erased WHEN anything
-          # ran. `go tool test2json -t` stamps each event as it reads it, which
-          # recovers the ordering -- but only while the suite is running, which
-          # is why this is a tee and not a later pass over ../test.log.
+          # ../test.json IS THE RECORD AND ../test.log IS A RENDERING OF IT.
+          # The runner emits a step in one flush, so every line of a
+          # 1400-second suite arrives carrying the same stamp: diagnosing task
+          # 1240 meant reading per-package elapsed figures and GUESSING at
+          # overlap, because the flush had erased WHEN anything ran. Only
+          # `go test -json` attributes an event to a PACKAGE and stamps it with
+          # a real TIME -- `go tool test2json` invoked standalone has no -p, so
+          # under the previous tee'd shape every event arrived with no Package
+          # and the timeline could report elapsed figures while REFUSING the
+          # overlap figure #128 asked for.
           #
-          # ../test.log IS STILL WRITTEN BY `go test` THROUGH tee AND BY
-          # NOTHING ELSE. The failure view and the rc-124 diagnostic below both
-          # mine it, and every pattern they use is driven by an arm in
-          # tests/hygiene, so the one thing this change must not do is make
-          # that file depend on an interpreter, a parser, or the module
-          # building. A broken build still fills it, exactly as before.
+          # THE RULE THIS REVERSES, AND WHY ITS INTENT SURVIVES (fable, coop
+          # r10/18). The rule read "../test.log STAYS THE OUTPUT OF go test AND
+          # OF NOTHING ELSE", and it was never about the file's NAME: it was
+          # that the record is what `go test` wrote, with nothing of ours
+          # between. `go test -json` captured raw IS go test's own output, so
+          # the record keeps the property and gains the two fields.
           #
-          # AND THE JSON BRANCH CANNOT TRUNCATE IT: `|| cat > /dev/null` keeps
-          # the tail of the pipe DRAINING if test2json dies, because a consumer
-          # that exits early sends EPIPE back to `tee` and would cut the log
-          # off mid-suite. The branch is allowed to fail and cost only itself.
+          # AND THE HAZARD THE RULE WAS WRITTEN AGAINST IS MEASURED FALSE. It
+          # argued a parser in the path could swallow a broken build's output.
+          # Measured 2026-11-17 with go1.27.2: a package that does not compile
+          # emits build-output and build-fail AS JSON EVENTS, stderr empty,
+          # every stdout line parsing. The premise was never tested when I
+          # wrote it.
           #
-          # THE rc TRAVELS THROUGH A FILE BECAUSE A PIPELINE'S rc IS ITS LAST
-          # STAGE'S. `timeout`'s status is the verdict of this whole step, and
-          # in a pipeline it would be test2json's instead -- a green report
-          # over a failed suite. `if` carries it rather than `||` because the
-          # runner invokes the step with -e, under which a bare failing command
-          # ends the script where it stands.
-          { if timeout 1800 "$GO" test -count=1 -timeout 30m -v ./... 2>&1
-            then echo 0 > ../test.rc
-            else echo $? > ../test.rc
-            fi
-          # BOUNDED ABOVE THE SUITE'S OWN BUDGET, not below it: this consumer
-          # must outlive the thing it is reading, so its bound is the outer
-          # 1800 plus a minute of margin. Below the suite's budget it would be
-          # a second watchdog on the suite, which is the mistake the two-budget
-          # comment above records.
-          } | tee ../test.log | { timeout 1860 "$GO" tool test2json -t > ../test.json 2>/dev/null || cat > /dev/null; }
-          rc=$(cat ../test.rc 2>/dev/null || echo 1)
-          # THE TIMELINE IS A REPORT AND NEVER A GATE, so every way it can fail
-          # is swallowed: no interpreter, no JSON, a tool that throws. It is
-          # printed BEFORE the failure view because it is the cheap orientation
-          # -- which packages overlapped, and which never finished -- and the
-          # view below is the expensive one.
-          PY=$(command -v python3.12 || command -v python3 || true)
-          if [ -n "$PY" ] && [ -s ../test.json ]; then
-            timeout 120 "$PY" tools/test-timeline.py --json ../test.json || echo "(timeline failed; the verdict below does not rest on it)"
-          else
-            echo "(no timeline: python3 or ../test.json is absent; the verdict below does not rest on it)"
+          # NO FILTER STANDS BETWEEN go test AND THE RECORD -- not even a tee.
+          # A redirect is one syscall and no process, which is strictly less
+          # than the tee the ruling allowed for.
+          #
+          # STDERR IS KEPT OUT OF THE RECORD and shown separately: merging it
+          # would put non-JSON lines into the file every view now reads, and
+          # the go command's own errors deserve to be legible rather than
+          # interleaved.
+          if timeout 1800 "$GO" test -count=1 -timeout 30m -json ./... > ../test.json 2> ../test.err
+          then rc=0
+          else rc=$?
           fi
+          if [ -s ../test.err ]; then
+            echo "--- the go command wrote to stderr; this is NOT part of the record:"
+            cat ../test.err
+          fi
+          # THE RENDERING IS ONE STEP WHOSE ONLY INPUT IS THE RECORD, which is
+          # the ruling's second condition. It is a convenience for a reader:
+          # every view that makes a CLAIM reads ../test.json, so if this step
+          # failed outright no check would lose its subject (quill, coop r10/19
+          # -- a rendering must never be the thing anyone greps).
+          #
+          # ONE DIFFERENCE FROM `go test -v`, NAMED RATHER THAN PAPERED: the
+          # trailing bare `FAIL` the go command prints after the stream ends is
+          # carried by no event, so the rendering cannot hold it. Every
+          # per-package `FAIL<TAB>pkg` line is there.
+          PY=$(command -v python3.12 || command -v python3 || true)
+          if [ -n "$PY" ]; then
+            timeout 300 "$PY" tools/test-timeline.py --json ../test.json --log ../test.log \
+              || echo "(the rendering failed; ../test.json is the record and the views below read it)"
+          else
+            echo "(no python3, so ../test.log is not rendered; ../test.json is still the record)"
+          fi
+          # THE TIMELINE CAME OUT OF THE SAME INVOCATION as the rendering,
+          # above: one tool, one read of the record, both outputs. It was a
+          # second call until this head, which read ../test.json twice for no
+          # reason once the renderer moved into the same tool.
+          #
+          # IT IS A REPORT AND NEVER A GATE, so every way it can fail is
+          # swallowed: no interpreter, no record, a tool that throws. It prints
+          # BEFORE the failure view because it is the cheap orientation --
+          # which packages overlapped, and which never finished.
           # THE SWEEP'S OWN LINE, MINED LIKE THE FAILURE VIEW IS, and for the
           # same reason: it is written into ../test.log, which dies with the
           # runner's workspace, and a GREEN run prints only `tail -20` of that
@@ -384,11 +402,11 @@ jobs:
           # that made the line more useful. The prefix up to the colon is the
           # part the format owns; everything after it is free to change.
           src=0
-          grep -a 'browser: ' ../test.log > ../swept.txt || src=$?
+          grep -a 'browser: ' ../test.json > ../swept.txt || src=$?
           case "$src" in
             0) echo "--- the browser sweep reported:"; sed -n '1,20p' ../swept.txt ;;
             1) echo "--- the browser sweep collected nothing this run" ;;
-            *) echo "SWEEP VIEW BROKEN: the grep over ../test.log exited $src, so nothing below rests on it" ;;
+            *) echo "SWEEP VIEW BROKEN: the grep over ../test.json exited $src, so nothing below rests on it" ;;
           esac
           # A GROUP ALIVE AFTER TEARDOWN IS THE ONE ABNORMAL OUTCOME this
           # subsystem can now have, and it was written only to stderr -- which
@@ -401,12 +419,12 @@ jobs:
           # on tidily" from "could not stop its browsers". Silence here is the
           # good case and says so.
           krc=0
-          grep -a 'still has members after SIGKILL' ../test.log > ../kept.txt || krc=$?
+          grep -a 'still has members after SIGKILL' ../test.json > ../kept.txt || krc=$?
           case "$krc" in
             0) echo "--- teardown could NOT stop these groups; they are left for a later sweep:"
                sed -n '1,20p' ../kept.txt ;;
             1) echo "--- every teardown emptied its process group" ;;
-            *) echo "KEPT VIEW BROKEN: the grep over ../test.log exited $krc, so nothing below rests on it" ;;
+            *) echo "KEPT VIEW BROKEN: the grep over ../test.json exited $krc, so nothing below rests on it" ;;
           esac
           # THE FAILURE VIEW IS MINED AND NOT ONLY TAILED, because -v moved what
           # the last 20 lines contain: under -v a tail is the verbose output of
@@ -459,16 +477,42 @@ jobs:
           # AND THIS PATTERN MATCHES TWO KINDS WITH OPPOSITE DIRECTIONS: a
           # `--- FAIL`'s words come before it, a `^panic:` trace comes after it.
           # One-sided context serves one of them, so both sides are taken.
-          grep -nE -C 5 '^(--- )?FAIL|^panic:|^[[:space:]]+--- FAIL' ../test.log > ../fails.txt || frc=$?
+          # THE VIEW READS THE RECORD AND SCOPES CONTEXT BY WHAT FAILED, which
+          # is condition (5) at coop r10/22 and a better view besides. The
+          # anchored grep above could not move to ../test.json -- every line
+          # there is a JSON object, and `grep -cE '^ok[[:space:]]'` over the
+          # record measures 0 -- so the claim is computed from the fields that
+          # carry it: every `fail` event with its OWN package's output, plus the
+          # compiler's text, which carries no Package at all and would be
+          # dropped by any per-package scoping.
+          #
+          # AND -C 5 WAS NEVER THE RIGHT CONTEXT under package parallelism: the
+          # five lines either side belong to whatever else was printing, while
+          # the lines that explain a failure may be fifty back in its own
+          # package. Scoping by package is exact instead of near.
+          #
+          # rc DISCIPLINE, RESTATED FOR A TOOL RATHER THAN A GREP: grep used 1
+          # for "no match", which is why the reassuring sentence had its own
+          # branch. This tool exits 0 whether or not anything failed, so an
+          # EMPTY file is the no-failures case and any non-zero rc is the
+          # instrument breaking.
+          if [ -n "$PY" ]; then
+            timeout 120 "$PY" tools/test-timeline.py --json ../test.json --failures > ../fails.txt || frc=$?
+          else
+            frc=127
+          fi
           case "$frc" in
-            # THE CAP RISES WITH THE CONTEXT: at 40 lines a -C 5 view holds
-            # about three matches, and a suite failing in four packages would
-            # have its fourth scroll off the thing built to show it. The whole
-            # log is printed beneath on failure, so this stays a SUMMARY and
-            # the cap is a courtesy rather than the only copy.
-            0) sed -n '1,200p' ../fails.txt ;;
-            1) echo "(no FAIL or panic line in test.log)" ;;
-            *) echo "FAILURE VIEW BROKEN: the FAIL/panic grep exited $frc, so this log has NOT been searched and no verdict below rests on it"
+            0) if [ -s ../fails.txt ]; then
+                 # THE CAP STAYS A COURTESY: the whole rendering is printed
+                 # beneath on failure, so this is a summary and not the only
+                 # copy.
+                 sed -n '1,200p' ../fails.txt
+               else
+                 echo "(no failing package or test in the record)"
+               fi ;;
+            127) echo "FAILURE VIEW BROKEN: no python3, so ../test.json has NOT been searched and no verdict below rests on it"
+                 view_broken=1 ;;
+            *) echo "FAILURE VIEW BROKEN: the failure view exited $frc, so ../test.json has NOT been searched and no verdict below rests on it"
                view_broken=1 ;;
           esac
           tail -20 ../test.log
@@ -513,7 +557,27 @@ jobs:
             # the log is the ordinary shape of a slow suite with one broken
             # package, which is the case the diagnostic most needs to be right
             # about. A package that FAILED is still a package that REPORTED.
-            echo "--- $(grep -acE '^(ok|FAIL|\?)[[:space:]]+forge\.axonibyte\.com/' ../test.log) of $(timeout 60 "$GO" list ./... | wc -l | tr -d ' ') package(s) reported; a difference here is a package still running, and NONE means the work finished and the run did not exit"
+            # THE NUMERATOR COMES OUT OF THE RECORD'S FIELDS, which is the
+            # ruling's second condition. It counted `^(ok|FAIL|\?)` lines in
+            # the log until this head, and those anchors match NOTHING in
+            # ../test.json -- measured, a `grep -cE '^ok[[:space:]]'` over the
+            # record answers 0 -- so repointing the fraction at the record
+            # without changing its instrument would have read zero packages and
+            # called it a total shortfall.
+            #
+            # IT STILL COUNTS THE SET THE DENOMINATOR DOES, which is ratchet's
+            # defect at coop r8/162 and the `?` omission that made this figure
+            # lie a third time. A package reaches a verdict by emitting pass,
+            # fail or skip with a Package and no Test. Measured 2026-11-17: a
+            # package with NO TEST FILES emits `skip` and is counted, and one
+            # that fails to BUILD emits `fail` and is counted. Both are in
+            # `go list ./...`, so neither side can drift to a subset.
+            if [ -n "$PY" ]; then
+              reported=$(timeout 60 "$PY" tools/test-timeline.py --json ../test.json --reported 2>/dev/null || echo "?")
+            else
+              reported="? (no python3, so the record could not be counted)"
+            fi
+            echo "--- $reported of $(timeout 60 "$GO" list ./... | wc -l | tr -d ' ') package(s) reported; a difference here is a package still running, and NONE means the work finished and the run did not exit"
             exit 124
           }
           # THE WHOLE LOG GOES INTO THE JOB LOG ON FAILURE (fable, coop
@@ -548,8 +612,17 @@ jobs:
           # verdict. `go test` prints `ok <pkg> <elapsed>` for each package that
           # ran, so its absence means no package ran at all -- which is what a
           # build-only success looks like.
-          grep -E '^ok[[:space:]]+forge\.axonibyte\.com/' ../test.log \
-            || { echo "no ok-package line: the harness did not run any package"; exit 1; }
+          # COMPUTED FROM THE RECORD: a package passed when it emits `pass`
+          # with a Package and no Test. The grep this replaces was
+          # `^ok<TAB>forge...` over the rendering, and its claim is unchanged.
+          passed=0
+          if [ -n "$PY" ]; then
+            passed=$(timeout 60 "$PY" tools/test-timeline.py --json ../test.json --passed 2>/dev/null || echo 0)
+          else
+            echo "no python3, so the pass count cannot be read from the record"; exit 1
+          fi
+          test "$passed" -gt 0 \
+            || { echo "no package passed: the harness did not run any package"; exit 1; }
           # A `(cached)` LINE IS THE ORACLE FOR THE FLAG ABOVE, and the reason
           # this is a refusal rather than a filter: with -count=1 the cache is
           # bypassed, so a cached verdict means the flag did not take -- a
@@ -558,13 +631,25 @@ jobs:
           # exactly that. The comment above claims an absent ok-line means no
           # package ran; `ok <pkg> (cached)` is a present ok-line for a package
           # that did not run, which is the claim it falsifies.
-          if grep -qE '^ok[[:space:]]+forge\.axonibyte\.com/.*\(cached\)' ../test.log; then
+          # AND THE CACHED CHECK READS OUTPUT EVENTS ONLY, not the whole
+          # record. A bare `grep '(cached)' ../test.json` would also match a
+          # test that printed those nine characters itself -- and this check
+          # EXITS THE BUILD, so a false positive costs a good run. The mode
+          # looks at package-level output events whose text begins `ok`, which
+          # is the shape `go test` uses and nothing else does. Driven both
+          # ways: a real cached line is reported, a test printing the word is
+          # not.
+          cached=$(timeout 60 "$PY" tools/test-timeline.py --json ../test.json --cached 2>/dev/null || echo "VIEW-BROKEN")
+          if [ "$cached" = "VIEW-BROKEN" ]; then
+            echo "CACHED CHECK BROKEN: the record could not be read for cached verdicts"; exit 1
+          fi
+          if [ -n "$cached" ]; then
             echo "CACHED VERDICT with -count=1 set, so the flag did not take:"
-            grep -nE '^ok[[:space:]]+forge\.axonibyte\.com/.*\(cached\)' ../test.log
+            printf '%s\n' "$cached"
             echo "a cached pass is not a run, and this step's PROOF counts runs"
             exit 1
           fi
-          echo "PROOF $(grep -cE '^ok[[:space:]]+forge\.axonibyte\.com/' ../test.log) package(s) reported ok, 0 cached"
+          echo "PROOF $passed package(s) reported ok, 0 cached"
 
       - name: the suite's own PROOF lines (mined, not tailed)
         run: |
@@ -585,17 +670,22 @@ jobs:
           # count of ZERO REFUSES. Without the third, a step that finds nothing
           # prints nothing and reads exactly like a step that found everything,
           # which is the tail -20 one layer out.
-          test -f test.log || { echo "no test.log: the test step did not run, so there is nothing to mine"; exit 1; }
-          n=$(grep -c 'PROOF ' test.log) || n=0
+          # THE RECORD AND NOT THE RENDERING, because this step DECIDES: it
+          # exits 1 when it finds nothing, so it is an instrument and condition
+          # (5) at coop r10/22 puts every instrument on ../test.json. `PROOF `
+          # is a mid-line literal inside an Output string, so the grep needs no
+          # anchors and none of its meaning is lost.
+          test -f test.json || { echo "no test.json: the test step did not run, so there is nothing to mine"; exit 1; }
+          n=$(grep -c 'PROOF ' test.json) || n=0
           if test "$n" -eq 0; then
-            echo "NO PROOF LINE IN test.log, and this step refuses rather than passing quietly."
+            echo "NO PROOF LINE IN test.json, and this step refuses rather than passing quietly."
             echo "The suite has 111 Logf(\"PROOF sites; zero reaching the log means either -v"
             echo "was dropped from the test step above, or the lines were renamed. Either way"
             echo "the evidence a reader would act on is not in this job's output."
             exit 1
           fi
-          echo "PROOF $n test-side PROOF line(s) mined from test.log:"
-          grep -n 'PROOF ' test.log
+          echo "PROOF $n test-side PROOF line(s) mined from test.json:"
+          grep -n 'PROOF ' test.json
 
       - name: fmt
         run: |

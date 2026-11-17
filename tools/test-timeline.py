@@ -71,24 +71,48 @@ def parse_time(raw):
     return stamp
 
 
+# WHAT THE RENDERING SAYS WHERE THE RECORD STOPS BEING ONE. A line that is not
+# a test event is marked where it sits rather than passed through bare, and a
+# record whose LAST line is unterminated gets a closing note: that is the
+# signature of a suite cut mid-write, and the failure mode being removed here is
+# a silently short log (fable's condition, coop r10/18).
+#
+# MARKED, NOT ASSERTED AS TRUNCATION. A foreign line can also appear mid-stream
+# without the record ending -- tests/hygiene drives exactly that case -- so the
+# inline marker says only what is known, and the truncation note is reserved for
+# a final line with no newline on it.
+NOT_AN_EVENT = ("*** the line below is not a test event, so it is shown raw and "
+                "is not part of the record ***\n")
+CUT_NOTE = ("*** test.json ENDS MID-LINE: the suite was cut while writing this "
+            "record, so nothing after this point was ever written. The rendering "
+            "stops here because the record does. ***\n")
+
+
 def read_events(path):
     """Answer (events, rebuilt_log_text, foreign_line_count)."""
     events, log, foreign = [], [], 0
+    unterminated = False
     with open(path, "r", errors="replace") as handle:
         for line in handle:
+            unterminated = not line.endswith("\n")
             try:
                 event = json.loads(line)
             except ValueError:
                 foreign += 1
+                log.append(NOT_AN_EVENT)
                 log.append(line if line.endswith("\n") else line + "\n")
                 continue
             if not isinstance(event, dict):
                 foreign += 1
+                log.append(NOT_AN_EVENT)
                 log.append(line if line.endswith("\n") else line + "\n")
                 continue
+            unterminated = False
             events.append(event)
             if event.get("Output"):
                 log.append(event["Output"])
+    if unterminated:
+        log.append(CUT_NOTE)
     return events, "".join(log), foreign
 
 
@@ -207,6 +231,14 @@ def main():
     ap.add_argument("--log", help="rebuild the plain `go test -v` log here")
     ap.add_argument("--min-seconds", type=float, default=0.0,
                     help="only list packages at or above this elapsed")
+    ap.add_argument("--reported", action="store_true",
+                    help="print only how many packages reached a verdict")
+    ap.add_argument("--passed", action="store_true",
+                    help="print only how many packages passed")
+    ap.add_argument("--cached", action="store_true",
+                    help="print any package whose verdict came from the test cache")
+    ap.add_argument("--failures", action="store_true",
+                    help="print each failing package and test with its own output")
     args = ap.parse_args()
 
     try:
@@ -216,6 +248,87 @@ def main():
         # already run and whose verdict is carried elsewhere. Failing the step
         # here would turn a missing report into a missing result.
         print(f"TIMELINE UNAVAILABLE: cannot read {args.json}: {err}")
+        return 0
+
+    # THE COUNT COMES OUT OF THE RECORD'S FIELDS AND NOT OUT OF ITS TEXT, which
+    # is the point of the mode. ci's "N of M packages reported" used to count
+    # `^(ok|FAIL|\?)` lines in the rendered log, and those anchors match NOTHING
+    # in test.json -- measured, `grep -cE '^ok[[:space:]]' test.json` is 0 -- so
+    # a fraction repointed at the record without changing its instrument would
+    # have read zero and called it a shortfall. A package reaches a verdict when
+    # it emits pass, fail or skip with a Package and NO Test, which is also true
+    # of a package that failed to BUILD, so the count includes what no text
+    # pattern of ours ever matched reliably.
+    # THE INSTRUMENTS BELOW READ THE RECORD AND NOT THE RENDERING, which is
+    # condition (5) of the ruling at coop r10/22: test.log is for eyes, and
+    # anything that DECIDES reads test.json. Every one of them replaced an
+    # anchored grep -- `^ok`, `^(--- )?FAIL`, `^panic:` -- and anchors match
+    # nothing in a record whose every line is a JSON object: measured, a
+    # `grep -cE '^ok[[:space:]]'` over test.json answers 0. So each claim is
+    # computed from the fields that carry it instead of repointed blindly.
+    if args.passed:
+        # A PACKAGE PASSED when it emits pass with a Package and no Test. The
+        # grep this replaces was `^ok<TAB>forge...`, and its claim -- "the
+        # harness did not run any package" -- is the same one.
+        print(len({e["Package"] for e in events
+                   if e.get("Action") == "pass" and e.get("Package") and not e.get("Test")}))
+        return 0
+
+    if args.cached:
+        # A CACHED VERDICT IS A PRESENT ok-LINE FOR A PACKAGE THAT DID NOT RUN,
+        # which is the claim the ok-line check cannot make for itself. The
+        # marker lives in the package's own output text and in no field, so this
+        # reads the text of OUTPUT EVENTS ONLY -- not the whole file -- because
+        # a bare `grep '(cached)'` over the record would also match a test that
+        # printed those nine characters itself, and this check EXITS the build.
+        for event in events:
+            if event.get("Action") != "output" or event.get("Test"):
+                continue
+            text = event.get("Output") or ""
+            if "(cached)" in text and text.startswith("ok"):
+                print(f"{event.get('Package')}\t{text.strip()}")
+        return 0
+
+    if args.failures:
+        # FAILURE CONTEXT SCOPED TO WHAT FAILED, which is strictly better than
+        # the five lines either side the grep gave: under package parallelism
+        # those neighbours belong to whatever else was printing, and the ones
+        # that matter may be fifty lines back. Here a failing package's own
+        # output is its context, by construction.
+        failed = [e for e in events if e.get("Action") == "fail"]
+        if not failed:
+            return 0
+        # THE COMPILER'S TEXT FIRST, AND UNATTRIBUTED BECAUSE IT IS. build-output
+        # events carry NO Package -- measured 2026-11-17 -- so scoping context by
+        # package drops the one thing a build failure needs explained. Printing
+        # them under their own header was the fix for exactly that: the first cut
+        # of this mode showed `FAIL m/broken [build failed]` and not a word about
+        # why it would not compile.
+        build = [e.get("Output") or "" for e in events
+                 if e.get("Action") == "build-output" and e.get("Output")]
+        if build:
+            print("--- BUILD OUTPUT (carried by no package, so it is shown whole):")
+            for text in build:
+                print("    " + text.rstrip("\n"))
+        for event in failed:
+            pkg, test = event.get("Package"), event.get("Test")
+            where = f"{pkg} {test}".strip() if test else f"{pkg}"
+            print(f"--- FAILED: {where}")
+            for other in events:
+                if other.get("Action") not in ("output", "build-output"):
+                    continue
+                if other.get("Package") != pkg:
+                    continue
+                if test and other.get("Test") != test:
+                    continue
+                text = other.get("Output") or ""
+                if text:
+                    print("    " + text.rstrip("\n"))
+        return 0
+
+    if args.reported:
+        print(len({e["Package"] for e in events
+                   if e.get("Action") in TERMINAL and e.get("Package") and not e.get("Test")}))
         return 0
 
     if args.log:

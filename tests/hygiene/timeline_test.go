@@ -166,3 +166,88 @@ func pythonOrSkip(t *testing.T) string {
 	t.Skip("no python3 on this box: the test step prints its no-timeline line here too")
 	return ""
 }
+
+// TestTheRenderingSurvivesABrokenBuildAndSaysWhereARecordWasCut is fable's
+// third condition at coop r10/18, and it is the one that makes test.json
+// safe to treat as the record.
+//
+// THE RULE IT REPLACES ARGUED THE OPPOSITE. docs/testing-methodology.md said
+// ../test.log must be `go test`'s own output because a broken build has to fill
+// it and a parser in the path could swallow that. Measured 2026-11-17 with
+// go1.27.2: `go test -json` over a package that does not compile emits
+// build-output and build-fail AS JSON EVENTS, with stderr empty and every
+// stdout line parsing -- so the premise was never true of -json, and this arm
+// holds the renderer to it.
+//
+// AND A CUT RECORD MUST NOT RENDER AS A SHORT LOG, which is the failure mode
+// this whole phase has been removing: a run killed mid-write leaves a partial
+// final line, and a rendering that simply stopped there would be
+// indistinguishable from a suite that finished quietly.
+func TestTheRenderingSurvivesABrokenBuildAndSaysWhereARecordWasCut(t *testing.T) {
+	py := pythonOrSkip(t)
+	tool := filepath.Join("..", "..", "tools", "test-timeline.py")
+
+	t.Run("a package that does not compile", func(t *testing.T) {
+		// THE COMPILER'S OWN TEXT ARRIVES AS build-output WITH NO Package, and
+		// the per-package `FAIL ... [build failed]` line arrives as an ordinary
+		// output event. A rendering that dropped either would hide a build
+		// failure from every reader of the log.
+		record := strings.Join([]string{
+			`{"Action":"build-output","Output":"# m/broken [m/broken.test]\n"}`,
+			`{"Action":"build-output","Output":"broken/x_test.go:5:9: undefined: nope\n"}`,
+			`{"Action":"build-fail"}`,
+			`{"Action":"output","Package":"m/broken","Output":"FAIL\tm/broken [build failed]\n"}`,
+			`{"Action":"fail","Package":"m/broken","Elapsed":0}`,
+			"",
+		}, "\n")
+		dir := t.TempDir()
+		rec := filepath.Join(dir, "test.json")
+		log := filepath.Join(dir, "test.log")
+		if err := os.WriteFile(rec, []byte(record), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command(py, tool, "--json", rec, "--log", log).CombinedOutput(); err != nil {
+			t.Fatalf("rendering a broken build: %v: %s", err, out)
+		}
+		rendered, err := os.ReadFile(log)
+		if err != nil {
+			t.Fatalf("reading the rendering: %v", err)
+		}
+		for _, want := range []string{
+			"# m/broken [m/broken.test]",
+			"broken/x_test.go:5:9: undefined: nope",
+			"FAIL\tm/broken [build failed]",
+		} {
+			if !strings.Contains(string(rendered), want) {
+				t.Errorf("the rendering of a broken build omits %q, so a reader of the log "+
+					"cannot see why nothing ran: %q", want, string(rendered))
+			}
+		}
+	})
+
+	t.Run("a record cut mid-write", func(t *testing.T) {
+		record := `{"Action":"output","Package":"m/a","Output":"=== RUN   TestA\n"}` + "\n" +
+			`{"Action":"output","Package":"m/a","Output":"--- PASS: TestA (0.00s)` // no closing brace, no newline
+		dir := t.TempDir()
+		rec := filepath.Join(dir, "test.json")
+		log := filepath.Join(dir, "test.log")
+		if err := os.WriteFile(rec, []byte(record), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command(py, tool, "--json", rec, "--log", log).CombinedOutput(); err != nil {
+			t.Fatalf("rendering a cut record: %v: %s", err, out)
+		}
+		rendered, err := os.ReadFile(log)
+		if err != nil {
+			t.Fatalf("reading the rendering: %v", err)
+		}
+		if !strings.Contains(string(rendered), "=== RUN   TestA") {
+			t.Errorf("the rendering lost what the record DID hold: %q", string(rendered))
+		}
+		if !strings.Contains(string(rendered), "ENDS MID-LINE") {
+			t.Errorf("the rendering of a CUT record does not say it was cut, so a short log "+
+				"and a quiet suite read identically -- the defect this condition exists "+
+				"for: %q", string(rendered))
+		}
+	})
+}

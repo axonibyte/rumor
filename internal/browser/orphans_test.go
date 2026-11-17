@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -641,7 +642,7 @@ func TestAGroupWhoseTreeIsGONEIsStillReapedFromItsArgv(t *testing.T) {
 		return nil
 	}
 
-	got := reapOrphansByArgv()
+	got := reapOrphansByArgv(t.TempDir())
 
 	if got.recovered != 1 {
 		t.Errorf("the argv pass recovered %d group(s) from a dead run's live "+
@@ -684,7 +685,7 @@ func TestALiveRunsBrowsersAreNOTReapedFromArgv(t *testing.T) {
 		return nil
 	}
 
-	if got := reapOrphansByArgv(); got.recovered != 0 || got.refused != 0 {
+	if got := reapOrphansByArgv(t.TempDir()); got.recovered != 0 || got.refused != 0 {
 		t.Errorf("a LIVE run's browsers were counted recovered=%d refused=%d, "+
 			"want 0 and 0", got.recovered, got.refused)
 	}
@@ -1003,67 +1004,293 @@ func TestAnUnreadableProcessTableHoldsEverythingAndSaysSo(t *testing.T) {
 	}
 }
 
-// TestEachBlindReadingIsGUARDEDSEPARATELY exists because one fixture could not
-// tell the guards apart. With BOTH readings failing and a tree that records a
-// pgid, the tree is held by the per-group branch and `unreadable` is counted by
-// the argv pass -- so deleting either of the other two guards changed nothing
-// the first arm asserts, and two mutants lived through it. Each case below is
-// shaped so exactly one guard can satisfy it.
-func TestEachBlindReadingIsGUARDEDSEPARATELY(t *testing.T) {
-	blind := errors.New("ps: cannot fork")
+// TestArgvLeavesAHandledGroupToTheHandlePass is what replaced a lock, and the
+// measurement that killed the lock is quill's at coop r10/23: a sweeper is a
+// PROCESS, not a package -- sweepOnce is package-level state, so every process
+// reaching Start sweeps once -- and tests/run, tests/wire, tests/shrink and
+// tests/validate each build a rumor binary and invoke it many times. Concurrent
+// sweepers are the ordinary shape of a run, not a case to guard against, and a
+// lock over one tree root would have turned almost every one of them into a
+// skip notice while buying nothing.
+//
+// DISJOINT PASSES REACH THE SAME VERDICT WHOEVER RUNS FIRST. argv exists for
+// groups no handle can reach, so it claims only those: a tree that is gone, or
+// one that recorded nothing. A tree still holding a readable pgid is the handle
+// pass's, and that makes `reaped 0 / recovered 1` over a group whose handle sat
+// in its tree -- #787 and #790, both measured intact -- impossible rather than
+// unlikely.
+func TestArgvLeavesAHandledGroupToTheHandlePass(t *testing.T) {
+	dir := t.TempDir()
+	dead := deadPID(t)
+	handled := fmt.Sprintf("%s%d-handled", tmpdirPrefix, dead)
+	orphaned := fmt.Sprintf("%s%d-nohandle", tmpdirPrefix, dead)
+	for _, name := range []string{handled, orphaned} {
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatalf("planting %s: %v", name, err)
+		}
+	}
+	// ONE TREE RECORDS ITS GROUP AND THE OTHER DOES NOT, which is the whole
+	// distinction the passes now divide on.
+	recordPGID(filepath.Join(dir, handled), 4242)
 
-	// ONE: the PER-GROUP reading fails while the whole table reads fine. Only
-	// reapGroup's own error branch can see this, so reapUnreadable must be
-	// counted here or the outcome renders as the benign reapEmpty.
-	t.Run("the per-group reading fails", func(t *testing.T) {
-		dir := t.TempDir()
-		stale := filepath.Join(dir, fmt.Sprintf("%s%d-onlygroup", tmpdirPrefix, deadPID(t)))
-		if err := os.MkdirAll(stale, 0o755); err != nil {
-			t.Fatalf("planting: %v", err)
-		}
-		recordPGID(stale, 4242)
-		defer restoreReaper(swapReaper(
-			func(int) ([]string, error) { return nil, blind },
-			func(int, syscall.Signal) error { return nil },
-		))
-		defer func(old func() ([]procLine, error)) { listAllProcesses = old }(swapProcessTable(
-			func() ([]procLine, error) { return nil, nil },
-		))
-		got := sweepStaleTmpdirsIn(dir)
-		if got.unreadable != 1 {
-			t.Errorf("unreadable=%d, want 1: the TREE pass read an error from the "+
-				"group listing and did not count it, so the outcome renders as "+
-				"reapEmpty, which this package documents as benign and ordinary",
-				got.unreadable)
-		}
-		if got.removed != 0 {
-			t.Errorf("removed=%d, want 0", got.removed)
-		}
-	})
+	listings := 0
+	defer restoreReaper(swapReaper(
+		func(int) ([]string, error) {
+			listings++
+			if listings > 1 {
+				return nil, nil
+			}
+			return []string{chromeArgvFromTheField}, nil
+		},
+		func(int, syscall.Signal) error { return nil },
+	))
+	defer func(old func() ([]procLine, error)) { listAllProcesses = old }(swapProcessTable(
+		func() ([]procLine, error) {
+			return []procLine{
+				{pgid: 4242, command: strings.Replace(chromeArgvFromTheField,
+					"rumor-browser-87357-3668960404", handled, 1)},
+				{pgid: 9999, command: strings.Replace(chromeArgvFromTheField,
+					"rumor-browser-87357-3668960404", orphaned, 1)},
+			}, nil
+		},
+	))
 
-	// TWO: the WHOLE-TABLE reading fails and the tree records NO pgid, so the
-	// per-group branch cannot fire and only treeStillClaimed's own error branch
-	// stands between a live group's tree and deletion.
-	t.Run("the whole-table reading fails with no handle to fall back on", func(t *testing.T) {
-		dir := t.TempDir()
-		ghost := fmt.Sprintf("%s%d-nohandle", tmpdirPrefix, deadPID(t))
-		if err := os.MkdirAll(filepath.Join(dir, ghost), 0o755); err != nil {
-			t.Fatalf("planting: %v", err)
+	var signalled []int
+	signalGroupOf = func(pgid int, _ syscall.Signal) error {
+		signalled = append(signalled, pgid)
+		return nil
+	}
+
+	got := reapOrphansByArgv(dir)
+
+	if len(signalled) != 1 || signalled[0] != 9999 {
+		t.Errorf("argv signalled %v, want only 9999: the group whose tree records pgid 4242 "+
+			"belongs to the handle pass, and argv taking it first is exactly how `reaped 0` "+
+			"stopped meaning anything about the handle", signalled)
+	}
+	if got.recovered != 1 {
+		t.Errorf("recovered=%d, want 1: the handle-less group is argv's and nothing else can "+
+			"reach it", got.recovered)
+	}
+}
+
+// TestTwoSweepersOverOneRootReachOneVerdict drives the claim the disjoint
+// passes are FOR, at fable's request (coop r10/25): two sweepers racing over
+// one tree root must reach one verdict without coordinating.
+//
+// IT IS DRIVEN AND NOT ARGUED because the argument is exactly what failed
+// twice. #787 and #790 both reported a recovery over a group whose handle was
+// sitting in its tree, and in both the explanation available from the log was
+// "some ordering" -- which is an argument, not a reading.
+//
+// THE GROUPS DIE WHEN THEY ARE SIGNALLED, which is the one thing the stub must
+// model: a sweeper that signals a group makes it empty for every later reader,
+// including the other sweeper. Without that the fixture would describe a world
+// where signals do nothing, and nothing could be concluded from it.
+func TestTwoSweepersOverOneRootReachOneVerdict(t *testing.T) {
+	dir := t.TempDir()
+	dead := deadPID(t)
+	handled := fmt.Sprintf("%s%d-handled", tmpdirPrefix, dead)
+	orphaned := fmt.Sprintf("%s%d-nohandle", tmpdirPrefix, dead)
+	for _, name := range []string{handled, orphaned} {
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatalf("planting %s: %v", name, err)
 		}
-		defer restoreReaper(swapReaper(
-			func(int) ([]string, error) { return nil, nil },
-			func(int, syscall.Signal) error { return nil },
-		))
-		defer func(old func() ([]procLine, error)) { listAllProcesses = old }(swapProcessTable(
-			func() ([]procLine, error) { return nil, blind },
-		))
-		got := sweepStaleTmpdirsIn(dir)
-		if _, err := os.Stat(filepath.Join(dir, ghost)); err != nil {
-			t.Fatalf("the tree was deleted on an unreadable table: %v -- this is the "+
-				"re-created ghost shape, whose only tie to its processes is argv", err)
+	}
+	const handledPGID, orphanPGID = 4242, 9999
+	recordPGID(filepath.Join(dir, handled), handledPGID)
+
+	var mu sync.Mutex
+	dead_ := map[int]bool{}
+	signals := map[int]int{}
+	argvFor := map[int]string{handledPGID: handled, orphanPGID: orphaned}
+
+	defer restoreReaper(swapReaper(
+		func(pgid int) ([]string, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			if dead_[pgid] {
+				return nil, nil
+			}
+			if tree, ours := argvFor[pgid]; ours {
+				return []string{strings.Replace(chromeArgvFromTheField,
+					"rumor-browser-87357-3668960404", tree, 1)}, nil
+			}
+			return nil, nil
+		},
+		func(pgid int, _ syscall.Signal) error {
+			mu.Lock()
+			defer mu.Unlock()
+			signals[pgid]++
+			dead_[pgid] = true
+			return nil
+		},
+	))
+	defer func(old func() ([]procLine, error)) { listAllProcesses = old }(swapProcessTable(
+		func() ([]procLine, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			var procs []procLine
+			for pgid, tree := range argvFor {
+				if dead_[pgid] {
+					continue
+				}
+				procs = append(procs, procLine{pgid: pgid,
+					command: strings.Replace(chromeArgvFromTheField,
+						"rumor-browser-87357-3668960404", tree, 1)})
+			}
+			return procs, nil
+		},
+	))
+
+	var wg sync.WaitGroup
+	tallies := make([]sweepTally, 2)
+	for i := range tallies {
+		wg.Add(1)
+		go func(slot int) {
+			defer wg.Done()
+			tallies[slot] = sweepAndReapIn(dir)
+		}(i)
+	}
+	wg.Wait()
+
+	var total sweepTally
+	total.absorb(tallies[0])
+	total.absorb(tallies[1])
+
+	mu.Lock()
+	gotSignals := map[int]int{handledPGID: signals[handledPGID], orphanPGID: signals[orphanPGID]}
+	mu.Unlock()
+
+	// THE INVARIANT IS THE OWNERSHIP, NOT THE COUNT, and the difference is
+	// measured rather than preferred. fable asked at coop r10/25 for the tally
+	// ACROSS both sweepers to be one reap and one recovery. Driven at
+	// -count=200 that fails 1 time in 200: both sweepers can list a group's
+	// members before either signals -- check-then-act -- and each then counts
+	// the work it did.
+	//
+	// AND NOTHING REAL SUMS TWO TALLIES. sweepOnce is package-level state, so a
+	// PROCESS sweeps exactly once and owns one tally, which its own line
+	// reports as `browser: pid N at <time> swept ...`. The sum of two sweepers'
+	// counters is a quantity this system never computes and no reader ever
+	// sees; pinning it would be asserting arithmetic on an artifact of the
+	// fixture.
+	//
+	// WHAT MUST HOLD, AND DOES DETERMINISTICALLY, IS THAT THE TWO SWEEPERS
+	// NEVER DISAGREE ABOUT WHICH PASS OWNS A GROUP. A handled group is the
+	// handle pass's in both, a handle-less one is argv's in both. That is the
+	// property that makes `reaped 0 / recovered 1` over a group whose handle
+	// sat in its tree impossible -- #787 and #790 -- and a duplicate signal to
+	// an already-dead group is ESRCH and costs nothing.
+	var reapedSet, recoveredSet = map[int]bool{}, map[int]bool{}
+	for _, tally := range tallies {
+		for _, pgid := range tally.reapedGroups {
+			reapedSet[pgid] = true
 		}
-		if got.held != 1 || got.removed != 0 {
-			t.Errorf("held=%d removed=%d, want 1 and 0", got.held, got.removed)
+		for _, pgid := range tally.recoveredGroups {
+			recoveredSet[pgid] = true
 		}
-	})
+	}
+	if !reapedSet[handledPGID] || recoveredSet[handledPGID] {
+		t.Errorf("the handled group %d was reaped=%v recovered=%v across two sweepers: a group "+
+			"whose tree records its pgid belongs to the handle pass in EVERY sweeper, or "+
+			"`reaped 0` means nothing about the handle again", handledPGID,
+			reapedSet[handledPGID], recoveredSet[handledPGID])
+	}
+	if !recoveredSet[orphanPGID] || reapedSet[orphanPGID] {
+		t.Errorf("the handle-less group %d was recovered=%v reaped=%v: a group no tree claims is "+
+			"argv's in every sweeper", orphanPGID, recoveredSet[orphanPGID], reapedSet[orphanPGID])
+	}
+	if len(reapedSet) != 1 || len(recoveredSet) != 1 {
+		t.Errorf("the sweepers reaped %v and recovered %v, want exactly one group each: the "+
+			"IDENTITIES must not double even where the counters may", reapedSet, recoveredSet)
+	}
+	// AND EVERY SIGNAL WENT TO A GROUP THAT WAS OURS, which is the one thing a
+	// duplicate must not cost: at least one signal each, and none to anything
+	// else.
+	for pgid, n := range gotSignals {
+		if n < 1 {
+			t.Errorf("group %d took no signal at all across two sweepers", pgid)
+		}
+	}
+	if len(gotSignals) != 2 {
+		t.Errorf("signals reached %d group(s), want exactly the two planted: %v",
+			len(gotSignals), gotSignals)
+	}
+}
+
+// TestArgvAndTheHandlePassRacingInOppositeOrder is the interleaving the
+// previous arm cannot reach, and finding that out is why it is here.
+//
+// A MUTANT SHOWED THE GAP. With the disjointness check deleted, two whole
+// sweepers racing still agreed 30 times out of 30 -- because within ONE
+// sweeper the handle pass runs FIRST and kills the group before argv ever
+// looks, so the ORDER was doing the work and the check was never exercised.
+// An arm whose fixture cannot reach the thing it guards is the shape this
+// phase keeps finding, so it is said here rather than left as a passing test.
+//
+// ACROSS PROCESSES THERE IS NO SUCH ORDER. Sweeper A's argv pass can run
+// before sweeper B's handle pass -- dozens of rumor processes per run, each
+// sweeping once (quill, coop r10/23) -- and then only the check stands between
+// argv and a group whose handle is sitting in its tree. This drives exactly
+// that: one goroutine runs the argv pass while another runs the tree pass.
+func TestArgvAndTheHandlePassRacingInOppositeOrder(t *testing.T) {
+	dir := t.TempDir()
+	handled := fmt.Sprintf("%s%d-handled", tmpdirPrefix, deadPID(t))
+	if err := os.MkdirAll(filepath.Join(dir, handled), 0o755); err != nil {
+		t.Fatalf("planting: %v", err)
+	}
+	const handledPGID = 4242
+	recordPGID(filepath.Join(dir, handled), handledPGID)
+
+	var mu sync.Mutex
+	gone := false
+	member := strings.Replace(chromeArgvFromTheField,
+		"rumor-browser-87357-3668960404", handled, 1)
+
+	defer restoreReaper(swapReaper(
+		func(int) ([]string, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			if gone {
+				return nil, nil
+			}
+			return []string{member}, nil
+		},
+		func(int, syscall.Signal) error {
+			mu.Lock()
+			defer mu.Unlock()
+			gone = true
+			return nil
+		},
+	))
+	defer func(old func() ([]procLine, error)) { listAllProcesses = old }(swapProcessTable(
+		func() ([]procLine, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			if gone {
+				return nil, nil
+			}
+			return []procLine{{pgid: handledPGID, command: member}}, nil
+		},
+	))
+
+	var wg sync.WaitGroup
+	var byArgv, byHandle sweepTally
+	wg.Add(2)
+	go func() { defer wg.Done(); byArgv = reapOrphansByArgv(dir) }()
+	go func() { defer wg.Done(); byHandle = sweepStaleTmpdirsIn(dir) }()
+	wg.Wait()
+
+	if byArgv.recovered != 0 || len(byArgv.recoveredGroups) != 0 {
+		t.Errorf("the argv pass claimed a group whose tree records pgid %d (recovered=%d %v): "+
+			"that group is the handle pass's in every sweeper, and argv taking it is how "+
+			"`reaped 0 / recovered 1` happened over an intact handle in #787 and #790",
+			handledPGID, byArgv.recovered, byArgv.recoveredGroups)
+	}
+	// AND THE HANDLE PASS STILL GETS IT, or the disjointness would have cost
+	// the reap rather than ordered it.
+	if byHandle.reaped != 1 {
+		t.Errorf("the handle pass reaped %d, want 1: %+v", byHandle.reaped, byHandle)
+	}
 }

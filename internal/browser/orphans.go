@@ -173,7 +173,7 @@ func sweepAndReapIn(dir string) sweepTally {
 	// sweep destroyed, or one that recorded nothing. The removal gate has
 	// already held any tree whose group is still alive, so a group reaped here
 	// leaves its tree for the next sweep to collect.
-	t.absorb(reapOrphansByArgv())
+	t.absorb(reapOrphansByArgv(dir))
 	return t
 }
 
@@ -390,9 +390,9 @@ func treeStillClaimed(name string, pgid int) bool {
 // unless rumor gave it one. That is the distinction the name test could not
 // make, and refusing a group whose members are not all browsers still applies
 // on top of it.
-func reapOrphansByArgv() sweepTally {
+func reapOrphansByArgv(dir string) sweepTally {
 	var t sweepTally
-	groups, err := argvOrphanGroups()
+	groups, err := argvOrphanGroups(dir)
 	if err != nil {
 		t.unreadable++
 		return t
@@ -417,7 +417,7 @@ func reapOrphansByArgv() sweepTally {
 // CONCURRENT run's browsers name ITS tree, whose pid is alive, so they are
 // skipped. This is the same guard that keeps the tree sweep from deleting a
 // live run's directory, applied to the same name from the other side.
-func argvOrphanGroups() (map[int]string, error) {
+func argvOrphanGroups(dir string) (map[int]string, error) {
 	self := os.Getpid()
 	found := map[int]string{}
 	procs, err := listAllProcesses()
@@ -435,6 +435,26 @@ func argvOrphanGroups() (map[int]string, error) {
 		}
 		owner, name, ok := treeInArgv(proc.command)
 		if !ok || owner == self || aliveElsewhere(owner) {
+			continue
+		}
+		// THE PASSES ARE DISJOINT, WHICH IS WHY NEITHER NEEDS A LOCK (quill,
+		// coop r10/23). argv exists for groups NO HANDLE CAN REACH: a tree an
+		// earlier sweep destroyed, or one that recorded nothing. So it claims
+		// only those. A tree still present WITH a readable pgid belongs to the
+		// handle pass, and argv leaves it there.
+		//
+		// WHAT THAT BUYS IS A VERDICT THAT CANNOT DEPEND ON ORDERING. A
+		// sweeper is a PROCESS and not a package -- sweepOnce is package-level
+		// state, so every process reaching Start sweeps once -- and the suites
+		// spawn rumor binaries by the dozen: tests/run, tests/wire,
+		// tests/shrink and tests/validate each build one and invoke it many
+		// times, 107 and 135 trees from a single day in quill's jail. So
+		// concurrent sweepers are the ORDINARY shape of a run, not a case to
+		// check for. Disjoint passes reach the same answer whoever runs first,
+		// and `reaped 0 / recovered 1` over a group whose handle was sitting in
+		// its tree -- the reading that failed in #787 and again in #790 --
+		// becomes impossible by construction rather than by ordering.
+		if readPGID(filepath.Join(dir, name)) > 1 {
 			continue
 		}
 		found[proc.pgid] = name
@@ -503,8 +523,13 @@ func sweepReport(t sweepTally) string {
 	// carries the same stamp. That is why run #790's two lines could not be
 	// ordered, and why one of the two explanations for them (a race between
 	// binaries) could not be separated from the other (ibis, coop r10/21).
-	line := fmt.Sprintf("browser: pid %d swept %d stale tree(s), reaped %d browser "+
-		"group(s), left %d in use", os.Getpid(), t.removed, t.reaped, t.kept)
+	// AND ITS OWN TIME, because the runner flushes a whole step with one stamp:
+	// every line of a 1400-second suite arrives carrying the same wall clock, so
+	// the log cannot order two sweepers' lines. This is the only real time on
+	// the line (fable, coop r10/22).
+	line := fmt.Sprintf("browser: pid %d at %s swept %d stale tree(s), reaped %d browser "+
+		"group(s), left %d in use", os.Getpid(), time.Now().UTC().Format(time.RFC3339),
+		t.removed, t.reaped, t.kept)
 	if t.reaped > 0 {
 		// NAMED, AND THIS IS THE ONE A CLEAR IS ASKED FOR. fable's done-when at
 		// coop r10/10 is "the next run's sweep saying reaped 1", so the figure
@@ -828,6 +853,16 @@ func forgetDriver(d *Driver) {
 // matter and late enough to know this process drives browsers at all.
 func sweepOnFirstStart() {
 	sweepOnce.Do(func() {
+		// ONE SWEEPER AT A TIME OVER ONE TREE ROOT, measured rather than
+		// assumed (fable, coop r10/22). TWO packages reach this -- this one
+		// through its own tests and cmd/rumor through webdriver.Start -- and
+		// `go test` runs packages concurrently up to -p, so both can sweep at
+		// once. Run #790 printed TWO sweep lines, which is what that looks
+		// like. Unserialised, one sweeper's tree pass can read a group the
+		// other's argv pass has just signalled, and `reaped 0` then means
+		// "someone else got there first" rather than anything about the
+		// handle -- which is one of the two candidates I could not separate in
+		// #790's log.
 		// ON STDERR, where this package already puts a reading of THIS BOX
 		// rather than of the run: the job log keeps it, and nothing parses it.
 		if line := sweepReport(sweepStaleTmpdirs()); line != "" {

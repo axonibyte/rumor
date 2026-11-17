@@ -36,11 +36,16 @@ func TestEveryTestLogPatternCIMinesIsEmittedBySomeCode(t *testing.T) {
 	}
 	// The single-quoted fixed-string greps over ../test.log. The -aE forms are
 	// regexes and belong to ciproof_test.go, which drives them as regexes.
-	rx := regexp.MustCompile(`grep -a '([^']+)' \.\./test\.log`)
+	// EITHER ARTIFACT, because the property is about the PATTERN and not the
+	// file: the views moved from ../test.log to ../test.json when condition (5)
+	// at coop r10/22 put every instrument on the record, and an arm pinned to
+	// the old name would have read "no views found" and said so as a Fatal --
+	// a gate failing because the thing it guards improved.
+	rx := regexp.MustCompile(`grep -a '([^']+)' \.\./test\.(?:log|json)`)
 	found := rx.FindAllStringSubmatch(string(raw), -1)
 	if len(found) == 0 {
-		t.Fatal("no fixed-string test.log greps found in ci.yml: either the views " +
-			"were removed or this arm's regex no longer matches the step's spelling")
+		t.Fatal("no fixed-string greps over the suite's artifact found in ci.yml: either the " +
+			"views were removed or this arm's regex no longer matches the step's spelling")
 	}
 
 	sources, err := filepath.Glob(filepath.Join("..", "..", "internal", "browser", "*.go"))
