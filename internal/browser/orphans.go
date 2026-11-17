@@ -131,7 +131,7 @@ func aliveElsewhere(pid int) bool {
 // effect on the way into a run that has real work to do; failing the run
 // because a sweep could not read a directory would trade a reclaimed
 // directory for a lost suite.
-func sweepStaleTmpdirs() (removed, reaped, kept int) {
+func sweepStaleTmpdirs() (removed, reaped, refused, kept int) {
 	return sweepStaleTmpdirsIn(os.TempDir())
 }
 
@@ -139,10 +139,10 @@ func sweepStaleTmpdirs() (removed, reaped, kept int) {
 // it against a tree it made rather than against the box's real /tmp -- where
 // the honest answer depends on what else is running and a passing arm would
 // prove nothing.
-func sweepStaleTmpdirsIn(dir string) (removed, reaped, kept int) {
+func sweepStaleTmpdirsIn(dir string) (removed, reaped, refused, kept int) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return 0, 0, 0
+		return 0, 0, 0, 0
 	}
 	self := os.Getpid()
 	for _, e := range entries {
@@ -161,14 +161,19 @@ func sweepStaleTmpdirsIn(dir string) (removed, reaped, kept int) {
 		// REAP BEFORE REMOVE, and in that order for the reason stopProcess
 		// gives: removing the tree while chrome still held files there would
 		// be deleting a live process's state.
-		if reapGroup(readPGID(tree)) {
+		switch reapGroup(readPGID(tree)) {
+		case reapSignalled:
 			reaped++
+		case reapRefused:
+			// LEFT ALIVE AND COUNTED SEPARATELY, because this is the outcome a
+			// reader must not mistake for "nothing needed doing".
+			refused++
 		}
 		if err := os.RemoveAll(tree); err == nil {
 			removed++
 		}
 	}
-	return removed, reaped, kept
+	return removed, reaped, refused, kept
 }
 
 // sweepReport is the line the sweep says about itself, or "" when it found
@@ -183,12 +188,21 @@ func sweepStaleTmpdirsIn(dir string) (removed, reaped, kept int) {
 //
 // QUIET WHEN THERE IS NOTHING TO SAY, because a line on every start would be
 // noise on the ordinary path and would train a reader to skip it.
-func sweepReport(removed, reaped, kept int) string {
-	if removed == 0 && reaped == 0 {
+func sweepReport(removed, reaped, refused, kept int) string {
+	if removed == 0 && reaped == 0 && refused == 0 {
 		return ""
 	}
-	return fmt.Sprintf("browser: swept %d stale tree(s), reaped %d browser group(s), "+
+	line := fmt.Sprintf("browser: swept %d stale tree(s), reaped %d browser group(s), "+
 		"left %d in use", removed, reaped, kept)
+	if refused > 0 {
+		// NAMED LOUDLY AND LAST, where a reader's eye ends: a refusal means a
+		// group of ours was left RUNNING, which is the leak still happening
+		// rather than the sweep working.
+		line += fmt.Sprintf("; REFUSED %d group(s) that are still alive and not "+
+			"wholly ours -- recycled pgid, or our orphans with a stranger in the group",
+			refused)
+	}
+	return line
 }
 
 // pgidFile is where an owned tree records the group its driver leads, so a
@@ -271,22 +285,50 @@ func readPGID(tree string) int {
 // box: randompid=0 is what made the skip legible as a sequential gap, so the
 // reading cannot be taken there the same way, and no kernel source is on
 // either box to cite the allocator from instead.
-// It answers whether it SIGNALLED a group, so the sweep can say what it did
-// rather than leave the next reader to deduce it.
-func reapGroup(pgid int) bool {
-	if pgid <= 1 || !groupIsOurs(pgid) {
-		return false
+// It answers WHICH of four things happened, and the distinction is not
+// cosmetic. A bool conflated the benign outcome with the alarming one (quill,
+// coop r9/426): an EMPTY group and a REFUSED group both read "reaped 0" in
+// identical words, and refused is the only one that means our own orphans are
+// still running. The sweep's line could not show the case a reader needs.
+func reapGroup(pgid int) reapOutcome {
+	if pgid <= 1 {
+		return reapNoHandle
+	}
+	members := listGroupMembers(pgid)
+	if len(members) == 0 {
+		return reapEmpty
+	}
+	if !membersAreOurs(members) {
+		return reapRefused
 	}
 	_ = signalGroupOf(pgid, syscall.SIGTERM)
 	for i := 0; i < int(StopGrace/(100*time.Millisecond)); i++ {
 		if !groupHasMembers(pgid) {
-			return true
+			return reapSignalled
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	_ = signalGroupOf(pgid, syscall.SIGKILL)
-	return true
+	return reapSignalled
 }
+
+// reapOutcome names what a stale tree's recorded group turned out to be.
+type reapOutcome int
+
+const (
+	// reapNoHandle: the tree recorded no pgid. Every tree made before the
+	// record existed is this, and nothing can be done for it here.
+	reapNoHandle reapOutcome = iota
+	// reapEmpty: the group is gone. Benign, and the ordinary case.
+	reapEmpty
+	// reapRefused: the group has members and they are not all ours, so it was
+	// LEFT ALIVE. This is the one worth a line: either a pid was recycled onto
+	// a stranger, or something joined a group of ours and our orphans are
+	// still there.
+	reapRefused
+	// reapSignalled: the group was ours and was stopped.
+	reapSignalled
+)
 
 // THE TWO SYSCALLS ARE REACHED THROUGH VARIABLES so that the decisions above
 // can be driven. What this code decides -- is this group ours, does it get a
@@ -327,12 +369,11 @@ func psGroupMembers(pgid int) []string {
 
 func groupHasMembers(pgid int) bool { return len(listGroupMembers(pgid)) > 0 }
 
-// groupIsOurs holds when a group is non-empty and everything in it is a
+// membersAreOurs holds when a group is non-empty and everything in it is a
 // browser or its driver. A single foreign member is enough to refuse: the
 // cost of refusing is leaked processes a human can still see, and the cost of
 // being wrong is signalling someone else's work.
-func groupIsOurs(pgid int) bool {
-	members := listGroupMembers(pgid)
+func membersAreOurs(members []string) bool {
 	if len(members) == 0 {
 		return false
 	}

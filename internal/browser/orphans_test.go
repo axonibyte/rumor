@@ -200,7 +200,7 @@ func TestTheSweepTakesADeadRunsTreeAndLeavesALiveOnesAlone(t *testing.T) {
 		}
 	}
 
-	removed, _, kept := sweepStaleTmpdirsIn(dir)
+	removed, _, refused, kept := sweepStaleTmpdirsIn(dir)
 
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Errorf("the dead run's tree survived the sweep (stat err %v)", err)
@@ -212,8 +212,9 @@ func TestTheSweepTakesADeadRunsTreeAndLeavesALiveOnesAlone(t *testing.T) {
 	if _, err := os.Stat(foreign); err != nil {
 		t.Errorf("the sweep reached a directory that is not ours at all: %v", err)
 	}
-	if removed != 1 || kept != 1 {
-		t.Errorf("sweep reported removed=%d kept=%d, want 1 and 1", removed, kept)
+	if removed != 1 || kept != 1 || refused != 0 {
+		t.Errorf("sweep reported removed=%d refused=%d kept=%d, want 1, 0 and 1",
+			removed, refused, kept)
 	}
 }
 
@@ -363,21 +364,43 @@ func restoreReaper(list func(int) []string, sig func(int, syscall.Signal) error)
 // reaped them" were separable only by argument (quill, coop r9/422). A sweep
 // that says what it did makes the next one a reading.
 func TestTheSweepSaysWhatItDidAndIsQuietWhenItDidNothing(t *testing.T) {
-	if got := sweepReport(0, 0, 3); got != "" {
+	if got := sweepReport(0, 0, 0, 3); got != "" {
 		t.Errorf("a sweep that collected nothing said %q, want silence: a line on "+
 			"every start is noise that trains a reader to skip it", got)
 	}
 	// REMOVED WITHOUT REAPING IS STILL WORTH SAYING, because it is the shape a
 	// pre-fix tree leaves: no pgid recorded, so nothing to signal.
-	if got := sweepReport(2, 0, 1); !strings.Contains(got, "swept 2") ||
+	if got := sweepReport(2, 0, 0, 1); !strings.Contains(got, "swept 2") ||
 		!strings.Contains(got, "reaped 0") {
 		t.Errorf("a sweep that removed trees but reaped nothing said %q", got)
 	}
-	got := sweepReport(4, 3, 2)
+	got := sweepReport(4, 3, 0, 2)
 	for _, want := range []string{"swept 4", "reaped 3", "left 2"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the sweep's line %q omits %q", got, want)
 		}
+	}
+
+	// THE CASE THE BOOL HID. An EMPTY group and a REFUSED one both left
+	// "reaped 0" and were byte-identical, and refused is the only one meaning
+	// our orphans are STILL RUNNING (quill, coop r9/426). The two lines must
+	// differ, and the refusal must be the one that is loud.
+	empty := sweepReport(1, 0, 0, 0)
+	refused := sweepReport(1, 0, 1, 0)
+	if empty == refused {
+		t.Errorf("an empty group and a REFUSED one read identically (%q): the "+
+			"alarming outcome is invisible, which is the defect this splits", empty)
+	}
+	if !strings.Contains(refused, "REFUSED 1") || !strings.Contains(refused, "still alive") {
+		t.Errorf("a refusal does not say a group was left alive: %q", refused)
+	}
+	if strings.Contains(empty, "REFUSED") {
+		t.Errorf("an empty group raises a refusal alarm: %q", empty)
+	}
+	// AND A REFUSAL ALONE BREAKS THE SILENCE, even with nothing swept or
+	// reaped: it is the one outcome that must never be quiet.
+	if sweepReport(0, 0, 1, 0) == "" {
+		t.Error("a sweep that refused a live group said nothing at all")
 	}
 }
 
@@ -389,8 +412,8 @@ func TestAReapedGroupIsReportedAndARefusedOneIsNot(t *testing.T) {
 		func(int) []string { return []string{"chrome: --type=renderer"} },
 		func(int, syscall.Signal) error { return nil },
 	))
-	if !reapGroup(4242) {
-		t.Error("a group wholly ours was signalled and reported false")
+	if got := reapGroup(4242); got != reapSignalled {
+		t.Errorf("a group wholly ours reported outcome %d, want reapSignalled", got)
 	}
 	// SWAPPED AND NOT RESTORED HERE: restoreReaper(swapReaper(...)) would put
 	// the originals straight back, which is how this arm first passed over a
@@ -400,8 +423,8 @@ func TestAReapedGroupIsReportedAndARefusedOneIsNot(t *testing.T) {
 		func(int) []string { return []string{"/usr/bin/vi notes.txt"} },
 		func(int, syscall.Signal) error { return nil },
 	)
-	if reapGroup(4242) {
-		t.Error("a FOREIGN group was reported as reaped, so the sweep's line would " +
-			"claim a group it correctly refused to signal")
+	if got := reapGroup(4242); got != reapRefused {
+		t.Errorf("a FOREIGN group reported outcome %d, want reapRefused: counting a "+
+			"refusal as empty is the conflation that hid a live leak", got)
 	}
 }
