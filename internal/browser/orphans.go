@@ -203,6 +203,7 @@ type sweepTally struct {
 	//
 	// ONLY THE RARE OUTCOMES. removed, nohandle and kept are bulk -- 47 in one
 	// field sweep -- and naming them would bury the two that mean something.
+	reapedGroups    []int    // pgids taken by the handle their own tree recorded
 	recoveredGroups []int    // pgids argv reached that no handle claimed
 	refusedGroups   []int    // pgids left ALIVE, members not wholly ours
 	heldTrees       []string // trees kept because something still names them
@@ -216,6 +217,7 @@ func (t *sweepTally) absorb(o sweepTally) {
 	t.nohandle += o.nohandle
 	t.held += o.held
 	t.kept += o.kept
+	t.reapedGroups = append(t.reapedGroups, o.reapedGroups...)
 	t.recoveredGroups = append(t.recoveredGroups, o.recoveredGroups...)
 	t.refusedGroups = append(t.refusedGroups, o.refusedGroups...)
 	t.heldTrees = append(t.heldTrees, o.heldTrees...)
@@ -277,6 +279,7 @@ func sweepStaleTmpdirsIn(dir string) sweepTally {
 		switch reapGroup(pgid) {
 		case reapSignalled:
 			t.reaped++
+			t.reapedGroups = append(t.reapedGroups, pgid)
 		case reapRefused:
 			// COUNTED SEPARATELY, because this is the outcome a reader must
 			// not mistake for "nothing needed doing": the group is RUNNING.
@@ -464,6 +467,14 @@ func sweepReport(t sweepTally) string {
 	}
 	line := fmt.Sprintf("browser: swept %d stale tree(s), reaped %d browser group(s), "+
 		"left %d in use", t.removed, t.reaped, t.kept)
+	if t.reaped > 0 {
+		// NAMED, AND THIS IS THE ONE A CLEAR IS ASKED FOR. fable's done-when at
+		// coop r10/10 is "the next run's sweep saying reaped 1", so the figure
+		// that settles whether the recorded handle works in the field was the
+		// one outcome my first naming pass left anonymous -- it named recovered,
+		// refused and held and skipped the one being demanded as evidence.
+		line += fmt.Sprintf(" (pgid %s)", nameSome(t.reapedGroups, 4))
+	}
 	if t.recovered > 0 {
 		// THE ONE A READER MUST SEE NEXT, because it means the first pass
 		// missed a live group: the tree that should have named it was gone or

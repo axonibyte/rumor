@@ -651,6 +651,10 @@ func TestAGroupWhoseTreeIsGONEIsStillReapedFromItsArgv(t *testing.T) {
 		t.Fatalf("the signals went to %v, want exactly group 88126: a group that "+
 			"emptied on the polite signal must not also be SIGKILLed", signalled)
 	}
+	if len(got.recoveredGroups) != 1 || got.recoveredGroups[0] != 88126 {
+		t.Errorf("recoveredGroups=%v, want [88126]: counted without recording, so "+
+			"the line could not say WHICH group argv reached", got.recoveredGroups)
+	}
 }
 
 // TestALiveRunsBrowsersAreNOTReapedFromArgv is the condition the whole pass
@@ -710,6 +714,11 @@ func TestTheSweepKeepsTheTreeOfAGroupItWillNotReap(t *testing.T) {
 
 	if got.refused != 1 || got.removed != 0 {
 		t.Errorf("sweep reported refused=%d removed=%d, want 1 and 0", got.refused, got.removed)
+	}
+	if len(got.refusedGroups) != 1 || got.refusedGroups[0] != 4242 {
+		t.Errorf("refusedGroups=%v, want [4242]: a refusal means our orphans are "+
+			"STILL RUNNING, so the one outcome that must never be anonymous is "+
+			"exactly this one", got.refusedGroups)
 	}
 	if _, err := os.Stat(filepath.Join(stale, pgidFile)); err != nil {
 		t.Fatalf("the handle on a group that is STILL RUNNING was deleted: %v -- "+
@@ -816,8 +825,15 @@ func TestATreeWithNoHandleIsHELDWhileAProcessStillNamesIt(t *testing.T) {
 			"must be able to tell this from a tree whose group was already gone",
 			got.nohandle)
 	}
-	if line := sweepReport(got); !strings.Contains(line, "HELD 1 tree(s)") {
-		t.Errorf("the sweep's line does not say it held a tree: %q", line)
+	// THE NAME AND NOT ONLY THE COUNT. Asserting "HELD 1 tree(s)" alone passed
+	// over a mutant that recorded no name at all, because that prefix renders
+	// the COUNT and matches an empty name list just as well.
+	line := sweepReport(got)
+	if !strings.Contains(line, "HELD 1 tree(s)") || !strings.Contains(line, ghost) {
+		t.Errorf("the sweep's line does not name the tree it held (%s): %q", ghost, line)
+	}
+	if len(got.heldTrees) != 1 || got.heldTrees[0] != ghost {
+		t.Errorf("heldTrees=%v, want [%s]", got.heldTrees, ghost)
 	}
 }
 
@@ -877,6 +893,15 @@ func TestAStrandedGroupWITHAHandleIsReapedNotRecovered(t *testing.T) {
 		t.Errorf("recovered=%d, want 0: argv must not preempt a handle that is "+
 			"sitting right there in the tree", got.recovered)
 	}
+	// AND THE IDENTITY IS RECORDED, NOT JUST COUNTED. Asserting the counter
+	// alone left a mutant alive: deleting the line that appends the pgid broke
+	// no arm, because the report's own arm builds its tally BY HAND and so
+	// tests the RENDERING while nothing tested the RECORDING. A count says work
+	// happened; this is the cell that says what it happened to.
+	if len(got.reapedGroups) != 1 || got.reapedGroups[0] != 35589 {
+		t.Errorf("reapedGroups=%v, want [35589]: the sweep counted the reap and "+
+			"did not record WHICH group, so its line cannot name one", got.reapedGroups)
+	}
 }
 
 // TestTheSweepsLineNAMESWhatItRecoveredHeldAndRefused closes the gap the field
@@ -887,11 +912,18 @@ func TestAStrandedGroupWITHAHandleIsReapedNotRecovered(t *testing.T) {
 // count says work happened; a name says what it happened to.
 func TestTheSweepsLineNAMESWhatItRecoveredHeldAndRefused(t *testing.T) {
 	line := sweepReport(sweepTally{
+		reaped: 1, reapedGroups: []int{96441},
 		recovered: 1, recoveredGroups: []int{35589},
 		held: 1, heldTrees: []string{"rumor-browser-12502-176799846"},
 		refused: 1, refusedGroups: []int{4242},
 	})
-	for _, want := range []string{"pgid 35589", "rumor-browser-12502-176799846", "pgid 4242"} {
+	// pgid 96441 IS THE ONE A CLEAR IS ASKED FOR: fable's done-when is "the next
+	// run's sweep saying reaped 1", and 96441 is the group a superseded run
+	// actually stranded at 05:54:23Z with its handle intact. The first naming
+	// pass named recovered, refused and held and left reaped anonymous, so the
+	// figure the clear turns on could not be tied to a group from the log.
+	for _, want := range []string{"pgid 96441", "pgid 35589",
+		"rumor-browser-12502-176799846", "pgid 4242"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("the sweep's line omits %q, so a reader cannot say WHICH: %q", want, line)
 		}
