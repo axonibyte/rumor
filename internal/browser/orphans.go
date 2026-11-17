@@ -259,12 +259,26 @@ func treeStillClaimed(name string, pgid int) bool {
 // reapOrphansByArgv stops browser groups whose own tree can no longer speak
 // for them, finding them by the owned tree their command line still names.
 //
-// IT IS THE HANDLE OF LAST RESORT and it is deliberately second: a tree's
-// recorded pgid is the precise instrument, and this one reads argv, which is
-// only as good as what chrome happens to put there. It catches the two cases
-// the first pass cannot -- a tree removed while its group lived (task 1254) and
-// a tree that recorded no pgid at all -- and after the first pass has run, the
-// groups it already reaped are empty, so they cost a listing and nothing else.
+// IT IS NOT A BACKUP TO THE RECORDED PGID, AND IT RUNS FIRST. For every tree
+// an earlier sweep already destroyed, this is the ONLY handle: the pgid lived
+// in the tree, and the tree is gone (quill, coop r10/8, correcting their own
+// r9/413). argv is carried by the PROCESSES, so it survives both the tree's
+// destruction and its rebirth.
+//
+// THE CYCLE IT BREAKS, which is why no field sweep ever reaped anything. A
+// sweep deletes a live group's tree, taking the handle with it. The survivors
+// RECREATE that path, because it is their TMPDIR and the next scoped_dir needs
+// it. The reborn tree carries no driver.pgid BY CONSTRUCTION, since only Start
+// writes one. So the next sweep reads no handle, removes the tree, counts
+// reaped 0 -- and the tree is born again. Every "reaped 0" in the field was
+// taken over these zombie trees and not over the originals, which is also why
+// the reap fired in quill's arm and never once in CI: an arm has no earlier
+// sweep to destroy the handle first.
+//
+// AND IT TERMINATES. argv claims the zombie tree, so the removal gate holds it;
+// argv finds the group, so this pass reaps it; once the processes are gone
+// nothing claims the tree and the next sweep collects it. The end state is
+// reachable rather than a steady state of removals.
 //
 // OURS BY CONSTRUCTION, WHICH IS THE WHOLE LICENSE FOR IT: the path it matches
 // on is a directory os.MkdirTemp made under this package's own prefix, with
@@ -311,6 +325,12 @@ func argvOrphanGroups() map[int]string {
 
 // treeInArgv answers the owned tree a command line names, and false for a
 // command line that names none.
+//
+// THE MATCH IS ON THE TREE, NOT ON THE PATH, which is the hazard quill named
+// at coop r10/8: what argv carries is a path UNDER the tree, so a check that
+// compared the whole string would claim nothing and read as "no process names
+// it" -- the same silence as a missing handle. This extracts the directory
+// name and the callers compare that, so the subdirectory is irrelevant.
 //
 // IT TAKES THE DIRECTORY NAME AND NOT THE WHOLE PATH, because what chrome
 // carries is a path INSIDE the tree -- `--user-data-dir=/tmp/rumor-browser-
