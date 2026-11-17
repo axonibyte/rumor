@@ -3,6 +3,7 @@ package browser
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -300,11 +301,11 @@ func TestTheSweepReapsADeadRunsGroupAndRefusesAForeignOne(t *testing.T) {
 			// model or every case escalates: members until TERM lands, none
 			// after. A group that does NOT obey is its own arm below.
 			defer restoreReaper(swapReaper(
-				func(int) []string {
+				func(int) ([]string, error) {
 					if len(sent) > 0 {
-						return nil
+						return nil, nil
 					}
-					return c.members
+					return c.members, nil
 				},
 				func(_ int, sig syscall.Signal) error { sent = append(sent, sig); return nil },
 			))
@@ -327,7 +328,7 @@ func TestTheSweepReapsADeadRunsGroupAndRefusesAForeignOne(t *testing.T) {
 func TestAGroupThatWillNotGoGetsKilled(t *testing.T) {
 	var sent []syscall.Signal
 	defer restoreReaper(swapReaper(
-		func(int) []string { return []string{"chrome: --type=renderer"} },
+		func(int) ([]string, error) { return []string{"chrome: --type=renderer"}, nil },
 		func(_ int, sig syscall.Signal) error { sent = append(sent, sig); return nil },
 	))
 	reapGroup(4242)
@@ -360,13 +361,13 @@ func TestTheRecordedGroupSurvivesTheRunThatWroteIt(t *testing.T) {
 	}
 }
 
-func swapReaper(list func(int) []string, sig func(int, syscall.Signal) error) (func(int) []string, func(int, syscall.Signal) error) {
+func swapReaper(list func(int) ([]string, error), sig func(int, syscall.Signal) error) (func(int) ([]string, error), func(int, syscall.Signal) error) {
 	oldList, oldSig := listGroupMembers, signalGroupOf
 	listGroupMembers, signalGroupOf = list, sig
 	return oldList, oldSig
 }
 
-func restoreReaper(list func(int) []string, sig func(int, syscall.Signal) error) {
+func restoreReaper(list func(int) ([]string, error), sig func(int, syscall.Signal) error) {
 	listGroupMembers, signalGroupOf = list, sig
 }
 
@@ -422,7 +423,7 @@ func TestTheSweepSaysWhatItDidAndIsQuietWhenItDidNothing(t *testing.T) {
 // claim work the sweep declined to do.
 func TestAReapedGroupIsReportedAndARefusedOneIsNot(t *testing.T) {
 	defer restoreReaper(swapReaper(
-		func(int) []string { return []string{"chrome: --type=renderer"} },
+		func(int) ([]string, error) { return []string{"chrome: --type=renderer"}, nil },
 		func(int, syscall.Signal) error { return nil },
 	))
 	if got := reapGroup(4242); got != reapSignalled {
@@ -433,7 +434,7 @@ func TestAReapedGroupIsReportedAndARefusedOneIsNot(t *testing.T) {
 	// stub that was never in effect. The deferred restore above holds the
 	// originals and still runs.
 	swapReaper(
-		func(int) []string { return []string{"/usr/bin/vi notes.txt"} },
+		func(int) ([]string, error) { return []string{"/usr/bin/vi notes.txt"}, nil },
 		func(int, syscall.Signal) error { return nil },
 	)
 	if got := reapGroup(4242); got != reapRefused {
@@ -561,7 +562,7 @@ func TestATeardownWhoseSignalsDoNotLandRETURNS(t *testing.T) {
 // and answers the original so a deferred restore can put it back. It is
 // separate from swapReaper because the two readings answer different questions
 // and an arm that wants one must not silently get the other.
-func swapProcessTable(all func() []procLine) func() []procLine {
+func swapProcessTable(all func() ([]procLine, error)) func() ([]procLine, error) {
 	old := listAllProcesses
 	listAllProcesses = all
 	return old
@@ -618,19 +619,19 @@ func TestAGroupWhoseTreeIsGONEIsStillReapedFromItsArgv(t *testing.T) {
 	// every listing after it is the wait for the group to empty.
 	listings := 0
 	defer restoreReaper(swapReaper(
-		func(int) []string {
+		func(int) ([]string, error) {
 			listings++
 			if listings > 1 {
-				return nil
+				return nil, nil
 			}
-			return []string{chromeArgvFromTheField}
+			return []string{chromeArgvFromTheField}, nil
 		},
 		func(pgid int, sig syscall.Signal) error { return nil },
 	))
-	defer func(old func() []procLine) { listAllProcesses = old }(swapProcessTable(
-		func() []procLine {
+	defer func(old func() ([]procLine, error)) { listAllProcesses = old }(swapProcessTable(
+		func() ([]procLine, error) {
 			return []procLine{{pgid: 88126, command: strings.Replace(chromeArgvFromTheField,
-				"87357", strconv.Itoa(dead), 1)}}
+				"87357", strconv.Itoa(dead), 1)}}, nil
 		},
 	))
 
@@ -664,16 +665,16 @@ func TestAGroupWhoseTreeIsGONEIsStillReapedFromItsArgv(t *testing.T) {
 // uses, applied to the same name from the other side.
 func TestALiveRunsBrowsersAreNOTReapedFromArgv(t *testing.T) {
 	defer restoreReaper(swapReaper(
-		func(int) []string { return []string{chromeArgvFromTheField} },
+		func(int) ([]string, error) { return []string{chromeArgvFromTheField}, nil },
 		func(int, syscall.Signal) error { return nil },
 	))
-	defer func(old func() []procLine) { listAllProcesses = old }(swapProcessTable(
-		func() []procLine {
+	defer func(old func() ([]procLine, error)) { listAllProcesses = old }(swapProcessTable(
+		func() ([]procLine, error) {
 			// OUR OWN PID IN THE NAME: this process is alive by definition, so
 			// its browsers are a live run's, which is exactly the case a
 			// neighbouring rumor job presents.
 			return []procLine{{pgid: 88126, command: strings.Replace(
-				chromeArgvFromTheField, "87357", strconv.Itoa(os.Getpid()), 1)}}
+				chromeArgvFromTheField, "87357", strconv.Itoa(os.Getpid()), 1)}}, nil
 		},
 	))
 
@@ -706,7 +707,7 @@ func TestTheSweepKeepsTheTreeOfAGroupItWillNotReap(t *testing.T) {
 	recordPGID(stale, 4242)
 	defer restoreReaper(swapReaper(
 		// A STRANGER IN THE GROUP, so the reap refuses and the group lives.
-		func(int) []string { return []string{"/usr/bin/vi notes.txt"} },
+		func(int) ([]string, error) { return []string{"/usr/bin/vi notes.txt"}, nil },
 		func(int, syscall.Signal) error { return nil },
 	))
 
@@ -800,13 +801,13 @@ func TestATreeWithNoHandleIsHELDWhileAProcessStillNamesIt(t *testing.T) {
 	}
 	// NO recordPGID CALL: that is the whole point of the shape.
 	defer restoreReaper(swapReaper(
-		func(int) []string { return nil },
+		func(int) ([]string, error) { return nil, nil },
 		func(int, syscall.Signal) error { return nil },
 	))
-	defer func(old func() []procLine) { listAllProcesses = old }(swapProcessTable(
-		func() []procLine {
+	defer func(old func() ([]procLine, error)) { listAllProcesses = old }(swapProcessTable(
+		func() ([]procLine, error) {
 			return []procLine{{pgid: 88126, command: strings.Replace(
-				chromeArgvFromTheField, "87357-3668960404", ghost[len(tmpdirPrefix):], 1)}}
+				chromeArgvFromTheField, "87357-3668960404", ghost[len(tmpdirPrefix):], 1)}}, nil
 		},
 	))
 
@@ -865,19 +866,19 @@ func TestAStrandedGroupWITHAHandleIsReapedNotRecovered(t *testing.T) {
 	// a real stranded chrome does. Only the order decides which counter moves.
 	listings := 0
 	defer restoreReaper(swapReaper(
-		func(int) []string {
+		func(int) ([]string, error) {
 			listings++
 			if listings > 1 {
-				return nil
+				return nil, nil
 			}
-			return []string{chromeArgvFromTheField}
+			return []string{chromeArgvFromTheField}, nil
 		},
 		func(int, syscall.Signal) error { return nil },
 	))
-	defer func(old func() []procLine) { listAllProcesses = old }(swapProcessTable(
-		func() []procLine {
+	defer func(old func() ([]procLine, error)) { listAllProcesses = old }(swapProcessTable(
+		func() ([]procLine, error) {
 			return []procLine{{pgid: 35589, command: strings.Replace(
-				chromeArgvFromTheField, "rumor-browser-87357-3668960404", tree, 1)}}
+				chromeArgvFromTheField, "rumor-browser-87357-3668960404", tree, 1)}}, nil
 		},
 	))
 
@@ -946,4 +947,123 @@ func TestTheSweepsLineNAMESWhatItRecoveredHeldAndRefused(t *testing.T) {
 	if got := sweepReport(sweepTally{kept: 3}); got != "" {
 		t.Errorf("a sweep that did nothing said %q", got)
 	}
+}
+
+// TestAnUnreadableProcessTableHoldsEverythingAndSaysSo is the arm for the
+// defect run #790 could have been: psAllProcesses used to answer nil on error,
+// and nil is indistinguishable from a box running nothing. reapGroup read that
+// as reapEmpty -- whose own comment calls it benign and ordinary -- and
+// treeStillClaimed looped over nothing and said no process claims this tree.
+// So ONE failed exec could delete a live group's tree and report `reaped 0`,
+// which is precisely the pair of lines #790 printed (ibis, coop r10/20-21).
+func TestAnUnreadableProcessTableHoldsEverythingAndSaysSo(t *testing.T) {
+	dir := t.TempDir()
+	stale := filepath.Join(dir, fmt.Sprintf("%s%d-blind", tmpdirPrefix, deadPID(t)))
+	if err := os.MkdirAll(stale, 0o755); err != nil {
+		t.Fatalf("planting the tree: %v", err)
+	}
+	recordPGID(stale, 4242)
+
+	blind := errors.New("ps: cannot fork")
+	var signalled []int
+	defer restoreReaper(swapReaper(
+		func(int) ([]string, error) { return nil, blind },
+		func(pgid int, _ syscall.Signal) error { signalled = append(signalled, pgid); return nil },
+	))
+	defer func(old func() ([]procLine, error)) { listAllProcesses = old }(swapProcessTable(
+		func() ([]procLine, error) { return nil, blind },
+	))
+
+	got := sweepAndReapIn(dir)
+
+	if _, err := os.Stat(filepath.Join(stale, pgidFile)); err != nil {
+		t.Fatalf("a tree was deleted on a reading that COULD NOT BE TAKEN: %v -- the "+
+			"old shape answered nil here and the sweep read it as an empty box", err)
+	}
+	if got.removed != 0 || got.reaped != 0 || got.recovered != 0 {
+		t.Errorf("removed=%d reaped=%d recovered=%d, want 0, 0 and 0: nothing may be "+
+			"collected or signalled on a table nobody could read",
+			got.removed, got.reaped, got.recovered)
+	}
+	if len(signalled) != 0 {
+		t.Errorf("signals went to %v on an unreadable table", signalled)
+	}
+	if got.unreadable == 0 {
+		t.Error("the sweep did not count the unreadable reading, so its line cannot " +
+			"distinguish \"I could not look\" from \"there was nothing there\"")
+	}
+	if line := sweepReport(got); !strings.Contains(line, "COULD NOT READ the process table") {
+		t.Errorf("the sweep's line does not say it was blind: %q", line)
+	}
+	// AND THE LINE NAMES THE PROCESS THAT SWEPT, so several binaries' lines in
+	// one batched job log can be told apart -- the thing #790's two lines could
+	// not be, which left a race and a ps failure indistinguishable.
+	if line := sweepReport(got); !strings.Contains(line, fmt.Sprintf("pid %d ", os.Getpid())) {
+		t.Errorf("the sweep's line does not name the sweeper: %q", line)
+	}
+}
+
+// TestEachBlindReadingIsGUARDEDSEPARATELY exists because one fixture could not
+// tell the guards apart. With BOTH readings failing and a tree that records a
+// pgid, the tree is held by the per-group branch and `unreadable` is counted by
+// the argv pass -- so deleting either of the other two guards changed nothing
+// the first arm asserts, and two mutants lived through it. Each case below is
+// shaped so exactly one guard can satisfy it.
+func TestEachBlindReadingIsGUARDEDSEPARATELY(t *testing.T) {
+	blind := errors.New("ps: cannot fork")
+
+	// ONE: the PER-GROUP reading fails while the whole table reads fine. Only
+	// reapGroup's own error branch can see this, so reapUnreadable must be
+	// counted here or the outcome renders as the benign reapEmpty.
+	t.Run("the per-group reading fails", func(t *testing.T) {
+		dir := t.TempDir()
+		stale := filepath.Join(dir, fmt.Sprintf("%s%d-onlygroup", tmpdirPrefix, deadPID(t)))
+		if err := os.MkdirAll(stale, 0o755); err != nil {
+			t.Fatalf("planting: %v", err)
+		}
+		recordPGID(stale, 4242)
+		defer restoreReaper(swapReaper(
+			func(int) ([]string, error) { return nil, blind },
+			func(int, syscall.Signal) error { return nil },
+		))
+		defer func(old func() ([]procLine, error)) { listAllProcesses = old }(swapProcessTable(
+			func() ([]procLine, error) { return nil, nil },
+		))
+		got := sweepStaleTmpdirsIn(dir)
+		if got.unreadable != 1 {
+			t.Errorf("unreadable=%d, want 1: the TREE pass read an error from the "+
+				"group listing and did not count it, so the outcome renders as "+
+				"reapEmpty, which this package documents as benign and ordinary",
+				got.unreadable)
+		}
+		if got.removed != 0 {
+			t.Errorf("removed=%d, want 0", got.removed)
+		}
+	})
+
+	// TWO: the WHOLE-TABLE reading fails and the tree records NO pgid, so the
+	// per-group branch cannot fire and only treeStillClaimed's own error branch
+	// stands between a live group's tree and deletion.
+	t.Run("the whole-table reading fails with no handle to fall back on", func(t *testing.T) {
+		dir := t.TempDir()
+		ghost := fmt.Sprintf("%s%d-nohandle", tmpdirPrefix, deadPID(t))
+		if err := os.MkdirAll(filepath.Join(dir, ghost), 0o755); err != nil {
+			t.Fatalf("planting: %v", err)
+		}
+		defer restoreReaper(swapReaper(
+			func(int) ([]string, error) { return nil, nil },
+			func(int, syscall.Signal) error { return nil },
+		))
+		defer func(old func() ([]procLine, error)) { listAllProcesses = old }(swapProcessTable(
+			func() ([]procLine, error) { return nil, blind },
+		))
+		got := sweepStaleTmpdirsIn(dir)
+		if _, err := os.Stat(filepath.Join(dir, ghost)); err != nil {
+			t.Fatalf("the tree was deleted on an unreadable table: %v -- this is the "+
+				"re-created ghost shape, whose only tie to its processes is argv", err)
+		}
+		if got.held != 1 || got.removed != 0 {
+			t.Errorf("held=%d removed=%d, want 1 and 0", got.held, got.removed)
+		}
+	})
 }

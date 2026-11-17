@@ -109,7 +109,14 @@ func TestEveryProofLineGoesThroughTheHelper(t *testing.T) {
 	// CI's tee actually produces and the one a `go test -json` fixture would
 	// have hidden; the other holds that a stream mixing JSON with a plain build
 	// error still reports and says it was mixed.
-	const sitesInTrackedTests = 230
+	// 230 -> 231 is the gate on ci.yml's fixed-string test.log patterns. ci
+	// mines ../test.log for lines internal/browser writes to stderr, and
+	// nothing tied the grep to the emitting format string: when the sweep's
+	// line gained the sweeping pid, 'browser: swept' stopped matching anything
+	// the code can emit, and that view would have printed its REASSURING
+	// sentence on a run that swept 47 trees. The new arm reads ci.yml's own
+	// text and requires each pattern to be a literal in internal/browser.
+	const sitesInTrackedTests = 231
 	if sites != sitesInTrackedTests {
 		t.Errorf("%d call(s) of the helper in tracked test files, want %d: if that is "+
 			"deliberate, move the literal with it; if not, PROOF lines have been lost",

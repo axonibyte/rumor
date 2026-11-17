@@ -377,8 +377,14 @@ jobs:
           # rc DISCIPLINE AS ABOVE: 1 is "no match" and is the only rc that may
           # print the reassuring sentence; anything higher is the instrument
           # failing and says so.
+          # THE PATTERN IS THE PREFIX THE LINE CANNOT LOSE. It was
+          # 'browser: swept' until the line gained the sweeping process's pid
+          # -- `browser: pid 19595 swept ...` -- which that pattern does not
+          # match, so this view would have gone silently blind on the very head
+          # that made the line more useful. The prefix up to the colon is the
+          # part the format owns; everything after it is free to change.
           src=0
-          grep -a 'browser: swept' ../test.log > ../swept.txt || src=$?
+          grep -a 'browser: ' ../test.log > ../swept.txt || src=$?
           case "$src" in
             0) echo "--- the browser sweep reported:"; sed -n '1,20p' ../swept.txt ;;
             1) echo "--- the browser sweep collected nothing this run" ;;

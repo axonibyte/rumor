@@ -186,13 +186,14 @@ func sweepAndReapIn(dir string) sweepTally {
 // sentence. A named field per outcome makes the next addition say its name in
 // the report or not compile.
 type sweepTally struct {
-	removed   int // trees deleted
-	reaped    int // groups signalled from the handle their own tree recorded
-	recovered int // groups signalled from argv, no tree's handle claiming them
-	refused   int // groups LEFT ALIVE because they are not wholly ours
-	nohandle  int // stale trees that recorded no pgid at all
-	held      int // trees something running still names, so they were not removed
-	kept      int // trees whose maker is still alive
+	removed    int // trees deleted
+	reaped     int // groups signalled from the handle their own tree recorded
+	recovered  int // groups signalled from argv, no tree's handle claiming them
+	refused    int // groups LEFT ALIVE because they are not wholly ours
+	nohandle   int // stale trees that recorded no pgid at all
+	held       int // trees something running still names, so they were not removed
+	kept       int // trees whose maker is still alive
+	unreadable int // times the process table could not be read at all
 
 	// AND THE IDENTITIES FOR THE OUTCOMES A READER HAS TO CHASE. The counts
 	// alone cost this head a whole night: #787 reported "RECOVERED 1 group(s)"
@@ -217,6 +218,7 @@ func (t *sweepTally) absorb(o sweepTally) {
 	t.nohandle += o.nohandle
 	t.held += o.held
 	t.kept += o.kept
+	t.unreadable += o.unreadable
 	t.reapedGroups = append(t.reapedGroups, o.reapedGroups...)
 	t.recoveredGroups = append(t.recoveredGroups, o.recoveredGroups...)
 	t.refusedGroups = append(t.refusedGroups, o.refusedGroups...)
@@ -289,6 +291,11 @@ func sweepStaleTmpdirsIn(dir string) sweepTally {
 			// COUNTED, because a tree with no handle must be legible as that
 			// and not as a reap. The argv pass is what reaches its group.
 			t.nohandle++
+		case reapUnreadable:
+			// NOTHING IS KNOWN about this group, which is neither a reap nor a
+			// refusal nor an empty group. The gate below holds the tree,
+			// because treeStillClaimed answers the same unreadable table.
+			t.unreadable++
 		}
 		// A TREE IS NEVER REMOVED WHILE ANYTHING STILL NAMES IT, by pgid or by
 		// argv (fable, coop r10/5). Removing it deletes driver.pgid, the only
@@ -329,10 +336,20 @@ func sweepStaleTmpdirsIn(dir string) sweepTally {
 // live group's only handle cost 4.70 GiB of resident chrome in task 1253. A
 // reader who finds an ancient tree here is looking at the price, not the bug.
 func treeStillClaimed(name string, pgid int) bool {
-	if pgid > 1 && groupHasMembers(pgid) {
+	if pgid > 1 {
+		members, err := listGroupMembers(pgid)
+		// CANNOT LOOK COUNTS AS CLAIMED. The alternative is what shipped
+		// before: a failed ps answered "nothing claims this tree" and the
+		// sweep deleted it while the group ran.
+		if err != nil || len(members) > 0 {
+			return true
+		}
+	}
+	procs, err := listAllProcesses()
+	if err != nil {
 		return true
 	}
-	for _, proc := range listAllProcesses() {
+	for _, proc := range procs {
 		if _, named, ok := treeInArgv(proc.command); ok && named == name {
 			return true
 		}
@@ -375,7 +392,12 @@ func treeStillClaimed(name string, pgid int) bool {
 // on top of it.
 func reapOrphansByArgv() sweepTally {
 	var t sweepTally
-	for pgid := range argvOrphanGroups() {
+	groups, err := argvOrphanGroups()
+	if err != nil {
+		t.unreadable++
+		return t
+	}
+	for pgid := range groups {
 		switch reapGroup(pgid) {
 		case reapSignalled:
 			t.recovered++
@@ -395,10 +417,19 @@ func reapOrphansByArgv() sweepTally {
 // CONCURRENT run's browsers name ITS tree, whose pid is alive, so they are
 // skipped. This is the same guard that keeps the tree sweep from deleting a
 // live run's directory, applied to the same name from the other side.
-func argvOrphanGroups() map[int]string {
+func argvOrphanGroups() (map[int]string, error) {
 	self := os.Getpid()
 	found := map[int]string{}
-	for _, proc := range listAllProcesses() {
+	procs, err := listAllProcesses()
+	if err != nil {
+		// NOTHING IS RECOVERED WHEN NOTHING CAN BE READ, which is the safe
+		// direction here: this pass only ever SIGNALS, so an unreadable table
+		// must yield no targets rather than a guess -- and the error goes UP,
+		// so the report can say the pass was blind instead of saying it found
+		// nothing.
+		return found, err
+	}
+	for _, proc := range procs {
 		if proc.pgid <= 1 {
 			continue
 		}
@@ -408,7 +439,7 @@ func argvOrphanGroups() map[int]string {
 		}
 		found[proc.pgid] = name
 	}
-	return found
+	return found, nil
 }
 
 // treeInArgv answers the owned tree a command line names, and false for a
@@ -462,11 +493,18 @@ func treeInArgv(command string) (owner int, name string, ok bool) {
 // noise on the ordinary path and would train a reader to skip it.
 func sweepReport(t sweepTally) string {
 	if t.removed == 0 && t.reaped == 0 && t.recovered == 0 && t.refused == 0 &&
-		t.nohandle == 0 && t.held == 0 {
+		t.nohandle == 0 && t.held == 0 && t.unreadable == 0 {
 		return ""
 	}
-	line := fmt.Sprintf("browser: swept %d stale tree(s), reaped %d browser group(s), "+
-		"left %d in use", t.removed, t.reaped, t.kept)
+	// THE SWEEPER NAMES ITSELF. `go test` runs a binary per package, several at
+	// once, and each sweeps on its first Start -- so a job log can hold several
+	// of these lines with no way to tell which process wrote which, or in what
+	// order, because the runner flushes the whole step at once and every line
+	// carries the same stamp. That is why run #790's two lines could not be
+	// ordered, and why one of the two explanations for them (a race between
+	// binaries) could not be separated from the other (ibis, coop r10/21).
+	line := fmt.Sprintf("browser: pid %d swept %d stale tree(s), reaped %d browser "+
+		"group(s), left %d in use", os.Getpid(), t.removed, t.reaped, t.kept)
 	if t.reaped > 0 {
 		// NAMED, AND THIS IS THE ONE A CLEAR IS ASKED FOR. fable's done-when at
 		// coop r10/10 is "the next run's sweep saying reaped 1", so the figure
@@ -490,6 +528,14 @@ func sweepReport(t sweepTally) string {
 	if t.held > 0 {
 		line += fmt.Sprintf("; HELD %d tree(s) that something running still names: %s",
 			t.held, nameSome(t.heldTrees, 4))
+	}
+	if t.unreadable > 0 {
+		// LOUD, AND FIRST AMONG THE ALARMS, because every other number in this
+		// line was computed from a table this sweep could not read: nothing was
+		// removed, nothing was reaped, and nothing should be believed about
+		// what is running.
+		line += fmt.Sprintf("; COULD NOT READ the process table %d time(s), so "+
+			"every tree was held and no group was examined", t.unreadable)
 	}
 	if t.refused > 0 {
 		// NAMED LOUDLY AND LAST, where a reader's eye ends: a refusal means a
@@ -597,7 +643,12 @@ func reapGroup(pgid int) reapOutcome {
 	if pgid <= 1 {
 		return reapNoHandle
 	}
-	members := listGroupMembers(pgid)
+	members, err := listGroupMembers(pgid)
+	if err != nil {
+		// ITS OWN OUTCOME, so "I could not look" never again renders as the
+		// benign "the group is gone" (ibis, coop r10/21).
+		return reapUnreadable
+	}
 	if len(members) == 0 {
 		return reapEmpty
 	}
@@ -631,6 +682,10 @@ const (
 	reapRefused
 	// reapSignalled: the group was ours and was stopped.
 	reapSignalled
+	// reapUnreadable: the process table could not be read, so NOTHING is known
+	// about this group. It is not empty, it is unexamined, and the two read
+	// identically in the shape that shipped before r10/21.
+	reapUnreadable
 )
 
 // THE TWO SYSCALLS ARE REACHED THROUGH VARIABLES so that the decisions above
@@ -654,14 +709,18 @@ var (
 // everything after the first `=`, so the comma form silently answers a list
 // that cannot contain what this is looking for. browser_test.go's own leak
 // check carries the same note, and it cost six wrong readings to relearn.
-func psGroupMembers(pgid int) []string {
+func psGroupMembers(pgid int) ([]string, error) {
+	procs, err := psAllProcesses()
+	if err != nil {
+		return nil, err
+	}
 	var members []string
-	for _, proc := range psAllProcesses() {
+	for _, proc := range procs {
 		if proc.pgid == pgid {
 			members = append(members, proc.command)
 		}
 	}
-	return members
+	return members, nil
 }
 
 // procLine is one process as ps answers it: the group it belongs to, and the
@@ -676,12 +735,22 @@ type procLine struct {
 // THE SAME READING SERVES BOTH QUESTIONS -- which processes are in one group,
 // and which groups name a tree of ours -- so there is one ps form to get wrong
 // and one place to fix it.
-func psAllProcesses() []procLine {
+func psAllProcesses() ([]procLine, error) {
 	out, err := exec.Command("ps", "-axww", "-o", "pgid=", "-o", "command=").Output()
 	if err != nil {
-		return nil
+		// THE ERROR IS CARRIED AND NOT SWALLOWED, because the previous shape
+		// returned nil here and nil is indistinguishable from "this box is
+		// running nothing". Every caller then read a FAILED ps as an EMPTY
+		// process table: reapGroup answered reapEmpty, whose own comment calls
+		// that benign and ordinary, and treeStillClaimed looped over nothing
+		// and said no process claims this tree. So one failed exec could make
+		// the sweep delete a live group's tree and report `reaped 0` -- which
+		// is exactly the pair of lines run #790 printed, and the reason I
+		// cannot say from that log whether it was this or two binaries racing
+		// (ibis, coop r10/20-21).
+		return nil, fmt.Errorf("reading the process table: %w", err)
 	}
-	return parsePSTable(out)
+	return parsePSTable(out), nil
 }
 
 // parsePSTable takes the two-column reading apart. It is separate from the
@@ -704,7 +773,13 @@ func parsePSTable(out []byte) []procLine {
 	return procs
 }
 
-func groupHasMembers(pgid int) bool { return len(listGroupMembers(pgid)) > 0 }
+// groupHasMembers answers whether a group still holds anything, and treats a
+// reading it could not take as "yes": every caller is deciding whether to stop
+// waiting or to delete something, and both are safer held than hurried.
+func groupHasMembers(pgid int) bool {
+	members, err := listGroupMembers(pgid)
+	return err != nil || len(members) > 0
+}
 
 // membersAreOurs holds when a group is non-empty and everything in it is a
 // browser or its driver. A single foreign member is enough to refuse: the
