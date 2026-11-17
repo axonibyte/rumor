@@ -193,6 +193,19 @@ type sweepTally struct {
 	nohandle  int // stale trees that recorded no pgid at all
 	held      int // trees something running still names, so they were not removed
 	kept      int // trees whose maker is still alive
+
+	// AND THE IDENTITIES FOR THE OUTCOMES A READER HAS TO CHASE. The counts
+	// alone cost this head a whole night: #787 reported "RECOVERED 1 group(s)"
+	// and nothing in the line said WHICH, so attributing it to the group a
+	// cancelled run had stranded rested on my own wall-clock notes and could
+	// not be re-derived by anyone else from the log (ibis, coop r10/15). A
+	// number says work happened; a name says what it happened to.
+	//
+	// ONLY THE RARE OUTCOMES. removed, nohandle and kept are bulk -- 47 in one
+	// field sweep -- and naming them would bury the two that mean something.
+	recoveredGroups []int    // pgids argv reached that no handle claimed
+	refusedGroups   []int    // pgids left ALIVE, members not wholly ours
+	heldTrees       []string // trees kept because something still names them
 }
 
 func (t *sweepTally) absorb(o sweepTally) {
@@ -203,6 +216,34 @@ func (t *sweepTally) absorb(o sweepTally) {
 	t.nohandle += o.nohandle
 	t.held += o.held
 	t.kept += o.kept
+	t.recoveredGroups = append(t.recoveredGroups, o.recoveredGroups...)
+	t.refusedGroups = append(t.refusedGroups, o.refusedGroups...)
+	t.heldTrees = append(t.heldTrees, o.heldTrees...)
+}
+
+// nameSome renders identities for a report line, bounded so one pathological
+// sweep cannot produce a line nothing will read.
+//
+// THE ELIDED COUNT IS DERIVED AND NOT WRITTEN DOWN, which is the difference
+// between this and the figures quill retired at coop r10/13: a hand-maintained
+// total goes stale silently, while len() cannot.
+func nameSome[T any](xs []T, limit int) string {
+	if len(xs) == 0 {
+		return ""
+	}
+	shown := xs
+	if len(shown) > limit {
+		shown = shown[:limit]
+	}
+	parts := make([]string, 0, len(shown))
+	for _, x := range shown {
+		parts = append(parts, fmt.Sprint(x))
+	}
+	out := strings.Join(parts, ", ")
+	if rest := len(xs) - len(shown); rest > 0 {
+		out += fmt.Sprintf(" and %d more", rest)
+	}
+	return out
 }
 
 // sweepStaleTmpdirsIn is the sweep over a named directory, so an arm can drive
@@ -240,6 +281,7 @@ func sweepStaleTmpdirsIn(dir string) sweepTally {
 			// COUNTED SEPARATELY, because this is the outcome a reader must
 			// not mistake for "nothing needed doing": the group is RUNNING.
 			t.refused++
+			t.refusedGroups = append(t.refusedGroups, pgid)
 		case reapNoHandle:
 			// COUNTED, because a tree with no handle must be legible as that
 			// and not as a reap. The argv pass is what reaches its group.
@@ -258,6 +300,7 @@ func sweepStaleTmpdirsIn(dir string) sweepTally {
 		// record existed -- which the next sweep removes again, forever.
 		if treeStillClaimed(e.Name(), pgid) {
 			t.held++
+			t.heldTrees = append(t.heldTrees, e.Name())
 			continue
 		}
 		if err := os.RemoveAll(tree); err == nil {
@@ -333,8 +376,10 @@ func reapOrphansByArgv() sweepTally {
 		switch reapGroup(pgid) {
 		case reapSignalled:
 			t.recovered++
+			t.recoveredGroups = append(t.recoveredGroups, pgid)
 		case reapRefused:
 			t.refused++
+			t.refusedGroups = append(t.refusedGroups, pgid)
 		}
 	}
 	return t
@@ -422,23 +467,26 @@ func sweepReport(t sweepTally) string {
 	if t.recovered > 0 {
 		// THE ONE A READER MUST SEE NEXT, because it means the first pass
 		// missed a live group: the tree that should have named it was gone or
-		// recorded nothing, and argv is what found it instead.
+		// recorded nothing, and argv is what found it instead. NAMED, so the
+		// next reader does not have to take the attribution on trust the way
+		// #787's "RECOVERED 1 group(s)" had to be taken on mine.
 		line += fmt.Sprintf("; RECOVERED %d group(s) from argv that no tree's "+
-			"handle claimed", t.recovered)
+			"handle claimed: pgid %s", t.recovered, nameSome(t.recoveredGroups, 4))
 	}
 	if t.nohandle > 0 {
 		line += fmt.Sprintf("; %d stale tree(s) recorded no handle", t.nohandle)
 	}
 	if t.held > 0 {
-		line += fmt.Sprintf("; HELD %d tree(s) that something running still names", t.held)
+		line += fmt.Sprintf("; HELD %d tree(s) that something running still names: %s",
+			t.held, nameSome(t.heldTrees, 4))
 	}
 	if t.refused > 0 {
 		// NAMED LOUDLY AND LAST, where a reader's eye ends: a refusal means a
 		// group of ours was left RUNNING, which is the leak still happening
 		// rather than the sweep working.
 		line += fmt.Sprintf("; REFUSED %d group(s) that are still alive and not "+
-			"wholly ours -- recycled pgid, or our orphans with a stranger in the group",
-			t.refused)
+			"wholly ours -- recycled pgid, or our orphans with a stranger in the "+
+			"group: pgid %s", t.refused, nameSome(t.refusedGroups, 4))
 	}
 	return line
 }

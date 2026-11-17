@@ -878,3 +878,40 @@ func TestAStrandedGroupWITHAHandleIsReapedNotRecovered(t *testing.T) {
 			"sitting right there in the tree", got.recovered)
 	}
 }
+
+// TestTheSweepsLineNAMESWhatItRecoveredHeldAndRefused closes the gap the field
+// reading left open. #787's line said "RECOVERED 1 group(s) from argv that no
+// tree's handle claimed" and named nothing, so tying that recovery to the group
+// a cancelled run had stranded rested on my own wall-clock measurements and
+// could not be re-derived from the log by anyone else (ibis, coop r10/15). A
+// count says work happened; a name says what it happened to.
+func TestTheSweepsLineNAMESWhatItRecoveredHeldAndRefused(t *testing.T) {
+	line := sweepReport(sweepTally{
+		recovered: 1, recoveredGroups: []int{35589},
+		held: 1, heldTrees: []string{"rumor-browser-12502-176799846"},
+		refused: 1, refusedGroups: []int{4242},
+	})
+	for _, want := range []string{"pgid 35589", "rumor-browser-12502-176799846", "pgid 4242"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("the sweep's line omits %q, so a reader cannot say WHICH: %q", want, line)
+		}
+	}
+
+	// BOUNDED, AND THE ELIDED COUNT IS DERIVED. One field sweep met 47 stale
+	// trees; a line that named every identity would be one nobody reads. The
+	// "and N more" comes from len(), so it cannot drift the way a written
+	// figure does (quill, coop r10/13).
+	many := sweepTally{recovered: 6, recoveredGroups: []int{1, 2, 3, 4, 5, 6}}
+	if got := sweepReport(many); !strings.Contains(got, "and 2 more") {
+		t.Errorf("a six-group recovery did not elide with a derived count: %q", got)
+	}
+	if strings.Contains(sweepReport(many), "pgid 5") {
+		t.Errorf("the line named past its bound: %q", sweepReport(many))
+	}
+
+	// AND A SWEEP WITH NOTHING TO SAY STILL SAYS NOTHING, so the identities
+	// cannot turn the quiet path noisy.
+	if got := sweepReport(sweepTally{kept: 3}); got != "" {
+		t.Errorf("a sweep that did nothing said %q", got)
+	}
+}
