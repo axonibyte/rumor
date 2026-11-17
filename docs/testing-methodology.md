@@ -2456,3 +2456,38 @@ looked implemented and did nothing. A fixture built from `go test -json` would
 have passed over that, so `tests/hygiene` drives the Package-less stream
 instead, and a second arm holds that a stream mixing JSON with a plain build
 error still reports and says it was mixed.
+
+**A SWEEP THAT COUNTS ONLY ITS SUCCESSES CANNOT REPORT A LEAK, AND MINE DID
+NOT.** Task 1254's startup sweep printed `swept 47 stale tree(s), reaped 0
+browser group(s), left 0 in use` on a green run. That line was the whole story
+it could tell, and the story was wrong: cancelled task 1253 had left group
+88126 running — one chromedriver and 32 `chrome:`, reparented onto pid 1, 4.70
+GiB RSS summed — and the sweep had just DELETED that group's tree, which was
+where its `driver.pgid` lived. Four reap outcomes existed and only two were
+counted, so `reapNoHandle` and `reapEmpty` both landed in the gap: "nothing
+needed doing" and "I dropped the only handle on 33 live processes" printed the
+same sentence. Every field sweep there has ever been read `reaped 0` (1251
+swept 1, 1254 swept 47) and the number looked like quiet.
+
+**SO THE TALLY IS A STRUCT WITH A FIELD PER OUTCOME, AND THE LINE NAMES EACH.**
+A new outcome now either appears in the report or is a name nobody reads, which
+is visible; before, it was a count nobody kept. The arm drives the 1254 shape
+directly: a report of 47 removed with 47 no-handle must not read identically to
+a report of 47 removed whose groups were simply gone.
+
+**AND A GROUP THAT IS STILL RUNNING KEEPS ITS TREE.** Removing the tree of a
+refused group destroys the record this package holds on it, which is how a
+leaked group stops being reclaimable by any later run — a permanent orphan
+rather than one the next sweep clears. The tree is a few bytes; the handle is
+the only thing that reaches 33 processes.
+
+**THE SECOND HANDLE IS ARGV, AND THE MEASUREMENT THAT DEFERRED IT HAD EXPIRED.**
+With `TMPDIR` owned, chrome's `--user-data-dir` sits inside a tree this package
+made, so a stray proves its own provenance *after its tree is gone* — which is
+exactly the state 1254 left group 88126 in. This was written down as the safe
+form and declined on a reading: of the 234 strays drained on 2026-11-16, 0
+named a tree of ours. That reading was taken on orphans made BEFORE the owned
+TMPDIR and does not hold for any made after it: 32 of 88126's 33 named theirs.
+A blocker recorded with its measurement has to be re-measured before it is
+re-used, and nothing about reaching the group was ever hard — one SIGTERM to
+`-88126` took 33 members to 0.

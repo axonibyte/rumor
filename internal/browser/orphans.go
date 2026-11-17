@@ -131,18 +131,51 @@ func aliveElsewhere(pid int) bool {
 // effect on the way into a run that has real work to do; failing the run
 // because a sweep could not read a directory would trade a reclaimed
 // directory for a lost suite.
-func sweepStaleTmpdirs() (removed, reaped, refused, kept int) {
-	return sweepStaleTmpdirsIn(os.TempDir())
+func sweepStaleTmpdirs() sweepTally {
+	// THE ARGV PASS GOES FIRST so a group no tree's handle claims is already
+	// stopped when the tree pass decides whether its tree may go.
+	t := reapOrphansByArgv()
+	t.absorb(sweepStaleTmpdirsIn(os.TempDir()))
+	return t
+}
+
+// sweepTally is what one sweep did, by outcome and with every outcome named.
+//
+// A STRUCT AND NOT MORE RETURN VALUES, because the thing that went wrong in
+// the field was an outcome NOBODY COUNTED. reapNoHandle and reapEmpty both
+// landed in the gap between `reaped` and `refused`, so a sweep that dropped
+// the handle on a live group and a sweep with nothing to do printed the same
+// sentence. A named field per outcome makes the next addition say its name in
+// the report or not compile.
+type sweepTally struct {
+	removed   int // trees deleted
+	reaped    int // groups signalled from the handle their own tree recorded
+	recovered int // groups signalled from argv, no tree's handle claiming them
+	refused   int // groups LEFT ALIVE because they are not wholly ours
+	nohandle  int // stale trees that recorded no pgid at all
+	held      int // trees something running still names, so they were not removed
+	kept      int // trees whose maker is still alive
+}
+
+func (t *sweepTally) absorb(o sweepTally) {
+	t.removed += o.removed
+	t.reaped += o.reaped
+	t.recovered += o.recovered
+	t.refused += o.refused
+	t.nohandle += o.nohandle
+	t.held += o.held
+	t.kept += o.kept
 }
 
 // sweepStaleTmpdirsIn is the sweep over a named directory, so an arm can drive
 // it against a tree it made rather than against the box's real /tmp -- where
 // the honest answer depends on what else is running and a passing arm would
 // prove nothing.
-func sweepStaleTmpdirsIn(dir string) (removed, reaped, refused, kept int) {
+func sweepStaleTmpdirsIn(dir string) sweepTally {
+	var t sweepTally
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return 0, 0, 0, 0
+		return t
 	}
 	self := os.Getpid()
 	for _, e := range entries {
@@ -154,26 +187,151 @@ func sweepStaleTmpdirsIn(dir string) (removed, reaped, refused, kept int) {
 			continue
 		}
 		if pid == self || aliveElsewhere(pid) {
-			kept++
+			t.kept++
 			continue
 		}
 		tree := filepath.Join(dir, e.Name())
 		// REAP BEFORE REMOVE, and in that order for the reason stopProcess
 		// gives: removing the tree while chrome still held files there would
 		// be deleting a live process's state.
-		switch reapGroup(readPGID(tree)) {
+		pgid := readPGID(tree)
+		switch reapGroup(pgid) {
 		case reapSignalled:
-			reaped++
+			t.reaped++
 		case reapRefused:
-			// LEFT ALIVE AND COUNTED SEPARATELY, because this is the outcome a
-			// reader must not mistake for "nothing needed doing".
-			refused++
+			// COUNTED SEPARATELY, because this is the outcome a reader must
+			// not mistake for "nothing needed doing": the group is RUNNING.
+			t.refused++
+		case reapNoHandle:
+			// COUNTED, because a tree with no handle must be legible as that
+			// and not as a reap. The argv pass is what reaches its group.
+			t.nohandle++
+		}
+		// A TREE IS NEVER REMOVED WHILE ANYTHING STILL NAMES IT, by pgid or by
+		// argv (fable, coop r10/5). Removing it deletes driver.pgid, the only
+		// handle, while the group is still running -- which is what task 1254
+		// did to group 88126 and is how a leak stops being reclaimable.
+		//
+		// AND THE TREE COMES BACK IF YOU DO IT ANYWAY. Measured on forge-01:
+		// 88126's tree was absent at 03:49:0x and BORN AGAIN at 03:49:08, with
+		// a fresh profile dir and no driver.pgid, re-created by the survivors
+		// themselves. So the removal does not merely lose the handle, it
+		// manufactures a tree indistinguishable from one made before the
+		// record existed -- which the next sweep removes again, forever.
+		if treeStillClaimed(e.Name(), pgid) {
+			t.held++
+			continue
 		}
 		if err := os.RemoveAll(tree); err == nil {
-			removed++
+			t.removed++
 		}
 	}
-	return removed, reaped, refused, kept
+	return t
+}
+
+// treeStillClaimed reports whether anything running still refers to this tree:
+// the group its own record names, or a command line naming the directory.
+//
+// THE TWO QUESTIONS ARE NOT THE SAME ONE. A group can hold the tree with no
+// handle on disk (the re-created tree above), and a handle can name a group
+// whose members carry no data-dir in argv -- a chromedriver's own command line
+// is just `chromedriver --port=N`. Either claim is enough to hold the tree.
+//
+// AND THE PRICE OF THIS RULE IS A TREE THAT IS NEVER COLLECTED, which is
+// DELIBERATE and is not a defect to fix later (quill, coop r10/6). If a
+// recorded pgid is recycled onto a foreign process, the pgid check matches a
+// stranger and the directory stays forever. That is the safe direction by a
+// wide margin: an uncollectable 600 KB directory costs nothing, and deleting a
+// live group's only handle cost 4.70 GiB of resident chrome in task 1253. A
+// reader who finds an ancient tree here is looking at the price, not the bug.
+func treeStillClaimed(name string, pgid int) bool {
+	if pgid > 1 && groupHasMembers(pgid) {
+		return true
+	}
+	for _, proc := range listAllProcesses() {
+		if _, named, ok := treeInArgv(proc.command); ok && named == name {
+			return true
+		}
+	}
+	return false
+}
+
+// reapOrphansByArgv stops browser groups whose own tree can no longer speak
+// for them, finding them by the owned tree their command line still names.
+//
+// IT IS THE HANDLE OF LAST RESORT and it is deliberately second: a tree's
+// recorded pgid is the precise instrument, and this one reads argv, which is
+// only as good as what chrome happens to put there. It catches the two cases
+// the first pass cannot -- a tree removed while its group lived (task 1254) and
+// a tree that recorded no pgid at all -- and after the first pass has run, the
+// groups it already reaped are empty, so they cost a listing and nothing else.
+//
+// OURS BY CONSTRUCTION, WHICH IS THE WHOLE LICENSE FOR IT: the path it matches
+// on is a directory os.MkdirTemp made under this package's own prefix, with
+// the maker's pid in the name. A neighbour's browser in the same jail, under
+// the same unix user, running the same binaries, cannot have one in its argv
+// unless rumor gave it one. That is the distinction the name test could not
+// make, and refusing a group whose members are not all browsers still applies
+// on top of it.
+func reapOrphansByArgv() sweepTally {
+	var t sweepTally
+	for pgid := range argvOrphanGroups() {
+		switch reapGroup(pgid) {
+		case reapSignalled:
+			t.recovered++
+		case reapRefused:
+			t.refused++
+		}
+	}
+	return t
+}
+
+// argvOrphanGroups answers the groups that name an owned tree whose maker is
+// gone, one entry per group.
+//
+// THE MAKER'S PID IS THE LIVENESS TEST, exactly as it is for a tree on disk: a
+// CONCURRENT run's browsers name ITS tree, whose pid is alive, so they are
+// skipped. This is the same guard that keeps the tree sweep from deleting a
+// live run's directory, applied to the same name from the other side.
+func argvOrphanGroups() map[int]string {
+	self := os.Getpid()
+	found := map[int]string{}
+	for _, proc := range listAllProcesses() {
+		if proc.pgid <= 1 {
+			continue
+		}
+		owner, name, ok := treeInArgv(proc.command)
+		if !ok || owner == self || aliveElsewhere(owner) {
+			continue
+		}
+		found[proc.pgid] = name
+	}
+	return found
+}
+
+// treeInArgv answers the owned tree a command line names, and false for a
+// command line that names none.
+//
+// IT TAKES THE DIRECTORY NAME AND NOT THE WHOLE PATH, because what chrome
+// carries is a path INSIDE the tree -- `--user-data-dir=/tmp/rumor-browser-
+// 87357-3668960404/org.chromium.Chromium.scoped_dir.I7L6um` -- so the name
+// ends at the next separator, and ownerOfTmpdir then applies the same strict
+// test the sweep uses on a directory entry.
+func treeInArgv(command string) (owner int, name string, ok bool) {
+	i := strings.Index(command, tmpdirPrefix)
+	if i < 0 {
+		return 0, "", false
+	}
+	rest := command[i:]
+	end := strings.IndexAny(rest, "/ \t")
+	if end < 0 {
+		end = len(rest)
+	}
+	name = rest[:end]
+	if owner, ok = ownerOfTmpdir(name); !ok {
+		return 0, "", false
+	}
+	return owner, name, true
 }
 
 // sweepReport is the line the sweep says about itself, or "" when it found
@@ -188,19 +346,33 @@ func sweepStaleTmpdirsIn(dir string) (removed, reaped, refused, kept int) {
 //
 // QUIET WHEN THERE IS NOTHING TO SAY, because a line on every start would be
 // noise on the ordinary path and would train a reader to skip it.
-func sweepReport(removed, reaped, refused, kept int) string {
-	if removed == 0 && reaped == 0 && refused == 0 {
+func sweepReport(t sweepTally) string {
+	if t.removed == 0 && t.reaped == 0 && t.recovered == 0 && t.refused == 0 &&
+		t.nohandle == 0 && t.held == 0 {
 		return ""
 	}
 	line := fmt.Sprintf("browser: swept %d stale tree(s), reaped %d browser group(s), "+
-		"left %d in use", removed, reaped, kept)
-	if refused > 0 {
+		"left %d in use", t.removed, t.reaped, t.kept)
+	if t.recovered > 0 {
+		// THE ONE A READER MUST SEE NEXT, because it means the first pass
+		// missed a live group: the tree that should have named it was gone or
+		// recorded nothing, and argv is what found it instead.
+		line += fmt.Sprintf("; RECOVERED %d group(s) from argv that no tree's "+
+			"handle claimed", t.recovered)
+	}
+	if t.nohandle > 0 {
+		line += fmt.Sprintf("; %d stale tree(s) recorded no handle", t.nohandle)
+	}
+	if t.held > 0 {
+		line += fmt.Sprintf("; HELD %d tree(s) that something running still names", t.held)
+	}
+	if t.refused > 0 {
 		// NAMED LOUDLY AND LAST, where a reader's eye ends: a refusal means a
 		// group of ours was left RUNNING, which is the leak still happening
 		// rather than the sweep working.
 		line += fmt.Sprintf("; REFUSED %d group(s) that are still alive and not "+
 			"wholly ours -- recycled pgid, or our orphans with a stranger in the group",
-			refused)
+			t.refused)
 	}
 	return line
 }
@@ -266,15 +438,21 @@ func readPGID(tree string) int {
 // user and same binaries. That substitutes ours-BY-NAME for ours-BY-
 // CONSTRUCTION, which is the instrument that misread this leak twice.
 //
-// THE SAFE FORM, IF IT IS EVER WANTED, IS ARGV AND NOT A NAME: with TMPDIR
-// owned, chrome's --user-data-dir sits INSIDE a tree we made, so a stray can
-// prove its own provenance with no name test and even after its tree is gone.
-// It is not built here because widening what this tool may kill is a decision
-// about the tool and not a refactor. It also cannot reach the strays that
-// already exist: of the 234 in the jail, 0 named a tree of ours, 226 named
-// /tmp/org.chromium.*, and the 7 drivers carried no data-dir at all. Code
-// cannot own what was made before the provenance did, so draining those is a
-// one-time act by a human rather than anything this file should attempt.
+// THE SAFE FORM IS ARGV AND NOT A NAME, AND IT IS BUILT NOW -- see
+// reapOrphansByArgv. With TMPDIR owned, chrome's --user-data-dir sits INSIDE a
+// tree we made, so a stray proves its own provenance with no name test and
+// after its tree is gone.
+//
+// THE FIELD ASKED FOR IT, and the reason recorded here for deferring it had
+// expired. Task 1254 (cf559ba) swept 47 stale trees and reaped 0 while
+// cancelled task 1253's group 88126 was still running -- 1 chromedriver and 32
+// chrome, ppid 1, 4.70 GiB RSS summed -- because the sweep REMOVED that
+// group's tree, which is where its only handle lived. Nothing about reaching
+// it was hard: one SIGTERM to -88126 took 33 members to 0. The old reason was
+// that argv could not reach the strays that already existed -- of the 234
+// drained on 2026-11-16, 0 named a tree of ours. That holds for orphans made
+// BEFORE the owned TMPDIR and fails for every one made after it: 32 of 88126's
+// 33 named theirs.
 //
 // RECORDED AS AN ASSUMPTION WITH ITS SCOPE, because "closed" would quietly
 // inherit a box it was never measured on. MEASURED on FreeBSD 15.1-STABLE at
@@ -339,6 +517,7 @@ const (
 // question and quill drives it in a jail that has one.
 var (
 	listGroupMembers = psGroupMembers
+	listAllProcesses = psAllProcesses
 	signalGroupOf    = func(pgid int, sig syscall.Signal) error {
 		return syscall.Kill(-pgid, sig)
 	}
@@ -351,20 +530,53 @@ var (
 // that cannot contain what this is looking for. browser_test.go's own leak
 // check carries the same note, and it cost six wrong readings to relearn.
 func psGroupMembers(pgid int) []string {
+	var members []string
+	for _, proc := range psAllProcesses() {
+		if proc.pgid == pgid {
+			members = append(members, proc.command)
+		}
+	}
+	return members
+}
+
+// procLine is one process as ps answers it: the group it belongs to, and the
+// command line that may name the tree this package gave it.
+type procLine struct {
+	pgid    int
+	command string
+}
+
+// psAllProcesses answers every process this jail can see, with its group.
+//
+// THE SAME READING SERVES BOTH QUESTIONS -- which processes are in one group,
+// and which groups name a tree of ours -- so there is one ps form to get wrong
+// and one place to fix it.
+func psAllProcesses() []procLine {
 	out, err := exec.Command("ps", "-axww", "-o", "pgid=", "-o", "command=").Output()
 	if err != nil {
 		return nil
 	}
-	var members []string
-	want := strconv.Itoa(pgid)
+	return parsePSTable(out)
+}
+
+// parsePSTable takes the two-column reading apart. It is separate from the
+// command so an arm can drive the PARSING over a captured table, including the
+// one-column output the comma form produces, without a box that has the
+// processes in it.
+func parsePSTable(out []byte) []procLine {
+	var procs []procLine
 	for _, line := range strings.Split(string(out), "\n") {
 		f := strings.Fields(line)
-		if len(f) < 2 || f[0] != want {
+		if len(f) < 2 {
 			continue
 		}
-		members = append(members, strings.TrimSpace(line[len(f[0]):]))
+		pgid, err := strconv.Atoi(f[0])
+		if err != nil {
+			continue
+		}
+		procs = append(procs, procLine{pgid: pgid, command: strings.TrimSpace(line[len(f[0]):])})
 	}
-	return members
+	return procs
 }
 
 func groupHasMembers(pgid int) bool { return len(listGroupMembers(pgid)) > 0 }
