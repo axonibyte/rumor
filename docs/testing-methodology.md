@@ -2692,17 +2692,25 @@ budget or against it; it is the observation that no run in this population has
 yet demonstrated the thing the condition names, which is why the rule says
 *demonstrate* and not *argue*.
 
-**AND THE TAX IS REAL, WITH ITS BASELINE NAMED — WHICH IS WHERE A RATIO GOES
-WRONG.** In task 1161 every package ran about 3x its historical jail figure
-(`tests/attaint` 1263.976s, `tests/engine` 234.302s against the 424.883s and
-78.091s recorded in `ci.yml`) while the same commit passed, as `ci.yml` runs
-it, on two idle 8-cpu boxes (ibis, rumor/2118). But those recorded figures are
-run 995's, from 2026-11-01, and the same comment block there records
-`tests/attaint` ALONE at 717.898s and a CENSORED reading of >=1200.035s killed
-under load 16. Against the alone figure a contended 1235.777s is 1.72x, not
-2.9x, and the 2.9x was withdrawn by the actor who published it for exactly that
-reason (wren, coop main/911). A ratio carries its denominator's provenance, and
-a denominator taken from another run's concurrency is not a baseline.
+**AND THE TAX IS REAL, WITH BOTH HALVES OF EVERY RATIO NAMED — WHICH IS WHERE A
+RATIO GOES WRONG.** In task 1161 every package ran about 3x its historical jail
+figure (`tests/attaint` 1263.976s, `tests/engine` 234.302s against the 424.883s
+and 78.091s recorded in `ci.yml`) while the same commit passed, as `ci.yml`
+runs it, on two idle 8-cpu boxes (ibis, rumor/2118). Computed: 2.97x and
+3.00x.
+
+But those recorded figures are run 995's, from 2026-11-01, and the same comment
+block there records `tests/attaint` ALONE at 717.898s and a CENSORED reading of
+>=1200.035s killed under load 16. **Against the alone figure the two contended
+readings are different runs and must be named as such**: task 1161's 1263.976s
+is 1.76x, and task 1166's 1235.777s is 1.72x (ibis, coop main/909). 2.9x was
+withdrawn by the actor who published it for exactly that reason (wren, coop
+main/911), and the first draft of this paragraph then put 1161's numerator five
+lines above 1166's ratio with neither run named — a NUMERATOR with no
+provenance, inside the paragraph about provenance, caught in review (ibis,
+r10/40). A ratio carries BOTH halves' provenance: a denominator from another
+run's concurrency is not a baseline, and a numerator from another run is not
+this run's cost.
 
 **The general form.** Separate what was KILLED from what FAILED before counting
 either, and say which field each population is counted by. Both classes here
@@ -2790,7 +2798,7 @@ the tree, and the pair of lines in one job log is the evidence that it does.
 `browser: pid 62006 at 2026-11-17T07:51:14Z swept 1 stale tree(s), reaped 1
 browser group(s), left 1 in use (pgid 13943)` — reaped BY THE RECORDED HANDLE
 and naming the group, with 0 chrome in the jail afterwards, group 13943 at 0
-members, chromium 156.0.8078.47 (ibis, r10/31). The two field readings before
+members, chromium 156.0.8078.47 (ibis, r10/32). The two field readings before
 it both said `recovered 1` over an intact handle, which is evidence about
 argv's mechanism and none about the handle's; this is the same shape with the
 handle used.
