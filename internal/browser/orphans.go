@@ -96,6 +96,21 @@ func ownerOfTmpdir(name string) (int, bool) {
 		return 0, false
 	}
 	rest := strings.TrimPrefix(name, tmpdirPrefix)
+	// A NAME AND NOT A PATH OR A COMMAND LINE. Without this, the prefix and the
+	// first `-` were the whole test, so every one of these read as ours with
+	// pid 87357 -- driven, 2026-11-17, at quill's finding (coop r10/11):
+	//
+	//	rumor-browser-87357-3668960404/org.chromium.Chromium.scoped_dir.ug4m8j
+	//	rumor-browser-87357-3668960404 --enable-logging
+	//	rumor-browser-87357-3668960404<TAB>x
+	//
+	// treeInArgv's truncation was the ONLY thing keeping a path out, and this
+	// function's own doc said it applied a strict test of its own. It does now:
+	// a caller that forgets to cut the subdirectory gets a refusal rather than
+	// a tree name that matches nothing.
+	if strings.ContainsAny(rest, "/ \t") {
+		return 0, false
+	}
 	dash := strings.IndexByte(rest, '-')
 	if dash <= 0 {
 		return 0, false
@@ -331,6 +346,12 @@ func argvOrphanGroups() map[int]string {
 // compared the whole string would claim nothing and read as "no process names
 // it" -- the same silence as a missing handle. This extracts the directory
 // name and the callers compare that, so the subdirectory is irrelevant.
+//
+// AND THE TRUNCATION IS NO LONGER THE ONLY GUARD. It was, which this comment
+// used to deny by pointing at ownerOfTmpdir's "strict test" (quill, coop
+// r10/11): that function took the prefix and the first `-` and accepted a
+// slash, a space or a tab in between. It refuses them now, so a caller that
+// skips the cut is told, instead of being handed a name that matches nothing.
 //
 // IT TAKES THE DIRECTORY NAME AND NOT THE WHOLE PATH, because what chrome
 // carries is a path INSIDE the tree -- `--user-data-dir=/tmp/rumor-browser-

@@ -252,6 +252,14 @@ func TestOnlyOurOwnTmpdirNamesAreReadAsOurs(t *testing.T) {
 		{"rumor-browser-1234", 0, false},
 		{"org.chromium.Chromium.x", 0, false},
 		{"notrumor-browser-12-x", 0, false},
+		// A PATH, A COMMAND LINE AND A TAB, each of which read as ours with
+		// pid 87357 until quill drove the exact-path mutant (coop r10/11) and
+		// found that this function's documented strictness stopped at the
+		// first `-`. treeInArgv's truncation was the only guard; the comment
+		// there said otherwise, which is the worse half of the defect.
+		{"rumor-browser-87357-3668960404/org.chromium.Chromium.scoped_dir.ug4m8j", 0, false},
+		{"rumor-browser-87357-3668960404 --enable-logging", 0, false},
+		{"rumor-browser-87357-3668960404\tx", 0, false},
 	} {
 		pid, ok := ownerOfTmpdir(c.name)
 		if ok != c.ok || pid != c.pid {
