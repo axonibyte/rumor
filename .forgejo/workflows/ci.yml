@@ -352,6 +352,30 @@ jobs:
           else
             echo "(no timeline: python3 or ../test.json is absent; the verdict below does not rest on it)"
           fi
+          # THE SWEEP'S OWN LINE, MINED LIKE THE FAILURE VIEW IS, and for the
+          # same reason: it is written into ../test.log, which dies with the
+          # runner's workspace, and a GREEN run prints only `tail -20` of that
+          # file. So the browser sweep -- the thing that reclaims a killed
+          # run's leavings -- was invisible exactly when it worked.
+          #
+          # MEASURED, AND IT COST A WRONG CONCLUSION: task 1249 passed, left 46
+          # orphaned chrome in one group whose tree was gone, and I read the
+          # absence of a sweep line in the job log as "the sweep found
+          # nothing". The log cannot carry that line on a pass, so the absence
+          # was the instrument's placement and not a fact about the sweep. A
+          # run that cleans up silently and a run that found nothing to clean
+          # are indistinguishable without this.
+          #
+          # rc DISCIPLINE AS ABOVE: 1 is "no match" and is the only rc that may
+          # print the reassuring sentence; anything higher is the instrument
+          # failing and says so.
+          src=0
+          grep -a 'browser: swept' ../test.log > ../swept.txt || src=$?
+          case "$src" in
+            0) echo "--- the browser sweep reported:"; sed -n '1,20p' ../swept.txt ;;
+            1) echo "--- the browser sweep collected nothing this run" ;;
+            *) echo "SWEEP VIEW BROKEN: the grep over ../test.log exited $src, so nothing below rests on it" ;;
+          esac
           # THE FAILURE VIEW IS MINED AND NOT ONLY TAILED, because -v moved what
           # the last 20 lines contain: under -v a tail is the verbose output of
           # whichever package finished last, so a FAIL twenty packages earlier

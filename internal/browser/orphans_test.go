@@ -428,3 +428,43 @@ func TestAReapedGroupIsReportedAndARefusedOneIsNot(t *testing.T) {
 			"refusal as empty is the conflation that hid a live leak", got)
 	}
 }
+
+// TestATeardownThatCannotEmptyTheGroupKEEPSTheTree is quill's reading driven
+// (coop r9/435). stopProcess's comment claimed "AFTER the group is gone, never
+// before" while nothing established it: d.exited is the DRIVER's Wait, not the
+// group's emptiness, so the tree -- the only handle to that group -- was
+// removed whether or not anything was still running in it.
+//
+// THAT IS REACHABLE WITHOUT A FAILED SIGNAL. killpg reaches the members that
+// exist AT THAT INSTANT and chrome forks helpers continuously, so one started
+// just after the sweep inherits the group and never sees it. The survivor here
+// stands in for that helper: it joins the driver's group and ignores the
+// signals, which is what a process forked past them looks like from outside.
+func TestATeardownThatCannotEmptyTheGroupKEEPSTheTree(t *testing.T) {
+	d, _ := startFake(t, "ready", true)
+	tree := d.tmpdir
+	pgid := d.cmd.Process.Pid
+	if tree == "" {
+		t.Fatal("the driver reported no owned tree")
+	}
+
+	// A MEMBER OF THE DRIVER'S GROUP THAT WILL NOT GO, planted with Setpgid so
+	// it is genuinely in the group rather than merely a child.
+	survivor := exec.Command("/bin/sh", "-c", "trap '' TERM; sleep 60")
+	survivor.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: pgid}
+	if err := survivor.Start(); err != nil {
+		t.Skipf("cannot plant a survivor in the driver's group: %v", err)
+	}
+	defer func() {
+		_ = survivor.Process.Kill()
+		_ = survivor.Wait()
+	}()
+
+	_ = d.Close(context.Background())
+
+	if _, err := os.Stat(tree); err != nil {
+		t.Errorf("the teardown REMOVED %s while its group still had a member: the "+
+			"handle is gone, so no later sweep can reach those processes -- which is "+
+			"how a green run strands browsers no one can find (stat err %v)", tree, err)
+	}
+}

@@ -647,13 +647,48 @@ func (d *Driver) stopProcessOnce() {
 	signalGroup(pid, syscall.SIGKILL)
 	d.cmd = nil
 
-	// AFTER the group is gone, never before: removing it while chrome still
-	// held files there would be deleting a live process's state, and the whole
-	// point is that this is the one tree whose lifetime we control.
+	// AFTER the group is gone, never before -- AND THAT IS NOW ESTABLISHED
+	// RATHER THAN ASSERTED. This comment claimed the precondition and the code
+	// did not enforce it (quill, coop r9/435): d.exited is the DRIVER's Wait,
+	// not the group's emptiness, so the last SIGKILL was fired and never
+	// verified while the tree -- the only handle to that group -- was removed
+	// one line later. Prose is not a mechanism, and here the cost is
+	// permanent: once the tree is gone no later sweep can find the group.
+	//
+	// AND IT IS REACHABLE ON A GREEN PATH, no failed signal needed. killpg
+	// reaches the members that exist AT THAT INSTANT, and chrome forks helpers
+	// continuously, so one started just after the sweep inherits the group and
+	// never sees the signal. Parent gone, helper alive, tree deleted.
+	//
+	// IF IT WILL NOT EMPTY, THE TREE STAYS. That is the inversion that matters:
+	// deleting the handle is what makes a leak unrecoverable, so the failure
+	// path keeps it and says so, and the next run's sweep collects what this
+	// teardown could not -- instead of inheriting what it destroyed.
 	if d.tmpdir != "" {
-		_ = os.RemoveAll(d.tmpdir)
-		d.tmpdir = ""
+		if groupEmptied(pid, StopGrace) {
+			_ = os.RemoveAll(d.tmpdir)
+			d.tmpdir = ""
+		} else {
+			fmt.Fprintf(os.Stderr, "browser: group %d still has members after SIGKILL; "+
+				"KEEPING %s so a later sweep can reach them\n", pid, d.tmpdir)
+		}
 	}
+}
+
+// groupEmptied waits for a process group to actually have no members, which is
+// the precondition stopProcessOnce used to assert in prose.
+//
+// IT ASKS THE SAME QUESTION reapGroup DOES, deliberately: the sweep already
+// loops on membership before it escalates, and the teardown being less careful
+// than its own backup is the defect this closes.
+func groupEmptied(pgid int, within time.Duration) bool {
+	for i := 0; i < int(within/(100*time.Millisecond)); i++ {
+		if !groupHasMembers(pgid) {
+			return true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return !groupHasMembers(pgid)
 }
 
 // signalGroup signals a whole process group and says nothing about the result:
