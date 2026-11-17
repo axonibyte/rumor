@@ -131,7 +131,7 @@ func aliveElsewhere(pid int) bool {
 // effect on the way into a run that has real work to do; failing the run
 // because a sweep could not read a directory would trade a reclaimed
 // directory for a lost suite.
-func sweepStaleTmpdirs() (removed, kept int) {
+func sweepStaleTmpdirs() (removed, reaped, kept int) {
 	return sweepStaleTmpdirsIn(os.TempDir())
 }
 
@@ -139,10 +139,10 @@ func sweepStaleTmpdirs() (removed, kept int) {
 // it against a tree it made rather than against the box's real /tmp -- where
 // the honest answer depends on what else is running and a passing arm would
 // prove nothing.
-func sweepStaleTmpdirsIn(dir string) (removed, kept int) {
+func sweepStaleTmpdirsIn(dir string) (removed, reaped, kept int) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return 0, 0
+		return 0, 0, 0
 	}
 	self := os.Getpid()
 	for _, e := range entries {
@@ -161,12 +161,34 @@ func sweepStaleTmpdirsIn(dir string) (removed, kept int) {
 		// REAP BEFORE REMOVE, and in that order for the reason stopProcess
 		// gives: removing the tree while chrome still held files there would
 		// be deleting a live process's state.
-		reapGroup(readPGID(tree))
+		if reapGroup(readPGID(tree)) {
+			reaped++
+		}
 		if err := os.RemoveAll(tree); err == nil {
 			removed++
 		}
 	}
-	return removed, kept
+	return removed, reaped, kept
+}
+
+// sweepReport is the line the sweep says about itself, or "" when it found
+// nothing to do.
+//
+// IT EXISTS BECAUSE THE SWEEP WAS SILENT AND THAT COST AN ATTRIBUTION. Task
+// 1247 was cancelled with browsers up and its groups were gone afterwards,
+// but nothing in any log said who took them: "the run left none" and "the
+// next run's sweep reaped them" were separable only by argument (quill, coop
+// r9/422) rather than by evidence. A sweep that says what it did makes the
+// next one a reading instead of a deduction.
+//
+// QUIET WHEN THERE IS NOTHING TO SAY, because a line on every start would be
+// noise on the ordinary path and would train a reader to skip it.
+func sweepReport(removed, reaped, kept int) string {
+	if removed == 0 && reaped == 0 {
+		return ""
+	}
+	return fmt.Sprintf("browser: swept %d stale tree(s), reaped %d browser group(s), "+
+		"left %d in use", removed, reaped, kept)
 }
 
 // pgidFile is where an owned tree records the group its driver leads, so a
@@ -249,18 +271,21 @@ func readPGID(tree string) int {
 // box: randompid=0 is what made the skip legible as a sequential gap, so the
 // reading cannot be taken there the same way, and no kernel source is on
 // either box to cite the allocator from instead.
-func reapGroup(pgid int) {
+// It answers whether it SIGNALLED a group, so the sweep can say what it did
+// rather than leave the next reader to deduce it.
+func reapGroup(pgid int) bool {
 	if pgid <= 1 || !groupIsOurs(pgid) {
-		return
+		return false
 	}
 	_ = signalGroupOf(pgid, syscall.SIGTERM)
 	for i := 0; i < int(StopGrace/(100*time.Millisecond)); i++ {
 		if !groupHasMembers(pgid) {
-			return
+			return true
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	_ = signalGroupOf(pgid, syscall.SIGKILL)
+	return true
 }
 
 // THE TWO SYSCALLS ARE REACHED THROUGH VARIABLES so that the decisions above
@@ -349,7 +374,13 @@ func forgetDriver(d *Driver) {
 // into the first Start, which is the only moment that is both early enough to
 // matter and late enough to know this process drives browsers at all.
 func sweepOnFirstStart() {
-	sweepOnce.Do(func() { _, _ = sweepStaleTmpdirs() })
+	sweepOnce.Do(func() {
+		// ON STDERR, where this package already puts a reading of THIS BOX
+		// rather than of the run: the job log keeps it, and nothing parses it.
+		if line := sweepReport(sweepStaleTmpdirs()); line != "" {
+			fmt.Fprintln(os.Stderr, line)
+		}
+	})
 }
 
 // installTerminationHandler makes the polite kill run the real teardown.

@@ -200,7 +200,7 @@ func TestTheSweepTakesADeadRunsTreeAndLeavesALiveOnesAlone(t *testing.T) {
 		}
 	}
 
-	removed, kept := sweepStaleTmpdirsIn(dir)
+	removed, _, kept := sweepStaleTmpdirsIn(dir)
 
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Errorf("the dead run's tree survived the sweep (stat err %v)", err)
@@ -354,4 +354,54 @@ func swapReaper(list func(int) []string, sig func(int, syscall.Signal) error) (f
 
 func restoreReaper(list func(int) []string, sig func(int, syscall.Signal) error) {
 	listGroupMembers, signalGroupOf = list, sig
+}
+
+// TestTheSweepSaysWhatItDidAndIsQuietWhenItDidNothing is the instrument the
+// sweep shipped without, and the gap cost a real attribution: task 1247 was
+// cancelled with browsers up, its groups were gone afterwards, and nothing in
+// any log said who took them -- "the run left none" and "the next run's sweep
+// reaped them" were separable only by argument (quill, coop r9/422). A sweep
+// that says what it did makes the next one a reading.
+func TestTheSweepSaysWhatItDidAndIsQuietWhenItDidNothing(t *testing.T) {
+	if got := sweepReport(0, 0, 3); got != "" {
+		t.Errorf("a sweep that collected nothing said %q, want silence: a line on "+
+			"every start is noise that trains a reader to skip it", got)
+	}
+	// REMOVED WITHOUT REAPING IS STILL WORTH SAYING, because it is the shape a
+	// pre-fix tree leaves: no pgid recorded, so nothing to signal.
+	if got := sweepReport(2, 0, 1); !strings.Contains(got, "swept 2") ||
+		!strings.Contains(got, "reaped 0") {
+		t.Errorf("a sweep that removed trees but reaped nothing said %q", got)
+	}
+	got := sweepReport(4, 3, 2)
+	for _, want := range []string{"swept 4", "reaped 3", "left 2"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the sweep's line %q omits %q", got, want)
+		}
+	}
+}
+
+// TestAReapedGroupIsReportedAndARefusedOneIsNot keeps the count honest: a
+// group the guard refuses must not be counted as reaped, or the line would
+// claim work the sweep declined to do.
+func TestAReapedGroupIsReportedAndARefusedOneIsNot(t *testing.T) {
+	defer restoreReaper(swapReaper(
+		func(int) []string { return []string{"chrome: --type=renderer"} },
+		func(int, syscall.Signal) error { return nil },
+	))
+	if !reapGroup(4242) {
+		t.Error("a group wholly ours was signalled and reported false")
+	}
+	// SWAPPED AND NOT RESTORED HERE: restoreReaper(swapReaper(...)) would put
+	// the originals straight back, which is how this arm first passed over a
+	// stub that was never in effect. The deferred restore above holds the
+	// originals and still runs.
+	swapReaper(
+		func(int) []string { return []string{"/usr/bin/vi notes.txt"} },
+		func(int, syscall.Signal) error { return nil },
+	)
+	if reapGroup(4242) {
+		t.Error("a FOREIGN group was reported as reaped, so the sweep's line would " +
+			"claim a group it correctly refused to signal")
+	}
 }
