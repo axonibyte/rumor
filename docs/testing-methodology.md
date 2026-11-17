@@ -2762,17 +2762,29 @@ Task #794 is that run: **46 package(s), wall 1329.9s, peak concurrency 8** —
 which is GOMAXPROCS on that box, the bound the refutation rested on (quill,
 coop r9/418; ibis, r10/34). A replacement that comes back EQUAL to the
 parallelism bound is a check on the instrument, not just a number: the old 30
-was impossible under `-p`, and 8 is exactly what `-p` permits.
+was impossible under `-p`, and 8 is exactly what `-p` permits. The next run
+reads the same: #795, **46 package(s), wall 1353.8s, peak concurrency 8**
+(ibis, r10/38). Two runs, one peak — a figure that moves with the wall clock
+and not with the bound is behaving like a measurement.
 
-**AND "A PROCESS TABLE THAT CANNOT BE READ IS ITS OWN OUTCOME" FIRED IN THE
-FIELD ON THE FIRST RUN THAT CARRIED IT.** The same sweep printed `pid 60197 ...
-HELD 1 tree(s) that something running still names:
+**AND "A PROCESS TABLE THAT CANNOT BE READ IS ITS OWN OUTCOME" IS NOT A RARE
+BRANCH — IT FIRED IN BOTH RUNS THAT CARRIED IT.** #794's sweep printed `pid
+60197 ... HELD 1 tree(s) that something running still names:
 rumor-browser-90538-1880864753; COULD NOT READ the process table 2 time(s), so
-every tree was held and no group was examined` (ibis, r10/34). Before that
-head, `nil`-on-error made an unreadable table look like EMPTY GROUPS — the
-trees removed while their groups ran, with `reaped 0` printed over it. The
-candidate was measured rather than argued, and the branch HELD the tree, which
-is rule (3) of the sweep: never remove what you cannot know is dead.
+every tree was held and no group was examined`, and #795's printed `pid 1218
+... HELD 2 tree(s) ...; COULD NOT READ the process table 3 time(s)` — two
+failures then three, in consecutive runs (ibis, r10/34 and r10/38). Before that
+head, `nil`-on-error made an unreadable table look like EMPTY GROUPS: the trees
+removed while their groups ran, with `reaped 0` printed over it. So this was
+never a comment's hypothetical; it was the ordinary case, taking a live group's
+tree every time.
+
+**AND THE HOLD IS NOT A LEAK, BECAUSE THE ORDERING WAS READ TOO.** In the same
+run a later sweeper collected what the blind one had held: `pid 3077 ... swept
+2 stale tree(s), reaped 0` (ibis, r10/38). Held while unknowable, removed once
+knowable — which is what makes rule (3) affordable. "Never remove what you
+cannot know is dead" costs nothing permanent only if something later reaches
+the tree, and the pair of lines in one job log is the evidence that it does.
 
 **THE HANDLE PASS'S OWN PATH IS READ TOO, AND IT HAD NEVER RUN IN CI.**
 `browser: pid 62006 at 2026-11-17T07:51:14Z swept 1 stale tree(s), reaped 1
