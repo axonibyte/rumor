@@ -545,7 +545,6 @@ jobs:
             # `^(ok|FAIL)` and the count said `^ok`), now on the other side of
             # the fraction: the denominator was every package and the numerator
             # only the ones that run tests.
-            echo "--- reported, with each package's own elapsed:"
             # THE LIST IS RENDERED FROM THE RECORD, IN THIS STEP, BESIDE ITS
             # COUNT. It was `grep -aE '^(ok|FAIL|\?)...'` over ../test.log
             # while the count came from ../test.json -- two instruments on one
