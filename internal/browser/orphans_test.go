@@ -820,3 +820,61 @@ func TestATreeWithNoHandleIsHELDWhileAProcessStillNamesIt(t *testing.T) {
 		t.Errorf("the sweep's line does not say it held a tree: %q", line)
 	}
 }
+
+// TestAStrandedGroupWITHAHandleIsReapedNotRecovered drives BOTH passes together
+// and asserts which one did the work, which is the thing the two halves cannot
+// show on their own.
+//
+// RUN #787 IS WHY IT EXISTS. I had the argv pass running first, so a group
+// stranded by a cancelled run was claimed by argv before the tree pass ever
+// read its driver.pgid -- chrome carries the owned tree in its own
+// --user-data-dir, 32 of 33 members did, so argv always wins a race it is put
+// first in. The field then reported "RECOVERED 1 group(s) from argv that no
+// tree's handle claimed" for a group whose handle I had measured intact
+// minutes before, and `reaped` could not move for the one population the
+// recorded handle was built to serve. A counter that cannot move is not an
+// instrument, and quill's r10/3 question -- does the handle path work in the
+// field -- was unanswerable while the order hid it.
+func TestAStrandedGroupWITHAHandleIsReapedNotRecovered(t *testing.T) {
+	dir := t.TempDir()
+	dead := deadPID(t)
+	tree := fmt.Sprintf("%s%d-176799846", tmpdirPrefix, dead)
+	if err := os.MkdirAll(filepath.Join(dir, tree), 0o755); err != nil {
+		t.Fatalf("planting the stranded tree: %v", err)
+	}
+	recordPGID(filepath.Join(dir, tree), 35589)
+
+	// THE GROUP IS REACHABLE BOTH WAYS AT ONCE, which is the whole point: its
+	// tree records the pgid AND its member's argv names that tree, exactly as
+	// a real stranded chrome does. Only the order decides which counter moves.
+	listings := 0
+	defer restoreReaper(swapReaper(
+		func(int) []string {
+			listings++
+			if listings > 1 {
+				return nil
+			}
+			return []string{chromeArgvFromTheField}
+		},
+		func(int, syscall.Signal) error { return nil },
+	))
+	defer func(old func() []procLine) { listAllProcesses = old }(swapProcessTable(
+		func() []procLine {
+			return []procLine{{pgid: 35589, command: strings.Replace(
+				chromeArgvFromTheField, "rumor-browser-87357-3668960404", tree, 1)}}
+		},
+	))
+
+	got := sweepAndReapIn(dir)
+
+	if got.reaped != 1 {
+		t.Errorf("reaped=%d, want 1: a group whose own tree records its pgid must "+
+			"be taken by the HANDLE, or `reaped 0` in a job log means \"argv got "+
+			"there first\" and not \"the handle failed\" -- the two readings this "+
+			"head exists to separate (quill, coop r10/3)", got.reaped)
+	}
+	if got.recovered != 0 {
+		t.Errorf("recovered=%d, want 0: argv must not preempt a handle that is "+
+			"sitting right there in the tree", got.recovered)
+	}
+}

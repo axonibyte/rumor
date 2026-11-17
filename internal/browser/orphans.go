@@ -147,10 +147,33 @@ func aliveElsewhere(pid int) bool {
 // because a sweep could not read a directory would trade a reclaimed
 // directory for a lost suite.
 func sweepStaleTmpdirs() sweepTally {
-	// THE ARGV PASS GOES FIRST so a group no tree's handle claims is already
-	// stopped when the tree pass decides whether its tree may go.
-	t := reapOrphansByArgv()
-	t.absorb(sweepStaleTmpdirsIn(os.TempDir()))
+	return sweepAndReapIn(os.TempDir())
+}
+
+// sweepAndReapIn runs both passes over a named directory, in the order that
+// keeps each counter meaningful, so an arm can drive the PAIR rather than only
+// its halves.
+//
+// THE RECORDED HANDLE GOES FIRST, AND THE FIELD HAD TO TEACH ME THAT. I ran
+// argv first, reasoning that a reaped group's tree could then be collected in
+// the same pass. The consequence, measured in run #787: a stranded group is
+// ALWAYS claimed by argv before the tree pass can read its handle, because
+// chrome puts the owned tree in its own --user-data-dir -- 32 of 33 members
+// did. So `reaped` became unreachable for exactly the population the handle
+// was built for, and #787 reported "RECOVERED 1 group(s) from argv" for a
+// group whose driver.pgid I had measured intact minutes earlier.
+//
+// THAT HID THE QUESTION quill ASKED AT r10/3. Whether the handle path works in
+// the field is answerable only if the handle is tried first; with argv ahead of
+// it, `reaped 0` means "argv got there first" and not "the handle failed", and
+// those are the two readings this whole head exists to separate.
+func sweepAndReapIn(dir string) sweepTally {
+	t := sweepStaleTmpdirsIn(dir)
+	// AND ARGV SECOND, for what no tree's handle claimed: a tree an earlier
+	// sweep destroyed, or one that recorded nothing. The removal gate has
+	// already held any tree whose group is still alive, so a group reaped here
+	// leaves its tree for the next sweep to collect.
+	t.absorb(reapOrphansByArgv())
 	return t
 }
 
@@ -274,11 +297,13 @@ func treeStillClaimed(name string, pgid int) bool {
 // reapOrphansByArgv stops browser groups whose own tree can no longer speak
 // for them, finding them by the owned tree their command line still names.
 //
-// IT IS NOT A BACKUP TO THE RECORDED PGID, AND IT RUNS FIRST. For every tree
-// an earlier sweep already destroyed, this is the ONLY handle: the pgid lived
-// in the tree, and the tree is gone (quill, coop r10/8, correcting their own
-// r9/413). argv is carried by the PROCESSES, so it survives both the tree's
-// destruction and its rebirth.
+// IT IS NOT A BACKUP TO THE RECORDED PGID, IT IS THE OTHER HALF. For every
+// tree an earlier sweep already destroyed, this is the ONLY handle: the pgid
+// lived in the tree, and the tree is gone (quill, coop r10/8, correcting their
+// own r9/413). argv is carried by the PROCESSES, so it survives both the
+// tree's destruction and its rebirth. It runs AFTER the recorded handle, for
+// the reason sweepAndReapIn gives: ahead of it, argv claims every group first
+// and `reaped` stops being able to move.
 //
 // THE CYCLE IT BREAKS, which is why no field sweep ever reaped anything. A
 // sweep deletes a live group's tree, taking the handle with it. The survivors
