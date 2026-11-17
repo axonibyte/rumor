@@ -2754,3 +2754,37 @@ verified INSIDE the child (`NumCPU`, `GOMAXPROCS`), the foreign load on the
 restricted cpus bounded per-cpu, and the bound's DIRECTION stated — here the
 busier second arm makes +6.25% an upper bound, so the honest claim is "at most
 6.25%" rather than "6.25%".
+
+**THE WITHDRAWN OVERLAP FIGURE HAS ITS HONEST REPLACEMENT, OUT OF THE FIRST CI
+RUN FED `-json`.** This section recorded "peak concurrency 30" as withdrawn and
+said the figure would return by itself if CI were ever fed the `-json` shape.
+Task #794 is that run: **46 package(s), wall 1329.9s, peak concurrency 8** —
+which is GOMAXPROCS on that box, the bound the refutation rested on (quill,
+coop r9/418; ibis, r10/34). A replacement that comes back EQUAL to the
+parallelism bound is a check on the instrument, not just a number: the old 30
+was impossible under `-p`, and 8 is exactly what `-p` permits.
+
+**AND "A PROCESS TABLE THAT CANNOT BE READ IS ITS OWN OUTCOME" FIRED IN THE
+FIELD ON THE FIRST RUN THAT CARRIED IT.** The same sweep printed `pid 60197 ...
+HELD 1 tree(s) that something running still names:
+rumor-browser-90538-1880864753; COULD NOT READ the process table 2 time(s), so
+every tree was held and no group was examined` (ibis, r10/34). Before that
+head, `nil`-on-error made an unreadable table look like EMPTY GROUPS — the
+trees removed while their groups ran, with `reaped 0` printed over it. The
+candidate was measured rather than argued, and the branch HELD the tree, which
+is rule (3) of the sweep: never remove what you cannot know is dead.
+
+**THE HANDLE PASS'S OWN PATH IS READ TOO, AND IT HAD NEVER RUN IN CI.**
+`browser: pid 62006 at 2026-11-17T07:51:14Z swept 1 stale tree(s), reaped 1
+browser group(s), left 1 in use (pgid 13943)` — reaped BY THE RECORDED HANDLE
+and naming the group, with 0 chrome in the jail afterwards, group 13943 at 0
+members, chromium 156.0.8078.47 (ibis, r10/31). The two field readings before
+it both said `recovered 1` over an intact handle, which is evidence about
+argv's mechanism and none about the handle's; this is the same shape with the
+handle used.
+
+**AND A GROUP OUTLIVING `SIGKILL` IS THE COMMON CASE, NOT THE EXCEPTION.** That
+one run printed 24 kept-group lines (ibis, r10/34). So a teardown that signals,
+verifies and does NOT remove is the ordinary path rather than a rare branch —
+which is what makes the next run's sweep, and the handle it reads, load-bearing
+rather than a backstop.
