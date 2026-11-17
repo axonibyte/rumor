@@ -68,7 +68,7 @@ func KillProofChildIfAsked() bool {
 	// own exit rather than here, because the teardown then blocks on the reap.
 	// The browser half needs the real pair, which is CI's arm and not a unit's.
 	fmt.Printf("READY %s %d\n", d.tmpdir, d.cmd.Process.Pid)
-	os.Stdout.Sync()
+	_ = os.Stdout.Sync()
 	select {} // wait to be killed; the handler is the thing under test
 }
 
