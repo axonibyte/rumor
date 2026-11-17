@@ -546,7 +546,21 @@ jobs:
             # the fraction: the denominator was every package and the numerator
             # only the ones that run tests.
             echo "--- reported, with each package's own elapsed:"
-            grep -aE '^(ok|FAIL|\?)[[:space:]]+forge\.axonibyte\.com/' ../test.log || echo "(none reported)"
+            # THE LIST COMES OUT OF THE RECORD TOO, and it is a pointer rather
+            # than a second instrument. It was `grep -aE '^(ok|FAIL|\?)...'`
+            # over ../test.log while the COUNT below came from ../test.json --
+            # two instruments on one question from two sources (quill, coop
+            # r10/29). Condition (5) held, because only the count decides and
+            # the list displayed, but a line dropped by the rendering would
+            # print "41 of 42" above a list of 40 and leave the reader to work
+            # out which half lied. The TIMELINE table above is built from
+            # ../test.json's own fields and already names every package with
+            # its verdict and elapsed, so there is nothing a second list can
+            # add except a way to disagree.
+            echo "--- every package that reported is in the TIMELINE table above,"
+            echo "    with its start, end, elapsed and verdict, computed from"
+            echo "    ../test.json -- the same record the count below reads, so"
+            echo "    the two halves of that fraction cannot disagree."
             # THE COUNT MATCHES THE LIST, and it did not for one commit: the
             # list is `^(ok|FAIL)` and the count was `^ok`, so a FAILED package
             # was printed as completed and left out of the figure -- making
@@ -577,7 +591,7 @@ jobs:
             else
               reported="? (no python3, so the record could not be counted)"
             fi
-            echo "--- $reported of $(timeout 60 "$GO" list ./... | wc -l | tr -d ' ') package(s) reported; a difference here is a package still running, and NONE means the work finished and the run did not exit"
+            echo "--- $reported of $(timeout 60 "$GO" list ./... | wc -l | tr -d ' ') package(s) reported, the count from ../test.json and the denominator from go list; a difference here is a package still running, and NONE means the work finished and the run did not exit"
             exit 124
           }
           # THE WHOLE LOG GOES INTO THE JOB LOG ON FAILURE (fable, coop

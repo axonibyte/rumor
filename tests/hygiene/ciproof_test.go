@@ -219,16 +219,23 @@ func TestTheTimeoutDiagnosticCountsTheSetItLists(t *testing.T) {
 	// strictly more than the old shape could see -- a pattern can be identical
 	// on both sides and still miss a KIND of package, which is exactly how the
 	// `?` case shipped.
+	// THE FIGURE IS FOUND BY ITS OWN NUMERATOR, not by punctuation. This keyed
+	// on "package(s) reported;" and the semicolon was doing the discriminating
+	// -- the step's PROOF line says "package(s) reported ok, 0 cached" and
+	// would match a looser key. Then the figure gained a clause naming where
+	// each half comes from, the semicolon moved, and this arm reported that the
+	// fraction did not exist. `$reported of` is the fraction and nothing else
+	// in the step is.
 	var figure string
 	for _, line := range strings.Split(test, "\n") {
-		if strings.Contains(line, "package(s) reported;") {
+		if strings.Contains(line, "$reported of") {
 			figure = line
 			break
 		}
 	}
 	if figure == "" {
-		t.Fatalf("%s prints no `package(s) reported;` figure, so there is no fraction to read "+
-			"and every clause below would pass vacuously", path)
+		t.Fatalf("%s prints no `$reported of <N> package(s) reported` figure, so there is no "+
+			"fraction to read and every clause below would pass vacuously", path)
 	}
 	if !strings.Contains(figure, "list ./...") {
 		t.Errorf("the figure takes its denominator from something other than `go list ./...`: %q. "+
