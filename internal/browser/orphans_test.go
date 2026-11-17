@@ -21,7 +21,7 @@ import (
 const killProofEnv = "RUMOR_BROWSER_KILLPROOF_CHILD"
 
 // KillProofChildIfAsked is the child half of
-// TestATerminationSignalStopsTheBrowsersAndTakesTheTreeWithIt. It starts a
+// TestATerminationSignalStopsTheBrowsersAndKeepsTheTree. It starts a
 // real Driver against the fake driver, says where its owned tree is, and then
 // waits to be signalled -- which is the whole point: nothing here removes the
 // tree, so if the tree is gone afterwards it is because the signal handler ran.
@@ -72,7 +72,7 @@ func KillProofChildIfAsked() bool {
 	select {} // wait to be killed; the handler is the thing under test
 }
 
-// TestATerminationSignalStopsTheBrowsersAndTakesTheTreeWithIt is the arm the
+// TestATerminationSignalStopsTheBrowsersAndKeepsTheTree is the arm the
 // owned TMPDIR shipped without, and the one quill's probe showed was needed
 // (coop r9/401): the removal lived only on paths a signal never reaches, so a
 // killed run left its tree AND its browsers behind. CI runs the suite under
@@ -80,7 +80,7 @@ func KillProofChildIfAsked() bool {
 //
 // IT HAS TO BE TWO PROCESSES. An in-process arm can only assert that Close
 // removes the tree, which was already true and was never the defect.
-func TestATerminationSignalStopsTheBrowsersAndTakesTheTreeWithIt(t *testing.T) {
+func TestATerminationSignalStopsTheBrowsersAndKeepsTheTree(t *testing.T) {
 	child := exec.Command(os.Args[0])
 	child.Env = append(os.Environ(), killProofEnv+"=1")
 	// The child must NOT inherit a fake-driver mode, or it would serve the
@@ -141,9 +141,13 @@ func TestATerminationSignalStopsTheBrowsersAndTakesTheTreeWithIt(t *testing.T) {
 		t.Fatal("the child did not exit after SIGTERM")
 	}
 
-	if _, err := os.Stat(tmpdir); !os.IsNotExist(err) {
-		t.Errorf("the owned tree survived SIGTERM at %s (stat err %v): "+
-			"the teardown did not run, which is the leak this arm exists for", tmpdir, err)
+	// THE TREE IS EXPECTED TO SURVIVE NOW, handed to the next run's sweep, so
+	// what proves the handler ran is the PROCESS half below and not a deleted
+	// directory. Asserting absence here would be the stale verdict quill warns
+	// about at coop r9/459, whose easy fix is restoring the race.
+	if _, err := os.Stat(tmpdir); err != nil {
+		t.Errorf("the owned tree is gone at %s (%v): the handler must hand it on, "+
+			"not delete it", tmpdir, err)
 	}
 
 	// THE PROCESS HALF, which is the one that took CI down. The driver was
@@ -429,43 +433,68 @@ func TestAReapedGroupIsReportedAndARefusedOneIsNot(t *testing.T) {
 	}
 }
 
-// TestATeardownThatCannotEmptyTheGroupKEEPSTheTree is quill's reading driven
-// (coop r9/435). stopProcess's comment claimed "AFTER the group is gone, never
-// before" while nothing established it: d.exited is the DRIVER's Wait, not the
-// group's emptiness, so the tree -- the only handle to that group -- was
-// removed whether or not anything was still running in it.
+// TestTeardownNeverRemovesTheTreeItHandsToTheSweep is the contract after
+// quill's structural fix (coop r9/457), and it replaces an arm of mine that
+// had stopped being able to fail.
 //
-// THAT IS REACHABLE WITHOUT A FAILED SIGNAL. killpg reaches the members that
-// exist AT THAT INSTANT and chrome forks helpers continuously, so one started
-// just after the sweep inherits the group and never sees it. The survivor here
-// stands in for that helper: it joins the driver's group and ignores the
-// signals, which is what a process forked past them looks like from outside.
-func TestATeardownThatCannotEmptyTheGroupKEEPSTheTree(t *testing.T) {
-	d, _ := startFake(t, "ready", true)
-	tree := d.tmpdir
-	pgid := d.cmd.Process.Pid
-	if tree == "" {
-		t.Fatal("the driver reported no owned tree")
-	}
+// THE ARM IT REPLACES asserted the tree is kept WHEN THE GROUP WILL NOT
+// EMPTY. That was right while teardown still removed the tree in the ordinary
+// case -- and verifying emptiness first turned out to be necessary and NOT
+// sufficient: task 1251 went green with the check answering true, the removal
+// running, and 46 chrome alive in the group afterwards. killpg reaches the
+// members that exist AT THAT INSTANT, chrome forks helpers continuously, and
+// no tighter loop closes that because every check has an after.
+//
+// SO TEARDOWN NO LONGER REMOVES AT ALL and the next run's sweep does it,
+// which makes "the tree is kept" true unconditionally -- and made the old arm
+// unfireable. Both cases are driven here instead: a clean stop and a stop with
+// a survivor planted in the group must each leave the tree AND its pgid, so
+// the handle is there for the sweep either way.
+func TestTeardownNeverRemovesTheTreeItHandsToTheSweep(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		survivor bool
+	}{
+		{"a clean stop", false},
+		{"a stop whose group will not empty", true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			d, _ := startFake(t, "ready", true)
+			tree := d.tmpdir
+			pgid := d.cmd.Process.Pid
+			if tree == "" {
+				t.Fatal("the driver reported no owned tree")
+			}
 
-	// A MEMBER OF THE DRIVER'S GROUP THAT WILL NOT GO, planted with Setpgid so
-	// it is genuinely in the group rather than merely a child.
-	survivor := exec.Command("/bin/sh", "-c", "trap '' TERM; sleep 60")
-	survivor.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: pgid}
-	if err := survivor.Start(); err != nil {
-		t.Skipf("cannot plant a survivor in the driver's group: %v", err)
-	}
-	defer func() {
-		_ = survivor.Process.Kill()
-		_ = survivor.Wait()
-	}()
+			if c.survivor {
+				// Stands in for the helper chrome forks past the signal: a real
+				// member of the driver's group that ignores TERM.
+				sv := exec.Command("/bin/sh", "-c", "trap '' TERM; sleep 60")
+				sv.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: pgid}
+				if err := sv.Start(); err != nil {
+					t.Skipf("cannot plant a survivor in the driver's group: %v", err)
+				}
+				defer func() { _ = sv.Process.Kill(); _ = sv.Wait() }()
+			}
 
-	_ = d.Close(context.Background())
+			_ = d.Close(context.Background())
 
-	if _, err := os.Stat(tree); err != nil {
-		t.Errorf("the teardown REMOVED %s while its group still had a member: the "+
-			"handle is gone, so no later sweep can reach those processes -- which is "+
-			"how a green run strands browsers no one can find (stat err %v)", tree, err)
+			if _, err := os.Stat(tree); err != nil {
+				t.Errorf("teardown REMOVED %s: the handle is gone, so no later sweep "+
+					"can reach that group -- which is how a green run strands browsers "+
+					"nobody can find (stat err %v)", tree, err)
+			}
+			// THE HANDLE AND NOT ONLY THE DIRECTORY: an empty tree is no use to
+			// the sweep, which reads the group out of driver.pgid.
+			if got := readPGID(tree); got != pgid {
+				t.Errorf("the kept tree records pgid %d, want %d: the sweep would have "+
+					"a directory and no way to reach the group", got, pgid)
+			}
+
+			// This arm's own leavings: the signals are real here, so stop the group.
+			_ = syscall.Kill(-pgid, syscall.SIGKILL)
+			_ = os.RemoveAll(tree)
+		})
 	}
 }
 

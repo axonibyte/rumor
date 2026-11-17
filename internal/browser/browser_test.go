@@ -898,8 +898,8 @@ func TestTheDeafModeOutlivesTheReadinessBound(t *testing.T) {
 	}
 }
 
-// THE DRIVER GETS A TMPDIR THIS PROCESS OWNS, AND IT GOES WHEN THE DRIVER
-// GOES. Everything chromedriver and chrome scatter is made under TMPDIR, so
+// THE DRIVER GETS A TMPDIR THIS PROCESS OWNS, AND IT OUTLIVES THE RUN ON
+// PURPOSE. Everything chromedriver and chrome scatter is made under TMPDIR, so
 // owning that one path is what makes the scattering collectable -- no
 // teardown does it, which quill drove four ways at coop r9/399: even the
 // cleanest stop leaves three directories behind.
@@ -909,10 +909,11 @@ func TestTheDeafModeOutlivesTheReadinessBound(t *testing.T) {
 // once the process group is gone -- and not the chrome shapes landing inside
 // it. That half is quill's measurement and belongs to the record, not to a
 // unit test that would have to run a real browser to repeat it.
-func TestTheDriverIsHandedATmpdirWeOwnAndItIsRemoved(t *testing.T) {
+func TestTheDriverIsHandedATmpdirWeOwnAndHandsItOn(t *testing.T) {
 	d, _ := startFake(t, "ready", true)
 
 	dir := d.tmpdir
+	pgid := d.cmd.Process.Pid
 	if dir == "" {
 		t.Fatal("no tmpdir was recorded, so nothing owns what the driver scatters")
 	}
@@ -938,9 +939,33 @@ func TestTheDriverIsHandedATmpdirWeOwnAndItIsRemoved(t *testing.T) {
 	if err := d.Close(context.Background()); err != nil {
 		t.Fatalf("closing: %v", err)
 	}
-	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Errorf("%s survived the teardown (stat err %v): the owned tree is the "+
-			"only thing that collects what the browser leaves, so leaving it is "+
-			"the leak with one more step", dir, err)
+	// RE-KEYED FROM TREE-ABSENCE TO GROUP-LIVENESS (quill, coop r9/459). This
+	// asserted the tree was REMOVED, which was the contract until teardown
+	// stopped removing it: verifying the group was empty first proved
+	// necessary and not sufficient, because chrome forks helpers past any
+	// check, so task 1251 went green having deleted the handle to 46 live
+	// processes. The tree is now handed to the next run's sweep, which is why
+	// a leftover tree is NORMAL and the symptom moved to a tree whose GROUP IS
+	// ALIVE.
+	//
+	// THE TEMPTING FIX FOR THIS ARM WAS TO PUT THE REMOVAL BACK, which would
+	// have restored the race to satisfy a stale assertion. So it now checks
+	// the two things that are actually the contract: the handle survives, and
+	// the group does not.
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("%s did not survive the teardown (%v): the tree is the only handle "+
+			"the next run's sweep has, and deleting it is how a run loses its "+
+			"browsers permanently", dir, err)
 	}
+	if got := readPGID(dir); got != pgid {
+		t.Errorf("the handed-on tree records pgid %d, want %d: a directory with no "+
+			"group in it is not a handle", got, pgid)
+	}
+	if groupHasMembers(pgid) {
+		t.Errorf("group %d still has members after a clean Close: the cleanliness "+
+			"verdict is group liveness now, not whether a directory is gone", pgid)
+	}
+
+	// This arm's own leavings, since teardown no longer collects them.
+	_ = os.RemoveAll(dir)
 }

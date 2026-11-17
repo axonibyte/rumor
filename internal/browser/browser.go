@@ -662,31 +662,32 @@ func (d *Driver) stopProcessOnce() {
 	signalGroup(pid, syscall.SIGKILL)
 	d.cmd = nil
 
-	// AFTER the group is gone, never before -- AND THAT IS NOW ESTABLISHED
-	// RATHER THAN ASSERTED. This comment claimed the precondition and the code
-	// did not enforce it (quill, coop r9/435): d.exited is the DRIVER's Wait,
-	// not the group's emptiness, so the last SIGKILL was fired and never
-	// verified while the tree -- the only handle to that group -- was removed
-	// one line later. Prose is not a mechanism, and here the cost is
-	// permanent: once the tree is gone no later sweep can find the group.
+	// THE TREE IS NOT THIS RUN'S TO DELETE, and that is the whole fix (quill,
+	// coop r9/457). Verifying emptiness before removing was necessary and NOT
+	// sufficient: task 1251 went green with groupEmptied answering true, the
+	// removal running, and 46 chrome alive in the driver's group afterwards.
+	// killpg reaches the members that exist AT THAT INSTANT and chrome forks
+	// helpers continuously, so a helper started after the last membership look
+	// inherits the group and survives. A tighter loop cannot close that --
+	// every check has an after.
 	//
-	// AND IT IS REACHABLE ON A GREEN PATH, no failed signal needed. killpg
-	// reaches the members that exist AT THAT INSTANT, and chrome forks helpers
-	// continuously, so one started just after the sweep inherits the group and
-	// never sees the signal. Parent gone, helper alive, tree deleted.
+	// SO THE HANDLE OUTLIVES THE RUN BY CONSTRUCTION rather than by winning a
+	// timing argument: teardown signals the group and verifies, and the NEXT
+	// run's sweep does the removal. The ordering that makes it safe is already
+	// there and already guarded -- the sweep skips any tree whose owner pid is
+	// alive, so a run's own tree is untouchable until that run exits.
 	//
-	// IF IT WILL NOT EMPTY, THE TREE STAYS. That is the inversion that matters:
-	// deleting the handle is what makes a leak unrecoverable, so the failure
-	// path keeps it and says so, and the next run's sweep collects what this
-	// teardown could not -- instead of inheriting what it destroyed.
-	if d.tmpdir != "" {
-		if groupEmptied(pid, StopGrace) {
-			_ = os.RemoveAll(d.tmpdir)
-			d.tmpdir = ""
-		} else {
-			fmt.Fprintf(os.Stderr, "browser: group %d still has members after SIGKILL; "+
-				"KEEPING %s so a later sweep can reach them\n", pid, d.tmpdir)
-		}
+	// THE COST IS ONE RUN'S TREES ON DISK, bounded because every Start sweeps:
+	// measured at ~205 KB per chromium scatter dir over 7,731 of them, and
+	// about three per session, so a tree is roughly 600 KB and a whole run's
+	// worth is tens of megabytes.
+	//
+	// AND THE VERIFICATION STILL EARNS ITS PLACE: a group that will not empty
+	// is named here, because a run that cannot stop its browsers is a finding
+	// and not a tidy exit.
+	if !groupEmptied(pid, StopGrace) {
+		fmt.Fprintf(os.Stderr, "browser: group %d still has members after SIGKILL; "+
+			"%s is left for a later sweep\n", pid, d.tmpdir)
 	}
 }
 
