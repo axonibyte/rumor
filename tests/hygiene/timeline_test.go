@@ -10,33 +10,39 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/proof"
 )
 
-// THE TIMELINE IS THE ONLY THING THAT CAN ANSWER "WHAT ELSE WAS RUNNING", and
-// the job log could not answer it at all before R10 d2. The runner emits a
-// step's output in ONE FLUSH, so every line of task 1240's 1400-second suite
-// carried the same wall-clock stamp: the diagnosis had to read per-package
-// elapsed figures and GUESS at overlap, because the flush had erased it.
+// THE TIMELINE PUTS PER-PACKAGE TIMING IN THE JOB LOG, which had none: the
+// runner emits a step's output in ONE FLUSH, so every line of task 1240's
+// 1400-second suite carried the same wall-clock stamp and the diagnosis had
+// to read elapsed figures alone. What it does NOT answer, from the shape CI
+// feeds it, is what ran beside what -- see below.
 //
 // WHAT THIS ARM DRIVES IS THE SHAPE CI ACTUALLY FEEDS IT, which is the half I
-// got wrong and only found by running it. `go tool test2json` invoked
-// standalone has no `-p`, so it attributes NOTHING: every event arrives with a
-// Time and no Package field. The first cut of the tool read Package only, so
-// against the real tee'd stream it printed "no package events" and the whole
-// feature was a no-op that looked implemented. A fixture built from
-// `go test -json` would have passed and hidden exactly that.
-func TestTheTimelineRecoversOverlapFromAStampedStreamWithNoPackageFields(t *testing.T) {
+// got wrong twice. `go tool test2json` invoked standalone has no `-p`, so it
+// attributes NOTHING: every event arrives with a Time and no Package field.
+// The first cut read Package only and printed "no package events" against the
+// real stream -- a no-op that looked implemented.
+//
+// AND THE SECOND MISTAKE WAS WORSE, because it PUBLISHED A NUMBER. Having
+// taught it to read the verdict lines, this arm then asserted a peak
+// concurrency from them, and task 1245 duly reported "peak concurrency 30" on
+// a box whose -p caps parallelism at GOMAXPROCS=8. `go test` emits package
+// blocks in LISTED order, so a slow package holds back the print of
+// everything behind it: all 46 packages in 1245 shared FOUR end times, and
+// nineteen counted as running together had finished and were queued to print.
+// quill refuted it at coop r9/418 and the figure is withdrawn at r9/419.
+//
+// SO THIS ARM NOW PINS THE REFUSAL. A print time cannot support an overlap
+// claim, and the tool must say so rather than compute one -- an arm that
+// asserted the figure is what let the artifact reach a job log.
+func TestTheTimelineRefusesToClaimOverlapFromPrintTimes(t *testing.T) {
 	py := pythonOrSkip(t)
 	tool := filepath.Join("..", "..", "tools", "test-timeline.py")
 
-	// THREE PACKAGES WHOSE OVERLAP IS KNOWN BY CONSTRUCTION. go buffers a
-	// package's output and flushes it WHEN THE PACKAGE ENDS, so the stamp on a
-	// verdict line is that package's end and its start is end-minus-elapsed:
-	//
-	//	alpha  ends 10.0s having taken 10.0  -> runs  0.0 .. 10.0
-	//	beta   ends 11.0s having taken  6.0  -> runs  5.0 .. 11.0
-	//	gamma  ends 20.0s having taken  1.0  -> runs 19.0 .. 20.0
-	//
-	// alpha and beta therefore overlap and gamma touches neither: the peak is
-	// TWO, and a tool that simply counted packages would say three.
+	// THREE PACKAGES WHOSE PRINT TIMES WOULD TEMPT AN OVERLAP CLAIM, which is
+	// the point: computed as end-minus-elapsed, alpha spans 0..10 and beta
+	// 5..11, so a tool reading these as real times answers "peak 2". They are
+	// PRINT times, and nothing here says the two ever ran together -- go may
+	// have finished beta long before and held its block behind alpha's.
 	stream := strings.Join([]string{
 		event("2026-11-16T00:00:10Z", "ok  \tforge.axonibyte.com/axonibyte/rumor/alpha\t10.000s\n"),
 		event("2026-11-16T00:00:11Z", "ok  \tforge.axonibyte.com/axonibyte/rumor/beta\t6.000s\n"),
@@ -54,16 +60,21 @@ func TestTheTimelineRecoversOverlapFromAStampedStreamWithNoPackageFields(t *test
 	}
 	got := string(out)
 
-	for _, want := range []string{
-		"3 package(s)",
-		"peak concurrency 2",
-		"alpha",
-		"beta",
-		"gamma",
-	} {
+	for _, want := range []string{"3 package(s)", "alpha", "beta", "gamma"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the timeline does not report %q:\n%s", want, got)
 		}
+	}
+	// THE REFUSAL IS THE CLAIM HERE. These rows are print times, so any
+	// concurrency figure drawn from them is an artifact of go's output order.
+	if strings.Contains(got, "peak concurrency") {
+		t.Errorf("the timeline claims a concurrency figure from PRINT times, which is "+
+			"the artifact that reached task 1245's job log as \"peak concurrency 30\" "+
+			"on an 8-way box:\n%s", got)
+	}
+	if !strings.Contains(got, "PRINT times") {
+		t.Errorf("the timeline does not warn that these are print times, so a reader "+
+			"cannot tell this shape from one that carries real times:\n%s", got)
 	}
 	// THE VERDICT TRAVELS WITH THE ROW, because a timeline that showed timing
 	// and lost which package FAILED would send a reader back to the log it was
@@ -71,13 +82,8 @@ func TestTheTimelineRecoversOverlapFromAStampedStreamWithNoPackageFields(t *test
 	if !strings.Contains(got, "fail") {
 		t.Errorf("gamma FAILED and no row says so:\n%s", got)
 	}
-	// AND THE PEAK NAMES ITS MEMBERS: "concurrency 2" without saying WHICH two
-	// cannot support a contention argument about a particular package.
-	if !strings.Contains(got, "peak at ") {
-		t.Errorf("the peak does not name when it happened or who was in it:\n%s", got)
-	}
 	if !t.Failed() {
-		proof.Logf(t, "PROOF timeline over a Package-less stamped stream: 3 package(s), peak 2, verdicts carried")
+		proof.Logf(t, "PROOF print-time stream: 3 package(s) and verdicts reported, NO concurrency claimed")
 	}
 }
 

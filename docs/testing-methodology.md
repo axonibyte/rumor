@@ -2422,11 +2422,22 @@ printed into the job log. It is taken live rather than from the finished log
 because a later pass over `../test.log` would stamp every line with the moment
 the parser read it — the same erasure, one step further on.
 
-**THE READ-TIME IS THE *END*, AND THAT IS A PROPERTY OF HOW `go test` BUFFERS.**
-With `-v ./...` go runs packages concurrently but holds each package's output
-and prints it as one block when that package finishes. So a verdict line's
-stamp is the package's end, and its start is that minus the elapsed it reports.
-The overlap recovered this way is real rather than inferred.
+**THE READ-TIME IS A *PRINT* TIME, AND I HAD THAT BACKWARDS.** `go test` emits
+package blocks in the order the packages were LISTED, not the order they
+finish, so a slow package holds back the print of everything behind it — in
+task 1245 all 46 packages shared four print instants. A start computed as
+print-minus-elapsed is shifted by however long the package waited to be
+printed, and an overlap computed from it is an artifact: 1245 reported "peak
+concurrency 30" on a box whose `-p` caps parallelism at GOMAXPROCS, which is
+8 there. quill refuted it (coop r9/418) and it is withdrawn (r9/419).
+
+**SO THE TEE'D SHAPE REPORTS TIMING AND REFUSES OVERLAP.** Each package's own
+elapsed and verdict are exact and the batch order is real; what cannot be had
+from it is what ran beside what, and the tool says so in place of a figure.
+`go test -json` does NOT batch — driven on matrix, `tests/clock` listed first
+ends +10.5 while `internal/decl` second ends +0.0 — so the figure is available
+there and returns automatically if CI is ever fed that shape. It is not fed it
+today, because that would put a parser between the suite and `../test.log`.
 
 **`../test.log` STAYS THE OUTPUT OF `go test` AND OF NOTHING ELSE.** The
 failure view and the rc-124 diagnostic both mine it, and every pattern they use

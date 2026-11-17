@@ -138,12 +138,15 @@ def spans_from_output(events):
     purpose, because the alternative is making ../test.log depend on a parser.
     So the package names come from the text, and the clock from the event.
 
-    AND THE READ-TIME IS THE END, WHICH IS A PROPERTY OF HOW go BUFFERS. With
-    `-v ./...` go runs packages concurrently but holds each package's output
-    and prints it as one block WHEN THAT PACKAGE FINISHES. So the moment a
-    verdict line is read is the moment the package ended, and its start is that
-    minus the elapsed it reports. The overlap this recovers is therefore real,
-    and it is the figure the flush had erased.
+    AND THE READ-TIME IS A PRINT TIME, NOT AN END, which I had backwards and
+    published a figure on. `go test` emits package blocks in LISTED order, so
+    a slow package holds back the print of every package behind it: in task
+    1245 all 46 shared FOUR print instants. A start computed as
+    print-minus-elapsed is therefore shifted by however long that package
+    waited to be printed, and overlap computed from it is an artifact. These
+    rows are still useful -- each package's OWN elapsed and verdict are exact,
+    and the order of the batches is real -- but they cannot answer what ran
+    beside what, and main() refuses to.
     """
     out = {}
     for event in events:
@@ -224,9 +227,10 @@ def main():
             return 1
 
     rows = spans(events)
+    timed = bool(rows)
     if not rows:
-        # The tee'd shape: no Package fields, names in the text. See
-        # spans_from_output for why the read-time is the package's END.
+        # The tee'd shape: no Package fields, names in the text. These rows
+        # carry PRINT times and not completion times -- see spans_from_output.
         rows = spans_from_output(events)
     if not rows:
         print(f"TIMELINE: no package events in {args.json} "
@@ -237,13 +241,36 @@ def main():
     ended = [r["end"] for r in rows.values() if r["end"]]
     first = min(started) if started else None
     wall = (max(ended) - first).total_seconds() if ended and first else 0.0
-    best, at = peak_overlap(rows)
+    mixed = f", {foreign} non-JSON line(s) passed through" if foreign else ""
 
-    print(f"TIMELINE {len(rows)} package(s), wall {wall:.1f}s, peak concurrency {best}"
-          + (f", {foreign} non-JSON line(s) passed through" if foreign else ""))
-    if at is not None:
-        print(f"  peak at +{(at - first).total_seconds():.1f}s: "
-              + ", ".join(shorten(p) for p in live_at(rows, at)))
+    # CONCURRENCY IS REPORTED ONLY FROM TIMES THAT ARE REAL, which the tee'd
+    # shape's are not. WITHDRAWN AFTER PUBLISHING A FIGURE THAT WAS AN
+    # ARTIFACT (quill r9/418, ibis r9/419): `go test` emits package blocks in
+    # LISTED order, so a slow package holds back the print of everything
+    # behind it and a batch lands at one instant. In task 1245 all 46 packages
+    # shared FOUR end times -- 19 at +198.9, 15 at +199.0, 7 at +1558.3, 5 at
+    # +9.7 -- and the overlap computed from them read "peak concurrency 30" on
+    # a box whose -p caps real parallelism at GOMAXPROCS, which is 8 there.
+    # Nineteen packages counted as running together had finished and were
+    # queued to print.
+    #
+    # SO THE FIGURE IS REMOVED RATHER THAN LABELLED. A number that is right
+    # under `go test -json` and wrong under the tee reads the same in both,
+    # and a reader cannot tell which they have. `-json` does NOT batch, driven
+    # on matrix: tests/clock listed first ends +10.5 while internal/decl
+    # second ends +0.0. If CI ever feeds this that shape, `timed` is true and
+    # the figure comes back honestly.
+    if timed:
+        best, at = peak_overlap(rows)
+        print(f"TIMELINE {len(rows)} package(s), wall {wall:.1f}s, "
+              f"peak concurrency {best}{mixed}")
+        if at is not None:
+            print(f"  peak at +{(at - first).total_seconds():.1f}s: "
+                  + ", ".join(shorten(p) for p in live_at(rows, at)))
+    else:
+        print(f"TIMELINE {len(rows)} package(s), wall {wall:.1f}s{mixed}")
+        print("  times below are PRINT times: `go test` emits package blocks in "
+              "listed order, so these cannot be read as overlap")
 
     # UNREPORTED PACKAGES ARE NAMED FIRST, because they are the ones a timeout
     # is about: `go test` reports a package when it finishes, so a package with
