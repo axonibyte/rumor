@@ -239,6 +239,8 @@ def main():
                     help="print any package whose verdict came from the test cache")
     ap.add_argument("--failures", action="store_true",
                     help="print each failing package and test with its own output")
+    ap.add_argument("--verdicts", action="store_true",
+                    help="print every package that reported, with its verdict and elapsed")
     args = ap.parse_args()
 
     try:
@@ -266,6 +268,31 @@ def main():
     # nothing in a record whose every line is a JSON object: measured, a
     # `grep -cE '^ok[[:space:]]'` over test.json answers 0. So each claim is
     # computed from the fields that carry it instead of repointed blindly.
+    if args.verdicts:
+        # THE LIST AND THE COUNT FROM ONE SOURCE, which is what quill would not
+        # leave at coop r10/29 and fable ruled at r10/30. The list beside the
+        # rc-124 fraction was `grep -aE '^(ok|FAIL|\?)...' ../test.log` while
+        # the count came from the record: two instruments on one question, so a
+        # line dropped by the rendering would print "41 of 42" over a list of 40
+        # and leave the reader to work out which half lied.
+        #
+        # SAME PREDICATE AS --reported, DELIBERATELY: a package reported when it
+        # emits pass, fail or skip with a Package and no Test. The count is the
+        # length of this list by construction, so the two cannot disagree -- and
+        # `?` (no test files, which emits skip) and a package that failed to
+        # BUILD are both here, the two kinds the old text pattern lost.
+        seen = {}
+        for event in events:
+            if event.get("Action") in TERMINAL and event.get("Package") and not event.get("Test"):
+                seen[event["Package"]] = (event["Action"], event.get("Elapsed"))
+        for pkg in sorted(seen):
+            action, elapsed = seen[pkg]
+            if elapsed is None:
+                print(f"{action}\t{pkg}")
+            else:
+                print(f"{action}\t{pkg}\t{elapsed:.3f}s")
+        return 0
+
     if args.passed:
         # A PACKAGE PASSED when it emits pass with a Package and no Test. The
         # grep this replaces was `^ok<TAB>forge...`, and its claim -- "the

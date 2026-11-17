@@ -546,21 +546,28 @@ jobs:
             # the fraction: the denominator was every package and the numerator
             # only the ones that run tests.
             echo "--- reported, with each package's own elapsed:"
-            # THE LIST COMES OUT OF THE RECORD TOO, and it is a pointer rather
-            # than a second instrument. It was `grep -aE '^(ok|FAIL|\?)...'`
-            # over ../test.log while the COUNT below came from ../test.json --
-            # two instruments on one question from two sources (quill, coop
-            # r10/29). Condition (5) held, because only the count decides and
-            # the list displayed, but a line dropped by the rendering would
-            # print "41 of 42" above a list of 40 and leave the reader to work
-            # out which half lied. The TIMELINE table above is built from
-            # ../test.json's own fields and already names every package with
-            # its verdict and elapsed, so there is nothing a second list can
-            # add except a way to disagree.
-            echo "--- every package that reported is in the TIMELINE table above,"
-            echo "    with its start, end, elapsed and verdict, computed from"
-            echo "    ../test.json -- the same record the count below reads, so"
-            echo "    the two halves of that fraction cannot disagree."
+            # THE LIST IS RENDERED FROM THE RECORD, IN THIS STEP, BESIDE ITS
+            # COUNT. It was `grep -aE '^(ok|FAIL|\?)...'` over ../test.log
+            # while the count came from ../test.json -- two instruments on one
+            # question from two sources (quill, coop r10/29; fable r10/30).
+            # Condition (5) held, because only the count decides and the list
+            # displayed, but a line dropped by the rendering would print
+            # "41 of 42" above a list of 40 and leave the reader to work out
+            # which half lied.
+            #
+            # ONE PREDICATE SERVES BOTH: --verdicts lists exactly the packages
+            # --reported counts, so the count is this list's length by
+            # construction and a disagreement is not expressible. A pointer to
+            # the TIMELINE table above would also have been one source, but it
+            # asks the reader to scroll a 1400-second log to answer the question
+            # the line beside it just raised.
+            echo "--- reported, from the record, with each package's own elapsed:"
+            if [ -n "$PY" ]; then
+              timeout 60 "$PY" tools/test-timeline.py --json ../test.json --verdicts \
+                || echo "(the verdict list could not be read from ../test.json)"
+            else
+              echo "(no python3, so the record could not be listed)"
+            fi
             # THE COUNT MATCHES THE LIST, and it did not for one commit: the
             # list is `^(ok|FAIL)` and the count was `^ok`, so a FAILED package
             # was printed as completed and left out of the figure -- making

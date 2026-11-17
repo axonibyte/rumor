@@ -253,6 +253,15 @@ func TestTheTimeoutDiagnosticCountsTheSetItLists(t *testing.T) {
 		t.Errorf("%s fills the numerator from something other than "+
 			"`tools/test-timeline.py --json ../test.json --reported`", path)
 	}
+	// AND THE STEP MUST ACTUALLY PRINT THE LIST, which a mutant showed this arm
+	// could not see: replacing the step's `--verdicts` invocation with `true`
+	// left every clause green, because the arm drove the TOOL and never the
+	// step's use of it. The count alone tells a reader that 41 of 42 reported
+	// and not WHICH, which is the whole reason the list is beside it.
+	if !strings.Contains(test, "--json ../test.json --verdicts") {
+		t.Errorf("%s prints the count without listing the packages from the record: a reader "+
+			"told `41 of 42` and not which one is missing has to go and find the log", path)
+	}
 
 	// THE FIXTURE IS A RECORD AND NOT A LOG, carrying one of every kind of
 	// package `go list ./...` counts -- a pass, a FAIL, a package with NO TEST
@@ -306,6 +315,40 @@ func TestTheTimeoutDiagnosticCountsTheSetItLists(t *testing.T) {
 			"skip and a BUILD FAILURE, with a per-test pass, a start, a Package-less build "+
 			"event and a non-JSON line beside them; want %d", got, wantReported)
 	}
+	// AND THE LIST BESIDE IT COUNTS THE SAME SET, which is fable's close at coop
+	// r10/30 and quill's finding at /29: the list was a grep over the RENDERING
+	// while the count came from the record, so a line the renderer dropped
+	// would print "41 of 42" over a list of 40. One predicate serves both now,
+	// and this drives it rather than reading the step's text for it: the count
+	// must be this list's length over the same record, for every kind of
+	// package go list counts.
+	listed, err := exec.Command(py, filepath.Join("..", "..", "tools", "test-timeline.py"),
+		"--json", recPath, "--verdicts").Output()
+	if err != nil {
+		t.Fatalf("listing the fixture record: %v", err)
+	}
+	rows := strings.Split(strings.TrimSpace(string(listed)), "\n")
+	if len(rows) != wantReported {
+		t.Errorf("the list holds %d row(s) and the count says %d: a fraction whose halves "+
+			"disagree is the defect this arm exists for, and it has now shipped from two "+
+			"different sources. Rows: %q", len(rows), wantReported, rows)
+	}
+	// AND EVERY KIND IS IN IT BY NAME, because a count can agree with a list
+	// while both miss the same kind -- which is exactly how `?` was lost.
+	joined := strings.Join(rows, "\n")
+	for _, want := range []string{"m/internal/wire", "m/tests/clock",
+		"m/internal/vocabulary", "m/internal/broken"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("the list omits %s, which reported: %q", want, joined)
+		}
+	}
+	if !strings.Contains(joined, "skip\tm/internal/vocabulary") {
+		t.Errorf("the no-test-files package is not listed as skip: %q", joined)
+	}
+	if !strings.Contains(joined, "fail\tm/internal/broken") {
+		t.Errorf("the build-failed package is not listed as fail: %q", joined)
+	}
+
 	proof.Logf(t, "PROOF the fraction's numerator is computed from the record and counts %d of "+
 		"%d package kinds -- pass, FAIL, no-test-files and build-failed -- while a per-test "+
 		"event, a start, a Package-less build event and a non-JSON line count for none",
