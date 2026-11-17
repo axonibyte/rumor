@@ -376,6 +376,24 @@ jobs:
             1) echo "--- the browser sweep collected nothing this run" ;;
             *) echo "SWEEP VIEW BROKEN: the grep over ../test.log exited $src, so nothing below rests on it" ;;
           esac
+          # A GROUP ALIVE AFTER TEARDOWN IS THE ONE ABNORMAL OUTCOME this
+          # subsystem can now have, and it was written only to stderr -- which
+          # a green run drops, exactly as the sweep's line was (quill, coop
+          # r9/461, the fourth instance of that gap today).
+          #
+          # IT IS ABNORMAL AND NOT ROUTINE, which is why it is worth a view of
+          # its own: teardown keeps every tree now, so a kept tree says
+          # nothing, and this line is the only thing that distinguishes "handed
+          # on tidily" from "could not stop its browsers". Silence here is the
+          # good case and says so.
+          krc=0
+          grep -a 'still has members after SIGKILL' ../test.log > ../kept.txt || krc=$?
+          case "$krc" in
+            0) echo "--- teardown could NOT stop these groups; they are left for a later sweep:"
+               sed -n '1,20p' ../kept.txt ;;
+            1) echo "--- every teardown emptied its process group" ;;
+            *) echo "KEPT VIEW BROKEN: the grep over ../test.log exited $krc, so nothing below rests on it" ;;
+          esac
           # THE FAILURE VIEW IS MINED AND NOT ONLY TAILED, because -v moved what
           # the last 20 lines contain: under -v a tail is the verbose output of
           # whichever package finished last, so a FAIL twenty packages earlier
