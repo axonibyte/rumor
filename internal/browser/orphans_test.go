@@ -468,3 +468,53 @@ func TestATeardownThatCannotEmptyTheGroupKEEPSTheTree(t *testing.T) {
 			"how a green run strands browsers no one can find (stat err %v)", tree, err)
 	}
 }
+
+// TestATeardownWhoseSignalsDoNotLandRETURNS is quill's second finding driven
+// (coop r9/437). The StopGrace branch read `signalGroup(KILL); <-d.exited`
+// with nothing behind it, so a SIGKILL that does not land left teardown
+// blocked FOREVER. quill hit it by neutering the signal and watching their
+// probe hang to rc 124 at 120s -- which in CI is a hang inside the suite that
+// the outer budget reports as rc 124, indistinguishable from the 1800s kill
+// that nine heads were read as. A teardown defect wearing a box problem's
+// clothes.
+//
+// NEUTERING THE SIGNAL IS THE ONLY WAY IN. quill could not force the real
+// case -- it needs a driver that survives SIGKILL -- so the seam stands in for
+// it, and what is asserted is the BOUND: teardown returns, and the tree is
+// kept because the group it could not stop is still alive.
+func TestATeardownWhoseSignalsDoNotLandRETURNS(t *testing.T) {
+	d, _ := startFake(t, "ready", true)
+	tree := d.tmpdir
+
+	defer restoreReaper(swapReaper(
+		listGroupMembers,
+		// The signal is swallowed: nothing is delivered, so the driver lives.
+		func(int, syscall.Signal) error { return nil },
+	))
+
+	done := make(chan struct{})
+	go func() { _ = d.Close(context.Background()); close(done) }()
+
+	// GENEROUS BUT FINITE. The two grace periods plus room for the emptiness
+	// check; the unbounded version never arrives at all, which is the point.
+	select {
+	case <-done:
+	case <-time.After(4*StopGrace + 30*time.Second):
+		t.Fatal("teardown did not return when its signals did not land: this is the " +
+			"unbounded `<-d.exited`, and in CI it is a hang the budget kill reports " +
+			"as rc 124 rather than as a teardown that could not stop its driver")
+	}
+
+	if _, err := os.Stat(tree); err != nil {
+		t.Errorf("the tree was removed although the group was never stopped (%v): "+
+			"the handle must survive a teardown that failed", err)
+	}
+	// THE DRIVER IS STILL RUNNING -- that is what made the wait unbounded, and
+	// it is this arm's own leaving. The signals are restored by the deferred
+	// swap above, so stop the group for real rather than handing TestMain's
+	// leavings audit a process this test created on purpose.
+	if pgid := readPGID(tree); pgid > 1 {
+		_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	}
+	_ = os.RemoveAll(tree)
+}

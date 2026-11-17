@@ -638,7 +638,22 @@ func (d *Driver) stopProcessOnce() {
 	case <-d.exited:
 	case <-time.After(StopGrace):
 		signalGroup(pid, syscall.SIGKILL)
-		<-d.exited
+		// BOUNDED, AND IT WAS NOT (quill, coop r9/437, who drove it): this
+		// read `<-d.exited` with nothing behind it, so a SIGKILL that does not
+		// land -- a wedged driver, a signal that cannot be delivered -- left
+		// teardown blocked FOREVER. In CI that is a hang inside the suite, and
+		// the outer budget then reports rc 124: a teardown defect wearing a
+		// box problem's clothes, indistinguishable from the 1800s kill that
+		// nine heads were read as.
+		//
+		// GIVING UP HERE IS RIGHT, because the tree is no longer the casualty:
+		// the emptiness check below sees a live group and KEEPS it, so a run
+		// that cannot stop its browsers hands them to the next run's sweep
+		// instead of hanging and stranding them unreachable.
+		select {
+		case <-d.exited:
+		case <-time.After(StopGrace):
+		}
 	}
 	// AND AGAIN AFTER THE REAP, because the driver exiting is not the browser
 	// exiting: the first signal is the polite one and a browser mid-teardown can
@@ -694,7 +709,10 @@ func groupEmptied(pgid int, within time.Duration) bool {
 // signalGroup signals a whole process group and says nothing about the result:
 // the group may already be empty, which is the success case and not an error.
 func signalGroup(pid int, sig syscall.Signal) {
-	_ = syscall.Kill(-pid, sig)
+	// THROUGH THE SAME SEAM THE SWEEP USES, so an arm can drive the case
+	// where a signal does not land -- which is the only way to reach the
+	// unbounded wait this file used to have.
+	_ = signalGroupOf(pid, sig)
 }
 
 // call is the one place a WebDriver request is made, so the base, the timeout
