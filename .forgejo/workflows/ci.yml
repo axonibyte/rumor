@@ -73,13 +73,21 @@
 # GO-2026-6859 is in net/http up to go1.26.10, which is what the ci jail had, and
 # 41 call paths in this tree reach it -- so run 718 was REFUSED by govulncheck
 # with the suite green, which is a toolchain finding wearing a code finding's
-# clothes (ibis, coop main/801). It is fixed in go1.26.11 and go1.27.4; 1.26.11
-# is in no repo this project can reach, including upstream quarterly and latest,
-# and go127-1.27.4 is, so that is what the jail now carries. MEASURED there on
-# 2026-11-12: govulncheck v1.9.0 rebuilt under go1.27.4 answers "No
-# vulnerabilities found" on this tree, where the same scan under go1.26.10
+# clothes (ibis, coop main/801). It is fixed in go1.26.11 and go1.27.4. MEASURED
+# in the jail on 2026-11-12: govulncheck v1.9.0 rebuilt under go1.27.4 answers
+# "No vulnerabilities found" on this tree, where the same scan under go1.26.10
 # reported GO-2026-6859. A bare `go` still wins when one exists, unchanged: that
 # is the jail operator's choice and not this file's.
+#
+# THE REASON go127 LEADS IS NOW HALF STALE, AND THE STALE HALF IS NAMED HERE
+# RATHER THAN LEFT TO READ AS CURRENT. This file said 1.26.11 "is in no repo
+# this project can reach, including upstream quarterly and latest", which was
+# true when written and is not now: `pkg rquery` in the ci jail answered
+# go126-1.26.11 on 2026-11-17 at 05:02Z, with go126-1.26.10 and go127-1.27.4
+# installed. So both remedies exist -- install 1.26.11 and let go126 lead, which
+# would match go.mod's own 1.26.0 directive, or keep go127 and raise the
+# directive. The ORDER IS UNCHANGED HERE because choosing is the jail operator's
+# call, not this file's: raised to cal as flag debt-go1-26-11 (coop main/961).
 #
 # THE TRIGGER IS EVERY BRANCH, and that is this file's own doing rather than a
 # repo setting: the Rust version fired only on push to r0.2-ci, so rows 160-164
