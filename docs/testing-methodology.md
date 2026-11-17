@@ -2491,3 +2491,34 @@ TMPDIR and does not hold for any made after it: 32 of 88126's 33 named theirs.
 A blocker recorded with its measurement has to be re-measured before it is
 re-used, and nothing about reaching the group was ever hard — one SIGTERM to
 `-88126` took 33 members to 0.
+
+**THE FIGURE #128 ASKED FOR NEEDS NO NEW CODE, ONLY THE SUITE'S OTHER FORM.**
+`tools/test-timeline.py`, unchanged, over a real `go test -json` stream on three
+packages of this tree:
+
+    TIMELINE 3 package(s), wall 10.6s, peak concurrency 2
+      peak at +0.5s: internal/wire, tests/clock
+
+Real start, end and overlap, because `-json` carries `Package` *and* a per-event
+`Time`. The tee'd `test2json` carries neither — that is the whole reason the
+withdrawn "peak concurrency 30" could not be replaced with an honest figure
+rather than a refusal.
+
+**AND THE HAZARD RECORDED AGAINST IT WAS WRONG.** This document argued that
+`../test.log` must be `go test`'s own output because a broken build has to fill
+it exactly as before, and a parser in that path could swallow it. Measured on
+2026-11-17 with go1.27.2: `go test -json` over a package that does not compile
+emits `build-output` and `build-fail` **as JSON events**, with **stderr empty**
+and every stdout line parsing. So the stream survives a module that will not
+build, and the premise that only a raw tee could was never tested when it was
+written.
+
+**THE RECONSTRUCTION IS FAITHFUL EXCEPT ONE LINE, AND THAT IS MEASURED TOO.**
+Concatenating `output` and `build-output` events reproduces `go test -v`'s
+stream, *gaining* the build-error text that `-v` sends to stderr (which CI
+already merges with `2>&1`) and *losing* the trailing bare `FAIL` — the go
+command's own summary, carried by no event. Per-package `FAIL\tpkg` lines
+survive, so every view that greps for FAIL still matches. A design that makes
+`-json` primary therefore costs one summary line and buys the overlap figure;
+whether that trade is taken is a decision about this document's own rule and
+not a refactor, so it is recorded here and asked rather than made.
