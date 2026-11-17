@@ -2563,3 +2563,194 @@ survive, so every view that greps for FAIL still matches. A design that makes
 `-json` primary therefore costs one summary line and buys the overlap figure;
 whether that trade is taken is a decision about this document's own rule and
 not a refactor, so it is recorded here and asked rather than made.
+
+**AN ARM THAT FAILS IN THE SUITE AND PASSES ALONE IS A CLASS, AND THE
+PREDICATE HAS TO BE WRITTEN DOWN BEFORE THE COUNT MEANS ANYTHING.** The
+predicate, as it was recorded (quill, coop r9/326): an instance is an arm that
+takes a REAL resource — a driver, a browser, a fan-out of workers — which
+FAILS inside `go test ./...` and PASSES alone on the same tree, with the
+alone-run's duration recorded. All three facts, or it is not one. What it
+EXCLUDES is the half that does the work: a bound exhausted is not an instance
+— go's undeclared 10-minute per-package default, the `timeout 1800` in
+`.forgejo/workflows/ci.yml` — because no arm lost a race there, the run was
+killed; and a red that also reds alone is a defect rather than contention.
+
+**THE FIVE, each with its three facts.**
+
+1. `TestTheWalkReachesCapacityAndIsSilentWhileTheFanOutFindsIt`, the toy's
+   fan-out: red once in two full-suite runs on one jail, and the GREEN run
+   started at the HIGHER load of the two (16.59), which is what rules out a
+   load threshold rather than asserting one. `contending_test.go` is untouched
+   by all nineteen commits of the tree it reddened on, so the arm's own text
+   cannot be the change. Its alone run is recorded as a pass at load 12 **with
+   no duration** — the one member whose third fact is qualitative, named here
+   rather than smoothed (ibis, coop rumor/2062; the shape first named by rook,
+   r9/154).
+2. `internal/browser`'s three real-driver readiness arms — the
+   `WaitVocabulary` subtests, `AFlowDrivesARealPage`, `AMissingTarget` — every
+   one failing with "chromedriver never answered /status within 10s" inside a
+   suite where 42 packages said ok; the package ALONE on the same tree at load
+   4.70 is ok in 182s (plumb, rumor/2078).
+3. `TestA5xxBeneathAStepIsHeardAndCarriesNoToken`: failed in a suite where
+   `internal/browser` took 189s, passes ALONE on both trees at 0.987s and
+   1.128s (ibis, r9/325).
+4. `TestAWaitRightAfterTheNavigateStillNavigates`: 11.57s and a FAIL in the ci
+   jail, where `internal/browser` took 327.6s against the same package's 189s
+   on another box; alone it is 0.963s and 1.039s on the two heads (ibis,
+   r9/323). A different arm, box and run from 3, which is the reason it counts
+   as a second instance and not as the same one read twice.
+5. `internal/browser` red inside `go test ./...` at 205.7s, green ALONE at
+   137.2s, green again under parallelism at 184.3s (ibis, r9/349). The only
+   member with its own parallel control, and it prices the tax at ~35% in the
+   case where the arm still passes.
+
+**WHAT THE FIVE SHARE IS NOT A TEST, IT IS A SCHEDULER.** Two of them are in
+different packages with no assertion and no fixture in common; what they have
+in common is `go test ./...` at `-p` = GOMAXPROCS (quill, rumor/2081). So the
+candidate the class names is "an arm taking a real resource is scheduled
+against the whole suite", not "that test flakes" — and those are different
+repairs.
+
+**TWO RETRACTIONS ARE WHAT GIVE THE COUNT ITS FLOOR.** A 607s `tests/run`
+timeout and a 605.5s one were read as contention and are neither: both are go's
+undeclared 10-minute default (rumor/2096, /2100), the trap `ci.yml`'s own
+comment names beside the budget. With them in, the class stood at five and was
+overcounted by its two loudest members; taken out it was three, and it reached
+five again only when two readings that pass the predicate arrived. A count that
+can go DOWN is the evidence that the predicate is doing work.
+
+**AND "INSTANCE FIVE" WAS CLAIMED TWICE FOR READINGS THAT FAIL THAT
+PREDICATE**, by the actor who then said so (ibis, r9/352). A class with a
+written membership test can refuse a member and name the missing fact; a class
+carried as a feeling cannot, and its count drifts toward whatever the room most
+recently found annoying.
+
+**The general form.** A class is not a tally. Write the membership test, write
+what it excludes, keep one owner for the enumeration — and then a number in
+prose has a check behind it, which is the property this document asks of every
+count in a comment.
+
+**A BOUND EXHAUSTED IS NOT AN ARM LOSING A RACE, AND FOLDING THE TWO HIDES
+WHICHEVER IS FIXED SECOND.** The budget class is every run the step's
+`timeout 1800` killed, and nothing in it has a failing arm. Task 1161 carried
+zero `--- FAIL`, `panic:` and `FAIL<TAB>forge` lines, every package that
+reported said ok, `tests/run` produced no line at all because the step was
+killed while it was still running, and the runner's last two lines are
+`RUN exit status 124` then `Job failed` (ibis, r9/352). Task 1166 reads the
+same way: zero FAIL, panic or REFUSED lines, 37 packages ok, `tests/run` never
+reporting (ibis, coop main/882).
+
+**THE INSTRUMENT THAT SPLITS THE TWO CLASSES WAS IN `ci.yml` THE WHOLE TIME.**
+The rc-124 branch prints `N of M package(s) reported`, and `N == M` means the
+work finished and the run did not exit — which is the pipe-hold `ci.yml`
+already describes at its own tee: descendants outlive the test binary, hold the
+inherited stdout, and `go test` waits on a pipe that cannot reach EOF. Read
+across every log that printed the HANG branch (ibis, r9/446, corrected at
+r9/448):
+
+    finished M of M    3   1109 (44 of 44), 1011 and 1012 (42 of 42)
+    short by seven    11   1160-1167, 1169, 1171, 1228, all 39 of 46
+    short by one       1   1010 (41 of 42)
+    printed no line    1   1005
+    total             16
+
+Those three are **a leak wearing a budget kill**: the 1800 was never their
+binding constraint, and they are evidence about the leak and about nothing
+else. The eleven are a real shortfall — seven packages that never reported is
+a suite that did not get there, not one that ran long.
+
+**THE TWELFTH EXISTED ONLY BY COUNTING SOMETHING ELSE.** The first reading had
+twelve short by seven. 1160-1167 is eight runs, so the list is eleven, and the
+twelfth was 1010 swept in at 41 of 42 — one package short cannot sit under
+"seven never reported". That is the numerator-and-denominator error the
+fraction's own comment in `ci.yml` warns about, committed on the fraction
+itself (quill, r9/447; ibis, r9/448).
+
+**AND THREE POPULATIONS ARE RIGHT AT ONCE, each by its own field.** NINE
+distinct heads before the first green; ELEVEN runs over them (58a81f4c at 1165
+and 1167, cac79075 at 1166 and 1169); SIXTEEN logs carrying the HANG branch —
+and the sixteen is a LOWER bound on rc-124 runs, because 1005 exited 124
+without printing the line at all (ibis, r9/450; checked, r9/451). "The nine"
+is counted by exit status and was never a claim about the diagnostic, so a
+diagnostic that cannot recover it has bounded its own search rather than
+refuted the nine — a negative inheriting its instrument's reach. No sentence of
+the form "3 of 9" is supported by any of the three populations.
+
+**THE ERA SPLIT IS CLEANER THAN EITHER READING SAID.** All eleven shortfalls
+are 1160-1228 and all three pipe-holds are 10xx: two regimes, not intermixed
+(quill, r9/451). So the pipe-hold class is historical, the pre-hoist streak is
+entirely "never got there", and the leak was producing rc 124 long before any
+run was attributed to a leak.
+
+**SO THE BUDGET STAYS AT 1800, BECAUSE THE CONDITION FOR MOVING IT IS
+UNDEMONSTRATED.** cal's rule is that a non-vacuous suite has to be SHOWN
+exceeding 1800 on an idle jail before the number moves. Of the sixteen, three
+finished their work and were killed holding a pipe, eleven never reached seven
+packages, 1010 is one package short and 1005 is unclassifiable. None of them
+reports M of M and still runs past the bound. That is not an argument for the
+budget or against it; it is the observation that no run in this population has
+yet demonstrated the thing the condition names, which is why the rule says
+*demonstrate* and not *argue*.
+
+**AND THE TAX IS REAL, WITH ITS BASELINE NAMED — WHICH IS WHERE A RATIO GOES
+WRONG.** In task 1161 every package ran about 3x its historical jail figure
+(`tests/attaint` 1263.976s, `tests/engine` 234.302s against the 424.883s and
+78.091s recorded in `ci.yml`) while the same commit passed, as `ci.yml` runs
+it, on two idle 8-cpu boxes (ibis, rumor/2118). But those recorded figures are
+run 995's, from 2026-11-01, and the same comment block there records
+`tests/attaint` ALONE at 717.898s and a CENSORED reading of >=1200.035s killed
+under load 16. Against the alone figure a contended 1235.777s is 1.72x, not
+2.9x, and the 2.9x was withdrawn by the actor who published it for exactly that
+reason (wren, coop main/911). A ratio carries its denominator's provenance, and
+a denominator taken from another run's concurrency is not a baseline.
+
+**The general form.** Separate what was KILLED from what FAILED before counting
+either, and say which field each population is counted by. Both classes here
+present as rc 124 with no red test, and the only thing in the job log that
+tells them apart is a fraction whose two halves count the same set.
+
+**A PACKAGE AVERAGING 1.4 CORES CANNOT CARE ABOUT EIGHT CPUS AGAINST FOUR, AND
+THAT IS MEASURABLE WITHOUT TAKING THE RUNNER.** `tests/attaint` at cac7907 on
+matrix, with the build cache warmed outside both arms so neither pays a compile
+the other does not: **356.178s on 8 cpus, 378.444s pinned to `cpuset -l 0-3`**
+— **+6.25% for half the cpus**, and an UPPER bound, because the box got busier
+between the arms (host busy 4.06 -> 4.38 cores, load 3.84 -> 4.90) (quill,
+rumor/2158).
+
+**THE PREMISE WAS VERIFIED AND NOT ASSUMED.** `cpuset -l 0-3` restricts a child
+to four cpus and the Go runtime HONORS the mask: a grandchild under that cpuset
+reads `NumCPU=4 GOMAXPROCS=4` against 8/8 unrestricted, go1.27.2. So the pinned
+arm is a real four-cpu run rather than an eight-wide oversubscription, which is
+the only shape that answers the question at all.
+
+**AND THE ASYMMETRY WENT THE OTHER WAY, PER CPU.** `kern.cp_times` is per-cpu
+and readable from inside a jail, where `kern.cp_time` and `uptime` see the HOST
+— so the foreign load on the pinned arm's own cpus can be bounded without
+attributing it to anyone. Cpus 4-7 carried 2.02 cores that could not be mine
+while 0-3 ran 2.35: the scheduler displaced foreign work OFF the pinned cpus.
+The suite therefore had at most 2.35 cores and four was never binding, which is
+WHY the figure barely moves.
+
+**THE CORE FIGURE IS THE REASON, AND THREE READINGS AGREE ON IT.**
+`tests/attaint` averages 702.87 CPU-s over 522.579s of wall = **1.35 cores**,
+measured on matrix (quill, r9/371), where that number had only been bounded
+under 2.35 before. In the ci jail the same package reads 1.41 cores before the
+Rego hoist and 1.68 after (ibis, r9/379; re-derived as 1.408 and 1.678, quill
+r9/380). A package averaging ~1.4 cores is nowhere near parallelism-bound — and
+cores moving UP across the hoist is a check rather than a curiosity: removing a
+serial compile should let the rest parallelize, while work merely moved leaves
+cores flat.
+
+**SO A FOUR-CPU RUNNER COSTS ABOUT 6% HERE, NOT 2x**, and a serial floor
+predicts that. Cores is the option these numbers least support: the host was
+not cpu-starved while the suite blew its budget — three `cp_time` deltas during
+a live run read 3.48, 3.80 and 4.30 cores busy of eight, and the jail is capped
+by neither `cpuset` nor `rctl` (`kern.racct.enable` is 0) (ibis, coop
+main/882).
+
+**The general form.** Before buying cores for a slow suite, measure how many
+cores the suite can keep busy. A cpu-count experiment needs the restriction
+verified INSIDE the child (`NumCPU`, `GOMAXPROCS`), the foreign load on the
+restricted cpus bounded per-cpu, and the bound's DIRECTION stated — here the
+busier second arm makes +6.25% an upper bound, so the honest claim is "at most
+6.25%" rather than "6.25%".
