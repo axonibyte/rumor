@@ -466,3 +466,71 @@ func containsID(ids []string, want string) bool {
 	}
 	return false
 }
+
+// TestTheProjectsOwnLicenceIsNamedTheSameInBothCopies holds the PROJECT's
+// license against the document that claims to be the decision's home, which is
+// a different question from everything else in this file.
+//
+// NOTHING IN THE TREE READ IT, and that is how it drifted. This suite gates
+// DEPENDENCY licences; `rumor docs --check` maps paths, not claims. So when
+// v0.1.52 replaced BSD-2-Clause with the Blue Oak Model License, `LICENSE`
+// changed and `docs/design.md` went on saying "The licence is BSD-2-Clause" --
+// in the same head whose CHANGELOG announced the replacement four lines in, and
+// whose bump commit edited design.md itself (quill, coop r10/49).
+//
+// TWO COPIES OF ONE FACT NEED AN ARM THAT READS BOTH, which is the shape
+// docs/testing-methodology.md already carries for a schema kept in two places.
+// The copies here are `LICENSE`'s own title line and design.md's sentence about
+// the project's license, and the arm is what makes them one fact.
+//
+// IT KEYS ON THE TITLE AND NOT ON A SPDX ID, because `LICENSE` carries no SPDX
+// line: its second heading IS the license's name, which is the only identity
+// the file states about itself.
+func TestTheProjectsOwnLicenceIsNamedTheSameInBothCopies(t *testing.T) {
+	license, err := os.ReadFile("../../LICENSE")
+	if err != nil {
+		t.Fatalf("reading LICENSE: %v", err)
+	}
+	var title string
+	for _, line := range strings.Split(string(license), "\n") {
+		if name, ok := strings.CutPrefix(strings.TrimSpace(line), "# "); ok {
+			title = strings.TrimSpace(name)
+			break
+		}
+	}
+	if title == "" {
+		t.Fatalf("LICENSE states no `# <name>` title, so it names no license and this arm " +
+			"has nothing to hold the document against")
+	}
+
+	design, err := os.ReadFile("../../docs/design.md")
+	if err != nil {
+		t.Fatalf("reading docs/design.md: %v", err)
+	}
+	// THE SENTENCE AND NOT THE WHOLE FILE. design.md names BSD-2-Clause and
+	// BSD-3-Clause legitimately, as PERMITTED DEPENDENCY licenses in the
+	// allowlist, so a file-wide search for the old name would fire on correct
+	// prose for ever. The claim under test is the one about the PROJECT's
+	// license, which that document marks as its own bullet.
+	const claim = "**The project's license is "
+	i := strings.Index(string(design), claim)
+	if i < 0 {
+		t.Fatalf("docs/design.md carries no %q bullet, so the decision's home states no "+
+			"license and the drift this arm exists for cannot be seen", claim)
+	}
+	rest := string(design)[i+len(claim):]
+	end := strings.Index(rest, "**")
+	if end < 0 {
+		t.Fatalf("docs/design.md's project-license bullet is unterminated: %.80q", rest)
+	}
+	stated := strings.TrimSpace(rest[:end])
+
+	if !strings.Contains(stated, title) {
+		t.Errorf("LICENSE's own title is %q and docs/design.md says the project's license is "+
+			"%q: one head shipped those two disagreeing, with the CHANGELOG announcing the "+
+			"change four lines above the stale sentence. A decision's home is a document, "+
+			"so the document has to be held to the file", title, stated)
+	}
+	proof.Logf(t, "PROOF the project's license is one fact in two copies: LICENSE's title %q "+
+		"and docs/design.md's bullet %q", title, stated)
+}

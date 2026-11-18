@@ -116,7 +116,15 @@ func TestEveryProofLineGoesThroughTheHelper(t *testing.T) {
 	// the code can emit, and that view would have printed its REASSURING
 	// sentence on a run that swept 47 trees. The new arm reads ci.yml's own
 	// text and requires each pattern to be a literal in internal/browser.
-	const sitesInTrackedTests = 231
+	// 231 -> 232 is the arm that holds the PROJECT's own license identity in
+	// its two copies. v0.1.52 replaced BSD-2-Clause with the Blue Oak Model
+	// License; LICENSE changed and docs/design.md -- the decision's home, and a
+	// file that same commit edited -- went on saying BSD-2-Clause, four lines
+	// under a CHANGELOG section announcing the replacement. tests/licences read
+	// DEPENDENCY licenses and `rumor docs --check` maps paths, so nothing in the
+	// tree read the one the project ships under. The new arm reads LICENSE's own
+	// title and holds that sentence against it.
+	const sitesInTrackedTests = 232
 	if sites != sitesInTrackedTests {
 		t.Errorf("%d call(s) of the helper in tracked test files, want %d: if that is "+
 			"deliberate, move the literal with it; if not, PROOF lines have been lost",

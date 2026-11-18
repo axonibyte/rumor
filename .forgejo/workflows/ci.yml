@@ -1194,6 +1194,19 @@ jobs:
           grep -q 'PROOF the document and this file name the same 8 licence(s)' ../lic.log \
             || { echo "the allowlist pair did not agree, or TestTheAllowlistsAgree did not run: R0.2's ids live in docs/design.md and this suite carries its own copy, and the two must match"; exit 1; }
           echo "PROOF the allowlist pair agreed on 8 ids, document against test"
+          # AND THE PROJECT'S OWN LICENSE, FOR THE SAME REASON AS THE PAIR ABOVE.
+          # The arm above was asserted because an arm that stops running leaves
+          # a green suite; the arm that holds docs/design.md's project-license
+          # sentence against LICENSE's own title is new (quill, coop r10/49) and
+          # carries exactly that risk -- delete it and this suite still passes.
+          #
+          # THE PREFIX AND NOT THE WHOLE LINE, deliberately: the arm itself
+          # compares the two names, so this step only has to know it reached a
+          # verdict. Spelling the license here would make ci.yml a THIRD copy of
+          # the fact whose two copies drifting is the thing being fixed.
+          grep -q "PROOF the project's license is one fact in two copies:" ../lic.log \
+            || { echo "the project-license pair did not agree, or TestTheProjectsOwnLicenceIsNamedTheSameInBothCopies did not run: LICENSE names the license this project ships under and docs/design.md is where that decision lives, and the two must match"; exit 1; }
+          echo "PROOF the project-license pair agreed, LICENSE against docs/design.md"
           if grep -q '^--- SKIP:' ../lic.log; then
             grep '^--- SKIP:' ../lic.log
             echo "a test in the licence suite SKIPPED. Every arm here is meant to run on every tree; a skip is a gap this step will not pass over."

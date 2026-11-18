@@ -40,8 +40,19 @@ here as the phases that own them land.
   improvement landed by a later patch run; nothing in the project depends on
   it. The binary is `rumor` either way, which is the name users type.
 
-- **The licence is BSD-2-Clause**, and the allowlist settled in R0.2 gates every
-  pull request. What *applies* that allowlist changed with the port: until the Go
+- **The project's license is the Blue Oak Model License 1.0.0**, which replaced
+  BSD-2-Clause in v0.1.52. This sentence said BSD-2-Clause for one head after
+  `LICENSE` itself had changed — in the same head whose CHANGELOG section
+  announced the replacement four lines in, and whose bump commit edited this
+  very file (quill, coop r10/49). Nothing in the tree read the project's own
+  license identity, so prose was the only copy and prose is not a mechanism;
+  `TestTheProjectsOwnLicenceIsNamedTheSameInBothCopies` now reads `LICENSE`'s
+  own title and holds this sentence against it.
+
+  **THE DEPENDENCY ALLOWLIST IS A DIFFERENT QUESTION AND IS UNCHANGED**, which
+  is why that drift was easy to miss: the allowlist settled in R0.2 gates every
+  pull request and still carries BSD-2-Clause and BSD-3-Clause as *permitted
+  dependency* licenses. What *applies* it changed with the port: until the Go
   module landed it was `cargo deny check licenses`; it is now `tests/licences`,
   a Go test over the surface `go list -deps -test` reports.
 
