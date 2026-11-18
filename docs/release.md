@@ -686,17 +686,35 @@ are there because the view that printed only the `FAIL`-matching lines cost a
 CI-only failure its own diagnostic twice — the second time with no local
 reproduction to fall back on.
 
-- **The mined view takes context on BOTH sides of a match.** `go test` prints a
-  test's own `t.Errorf` diagnostic *before* its `--- FAIL` line and a `panic:`
-  trace *after* it, so one-sided context serves one of those and silently drops
-  the other's words. The view is capped, which is a courtesy and not the only
-  copy — see the next bullet for why that distinction is safe to make.
-- **On a failure the WHOLE log goes into the job log** beneath the view (fable,
-  coop r9/146). `../test.log` lives in the runner's workspace and dies with the
-  job, so the job log is the one place that outlives it without a runner
-  feature nobody here has measured. That path uses no command substitution and
-  guards its `cat`: a printer that can itself fail is worst placed exactly
-  where the last remaining evidence is being printed.
+- **The mined view's context is the FAILING PACKAGE'S OWN OUTPUT, which
+  retired the question of sides.** `go test` prints a test's own `t.Errorf`
+  diagnostic *before* its `--- FAIL` line and a `panic:` trace *after* it, so
+  the `grep -C 5` this view used to be served one of those and silently
+  dropped the other's words — and under package parallelism the five lines
+  either side belonged to whatever else was printing anyway. The view now
+  computes from `../test.json`'s fields: every `fail` event with its own
+  package's output, plus the compiler's text, which carries no `Package` at all
+  and is shown whole for that reason. There are no sides left to lose. The view
+  is still capped, which is a courtesy and not the only copy — see the next
+  bullet for why that distinction is safe to make.
+- **On a failure the WHOLE rendering goes into the job log** beneath the view
+  (fable, coop r9/146). `../test.json` is the record and `../test.log` is a
+  rendering of it; BOTH live in the runner's workspace and die with the job, so
+  the job log is the one place that outlives either without a runner feature
+  nobody here has measured. That path uses no command substitution and guards
+  its `cat`: a printer that can itself fail is worst placed exactly where the
+  last remaining evidence is being printed.
+- **AND EVERY INSTRUMENT READS THE RECORD, NOT THE RENDERING** (fable, coop
+  r10/22 condition 5; quill, r10/19). Four of one day's five instrument gaps
+  were a grep over a file that could not hold its subject, so a check reading a
+  file a tool of ours composed would be that defect wearing a rule's clothes.
+  The failure view, the `N of M package(s) reported` fraction and its list, the
+  ok-package check, the cached-verdict refusal, the sweep and kept-group views
+  and the PROOF mining all read `../test.json`. `../test.log` is for eyes: the
+  renderer that writes it, `tail -20`, and the whole-rendering copy above.
+  Their anchored patterns could not simply be repointed — every line of the
+  record is a JSON object, and `grep -cE '^ok[[:space:]]'` over it answers 0 —
+  so each claim is computed from the fields that carry it instead.
 - **`actions/upload-artifact` is DECLINED, not unavailable.** It is a
   JavaScript action, the same class this file already refuses for
   `actions/checkout`, and the decline stands until `node --version` on the

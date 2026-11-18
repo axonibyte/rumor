@@ -3,6 +3,103 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.52 — 2026-11-18
+
+**A statute is compiled once per pass instead of once per rule per case; a
+browser teardown that cannot be trusted to run leaves a handle on disk for the
+next run to use; the suite's record becomes machine-readable so every
+instrument reads what `go test` wrote; and the project moves to the Blue Oak
+Model License** — issue 128, R10, cut off v0.1.51. Thirty-nine commits over
+cac7907 on r10-d1-regohoist UP TO THE BUMP ITSELF, cleared by quill in four
+verdicts: 33ef488 (the hoist), cf559ba and 18ef90d (the teardown and the
+record), 30de204 (the instruments), with d3's doc cleared at e3c31ef. The
+count is stated against the bump and not against the branch tip on purpose:
+quill's read of this bump found one thing, and the commits answering it ride
+AFTER those verdicts — see the license bullet below. A figure keyed to the
+tip would be falsified by every correction the review asks for, and nothing
+in the tree reads it.
+
+- **THE LICENSE IS BLUE OAK MODEL LICENSE 1.0.0, replacing BSD 2-Clause.**
+  Cherry-picked from `license-blue-oak` ahead of this bump, the resulting
+  `LICENSE` byte-identical to that branch's (blob `e40de338`).
+  AND IT IS NOW READ RATHER THAN CLAIMED. `docs/design.md`, where this
+  decision lives, went on saying BSD-2-Clause for one head after `LICENSE` had
+  changed — while this very section announced the change four lines in, and
+  the bump commit edited that file (quill, coop r10/49). Nothing in the tree
+  read the license the project ships under: `tests/licences` gates DEPENDENCY
+  licenses and `rumor docs --check` maps paths, not claims.
+  `TestTheProjectsOwnLicenceIsNamedTheSameInBothCopies` now reads `LICENSE`'s
+  own title and holds that sentence against it, and the licences step asserts
+  its PROOF by prefix so that deleting the arm cannot leave a green suite. The
+  version is a second read, because the name agreeing is not the license
+  agreeing; the document may not state a version `LICENSE` does not; and the
+  step reads `LICENSE` itself to check which branch the arm should have taken,
+  with that fragment executed by a test over three trees. The dependency
+  allowlist is a different question and is unchanged.
+- **A STATUTE IS COMPILED ONCE PER PASS (d1).** The compile sat in the
+  innermost loop — each case, each rule, rebuilding the same module from the
+  same text — and nothing at the call site said so. The figure is the COMPILE
+  ITSELF and not a proxy for it: **816 compiles per pass** removed, counted by
+  the engine, because a wall clock would have made the box a variable.
+  **8.65x CPU-seconds, measured in both arm orders**, since a pair taken
+  A-then-B credits the hoist with whatever else the box stopped doing. Cores
+  moving UP across it (1.408 to 1.678 in the ci jail) is the check: removing a
+  serial compile lets the rest parallelize, while work merely moved leaves
+  cores flat.
+- **THE TEARDOWN NOW SURVIVES NOT RUNNING (d2).** Nothing in-process runs when
+  the process is killed, which is the COMMON path: CI runs the suite under
+  `timeout 1800`, a cancelled forge run is the same shape, and Go's default
+  disposition for SIGTERM is to die without running anything. Measured on
+  forge-01 before the fix: 227 `chrome:` and 7 chromedrivers alive in the ci
+  jail, 1.7 to 5.3 hours old, none belonging to the running job, the box's swap
+  96% in use — and a chromedriver on that box cannot answer `POST /session`, so
+  two heads failed "NOT DRIVABLE" over a red that was about the orphans. The
+  defect is in rumor proper, not the tests: `cmd/rumor` starts drivers in
+  shipped code, so Ctrl-C on `rumor run` leaked for any user. A termination
+  handler now runs the real teardown and re-raises; a startup sweep reclaims
+  what SIGKILL stranded, and it REAPS rather than only removing.
+- **AND THE TREE CARRIES THE HANDLE, because a dead maker's pid says nothing
+  about where its orphans went.** Each owned tree records the driver's pgid at
+  Start. A tree is never removed while anything still names it, by pgid or by
+  argv: removing it deletes the only handle while the group runs, which is how
+  one run swept 47 stale trees, reaped 0, and left a cancelled run's group
+  alive. The tree also COMES BACK if you do it anyway — absent at 03:49:0x,
+  born again at 03:49:08 with a fresh profile dir and no pgid file, re-created
+  by the survivors — so the removal manufactures a tree indistinguishable from
+  a pre-record one. The recorded handle is tried FIRST and argv second, and the
+  passes are DISJOINT, so `reaped 0` cannot mean "argv got there first". A
+  sweeper is a PROCESS and the suites spawn rumor binaries by the dozen, so
+  disjointness replaced coordination rather than adding it.
+- **A PROCESS TABLE THAT CANNOT BE READ IS ITS OWN OUTCOME.** `nil`-on-error
+  made an unreadable table look like EMPTY GROUPS, so one failed `exec` could
+  delete a live group's tree and print `reaped 0`. It HOLDS everything now, and
+  this is not a comment's hypothetical: `ps` failed twice in one field sweep
+  and three times in the next. Read in CI at #794:
+  `reaped 1 browser group(s) ... (pgid 13943)` by the recorded handle, 0 chrome
+  in the jail afterwards, chromium 156.0.8078.47 — the handle path's first
+  firing in CI, after two readings that took the same group by argv.
+- **`../test.json` IS THE RECORD AND `../test.log` IS A RENDERING OF IT.** The
+  rule it reverses was never about the file's name but about the record being
+  what `go test` wrote with nothing of ours between, and `go test -json`
+  captured raw is still that — while carrying a `Package` and a real `Time` per
+  event, which the tee'd shape could not. The hazard the old rule was written
+  against is measured FALSE: a package that does not compile emits
+  `build-output` and `build-fail` as JSON events with stderr empty. Every
+  instrument reads the record — the failure view, the reported fraction and its
+  list, the ok-package check, the cached refusal, the sweep and kept views, the
+  PROOF mining — and they were RECOMPUTED rather than repointed, because
+  `grep -cE '^ok[[:space:]]'` over the record answers 0. The withdrawn "peak
+  concurrency 30" has its honest replacement: **46 packages, wall 1329.9s, peak
+  concurrency 8**, which is GOMAXPROCS, the bound the refutation rested on.
+- **AND THE RECORD OF ALL OF IT IS IN `docs/testing-methodology.md` (d3).** The
+  contended class carries its predicate AND its exclusions with five members
+  each stating three facts; the budget class is separate and says why, with the
+  16-log table and the three populations counted by their own fields; the cpu
+  question is answered at **+6.25% for half the cpus**, an upper bound, against
+  a package averaging 1.35 cores. The budget stays at 1800 because cal's
+  condition — a non-vacuous suite shown exceeding it on an idle jail — is
+  undemonstrated rather than argued either way.
+
 ## 0.1.51 — 2026-11-15
 
 **A finding that does not stop the walk reaches the record, the exit and the

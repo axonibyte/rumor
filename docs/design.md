@@ -312,6 +312,29 @@ reported `ok`, while the same command under `GOTOOLCHAIN=local` refused with
 `running go 1.25.14; GOTOOLCHAIN=local`. Naming a versioned binary therefore
 does not pin the toolchain that builds the code; the `go` directive does.
 
+### A statute is compiled once per pass, not once per rule per case
+
+**THE COMPILE WAS INSIDE THE INNERMOST LOOP AND NOTHING SAID SO.** Each case
+evaluated each rule, and each rule rebuilt the statute's Rego module from
+source, so the same text was handed to the compiler once per rule per case —
+work whose result is identical every time and whose cost grows with the product
+of two counts a reader of the call site cannot see.
+
+**THE FIGURE IS THE COMPILE ITSELF, NOT A PROXY FOR IT.** `internal/engine`
+counts module compiles, which is the quantity the hoist removes, so the claim
+is read off the thing that changed rather than off a wall clock that also
+carries the box's mood: **816 compiles per pass** before, and the pass is
+`tests/attaint`'s, which is the suite's critical path. A timing figure would
+have made the box a variable; a compile count makes the statute's text the
+variable, which is what moved.
+
+**AND THE SPEEDUP IS MEASURED IN CPU AND IN BOTH ORDERS**, because a pair of
+timings taken A-then-B credits the hoist with whatever else the box stopped
+doing: **8.65x CPU-seconds, with the arms run in both orders**. Cores moving UP
+across the hoist (1.41 to 1.68 in the ci jail, re-derived as 1.408 and 1.678)
+is a check rather than a curiosity — removing a SERIAL compile should let the
+rest parallelize, while work merely moved leaves cores flat.
+
 ## The engine owns the seed
 
 Written ahead of R5, which builds it: this section is the design R5 is built
@@ -2090,6 +2113,80 @@ That line is NOT in the code. An unreached line is checked against nothing: a
 mutant deleting it survives every run, so its wording would be wrong in some
 detail the day it became reachable. R15 cuts it, together with the arm that
 drives it.
+
+### A teardown cannot be trusted to run, so the tree carries the handle
+
+**NOTHING IN-PROCESS RUNS WHEN THE PROCESS IS KILLED, which is the common path
+and not the exotic one.** CI runs the suite under `timeout 1800`, which sends
+SIGTERM first, and a cancelled forge run is the same shape; Go's default
+disposition for SIGTERM is to die without running anything, and there was no
+`signal.Notify` anywhere in this repo. So the polite kill was the UNHANDLED
+path, and a webdriver outlives its client by design — an adapter takes EOF on
+stdin as the end, a driver reads HTTP and hears nothing.
+
+**MEASURED ON forge-01, which is what the leak costs when it runs for a day:**
+227 `chrome:` processes and 7 chromedrivers alive in the ci jail, each between
+1.7 and 5.3 hours old and none belonging to the running job, on a 16 GiB box
+whose swap was 96% in use. A chromedriver on that box cannot answer
+`POST /session` inside its bound, so two consecutive heads failed with "NOT
+DRIVABLE" — a red about the orphans and not about the code under test. The
+defect is in rumor proper and not in the tests: `cmd/rumor` starts drivers in
+shipped code, so Ctrl-C on `rumor run` leaked for any user.
+
+**TWO MECHANISMS, COVERING DIFFERENT SIGNALS.** A termination handler runs the
+real teardown for SIGINT, SIGTERM and SIGHUP and re-raises, so the process still
+dies the way the sender asked; and a startup sweep reclaims what SIGKILL
+stranded, because SIGKILL cannot be caught by anything. The sweep REAPS and does
+not only remove: deleting directories would fix the harmless half twice over
+while a killed run's browsers stayed alive for the next run to inherit.
+
+**SO EACH OWNED TREE CARRIES THE DRIVER'S PGID, WRITTEN AT START.** The name's
+pid is RUMOR'S, and a dead rumor pid says nothing about where its orphans went;
+the group is the one handle that still reaches them once their maker is gone.
+It is also what keeps reaping safe — the pgid came from a process we started, so
+it cannot name a neighbour's — and the group is checked to be ours by what is
+RUNNING in it before it is signalled, because a pid can be recycled.
+
+**AND A TREE IS NEVER REMOVED WHILE ANYTHING STILL NAMES IT, by pgid or by
+argv.** Removing it deletes the only handle while the group runs, which is how a
+leak stops being reclaimable by any later run. Measured: one run swept 47 stale
+trees and reaped 0 while a cancelled run's group was still alive, because the
+sweep had removed that group's tree. And the tree COMES BACK if you do it
+anyway — absent at 03:49:0x, born again at 03:49:08 with a fresh profile dir and
+no pgid file, re-created by the survivors themselves. So the removal does not
+merely lose the handle, it manufactures a tree indistinguishable from one made
+before the record existed, which the next sweep removes again.
+
+**THE RECORDED HANDLE IS TRIED FIRST AND ARGV SECOND, AND THE TWO PASSES ARE
+DISJOINT.** argv is not a backup: for every tree an earlier sweep destroyed it
+is the ONLY handle, since the pgid lived in the tree and the tree is gone, while
+argv is carried by the processes. But it must not preempt a handle sitting in a
+tree — with argv first, `reaped 0` means "argv got there first" rather than "the
+handle failed", and those are the two readings the instrument exists to
+separate. So argv claims a group only when the tree it names is ABSENT or
+records NO readable pgid. That also removes the need to coordinate sweepers: a
+sweeper is a PROCESS, not a package, and the suites spawn rumor binaries by the
+dozen, so concurrent sweeps are the ordinary shape of a run. Disjoint passes
+reach the same verdict whoever runs first; a lock over the tree root would have
+turned nearly every sweep into a skip notice and bought nothing.
+
+**A PROCESS TABLE THAT CANNOT BE READ IS ITS OWN OUTCOME.** Answering `nil` on
+error made an unreadable table indistinguishable from a box running nothing: the
+group read as EMPTY, nothing claimed the tree, and one failed `exec` could
+delete a live group's tree and print `reaped 0`. It is now a distinct outcome
+that HOLDS everything, and "cannot look" counts as claimed. This is not a
+hazard argued for in a comment: `ps` failed twice in one field sweep and three
+times in the next, five readings across two runs that would each have said "the
+group is gone".
+
+**AND THE SWEEP'S LINE NAMES WHAT IT ACTED ON, AND WHO SWEPT.** A count says
+work happened; a name says what it happened to. The line carries the sweeping
+pid and its own UTC time — the runner flushes a whole step with one stamp, so
+the log cannot otherwise order two sweepers' lines — and it names the groups
+reaped, the groups recovered from argv, the groups refused and the trees held.
+A group outliving SIGKILL is the COMMON case, not the exception: one run printed
+24 such lines. That is what makes the next run's sweep, and the handle it reads,
+load-bearing rather than a backstop.
 
 ## A fan-out is N processes against one world
 

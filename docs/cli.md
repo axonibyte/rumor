@@ -628,11 +628,41 @@ a box without a browser is not a wrong project, and neither is a box whose
 browser will not start: the project's declarations are correct and the box is
 short of something, so the reason is printed and the run carries on.
 
-**Nothing is left running.** The driver is signaled, given a grace, and killed
-if it does not go; every session the stage opened is deleted before that. A
-driver that exits without answering is reported at once rather than at the
-readiness bound, because `it exited` and `it never answered` are different
-faults and only one of them is worth waiting 20 seconds to confirm.
+**The driver is stopped, and what SURVIVES it is said rather than assumed.**
+The driver is signaled, given a grace, and killed if it does not go; every
+session the stage opened is deleted before that. A driver that exits without
+answering is reported at once rather than at the readiness bound, because `it
+exited` and `it never answered` are different faults and only one of them is
+worth waiting 20 seconds to confirm.
+
+This bullet used to read "Nothing is left running", and that is measurably not
+the case at the instant a teardown returns: chrome forks helpers continuously,
+so a helper forked after the group's membership was read inherits the group and
+outlives the signal. ONE CI RUN PRINTED 24 SUCH LINES, which makes a surviving
+group the ordinary outcome rather than a rare branch. So the teardown signals,
+VERIFIES, and when the group still has members it says so and leaves the
+browser's directory for a later run to collect:
+
+```
+browser: group 93770 still has members after SIGKILL; /tmp/rumor-browser-81383-791814204 is left for a later sweep
+```
+
+**AND A RUN THAT DRIVES A BROWSER MAY SWEEP WHAT AN EARLIER RUN STRANDED,
+on stderr, once, before its first driver starts.** A killed run — Ctrl-C, a
+cancelled CI job, anything SIGKILL — runs no teardown at all, so the reclaim
+belongs to the next run that starts a browser. The line names the sweeping
+process, its own UTC time, and what it acted on, because a count says work
+happened while only a name says what it happened to:
+
+```
+browser: pid 62006 at 2026-11-17T07:51:14Z swept 1 stale tree(s), reaped 1 browser group(s), left 1 in use (pgid 13943)
+```
+
+It is quiet when it found nothing, so an ordinary run adds no line; it is LOUD
+when it could not read the process table at all, because every other number on
+that line was computed from a table it could not read. Both lines are on stderr
+for the reason this section already gives: they are readings about THIS BOX
+rather than about the run's subject, and stdout is the digest's.
 
 **A session the driver refuses to delete is still reported DRIVABLE, and the
 stderr line says `AND NOT CLOSED`.** Those are two verdicts: the pair started and took
