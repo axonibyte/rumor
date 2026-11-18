@@ -2808,3 +2808,43 @@ one run printed 24 kept-group lines (ibis, r10/34). So a teardown that signals,
 verifies and does NOT remove is the ordinary path rather than a rare branch —
 which is what makes the next run's sweep, and the handle it reads, load-bearing
 rather than a backstop.
+
+**AN ARM THAT HOLDS THE TAIL OF A LIST CANNOT SEE THE HEAD MOVE.** `ci.yml`
+resolves the toolchain by trying names in order, and
+`TestEveryToolchainResolverTriesTheBareNameLast` held the one property run 719
+had cost: the bare `go` must come last, or a stock go1.26.10 shadows every newer
+toolchain the runner has. That arm stayed GREEN for nineteen days while every
+run compiled under go1.27.4 against a `go 1.26.0` directive, because the order
+*among* the numbered names was nobody's assertion. The lead was a deliberate
+remedy for GO-2026-6859, not an accident — and that is the point: **a remedy and
+a drift are indistinguishable to a test that only checks the part you thought
+about.** When a list's order is the decision, the arm has to pin the position
+that carries it, not the one that bit you last.
+
+**AND THE RULE IS DERIVED FROM THE DECLARATION RATHER THAN RETYPED.**
+`TestEveryResolverLeadsWithTheToolchainGoModDeclares` reads `go.mod`'s directive,
+turns `1.26` into the package name `go126`, and requires every resolver to try
+that first. Falsified both ways in a worktree: against the old `ci.yml` it names
+every site, and with the directive raised to `1.27` it demands `go127` instead —
+so the arm follows the project's own statement of intent and cannot go stale
+behind it. A literal in the test would have had to be found and retyped by
+whoever next moved the directive, which is the thing that did not happen for
+nineteen days.
+
+**WHICH TOOLCHAIN A STEP CHOOSES AND WHICH ONE ITS CHILDREN INHERIT ARE
+DIFFERENT FACTS.** Run 1287: with `go126` leading, the vulnerability step's `$GO`
+was go1.26.11 and `govulncheck` was correctly rebuilt under it — then
+`govulncheck` SHELLED OUT to the bare `go`, which on that runner is a symlink to
+`go127`, and a go1.26 loader met go1.27's `go list`. It refused go1.27-tagged
+files in two dependencies and the gate BLOCKED. Both resolver arms were green
+through it. **A tool that spawns another tool inherits the environment, not your
+variable** — so the fix is environmental, `GOROOT/bin` of the chosen toolchain
+first on `PATH` at every resolution site, and the arm is structural over all of
+them rather than a PROOF line in the step that happened to fail.
+
+**GOROOT/bin AND NOT THE DIRECTORY THE NAME LIVES IN**, which had to be measured:
+`/usr/local/bin` carries `go126`, `go127` AND the bare `go` symlink, so
+prepending the directory `$GO` resolves from changes nothing at all. The arm
+therefore checks the DERIVATION as well as the count — a hard-coded path would
+satisfy "every site exports something" while pinning the file to one jail's
+layout.
