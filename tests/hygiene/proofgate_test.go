@@ -133,7 +133,18 @@ func TestEveryProofLineGoesThroughTheHelper(t *testing.T) {
 	// second copy -- and the two PROOF lines name which case the run was in, so
 	// that line disappearing shows in the record instead of turning half the
 	// check off in silence.
-	const sitesInTrackedTests = 233
+	// 233 -> 234 EXECUTES the licences step's version cross-check, and it is
+	// here rather than in the licences suite because the thing under test is a
+	// fragment of ci.yml. quill's second measurement (coop r10/54): with the
+	// arm's version read merely CONDITIONAL, deleting LICENSE's `Version` line
+	// AND moving the document to 2.0.0 left the two copies stating different
+	// versions with every instrument satisfied -- "it shows in the record" and
+	// nothing read the record. The suite now refuses a version the document
+	// states and LICENSE does not, and the step asserts the branch from outside
+	// the arm. The new arm drives that fragment over three trees, one of which
+	// must FAIL, because a wrong path fails the `if` quietly and prints
+	// reassurance.
+	const sitesInTrackedTests = 234
 	if sites != sitesInTrackedTests {
 		t.Errorf("%d call(s) of the helper in tracked test files, want %d: if that is "+
 			"deliberate, move the literal with it; if not, PROOF lines have been lost",

@@ -56,11 +56,14 @@ here as the phases that own them land.
   edited this very file (quill, coop r10/49). Prose was the only copy and prose
   is not a mechanism. `TestTheProjectsOwnLicenceIsNamedTheSameInBothCopies`
   reads `LICENSE`'s own title line and holds this sentence against it, and it
-  fails on a mutant to EITHER copy — four measured: the pre-fix prose, which
-  carried no such bullet at all; the bullet renamed to BSD-2-Clause;
-  `LICENSE`'s own title renamed to MIT; and the bullet's version moved to
-  2.0.0 against `LICENSE`'s 1.0.0. ci.yml's licences step asserts its PROOF by
-  prefix, so deleting the arm cannot leave a green suite.
+  fails on a mutant to EITHER copy — five measured, each driven in a worktree:
+  the pre-fix prose, which carried no such bullet at all; the bullet renamed to
+  BSD-2-Clause; `LICENSE`'s own title renamed to MIT; the bullet's version moved
+  to 2.0.0 against `LICENSE`'s 1.0.0; and `LICENSE`'s version line deleted with
+  the bullet at 2.0.0. A sixth — BOTH copies unversioned — passes, and passing
+  is correct there: there is then no version in either copy to disagree.
+  ci.yml's licences step asserts its PROOF by prefix, so deleting the arm cannot
+  leave a green suite.
 
   **THE VERSION IS A SECOND READ, BECAUSE THE NAME AGREEING IS NOT THE LICENSE
   AGREEING** (quill, coop r10/52, measured against the arm's first version).
@@ -69,10 +72,29 @@ here as the phases that own them land.
   against `LICENSE`'s 1.0.0, and Blue Oak 1.0.0 and a future major are
   different licenses. The arm now also reads that `Version x.y.z` line and
   requires this sentence to carry it. It is CONDITIONAL on `LICENSE` having
-  one, since an unversioned license text has no second copy to compare, and
-  the PROOF names which case the run was in so that a version line
-  disappearing from `LICENSE` shows in the record rather than turning half the
-  check off in silence.
+  one, since an unversioned license text has no second copy to compare.
+
+  **AND "IT SHOWS IN THE RECORD" WAS NOT A MECHANISM EITHER** (quill, coop
+  r10/54, measured one beat after the limit above). The first conditional left
+  a free escape: delete `LICENSE`'s `Version` line AND move this sentence to
+  2.0.0, and the two copies state different versions with every instrument
+  satisfied — the suite passes, ci.yml's assertion is by a prefix both PROOF
+  branches carry, and `proofgate` counts sites, which both branches are. The
+  only reader able to tell the degraded case from the held one was a person
+  noticing a PROOF line's tail. That is the same defect as the one this bullet
+  exists for, one layer up.
+
+  **TWO CLOSES, NEITHER ADDING A THIRD COPY.** The arm now refuses a version
+  that THIS DOCUMENT states and `LICENSE` does not — such a figure agrees with
+  nothing in the tree — so the name-only branch is reachable only when neither
+  copy states a version, and an unversioned license text is still accepted.
+  And the licences step reads `LICENSE` itself: if the file carries a
+  `Version` line, the log must carry the version-holding PROOF, which checks
+  the branch from outside the arm. The step's fragment is EXECUTED by
+  `TestTheLicenceStepRefusesTheNameOnlyProofOverAVersionedLicence` over three
+  trees, one of which must fail, because the whole risk there is the path: the
+  step has already `cd`'d into `src-tree`, and a path that does not resolve
+  fails the `if` quietly, takes the else branch and prints reassurance.
 
   **THE DEPENDENCY ALLOWLIST IS A DIFFERENT QUESTION AND IS UNCHANGED**, which
   is why that drift was easy to miss: the allowlist settled in R0.2 gates every

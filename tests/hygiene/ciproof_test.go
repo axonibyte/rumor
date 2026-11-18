@@ -763,3 +763,121 @@ func TestTheFailureViewSurvivesTheRunnersErrFlag(t *testing.T) {
 	proof.Logf(t, "PROOF the step's own failure view ran under -e over a clean log and a failing one, "+
 		"exiting 0 and reporting in both")
 }
+
+// TestTheLicenceStepRefusesTheNameOnlyProofOverAVersionedLicence EXECUTES the
+// licences step's version cross-check, because it exists to close an escape
+// that a written-but-undriven check reopens in one character.
+//
+// WHAT IT GUARDS. tests/licences holds docs/design.md's project-license
+// sentence against LICENSE's own title, and its version read is CONDITIONAL on
+// LICENSE carrying a `Version x.y.z` line -- an unversioned license text has no
+// second copy to compare. quill measured the escape that leaves (coop r10/54):
+// delete LICENSE's version line AND move the document to 2.0.0, and the two
+// copies state different versions with every instrument satisfied. The suite
+// now refuses a version the document states and LICENSE does not, and this step
+// asserts the branch from OUTSIDE the arm: a versioned LICENSE must produce the
+// version-holding PROOF.
+//
+// AND THE PATH IS THE WHOLE RISK. The step has already cd'd into src-tree, so
+// the file is `LICENSE`; `../../LICENSE` is the path from the TEST's directory
+// and is what the reviewer's own snippet carried. A wrong path fails the `if`
+// quietly, takes the else branch, prints a reassuring line and hands the free
+// escape straight back. So the fragment is run with its cwd set to a tree built
+// for the case and its paths NOT substituted: case 2 can only fail if the step
+// actually reads the file it names.
+func TestTheLicenceStepRefusesTheNameOnlyProofOverAVersionedLicence(t *testing.T) {
+	path := filepath.Join("..", "..", ".forgejo", "workflows", "ci.yml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	var step string
+	for name, body := range splitSteps(string(raw)) {
+		if strings.HasPrefix(name, "licences") {
+			step = body
+			break
+		}
+	}
+	if step == "" {
+		t.Fatalf("%s has no step whose name begins `licences`, so this arm is reading for "+
+			"something that is gone; the steps are %v", path, stepNames(splitSteps(string(raw))))
+	}
+
+	// THE ANCHOR CARRIES NO PATH, deliberately. A first draft anchored on
+	// `... ' LICENSE; then` and so a path mutant failed HERE, at the anchor,
+	// which proves only that the text changed. With the path out of the anchor
+	// a wrong path still matches, the fragment runs, and case 2 below is what
+	// fails -- which is the property this arm claims.
+	const open = "if grep -q '^Version ' "
+	i := strings.Index(step, open)
+	if i < 0 {
+		t.Fatalf("%s's licences step has no %q, so the version cross-check is gone and the "+
+			"name-only PROOF over a versioned LICENSE is accepted again", path, open)
+	}
+	rest := step[i:]
+	j := regexp.MustCompile(`(?m)^\s*fi\s*$`).FindStringIndex(rest)
+	if j == nil {
+		t.Fatalf("%s's version cross-check does not reach an `fi`", path)
+	}
+	fragment := rest[:j[1]]
+
+	const versioned = "Copyright (c) 2026 Holder\n\n# Some Model License\n\nVersion 1.0.0\n"
+	const unversioned = "Copyright (c) 2026 Holder\n\n# Some Model License\n"
+	// The two PROOF shapes the arm can emit, as the arm spells them.
+	const withVersion = `PROOF ... LICENSE's title "Some Model License" at version "1.0.0" and ...`
+	const nameOnly = `PROOF ... LICENSE's title "Some Model License" and ... NEITHER states a version`
+
+	for _, c := range []struct {
+		name, license, log string
+		wantExit0          bool
+		want               string
+	}{
+		{"a versioned LICENSE and a version-holding PROOF", versioned, withVersion, true,
+			"PROOF LICENSE states a version and the suite's PROOF carries it"},
+		{"a versioned LICENSE and only the name-only PROOF", versioned, nameOnly, false,
+			"the version half of the project-license pair ran on nothing"},
+		{"an unversioned LICENSE and the name-only PROOF", unversioned, nameOnly, true,
+			"PROOF LICENSE states no version line"},
+	} {
+		// THE TREE IS SHAPED LIKE THE RUNNER'S, because the paths are not
+		// substituted: `LICENSE` sits in the step's cwd and `../lic.log` one
+		// level above it, exactly as `cd src-tree` leaves them.
+		root := t.TempDir()
+		tree := filepath.Join(root, "src-tree")
+		if err := os.Mkdir(tree, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(tree, "LICENSE"), []byte(c.license), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "lic.log"), []byte(c.log+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		scriptPath := filepath.Join(root, "check.sh")
+		if err := os.WriteFile(scriptPath, []byte(fragment+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		cmd := exec.Command("sh", "-e", scriptPath)
+		cmd.Dir = tree
+		out, runErr := cmd.CombinedOutput()
+		if c.wantExit0 && runErr != nil {
+			t.Errorf("%s: the cross-check exits nonzero under -e (%v) and printed %q; the forge "+
+				"runs a step with -e, so this is a legitimate tree failing the step",
+				c.name, runErr, string(out))
+		}
+		if !c.wantExit0 && runErr == nil {
+			t.Errorf("%s: the cross-check exited 0 and printed %q. This is the escape quill "+
+				"measured: either the check is gone, or it is reading a path that does not "+
+				"exist in the step's cwd, which fails the `if` and prints reassurance",
+				c.name, string(out))
+		}
+		if !strings.Contains(string(out), c.want) {
+			t.Errorf("%s: the cross-check printed %q, want it to contain %q",
+				c.name, string(out), c.want)
+		}
+	}
+	proof.Logf(t, "PROOF the licences step's version cross-check ran under -e over %d tree(s): a "+
+		"versioned LICENSE with the version-holding PROOF, the same LICENSE with only the "+
+		"name-only PROOF (refused), and an unversioned LICENSE (accepted)", 3)
+}

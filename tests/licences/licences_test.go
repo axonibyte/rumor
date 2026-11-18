@@ -467,6 +467,11 @@ func containsID(ids []string, want string) bool {
 	return false
 }
 
+// _docVersion finds a version figure in the document's license sentence. It is
+// deliberately LOOSER than `Version x.y.z`: the point is to catch a version
+// stated in prose at all ("1.0.0", "2.0"), not to validate its shape.
+var _docVersion = regexp.MustCompile(`[0-9]+\.[0-9]+(?:\.[0-9]+)?`)
+
 // TestTheProjectsOwnLicenceIsNamedTheSameInBothCopies holds the PROJECT's
 // license against the document that claims to be the decision's home, which is
 // a different question from everything else in this file.
@@ -553,10 +558,30 @@ func TestTheProjectsOwnLicenceIsNamedTheSameInBothCopies(t *testing.T) {
 			"because %s 1.0.0 and a later major are different licenses and both copies "+
 			"state a version (quill, coop r10/52)", version, stated, title)
 	}
+	// AND THE ESCAPE IS NOT FREE, which is quill's second measurement (coop
+	// r10/54) and the one that matters: with the version read merely
+	// CONDITIONAL, deleting LICENSE's `Version` line AND moving this sentence
+	// to 2.0.0 left the two copies stating different versions with every
+	// instrument satisfied -- the only signal was the tail of a PROOF line that
+	// nothing reads. "It shows in the record" was prose-is-not-a-mechanism one
+	// layer up from where this arm started.
+	//
+	// THE CLOSE NEEDS NO THIRD COPY. An unversioned license text is still
+	// accepted, exactly as quill asked; what is refused is the DOCUMENT stating
+	// a version the license file does not, because that figure then agrees with
+	// nothing. So the name-only branch is reachable only when NEITHER copy
+	// states a version, which is the two-copies property and not a softer one.
 	if version == "" {
+		if m := _docVersion.FindString(stated); m != "" {
+			t.Errorf("LICENSE states no `Version x.y.z` line at all, and docs/design.md's "+
+				"project-license sentence is %q, which states %q: that figure agrees with "+
+				"nothing in the tree. Either LICENSE lost its version line or this sentence "+
+				"invented one, and both copies being unversioned is the only shape under "+
+				"which the version goes unchecked (quill, coop r10/54)", stated, m)
+		}
 		proof.Logf(t, "PROOF the project's license is one fact in two copies: LICENSE's title "+
-			"%q and docs/design.md's bullet %q -- LICENSE states NO `Version x.y.z` line, so "+
-			"the name is held and the version is not", title, stated)
+			"%q and docs/design.md's bullet %q -- NEITHER states a version, so the name is "+
+			"held and there is no version in either copy to disagree", title, stated)
 		return
 	}
 	proof.Logf(t, "PROOF the project's license is one fact in two copies: LICENSE's title %q "+

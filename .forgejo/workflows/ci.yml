@@ -1207,6 +1207,28 @@ jobs:
           grep -q "PROOF the project's license is one fact in two copies:" ../lic.log \
             || { echo "the project-license pair did not agree, or TestTheProjectsOwnLicenceIsNamedTheSameInBothCopies did not run: LICENSE names the license this project ships under and docs/design.md is where that decision lives, and the two must match"; exit 1; }
           echo "PROOF the project-license pair agreed, LICENSE against docs/design.md"
+          # AND THE STEP READS LICENSE ITSELF TO SEE WHICH BRANCH THE ARM SHOULD
+          # HAVE TAKEN (quill, coop r10/54). The arm's version read is
+          # conditional on LICENSE carrying a `Version x.y.z` line, and the
+          # suite now refuses a version in the document that LICENSE does not
+          # state -- so the name-only branch is legitimate ONLY when neither
+          # copy is versioned. This asserts that from OUTSIDE the arm: if the
+          # file on disk has a version line, the log must carry the
+          # version-holding PROOF. It spells no license, so the fact still
+          # lives in exactly two places.
+          #
+          # THE PATH IS `LICENSE`, NOT `../../LICENSE`: this step has already
+          # cd'd into src-tree, and `../../LICENSE` is the path from the test's
+          # own directory. A wrong path here fails the `if` quietly and hands
+          # back the free escape, which is why tests/hygiene drives this
+          # fragment both ways.
+          if grep -q '^Version ' LICENSE; then
+            grep -q 'at version "' ../lic.log \
+              || { echo "LICENSE states a version line and the licence suite's PROOF does not carry a version: the arm took its name-only branch over a versioned license, so the version half of the project-license pair ran on nothing"; exit 1; }
+            echo "PROOF LICENSE states a version and the suite's PROOF carries it"
+          else
+            echo "PROOF LICENSE states no version line, so the pair is held by name and the suite says so"
+          fi
           if grep -q '^--- SKIP:' ../lic.log; then
             grep '^--- SKIP:' ../lic.log
             echo "a test in the licence suite SKIPPED. Every arm here is meant to run on every tree; a skip is a gap this step will not pass over."
