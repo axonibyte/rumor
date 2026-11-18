@@ -3,6 +3,51 @@
 Every tag has one section. A section is written in the bump commit for its
 tag and is never edited once that tag exists.
 
+## 0.1.53 — 2026-11-18
+
+**CI compiles with the Go `go.mod` declares, and the toolchain a step chooses is
+the whole environment that step runs in** — three commits over 2f2f0c0 on
+r11-go126-leads, closing coop flag `debt-go1-26-11` on cal's word.
+
+- **go126 LEADS THE NUMBERED NAMES, so the build matches the directive.** For
+  nineteen days `ci.yml` resolved `go127` first and every run compiled under
+  go1.27.4 against `go 1.26.0`. That was a REMEDY and not an accident:
+  GO-2026-6859 is in `net/http` up to go1.26.10, 41 call paths in this tree
+  reach it, and runs 717 and 718 were refused by `govulncheck` with the suite
+  green. It bought the fix at the cost of the directive. Both halves hold at
+  once now that go126-1.26.11 is installed in the ci jail — read from the jail's
+  own binary, `go1.26.11 freebsd/amd64`, with go127-1.27.4 left untouched. Ten
+  resolver loops moved, plus the gofmt resolver, the required-tools list, and
+  `docs/cli.md`'s three `run` blocks, which the release gate executes and which
+  taught the old order.
+- **THE DECISION NOW HAS AN ARM, AND IT IS DERIVED RATHER THAN RETYPED.** The
+  existing resolver arm holds the BARE name last and says nothing about the
+  order among the numbered ones, which is why it stayed green throughout.
+  `TestEveryResolverLeadsWithTheToolchainGoModDeclares` reads the directive,
+  turns `1.26` into `go126`, and requires every resolver to try it first — so
+  raising `go.mod` moves what the arm demands instead of needing a literal
+  found and edited by hand.
+- **AND THE CHOSEN TOOLCHAIN IS THE WHOLE ENVIRONMENT (run 1287).** With go126
+  leading, the vulnerability step's `$GO` was go1.26.11 and `govulncheck` was
+  correctly rebuilt under it — then `govulncheck` SHELLED OUT to the bare `go`,
+  a symlink to `go127` on that runner, so a go1.26 loader met go1.27's `go
+  list` and refused go1.27-tagged files in `opa` and `dsig`. The gate BLOCKED
+  rather than passing, which is the gate working; the defect was one step
+  holding two Gos. Every step now puts the chosen toolchain's own `GOROOT/bin`
+  first on `PATH` — not the directory the versioned name lives in, since
+  `/usr/local/bin` carries `go126`, `go127` AND the bare `go` symlink — with
+  the equality asserted in the vulnerability step before it scans, and a
+  structural arm over all nine resolution sites whose derivation is checked so
+  a hard-coded path cannot satisfy a count. Run 1289 is green with
+  "No vulnerabilities found."
+- **`docs/release.md`'s TOOLCHAIN ROW CORRECTED**, because the reorder made four
+  of its sentences false, and its `govulncheck` row had already predicted 1287
+  — "an ANALYSIS failure in the shape of a clean scan, the worst way a security
+  gate can break" — with keying the install directory as its own fix. Keying
+  the binary is not enough when the tool spawns another; the row now carries
+  that measurement. `docs/testing-methodology.md` gains the four lessons the
+  new arms are.
+
 ## 0.1.52 — 2026-11-18
 
 **A statute is compiled once per pass instead of once per rule per case; a
