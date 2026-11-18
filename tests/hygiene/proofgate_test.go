@@ -124,7 +124,16 @@ func TestEveryProofLineGoesThroughTheHelper(t *testing.T) {
 	// DEPENDENCY licenses and `rumor docs --check` maps paths, so nothing in the
 	// tree read the one the project ships under. The new arm reads LICENSE's own
 	// title and holds that sentence against it.
-	const sitesInTrackedTests = 232
+	// 232 -> 233 is the SECOND branch of that same arm, and it is a site rather
+	// than a rewording because the two cases say different things. quill
+	// measured the first version's limit (coop r10/52): LICENSE's title heading
+	// carries no version, so design.md saying "Blue Oak Model License 2.0.0"
+	// against LICENSE's 1.0.0 passed. The arm now reads LICENSE's `Version
+	// x.y.z` line too, CONDITIONALLY, since an unversioned license text has no
+	// second copy -- and the two PROOF lines name which case the run was in, so
+	// that line disappearing shows in the record instead of turning half the
+	// check off in silence.
+	const sitesInTrackedTests = 233
 	if sites != sitesInTrackedTests {
 		t.Errorf("%d call(s) of the helper in tracked test files, want %d: if that is "+
 			"deliberate, move the literal with it; if not, PROOF lines have been lost",

@@ -491,11 +491,21 @@ func TestTheProjectsOwnLicenceIsNamedTheSameInBothCopies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading LICENSE: %v", err)
 	}
-	var title string
+	var title, version string
 	for _, line := range strings.Split(string(license), "\n") {
-		if name, ok := strings.CutPrefix(strings.TrimSpace(line), "# "); ok {
+		line = strings.TrimSpace(line)
+		if name, ok := strings.CutPrefix(line, "# "); ok && title == "" {
 			title = strings.TrimSpace(name)
-			break
+			continue
+		}
+		// THE VERSION IS A SEPARATE LINE AND SO A SEPARATE READ. quill's
+		// measured limit on the first version of this arm (coop r10/52): the
+		// title heading is "Blue Oak Model License" with no version in it, so
+		// design.md saying "Blue Oak Model License 2.0.0" against LICENSE's
+		// 1.0.0 PASSED -- and Blue Oak 1.0.0 and a future 2.0.0 are different
+		// licenses. Both copies state a version; nothing tied them.
+		if v, ok := strings.CutPrefix(line, "Version "); ok && version == "" {
+			version = strings.TrimSpace(v)
 		}
 	}
 	if title == "" {
@@ -531,6 +541,24 @@ func TestTheProjectsOwnLicenceIsNamedTheSameInBothCopies(t *testing.T) {
 			"change four lines above the stale sentence. A decision's home is a document, "+
 			"so the document has to be held to the file", title, stated)
 	}
+	// CONDITIONAL ON LICENSE CARRYING ONE, which is quill's shape and not a
+	// softer one: a license text that states no version has no second copy to
+	// compare, and demanding one would fail on a file that is simply not
+	// versioned. The PROOF says which case this run was in, so a version line
+	// quietly disappearing from LICENSE shows in the record instead of turning
+	// this half of the check off without a word.
+	if version != "" && !strings.Contains(stated, version) {
+		t.Errorf("LICENSE states version %q and docs/design.md's project-license sentence "+
+			"is %q, which does not carry it: the NAME agreeing is not the license agreeing, "+
+			"because %s 1.0.0 and a later major are different licenses and both copies "+
+			"state a version (quill, coop r10/52)", version, stated, title)
+	}
+	if version == "" {
+		proof.Logf(t, "PROOF the project's license is one fact in two copies: LICENSE's title "+
+			"%q and docs/design.md's bullet %q -- LICENSE states NO `Version x.y.z` line, so "+
+			"the name is held and the version is not", title, stated)
+		return
+	}
 	proof.Logf(t, "PROOF the project's license is one fact in two copies: LICENSE's title %q "+
-		"and docs/design.md's bullet %q", title, stated)
+		"at version %q and docs/design.md's bullet %q, which carries both", title, version, stated)
 }

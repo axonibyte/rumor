@@ -41,13 +41,38 @@ here as the phases that own them land.
   it. The binary is `rumor` either way, which is the name users type.
 
 - **The project's license is the Blue Oak Model License 1.0.0**, which replaced
-  BSD-2-Clause in v0.1.52. This sentence said BSD-2-Clause for one head after
-  `LICENSE` itself had changed — in the same head whose CHANGELOG section
-  announced the replacement four lines in, and whose bump commit edited this
-  very file (quill, coop r10/49). Nothing in the tree read the project's own
-  license identity, so prose was the only copy and prose is not a mechanism;
-  `TestTheProjectsOwnLicenceIsNamedTheSameInBothCopies` now reads `LICENSE`'s
-  own title and holds this sentence against it.
+  BSD-2-Clause in v0.1.52. **cal's word, 2026-11-16**, cut as `ad0a1c9` on
+  `license-blue-oak` and cherry-picked here as `c72f986`: the text is the Blue
+  Oak Council's Markdown form, verbatim, from
+  <https://blueoakcouncil.org/license/1.0.0>, and the holder notice set on
+  2026-11-14 — Axonibyte Innovations, LLC — stands above it. CHANGELOG's 0.1.0
+  section still names the BSD license and stays as written, because it is
+  history; the change is carried by 0.1.52's section.
+
+  THAT COMMIT RECORDED "nothing in the tree reads this file", AND THAT IS NO
+  LONGER TRUE — it is why this sentence could go stale. It said BSD-2-Clause
+  for one head after `LICENSE` had changed, while the CHANGELOG section
+  announcing the replacement sat four lines above it, in the bump commit that
+  edited this very file (quill, coop r10/49). Prose was the only copy and prose
+  is not a mechanism. `TestTheProjectsOwnLicenceIsNamedTheSameInBothCopies`
+  reads `LICENSE`'s own title line and holds this sentence against it, and it
+  fails on a mutant to EITHER copy — four measured: the pre-fix prose, which
+  carried no such bullet at all; the bullet renamed to BSD-2-Clause;
+  `LICENSE`'s own title renamed to MIT; and the bullet's version moved to
+  2.0.0 against `LICENSE`'s 1.0.0. ci.yml's licences step asserts its PROOF by
+  prefix, so deleting the arm cannot leave a green suite.
+
+  **THE VERSION IS A SECOND READ, BECAUSE THE NAME AGREEING IS NOT THE LICENSE
+  AGREEING** (quill, coop r10/52, measured against the arm's first version).
+  `LICENSE`'s title heading carries no version — the version sits on its own
+  line below — so "Blue Oak Model License 2.0.0" in this sentence PASSED
+  against `LICENSE`'s 1.0.0, and Blue Oak 1.0.0 and a future major are
+  different licenses. The arm now also reads that `Version x.y.z` line and
+  requires this sentence to carry it. It is CONDITIONAL on `LICENSE` having
+  one, since an unversioned license text has no second copy to compare, and
+  the PROOF names which case the run was in so that a version line
+  disappearing from `LICENSE` shows in the record rather than turning half the
+  check off in silence.
 
   **THE DEPENDENCY ALLOWLIST IS A DIFFERENT QUESTION AND IS UNCHANGED**, which
   is why that drift was easy to miss: the allowlist settled in R0.2 gates every
