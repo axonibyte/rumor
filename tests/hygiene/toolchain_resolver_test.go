@@ -233,3 +233,82 @@ func TestEveryListOfGoToolchainNamesInTheTreePutsTheBareNameLast(t *testing.T) {
 			lists, files)
 	}
 }
+
+// TestEveryResolverLeadsWithTheToolchainGoModDeclares is the SEMANTIC half,
+// and it exists because the structural one above cannot see this.
+//
+// WHAT THE OTHER ARM MISSES. It holds the bare name LAST, which stops a stock
+// `go` shadowing the numbered ones. It says nothing about the order AMONG the
+// numbered names -- so for nineteen days ci.yml resolved `go127` first and
+// every run compiled under go1.27.4 while go.mod declared `go 1.26.0`, with
+// this file green throughout. That was a deliberate remedy (GO-2026-6859 was
+// unfixed in the go126 the jail had, ibis coop main/801), not an accident; but
+// a remedy and a drift look identical to a test that only checks the tail.
+//
+// SO THE RULE IS DERIVED FROM go.mod RATHER THAN WRITTEN HERE. The arm reads
+// the directive, turns `1.26.0` into the package name `go126`, and requires
+// every resolver to try that name before any other numbered one. Nobody has to
+// retype a literal when the directive moves: raise go.mod to 1.27 and this arm
+// demands go127 leads, which is the other half of the choice cal was given
+// (coop main/1016) and the shape that cannot go stale.
+//
+// IT IS NOT A PIN. A bare `go` still wins when the jail has one -- the
+// operator's call, as ci.yml says -- and names for OTHER versions may follow in
+// any order; what is fixed is that the declared toolchain is tried first.
+func TestEveryResolverLeadsWithTheToolchainGoModDeclares(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
+	if err != nil {
+		t.Fatalf("reading go.mod: %v", err)
+	}
+	m := regexp.MustCompile(`(?m)^go (\d+)\.(\d+)`).FindStringSubmatch(string(raw))
+	if m == nil {
+		t.Fatalf("go.mod states no `go <major>.<minor>` directive, so this arm has no rule to " +
+			"derive and cannot say which toolchain CI should lead with")
+	}
+	want := "go" + m[1] + m[2] // 1.26 -> go126, the package name the jail installs
+	numbered := regexp.MustCompile(`^go[0-9]+$|^gofmt[0-9]+$`)
+
+	lines := ciLines(t)
+	checked := 0
+	for i := 0; i+1 < len(lines); i++ {
+		loop := resolverLoop.FindStringSubmatch(lines[i])
+		if loop == nil {
+			continue
+		}
+		if resolverPick.FindStringSubmatch(lines[i+1]) == nil {
+			continue // the version probe again: it picks nothing
+		}
+		names := strings.Fields(loop[1])
+		// The gofmt resolvers carry gofmt126/gofmt127; the rule is the same one
+		// keyed to the same directive, so the expected leader is prefixed to match.
+		lead := want
+		if strings.HasPrefix(names[0], "gofmt") {
+			lead = "gofmt" + m[1] + m[2]
+		}
+		var first string
+		for _, n := range names {
+			if numbered.MatchString(n) {
+				first = n
+				break
+			}
+		}
+		if first == "" {
+			t.Errorf("ci.yml:%d resolves %v with no numbered name at all: the bare name is the "+
+				"jail's choice of version, so this loop cannot honour go.mod's directive", i+1, names)
+			continue
+		}
+		checked++
+		if first != lead {
+			t.Errorf("ci.yml:%d resolves %v, trying %q before %q. go.mod declares %s, so CI would "+
+				"compile with a toolchain the module never asked for -- which is exactly what ran "+
+				"for nineteen days with the bare-name arm green (coop main/1016)",
+				i+1, names, first, lead, m[0])
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no resolver with a numbered name was checked, so this arm proved nothing: " +
+			"either ci.yml's loops changed shape or the regexes no longer read them")
+	}
+	proof.Logf(t, "PROOF go.mod declares %s and all %d resolver(s) in ci.yml lead with the "+
+		"matching numbered toolchain", m[0], checked)
+}

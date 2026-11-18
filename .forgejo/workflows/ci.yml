@@ -69,25 +69,32 @@
 # would need $GITHUB_ENV, a runner feature nobody here has measured -- the same
 # reasoning that makes timeout-minutes the backstop rather than the guarantee.
 #
-# go127 LEADS THE NUMBERED NAMES FOR A MEASURED REASON AND NOT FOR BEING NEWEST.
-# GO-2026-6859 is in net/http up to go1.26.10, which is what the ci jail had, and
-# 41 call paths in this tree reach it -- so run 718 was REFUSED by govulncheck
-# with the suite green, which is a toolchain finding wearing a code finding's
-# clothes (ibis, coop main/801). It is fixed in go1.26.11 and go1.27.4. MEASURED
-# in the jail on 2026-11-12: govulncheck v1.9.0 rebuilt under go1.27.4 answers
-# "No vulnerabilities found" on this tree, where the same scan under go1.26.10
-# reported GO-2026-6859. A bare `go` still wins when one exists, unchanged: that
-# is the jail operator's choice and not this file's.
+# go126 LEADS THE NUMBERED NAMES SO CI COMPILES WITH THE GO go.mod DECLARES.
+# `go 1.26.0` is the directive, and for nineteen days this file resolved go127
+# first, so every run built under go1.27.4 -- a toolchain the module never asked
+# for. That was deliberate and it was a REMEDY, not a preference: GO-2026-6859
+# is in net/http up to go1.26.10, which is what the ci jail had, and 41 call
+# paths in this tree reach it, so run 718 was REFUSED by govulncheck with the
+# suite green -- a toolchain finding wearing a code finding's clothes (ibis,
+# coop main/801). Leading with go127 bought the fix at the cost of the
+# directive.
 #
-# THE REASON go127 LEADS IS NOW HALF STALE, AND THE STALE HALF IS NAMED HERE
-# RATHER THAN LEFT TO READ AS CURRENT. This file said 1.26.11 "is in no repo
-# this project can reach, including upstream quarterly and latest", which was
-# true when written and is not now: `pkg rquery` in the ci jail answered
-# go126-1.26.11 on 2026-11-17 at 05:02Z, with go126-1.26.10 and go127-1.27.4
-# installed. So both remedies exist -- install 1.26.11 and let go126 lead, which
-# would match go.mod's own 1.26.0 directive, or keep go127 and raise the
-# directive. The ORDER IS UNCHANGED HERE because choosing is the jail operator's
-# call, not this file's: raised to cal as flag debt-go1-26-11 (coop main/961).
+# BOTH HALVES ARE NOW SATISFIED AT ONCE, which is why the order moves. The
+# vulnerability is fixed in go1.26.11 AND go1.27.4, and 1.26.11 stopped being
+# unreachable: this file used to say it was "in no repo this project can
+# reach", which was true when written and was measured false on 2026-11-17 at
+# 05:02Z, `pkg rquery` in the ci jail answering go126-1.26.11 (ibis, coop
+# main/968). INSTALLED on 2026-11-18, read from the jail's own binary rather
+# than from pkg: `/usr/local/go126/bin/go version` -> go1.26.11 freebsd/amd64,
+# with go127-1.27.4 left in place untouched. So go126 now leads and the build
+# matches the directive, with the vulnerability still fixed; cal's word, flag
+# debt-go1-26-11 closed (coop main/1016).
+#
+# THE ORDER IS THE WHOLE DECISION AND IT IS ARMED: tests/hygiene's resolver
+# cells drive these loops over fabricated PATHs, including the case that caused
+# this -- an old bare `go` beside a newer numbered one. A bare `go` still wins
+# when one exists, unchanged: that is the jail operator's choice and not this
+# file's, and it is why the loops are reordered rather than pinned.
 #
 # THE TRIGGER IS EVERY BRANCH, and that is this file's own doing rather than a
 # repo setting: the Rust version fired only on push to r0.2-ci, so rows 160-164
@@ -122,13 +129,13 @@ jobs:
           echo "uname   $(uname -a)"
           echo "whoami  $(whoami)"
           echo "cwd     $(pwd)"
-          for t in git go127 go126 go125 go gofmt127 gofmt126 gofmt125 gofmt node curl; do
+          for t in git go126 go127 go125 go gofmt126 gofmt127 gofmt125 gofmt node curl; do
             p=$(command -v "$t" 2>/dev/null) && echo "$t  FOUND  $p" || echo "$t  ABSENT"
           done
           # bounded even here. A `version` that cannot answer in 20 s is itself
           # the finding, and "it is instant in practice" is the exact reasoning
           # that produced the 17-minute run.
-          for c in go127 go126 go125 go; do
+          for c in go126 go127 go125 go; do
             command -v "$c" >/dev/null 2>&1 \
               && { timeout 20 "$c" version 2>/dev/null || echo "$c: did not answer in 20s"; }
           done
@@ -152,7 +159,7 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go127 go126 go125 go; do
+          for c in go126 go127 go125 go; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: this jail has no Go toolchain, which is a PROVISIONING finding and not a code one"; exit 1; }
@@ -217,7 +224,7 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go127 go126 go125 go; do
+          for c in go126 go127 go125 go; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
@@ -712,7 +719,7 @@ jobs:
           set -o pipefail
           cd src-tree
           FMT=""
-          for c in gofmt127 gofmt126 gofmt125 gofmt; do
+          for c in gofmt126 gofmt127 gofmt125 gofmt; do
             command -v "$c" >/dev/null 2>&1 && { FMT="$c"; break; }
           done
           test -n "$FMT" || { echo "no gofmt, gofmt127, gofmt126 or gofmt125 on PATH: PROVISIONING finding"; exit 1; }
@@ -733,7 +740,7 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go127 go126 go125 go; do
+          for c in go126 go127 go125 go; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
@@ -751,7 +758,7 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go127 go126 go125 go; do
+          for c in go126 go127 go125 go; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
@@ -772,7 +779,7 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go127 go126 go125 go; do
+          for c in go126 go127 go125 go; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
@@ -848,7 +855,7 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go127 go126 go125 go; do
+          for c in go126 go127 go125 go; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
@@ -884,7 +891,7 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go127 go126 go125 go; do
+          for c in go126 go127 go125 go; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
@@ -1055,7 +1062,7 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go127 go126 go125 go; do
+          for c in go126 go127 go125 go; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
@@ -1146,7 +1153,7 @@ jobs:
           set -o pipefail
           cd src-tree
           GO=""
-          for c in go127 go126 go125 go; do
+          for c in go126 go127 go125 go; do
             command -v "$c" >/dev/null 2>&1 && { GO="$c"; break; }
           done
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
