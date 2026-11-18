@@ -152,7 +152,15 @@ func TestEveryProofLineGoesThroughTheHelper(t *testing.T) {
 	// the tail. The new arm reads the directive rather than a literal, so the
 	// rule follows go.mod instead of needing a retype (cal's word, coop
 	// main/1016).
-	const sitesInTrackedTests = 235
+	// 235 -> 236 is the arm that holds the chosen toolchain's own GOROOT/bin
+	// first on PATH at every site that resolves one. Run 1287 is its case: the
+	// loop chose go1.26.11, govulncheck was rebuilt under it, and govulncheck
+	// SHELLS OUT to the bare `go` -- a symlink to go127 on that runner -- so a
+	// go1.26 loader met go1.27's `go list` and the vulnerability gate BLOCKED.
+	// Both existing resolver arms were green through it, because which Go a
+	// step CHOOSES and which Go its children INHERIT are different facts
+	// (fable, coop main/1019).
+	const sitesInTrackedTests = 236
 	if sites != sitesInTrackedTests {
 		t.Errorf("%d call(s) of the helper in tracked test files, want %d: if that is "+
 			"deliberate, move the literal with it; if not, PROOF lines have been lost",

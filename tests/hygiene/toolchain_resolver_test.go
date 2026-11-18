@@ -312,3 +312,82 @@ func TestEveryResolverLeadsWithTheToolchainGoModDeclares(t *testing.T) {
 	proof.Logf(t, "PROOF go.mod declares %s and all %d resolver(s) in ci.yml lead with the "+
 		"matching numbered toolchain", m[0], checked)
 }
+
+// TestEveryResolvedToolchainIsAlsoTheBareNameInItsStep is the third arm, and it
+// exists because the other two check WHICH Go a step chooses and neither checks
+// what the step's own `go` resolves to AFTERWARDS.
+//
+// RUN 1287 IS THE CASE. With go126 leading, the vulnerability step's $GO was
+// go1.26.11 and govulncheck was rebuilt under it -- and govulncheck SHELLS OUT
+// to the bare `go`, which on that runner is a symlink to go127. Its go1.26
+// loader then met go1.27's `go list` and refused go1.27-tagged files in two
+// dependencies. The gate BLOCKED rather than passing, which is the gate working;
+// the defect was that one step saw two Gos. Both existing arms were green
+// through it, because a chosen toolchain and an inherited PATH are different
+// facts.
+//
+// SO THE RULE IS STRUCTURAL: wherever a step resolves the toolchain, it must
+// also put that toolchain's own GOROOT/bin first on PATH, so the bare name in
+// the step -- and in anything the step spawns -- is the Go the loop picked.
+// fable ruled it for every step rather than for the one that failed (coop
+// main/1019), so this arm reads every step and not just that one.
+//
+// GOROOT/bin IS THE ONLY DIRECTORY THAT WORKS, which is why the arm requires
+// that spelling and not merely "some PATH export": /usr/local/bin carries
+// go126, go127 AND the bare `go` symlink, so prepending the directory $GO lives
+// in changes nothing at all.
+func TestEveryResolvedToolchainIsAlsoTheBareNameInItsStep(t *testing.T) {
+	lines := ciLines(t)
+	// The resolution sites are the loops that pick, which the arms above
+	// already identify; each must be followed -- before the step can run
+	// anything -- by the export derived from that same $GO.
+	// GO RESOLUTIONS ONLY, AND THE NARROWING IS EXACTLY ONE SITE WIDE. The
+	// file also resolves gofmt into $FMT, and that site is excluded for a
+	// stated reason rather than for convenience: GOROOT_BIN is derived from
+	// `$GO env GOROOT`, gofmt has no `env` subcommand and no $GO exists in
+	// that step, so there is nothing to derive from. It is also not the
+	// hazard -- the gofmt step invokes "$FMT" explicitly and spawns nothing
+	// that calls a Go, which is what run 1287's defect required. The first
+	// arm in this file still holds that step's own order.
+	resolutions, exports := 0, 0
+	for i := 0; i+1 < len(lines); i++ {
+		if resolverLoop.FindStringSubmatch(lines[i]) == nil {
+			continue
+		}
+		pick := resolverPick.FindStringSubmatch(lines[i+1])
+		if pick == nil {
+			continue // the version probe: it picks nothing and runs nothing
+		}
+		if pick[1] != "GO" {
+			continue // the gofmt resolver, excluded for the reason above
+		}
+		resolutions++
+	}
+	for _, l := range lines {
+		if strings.Contains(l, `export PATH="$GOROOT_BIN:$PATH"`) {
+			exports++
+		}
+	}
+	if resolutions == 0 {
+		t.Fatal("no resolver that picks a toolchain was found, so this arm proved nothing: " +
+			"ci.yml's loops changed shape or the regexes no longer read them")
+	}
+	if exports != resolutions {
+		t.Errorf("ci.yml resolves a toolchain at %d site(s) but exports its GOROOT/bin onto PATH "+
+			"%d time(s). A step that resolves $GO and leaves PATH alone still has the jail's bare "+
+			"`go` -- a symlink to another version on this runner -- so anything it SPAWNS compiles "+
+			"with a Go the loop did not choose. That is run 1287: govulncheck rebuilt under "+
+			"go1.26.11 shelling out to go1.27.4's `go list` (coop main/1018, ruled main/1019)",
+			resolutions, exports)
+	}
+	// AND THE DERIVATION IS CHECKED, NOT JUST THE COUNT. An export of a
+	// hard-coded directory would satisfy the count and pin the file to one
+	// jail's layout; it has to come from the chosen toolchain itself.
+	const derive = `GOROOT_BIN="$(timeout 30 "$GO" env GOROOT)/bin"`
+	if got := strings.Count(strings.Join(lines, "\n"), derive); got != resolutions {
+		t.Errorf("%d site(s) derive GOROOT_BIN from the chosen $GO, want %d: a literal path would "+
+			"satisfy the export count while pinning this file to one jail's layout", got, resolutions)
+	}
+	proof.Logf(t, "PROOF all %d toolchain resolution(s) in ci.yml put the chosen toolchain's own "+
+		"GOROOT/bin first on PATH, derived from that $GO, so no step sees two Gos", resolutions)
+}

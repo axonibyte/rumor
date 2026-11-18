@@ -175,6 +175,24 @@ jobs:
           # an unbounded toolchain download from being charged to a step's own
           # timeout and then misread as a build hang.
           export GOTOOLCHAIN=local
+          # AND THE CHOSEN TOOLCHAIN IS THE WHOLE ENVIRONMENT, NOT JUST $GO.
+          # Run 1287 is why: with go126 leading, this step's $GO was go1.26.11
+          # and govulncheck was rebuilt under it -- then govulncheck shelled out
+          # to the BARE `go`, which on this runner is a SYMLINK to go127, and
+          # its go1.26 loader met go1.27's `go list`: "uses version go1.26 of
+          # the source-processing packages but runs version go1.27 of 'go
+          # list'", refusing go1.27-tagged files in opa and dsig. The gate
+          # BLOCKED, correctly, and the cause was two Gos in one step.
+          #
+          # GOROOT/bin AND NOT THE DIRECTORY $GO LIVES IN: /usr/local/bin holds
+          # go126, go127 AND the bare `go` symlink, so prepending it changes
+          # nothing. `$GO env GOROOT`/bin holds exactly one go and one gofmt --
+          # the chosen toolchain's -- so after this, every bare name in the step
+          # and in anything it spawns is the Go the loop picked (fable, coop
+          # main/1019: no step may see two Gos).
+          GOROOT_BIN="$(timeout 30 "$GO" env GOROOT)/bin"
+          test -x "$GOROOT_BIN/go" || { echo "the chosen toolchain $GO reports GOROOT $GOROOT_BIN with no go in it: PROVISIONING finding, and the bare name would still be another Go"; exit 1; }
+          export PATH="$GOROOT_BIN:$PATH"
           echo "PROOF toolchain $(timeout 30 "$GO" version)"
           # NOT `go build | tail`: a pipeline's status is the LAST stage's, so
           # tail's success would mask a failing build -- the exact defect this
@@ -230,6 +248,24 @@ jobs:
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
+          # AND THE CHOSEN TOOLCHAIN IS THE WHOLE ENVIRONMENT, NOT JUST $GO.
+          # Run 1287 is why: with go126 leading, this step's $GO was go1.26.11
+          # and govulncheck was rebuilt under it -- then govulncheck shelled out
+          # to the BARE `go`, which on this runner is a SYMLINK to go127, and
+          # its go1.26 loader met go1.27's `go list`: "uses version go1.26 of
+          # the source-processing packages but runs version go1.27 of 'go
+          # list'", refusing go1.27-tagged files in opa and dsig. The gate
+          # BLOCKED, correctly, and the cause was two Gos in one step.
+          #
+          # GOROOT/bin AND NOT THE DIRECTORY $GO LIVES IN: /usr/local/bin holds
+          # go126, go127 AND the bare `go` symlink, so prepending it changes
+          # nothing. `$GO env GOROOT`/bin holds exactly one go and one gofmt --
+          # the chosen toolchain's -- so after this, every bare name in the step
+          # and in anything it spawns is the Go the loop picked (fable, coop
+          # main/1019: no step may see two Gos).
+          GOROOT_BIN="$(timeout 30 "$GO" env GOROOT)/bin"
+          test -x "$GOROOT_BIN/go" || { echo "the chosen toolchain $GO reports GOROOT $GOROOT_BIN with no go in it: PROVISIONING finding, and the bare name would still be another Go"; exit 1; }
+          export PATH="$GOROOT_BIN:$PATH"
           rc=0
           # -count=1 IS A GATE AND NOT A PREFERENCE. Without it the build cache
           # serves a PASS for any package whose inputs have not moved, and the
@@ -746,6 +782,24 @@ jobs:
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
+          # AND THE CHOSEN TOOLCHAIN IS THE WHOLE ENVIRONMENT, NOT JUST $GO.
+          # Run 1287 is why: with go126 leading, this step's $GO was go1.26.11
+          # and govulncheck was rebuilt under it -- then govulncheck shelled out
+          # to the BARE `go`, which on this runner is a SYMLINK to go127, and
+          # its go1.26 loader met go1.27's `go list`: "uses version go1.26 of
+          # the source-processing packages but runs version go1.27 of 'go
+          # list'", refusing go1.27-tagged files in opa and dsig. The gate
+          # BLOCKED, correctly, and the cause was two Gos in one step.
+          #
+          # GOROOT/bin AND NOT THE DIRECTORY $GO LIVES IN: /usr/local/bin holds
+          # go126, go127 AND the bare `go` symlink, so prepending it changes
+          # nothing. `$GO env GOROOT`/bin holds exactly one go and one gofmt --
+          # the chosen toolchain's -- so after this, every bare name in the step
+          # and in anything it spawns is the Go the loop picked (fable, coop
+          # main/1019: no step may see two Gos).
+          GOROOT_BIN="$(timeout 30 "$GO" env GOROOT)/bin"
+          test -x "$GOROOT_BIN/go" || { echo "the chosen toolchain $GO reports GOROOT $GOROOT_BIN with no go in it: PROVISIONING finding, and the bare name would still be another Go"; exit 1; }
+          export PATH="$GOROOT_BIN:$PATH"
           rc=0
           timeout 300 "$GO" vet ./... > ../vet.log 2>&1 || rc=$?
           tail -30 ../vet.log
@@ -764,6 +818,24 @@ jobs:
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
+          # AND THE CHOSEN TOOLCHAIN IS THE WHOLE ENVIRONMENT, NOT JUST $GO.
+          # Run 1287 is why: with go126 leading, this step's $GO was go1.26.11
+          # and govulncheck was rebuilt under it -- then govulncheck shelled out
+          # to the BARE `go`, which on this runner is a SYMLINK to go127, and
+          # its go1.26 loader met go1.27's `go list`: "uses version go1.26 of
+          # the source-processing packages but runs version go1.27 of 'go
+          # list'", refusing go1.27-tagged files in opa and dsig. The gate
+          # BLOCKED, correctly, and the cause was two Gos in one step.
+          #
+          # GOROOT/bin AND NOT THE DIRECTORY $GO LIVES IN: /usr/local/bin holds
+          # go126, go127 AND the bare `go` symlink, so prepending it changes
+          # nothing. `$GO env GOROOT`/bin holds exactly one go and one gofmt --
+          # the chosen toolchain's -- so after this, every bare name in the step
+          # and in anything it spawns is the Go the loop picked (fable, coop
+          # main/1019: no step may see two Gos).
+          GOROOT_BIN="$(timeout 30 "$GO" env GOROOT)/bin"
+          test -x "$GOROOT_BIN/go" || { echo "the chosen toolchain $GO reports GOROOT $GOROOT_BIN with no go in it: PROVISIONING finding, and the bare name would still be another Go"; exit 1; }
+          export PATH="$GOROOT_BIN:$PATH"
           rc=0
           timeout 300 "$GO" run ./cmd/rumor docs --check > ../docs.log 2>&1 || rc=$?
           cat ../docs.log
@@ -785,6 +857,24 @@ jobs:
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
+          # AND THE CHOSEN TOOLCHAIN IS THE WHOLE ENVIRONMENT, NOT JUST $GO.
+          # Run 1287 is why: with go126 leading, this step's $GO was go1.26.11
+          # and govulncheck was rebuilt under it -- then govulncheck shelled out
+          # to the BARE `go`, which on this runner is a SYMLINK to go127, and
+          # its go1.26 loader met go1.27's `go list`: "uses version go1.26 of
+          # the source-processing packages but runs version go1.27 of 'go
+          # list'", refusing go1.27-tagged files in opa and dsig. The gate
+          # BLOCKED, correctly, and the cause was two Gos in one step.
+          #
+          # GOROOT/bin AND NOT THE DIRECTORY $GO LIVES IN: /usr/local/bin holds
+          # go126, go127 AND the bare `go` symlink, so prepending it changes
+          # nothing. `$GO env GOROOT`/bin holds exactly one go and one gofmt --
+          # the chosen toolchain's -- so after this, every bare name in the step
+          # and in anything it spawns is the Go the loop picked (fable, coop
+          # main/1019: no step may see two Gos).
+          GOROOT_BIN="$(timeout 30 "$GO" env GOROOT)/bin"
+          test -x "$GOROOT_BIN/go" || { echo "the chosen toolchain $GO reports GOROOT $GOROOT_BIN with no go in it: PROVISIONING finding, and the bare name would still be another Go"; exit 1; }
+          export PATH="$GOROOT_BIN:$PATH"
           # THE BINARY HAS TO BE CALLED `rumor` HERE. The build step writes
           # ../rumor-bin, outside the clone and under that name on purpose, but
           # examples/twin's [adapter].command is ["rumor", "fake-adapter", ...]
@@ -861,6 +951,24 @@ jobs:
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
+          # AND THE CHOSEN TOOLCHAIN IS THE WHOLE ENVIRONMENT, NOT JUST $GO.
+          # Run 1287 is why: with go126 leading, this step's $GO was go1.26.11
+          # and govulncheck was rebuilt under it -- then govulncheck shelled out
+          # to the BARE `go`, which on this runner is a SYMLINK to go127, and
+          # its go1.26 loader met go1.27's `go list`: "uses version go1.26 of
+          # the source-processing packages but runs version go1.27 of 'go
+          # list'", refusing go1.27-tagged files in opa and dsig. The gate
+          # BLOCKED, correctly, and the cause was two Gos in one step.
+          #
+          # GOROOT/bin AND NOT THE DIRECTORY $GO LIVES IN: /usr/local/bin holds
+          # go126, go127 AND the bare `go` symlink, so prepending it changes
+          # nothing. `$GO env GOROOT`/bin holds exactly one go and one gofmt --
+          # the chosen toolchain's -- so after this, every bare name in the step
+          # and in anything it spawns is the Go the loop picked (fable, coop
+          # main/1019: no step may see two Gos).
+          GOROOT_BIN="$(timeout 30 "$GO" env GOROOT)/bin"
+          test -x "$GOROOT_BIN/go" || { echo "the chosen toolchain $GO reports GOROOT $GOROOT_BIN with no go in it: PROVISIONING finding, and the bare name would still be another Go"; exit 1; }
+          export PATH="$GOROOT_BIN:$PATH"
           # THE GATE ASSERTED go.mod EXISTS AND NEVER THAT IT WAS RIGHT. The
           # fetch step's `test -f go.mod` is a wrong-tree guard and reads none
           # of the file's content, so through every release to v0.1.19 an
@@ -897,6 +1005,24 @@ jobs:
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
+          # AND THE CHOSEN TOOLCHAIN IS THE WHOLE ENVIRONMENT, NOT JUST $GO.
+          # Run 1287 is why: with go126 leading, this step's $GO was go1.26.11
+          # and govulncheck was rebuilt under it -- then govulncheck shelled out
+          # to the BARE `go`, which on this runner is a SYMLINK to go127, and
+          # its go1.26 loader met go1.27's `go list`: "uses version go1.26 of
+          # the source-processing packages but runs version go1.27 of 'go
+          # list'", refusing go1.27-tagged files in opa and dsig. The gate
+          # BLOCKED, correctly, and the cause was two Gos in one step.
+          #
+          # GOROOT/bin AND NOT THE DIRECTORY $GO LIVES IN: /usr/local/bin holds
+          # go126, go127 AND the bare `go` symlink, so prepending it changes
+          # nothing. `$GO env GOROOT`/bin holds exactly one go and one gofmt --
+          # the chosen toolchain's -- so after this, every bare name in the step
+          # and in anything it spawns is the Go the loop picked (fable, coop
+          # main/1019: no step may see two Gos).
+          GOROOT_BIN="$(timeout 30 "$GO" env GOROOT)/bin"
+          test -x "$GOROOT_BIN/go" || { echo "the chosen toolchain $GO reports GOROOT $GOROOT_BIN with no go in it: PROVISIONING finding, and the bare name would still be another Go"; exit 1; }
+          export PATH="$GOROOT_BIN:$PATH"
           # PINNED, and the pin is MEASURED: v2.14.0 is what proxy.golang.org
           # reported as latest for github.com/golangci/golangci-lint/v2 on
           # 2026-10-14 (published 2026-09-24). An unpinned @latest is a gate
@@ -1068,6 +1194,24 @@ jobs:
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
+          # AND THE CHOSEN TOOLCHAIN IS THE WHOLE ENVIRONMENT, NOT JUST $GO.
+          # Run 1287 is why: with go126 leading, this step's $GO was go1.26.11
+          # and govulncheck was rebuilt under it -- then govulncheck shelled out
+          # to the BARE `go`, which on this runner is a SYMLINK to go127, and
+          # its go1.26 loader met go1.27's `go list`: "uses version go1.26 of
+          # the source-processing packages but runs version go1.27 of 'go
+          # list'", refusing go1.27-tagged files in opa and dsig. The gate
+          # BLOCKED, correctly, and the cause was two Gos in one step.
+          #
+          # GOROOT/bin AND NOT THE DIRECTORY $GO LIVES IN: /usr/local/bin holds
+          # go126, go127 AND the bare `go` symlink, so prepending it changes
+          # nothing. `$GO env GOROOT`/bin holds exactly one go and one gofmt --
+          # the chosen toolchain's -- so after this, every bare name in the step
+          # and in anything it spawns is the Go the loop picked (fable, coop
+          # main/1019: no step may see two Gos).
+          GOROOT_BIN="$(timeout 30 "$GO" env GOROOT)/bin"
+          test -x "$GOROOT_BIN/go" || { echo "the chosen toolchain $GO reports GOROOT $GOROOT_BIN with no go in it: PROVISIONING finding, and the bare name would still be another Go"; exit 1; }
+          export PATH="$GOROOT_BIN:$PATH"
           # PINNED AND MEASURED, same reasoning: golang.org/x/vuln v1.9.0 is what
           # the proxy reported as latest on 2026-10-14 (published 2026-10-11).
           # `go env` is local and instant, and bounded anyway: "it is instant in
@@ -1130,6 +1274,19 @@ jobs:
           # reason is what gets acted on, and this one sent a reader to the
           # network instead of to nine CVEs. A step is only exercised by
           # pushing, so the logic lives where it can be driven.
+          # THE ARM FABLE ASKED FOR, AND IT WOULD HAVE BEEN RED FOR NINETEEN
+          # DAYS: govulncheck is the one tool here that SHELLS OUT to the Go on
+          # PATH rather than using the one it was told about, so this step is
+          # where two Gos become a wrong answer instead of a slower one. The
+          # binary is keyed to $GOVER above; this requires the BARE name to
+          # report the same version, by reading it rather than assuming the
+          # PATH export took. Equality is asserted on the full version string,
+          # not just the number, so a cross-compiled or differently-built go of
+          # the same version is still a finding.
+          BARE="$(timeout 30 go version)"
+          CHOSE="$(timeout 30 "$GO" version)"
+          test "$BARE" = "$CHOSE" || { echo "the bare toolchain name reports \"$BARE\" and this step chose \"$CHOSE\": govulncheck shells out to the bare name, so its loader and the go list it spawns would be different toolchains -- which is run 1287's CLAUSE tool-failed. BLOCKED, not passed"; exit 1; }
+          echo "PROOF the bare toolchain name in this step is $BARE, the same toolchain the loop chose"
           rc=0
           timeout 900 "$BIN" ./... > ../vuln.log 2>&1 || rc=$?
           tail -30 ../vuln.log
@@ -1159,6 +1316,24 @@ jobs:
           test -n "$GO" || { echo "no go127, go126, go125 or go on PATH: PROVISIONING finding"; exit 1; }
           # See the build step for why this is a gate and not a preference.
           export GOTOOLCHAIN=local
+          # AND THE CHOSEN TOOLCHAIN IS THE WHOLE ENVIRONMENT, NOT JUST $GO.
+          # Run 1287 is why: with go126 leading, this step's $GO was go1.26.11
+          # and govulncheck was rebuilt under it -- then govulncheck shelled out
+          # to the BARE `go`, which on this runner is a SYMLINK to go127, and
+          # its go1.26 loader met go1.27's `go list`: "uses version go1.26 of
+          # the source-processing packages but runs version go1.27 of 'go
+          # list'", refusing go1.27-tagged files in opa and dsig. The gate
+          # BLOCKED, correctly, and the cause was two Gos in one step.
+          #
+          # GOROOT/bin AND NOT THE DIRECTORY $GO LIVES IN: /usr/local/bin holds
+          # go126, go127 AND the bare `go` symlink, so prepending it changes
+          # nothing. `$GO env GOROOT`/bin holds exactly one go and one gofmt --
+          # the chosen toolchain's -- so after this, every bare name in the step
+          # and in anything it spawns is the Go the loop picked (fable, coop
+          # main/1019: no step may see two Gos).
+          GOROOT_BIN="$(timeout 30 "$GO" env GOROOT)/bin"
+          test -x "$GOROOT_BIN/go" || { echo "the chosen toolchain $GO reports GOROOT $GOROOT_BIN with no go in it: PROVISIONING finding, and the bare name would still be another Go"; exit 1; }
+          export PATH="$GOROOT_BIN:$PATH"
           # THIS STEP REPLACED A TRIPWIRE, AND THE TRIPWIRE DID ITS JOB. Until
           # G3 this asserted the module graph held exactly ONE module, because a
           # zero-dependency tree has no licence surface and a ported deny.toml
