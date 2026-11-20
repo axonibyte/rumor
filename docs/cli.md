@@ -1333,6 +1333,93 @@ seed it accepted silently would promise a determinism it never exercised. A
 profile nobody declares is a refusal and exits 1; a flag it does not know is a
 usage error and exits 2.
 
+## `rumor explain`
+
+```
+rumor explain PROJECT CASE
+```
+
+Prints the derivation behind one finding: what the statute held, what
+contradicted it, and why it held that. `PROJECT` is an example package (a
+directory with a `statute.rego`), `CASE` the name of one of its cases. The case
+is loaded and evaluated exactly as `rumor check` loads it -- the committed
+`.jsonl` through the store, sealed at the position its `.seal.json` records --
+so an explanation is of the same finding the walk reports and not of a
+re-derived one.
+
+Exit **0** when the derivation is printed, **1** when it is refused or the case
+cannot be loaded, **2** on a usage error. Both arguments are required: nothing
+in a finding identifies it, so the package and the case together are the
+selector, and a missing one is a usage error rather than an empty explanation.
+
+```
+EXPLAIN toy stale-count
+  alice asked event_count, counting event.joined, through api, at position 6
+
+FINDING    bug
+           statute.rego:396 -- the DEFAULT row: no clause matched
+
+OBSERVED   1   (api answered, asked event_count, counting event.joined, as admin)
+
+WHY THE STATUTE HELD THAT -- alice's knowledge, shortest path first
+  alice.event#1      alice's own claim at 1 (event.created)
+  alice.del#1        alice's own claim at 5 (event.deleted)
+  bob.join#1         told to alice by bob at 4
+
+THE STATUTE ALSO HELD
+  believed               1
+  expiry_sound           false
+  has_user               false
+  honored_past_expiry    false
+  may_accept             false
+  may_create_event       false
+  may_create_user        true
+  may_delete             false
+  may_invite             false
+  may_join               true
+  may_leave              false
+  may_list_attendees     true
+  rests_on_planted       false
+  role_sees_subject      true
+
+REPRODUCTION  toy stale-count at seal 5, statute <sha256 of statute.rego>, 112 trace event(s)
+```
+
+**The blocks are in the reader's order and not the value's.** The finding and
+the statute line that produced it come first, then the observation that
+contradicted it, then the chain -- which is the order a reader asking "server or
+rule" needs, and the reverse of how the JSON lays the same derivation out.
+
+**`the DEFAULT row: no clause matched` is the sentence that saves opening the
+statute.** A finding off a `default` row means the statute reached its fallback;
+a finding off a clause means a clause held. In `examples/toy` all ten bugs land
+on the default row and all fifteen other outcomes land on a clause, so for that
+package this one line is the whole difference between them.
+
+**`shortest path first`** is the chain's order: a fact the actor claimed
+themselves is no hop and comes before one they were told, earlier positions
+first, and a fact known both ways is as short as its shortest origin.
+
+**`IN THE PREFIX, NOT KNOWN TO <ACTOR>`** appears when the sealed prefix holds a
+claim the actor's knowledge does not carry -- a thing that happened and that
+this actor cannot account for. It is absent, not empty, when the actor knows
+every claim. For a count that reads low against the world that block is the
+answer: `rumor explain examples/toy untold-join` names `dana.join#1`, the join
+carol was never told of.
+
+**The digest is the statute's, in full.** The sample shows it as a placeholder
+because it is a sha256 over `examples/toy/statute.rego`'s bytes, and a document
+that pinned it would turn every statute edit into a documentation edit; the
+command prints the real 64 characters. With the package, the case and the seal
+it is the REPRODUCTION of the finding -- what re-runs it -- and not a retrieval,
+since nothing in this tree retains a finding past the process.
+
+The sample above is held to the command's real output by an arm in
+`cmd/rumor`'s tests, which runs `rumor explain examples/toy stale-count` and
+compares it line for line, the digest line by its prefix. The `--json` form and
+its schema arrive with this phase's d3, in `docs/findings.md`.
+
+
 ## `rumor fake-adapter`
 
 ```
@@ -1482,8 +1569,9 @@ done
 
 ## Subcommands
 
-`docs --check` (R0.1), `check` (R2.3), `validate` (R4.3), `attaint` (R3.1) and
-`fake-adapter` (R4.1). Everything else arrives with the phase that owns it.
+`docs --check` (R0.1), `check` (R2.3), `validate` (R4.3), `attaint` (R3.1),
+`explain` (R11) and `fake-adapter` (R4.1). Everything else arrives with the
+phase that owns it.
 
 ## Flags
 

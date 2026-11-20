@@ -488,3 +488,194 @@ zone = "America/Chicago"
 			"spawn", got, sentinel)
 	}
 }
+
+// --- `rumor explain` (R11 d2) --------------------------------------------
+
+// TestExplainPrintsTheDerivationForARealCase drives the WHOLE path -- the
+// loader, the derivation and the render -- against the committed toy rather
+// than a swapped seam, because every other arm in this file proves the
+// argument surface and none of them proves the command explains anything.
+func TestExplainPrintsTheDerivationForARealCase(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if rc := run([]string{"explain", filepath.Join("..", "..", "examples", "toy"), "stale-count"},
+		bytes.NewReader(nil), &stdout, &stderr); rc != 0 {
+		t.Fatalf("exit %d, stderr %q", rc, stderr.String())
+	}
+	text := stdout.String()
+	for _, want := range []string{
+		"EXPLAIN toy stale-count",
+		"FINDING    bug",
+		"statute.rego:396 -- the DEFAULT row: no clause matched",
+		"OBSERVED   1",
+		"WHY THE STATUTE HELD THAT -- alice's knowledge, shortest path first",
+		"bob.join#1         told to alice by bob at 4",
+		"REPRODUCTION  toy stale-count at seal 5",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the output does not carry %q:\n%s", want, text)
+		}
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("a printed derivation wrote to stderr: %q", stderr.String())
+	}
+}
+
+// TestExplainsSampleInTheDocsIsTheCommandsOwnOutput holds docs/cli.md's sample
+// to the real thing.
+//
+// THE SAMPLE IS PROSE UNTIL SOMETHING RUNS IT. cli.md's convention is a plain
+// fence per command -- the gate executes only fences marked `run` -- so a
+// sample like this one drifts the day the render changes and nothing says so.
+// This arm is the mechanism: it extracts the block and compares it line for
+// line.
+//
+// THE DIGEST LINE IS COMPARED BY ITS PREFIX, deliberately. The reproduction
+// names a sha256 over examples/toy/statute.rego, so a document that pinned it
+// would make every statute edit a documentation edit; the doc shows a
+// placeholder, and this arm checks the real line carries 64 hex characters
+// where the placeholder sits.
+func TestExplainsSampleInTheDocsIsTheCommandsOwnOutput(t *testing.T) {
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "cli.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sample, ok := sampleAfter(string(doc), "## `rumor explain`")
+	if !ok {
+		t.Fatal("docs/cli.md carries no sample under `rumor explain`, so this arm has nothing to hold")
+	}
+	if len(sample) < 20 {
+		t.Fatalf("the sample is %d line(s), which is too few to be the render: %v", len(sample), sample)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if rc := run([]string{"explain", filepath.Join("..", "..", "examples", "toy"), "stale-count"},
+		bytes.NewReader(nil), &stdout, &stderr); rc != 0 {
+		t.Fatalf("exit %d, stderr %q", rc, stderr.String())
+	}
+	got := strings.Split(strings.TrimRight(stdout.String(), "\n"), "\n")
+	if len(got) != len(sample) {
+		t.Fatalf("the sample has %d line(s) and the command printed %d:\n--- doc\n%s\n--- got\n%s",
+			len(sample), len(got), strings.Join(sample, "\n"), strings.Join(got, "\n"))
+	}
+	for i := range sample {
+		if strings.HasPrefix(sample[i], "REPRODUCTION") {
+			head := "REPRODUCTION  toy stale-count at seal 5, statute "
+			if !strings.HasPrefix(got[i], head) {
+				t.Errorf("line %d: %q does not begin %q", i+1, got[i], head)
+				continue
+			}
+			rest := strings.TrimPrefix(got[i], head)
+			digest := strings.SplitN(rest, ",", 2)[0]
+			if len(digest) != 64 || strings.Trim(digest, "0123456789abcdef") != "" {
+				t.Errorf("line %d: %q is not a full sha256 where the doc shows a placeholder", i+1, digest)
+			}
+			if !strings.Contains(sample[i], "<sha256 of statute.rego>") {
+				t.Errorf("line %d: the doc pins a digest instead of marking a placeholder: %q", i+1, sample[i])
+			}
+			continue
+		}
+		if got[i] != sample[i] {
+			t.Errorf("line %d has drifted:\n  doc %q\n  got %q", i+1, sample[i], got[i])
+		}
+	}
+}
+
+// sampleAfter returns the lines of the LAST fenced block under a heading,
+// which is where each command's section in cli.md puts its sample output: the
+// first fence is the usage line.
+func sampleAfter(doc, heading string) ([]string, bool) {
+	lines := strings.Split(doc, "\n")
+	start := -1
+	for i, line := range lines {
+		if line == heading {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return nil, false
+	}
+	var best []string
+	var cur []string
+	in := false
+	for _, line := range lines[start+1:] {
+		if strings.HasPrefix(line, "## ") {
+			break
+		}
+		if line == "```" {
+			if in {
+				if len(cur) > len(best) {
+					best = cur
+				}
+				cur = nil
+			}
+			in = !in
+			continue
+		}
+		if in {
+			cur = append(cur, line)
+		}
+	}
+	return best, len(best) > 0
+}
+
+func TestExplainRefusesAWrongArgumentCount(t *testing.T) {
+	for _, args := range [][]string{
+		{"explain"},
+		{"explain", "examples/toy"},
+		{"explain", "examples/toy", "stale-count", "extra"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if rc := run(args, bytes.NewReader(nil), &stdout, &stderr); rc != 2 {
+			t.Errorf("%v exited %d, and a usage error is 2", args, rc)
+		}
+		if !strings.Contains(stderr.String(), "rumor explain PROJECT CASE") {
+			t.Errorf("%v: the usage does not name the command's own arguments: %q", args, stderr.String())
+		}
+		if stdout.Len() != 0 {
+			t.Errorf("%v wrote to stdout before refusing: %q", args, stdout.String())
+		}
+	}
+}
+
+func TestExplainNamesWhyItCouldNotExplain(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		says string
+	}{
+		{"no such package", []string{"explain", filepath.Join("..", "..", "examples", "nope"), "x"}, "statute.rego"},
+		{"no such case", []string{"explain", filepath.Join("..", "..", "examples", "toy"), "not-a-case"}, "not-a-case"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if rc := run(tc.args, bytes.NewReader(nil), &stdout, &stderr); rc != 1 {
+				t.Fatalf("exit %d, and a refusal is 1 (stderr %q)", rc, stderr.String())
+			}
+			if !strings.HasPrefix(stderr.String(), "explain: ") {
+				t.Errorf("the refusal is not attributed to the command: %q", stderr.String())
+			}
+			if !strings.Contains(stderr.String(), tc.says) {
+				t.Errorf("the refusal does not name %q: %q", tc.says, stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Errorf("it printed %q before refusing", stdout.String())
+			}
+		})
+	}
+}
+
+func TestExplainDoesNotReportSuccessWhenItsOutputCannotBeWritten(t *testing.T) {
+	var stderr bytes.Buffer
+	w := &failWriter{}
+	if rc := run([]string{"explain", filepath.Join("..", "..", "examples", "toy"), "stale-count"},
+		bytes.NewReader(nil), w, &stderr); rc != 1 {
+		t.Fatalf("exit %d over a writer that accepted nothing", rc)
+	}
+	if w.n == 0 {
+		t.Error("nothing was written at all, so the failure is not the writer's")
+	}
+	if !strings.Contains(stderr.String(), "could not be written") {
+		t.Errorf("the reason is not on stderr: %q", stderr.String())
+	}
+}

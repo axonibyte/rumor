@@ -42,12 +42,13 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/attaint"
 	"forge.axonibyte.com/axonibyte/rumor/internal/coverage"
 	"forge.axonibyte.com/axonibyte/rumor/internal/examples"
+	"forge.axonibyte.com/axonibyte/rumor/internal/explain"
 	"forge.axonibyte.com/axonibyte/rumor/internal/fake"
 	"forge.axonibyte.com/axonibyte/rumor/internal/validate"
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
-const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor validate PROJECT\n       rumor attaint [--examples DIR]\n       rumor run PROJECT [--seed N] [--steps N] [--profile NAME]\n       rumor report PROJECT [--profile NAME]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S] [--stop-flow ACTION:AT:REASON[:TIMES[:THENAT]]] [--lacks KIND]"
+const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor explain PROJECT CASE\n       rumor validate PROJECT\n       rumor attaint [--examples DIR]\n       rumor run PROJECT [--seed N] [--steps N] [--profile NAME]\n       rumor report PROJECT [--profile NAME]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S] [--stop-flow ACTION:AT:REASON[:TIMES[:THENAT]]] [--lacks KIND]"
 
 // coverageCheck is a seam, not indirection for its own sake: it lets a test
 // drive the WRITE handling below -- including the failed-write path -- without
@@ -77,6 +78,31 @@ var fakeAdapter = func(cfg fake.Config, in io.Reader, out io.Writer) error {
 // a test drive the argument surface and the three exit statuses without a
 // project on disk.
 var validateProject = func(dir string) validate.Report { return validate.Run(dir) }
+
+// explainCase is the same kind of seam again, for R11 d2's `rumor explain`.
+//
+// IT IS THE WHOLE PATH IN ONE PLACE, which is the point: a case is loaded and
+// evaluated by internal/examples -- the one reader of an example package's
+// layout -- the derivation is built by internal/explain, and the render is
+// written to the caller's stream. Nothing here decides anything; a test
+// swapping this seam drives the argument surface and the exit codes without a
+// tree of examples on disk, and the arm below drives the real path against the
+// committed toy.
+var explainCase = func(dir, caseName string, out io.Writer) error {
+	c, err := examples.Load(context.Background(), dir, caseName)
+	if err != nil {
+		return err
+	}
+	d, err := explain.Build(c.Finding, c.Ledger, c.Check, explain.Run{
+		Package:    c.Package,
+		Case:       c.Name,
+		StatuteSHA: c.StatuteSHA,
+	})
+	if err != nil {
+		return err
+	}
+	return explain.Render(out, d)
+}
 
 // defaultExamplesDir is where the three packages live in this repository. A
 // flag overrides it, because the command is useful against another tree and
@@ -133,6 +159,28 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return 2
 		}
 		return reportProject(dir, profile, stdout, stderr)
+	}
+
+	if len(args) >= 1 && args[0] == "explain" {
+		// TWO ARGUMENTS AND NOT A FLAG: a finding is named by the package it
+		// was found in and the case that produced it, and both are required
+		// because nothing else identifies a finding (coop r11/3). A missing
+		// one is a usage error and not an empty explanation.
+		if len(args) != 3 {
+			_, _ = fmt.Fprintln(stderr, usage)
+			return 2
+		}
+		if err := explainCase(args[1], args[2], stdout); err != nil {
+			// EVERY REFUSAL REACHES THE READER BY NAME. internal/explain
+			// refuses a finding with no trace, an unsealed ledger, an absent
+			// statute input and sources that contradict each other, and each
+			// of those is a different thing to go and look at -- so the
+			// message is printed whole rather than flattened to "could not
+			// explain".
+			_, _ = fmt.Fprintf(stderr, "explain: %v\n", err)
+			return 1
+		}
+		return 0
 	}
 
 	if len(args) >= 1 && args[0] == "validate" {

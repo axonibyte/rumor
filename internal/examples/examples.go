@@ -16,6 +16,8 @@ package examples
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"forge.axonibyte.com/axonibyte/rumor/internal/bindings"
@@ -113,7 +115,7 @@ func Run(ctx context.Context, dir string, out io.Writer) (Result, error) {
 		for _, cf := range files {
 			caseName := strings.TrimSuffix(filepath.Base(cf), ".json")
 			res.Cases++
-			line, agreed, err := one(ctx, pdir, name, caseName, string(statute), rules, cf)
+			line, agreed, err := one(ctx, pdir, name, caseName, string(statute), rules)
 			if err != nil {
 				return res, err
 			}
@@ -130,47 +132,116 @@ func Run(ctx context.Context, dir string, out io.Writer) (Result, error) {
 	return res, nil
 }
 
-// one evaluates a single case from its ledger and renders the line for it.
-func one(ctx context.Context, pdir, pkgName, caseName, statute string, rules []string, cf string) (string, bool, error) {
+// Case is one committed case, loaded and evaluated: the finding, the sealed
+// ledger it was judged over, the check that produced it, and the digest of the
+// statute that judged it.
+//
+// IT EXISTS SO THE LAYOUT HAS ONE READER. This package already knows where a
+// case's files live -- statute.rego, rules.json, cases/NAME.json,
+// ledger/NAME.jsonl and its seal -- and `rumor explain` needs exactly the same
+// five. A second reader of that layout somewhere else is the duplicate that is
+// correct until the layout learns something.
+type Case struct {
+	Package    string
+	Name       string
+	StatuteSHA string // sha256 of the package's statute.rego, hex, in full
+	Finding    engine.Finding
+	Ledger     *ledger.Ledger
+	Check      engine.Check
+	Expect     map[string]any // the case's own assertions, which the walk compares
+}
+
+// Load reads a package's statute and rules and evaluates one of its cases.
+//
+// It is the entry point for a caller that has nothing in hand -- `rumor
+// explain` naming a package and a case -- and it reads the statute per call.
+// The walk below keeps its own per-package read, because its refusals over
+// rules.json are the PACKAGE's and belong before any case is examined.
+func Load(ctx context.Context, pdir, caseName string) (Case, error) {
+	statute, err := os.ReadFile(filepath.Join(pdir, "statute.rego"))
+	if err != nil {
+		return Case{}, fmt.Errorf("%s has no statute.rego, so nothing can judge %s: %w", pdir, caseName, err)
+	}
+	var rules []string
+	raw, err := os.ReadFile(filepath.Join(pdir, "rules.json"))
+	if err != nil {
+		return Case{}, fmt.Errorf("%s has a statute but no rules.json: %w", pdir, err)
+	}
+	if err := json.Unmarshal(raw, &rules); err != nil {
+		return Case{}, fmt.Errorf("%s/rules.json: %w", pdir, err)
+	}
+	if len(rules) == 0 {
+		return Case{}, fmt.Errorf("%s/rules.json names no rules, so no case in it can assert anything", pdir)
+	}
+	return evaluate(ctx, pdir, filepath.Base(pdir), caseName, string(statute), rules)
+}
+
+// evaluate is the one reader of a single case's own files. Both Load and the
+// walk go through it, so a change to what a case IS cannot reach one and miss
+// the other.
+func evaluate(ctx context.Context, pdir, pkgName, caseName, statute string, rules []string) (Case, error) {
+	c := Case{Package: pkgName, Name: caseName, StatuteSHA: statuteDigest(statute)}
 	var doc caseDoc
-	if err := readJSON(cf, &doc); err != nil {
-		return "", false, err
+	if err := readJSON(filepath.Join(pdir, "cases", caseName+".json"), &doc); err != nil {
+		return c, err
 	}
 	if len(doc.Expect) == 0 {
-		return "", false, fmt.Errorf("%s/%s has no expect block, so it asserts nothing", pkgName, caseName)
+		return c, fmt.Errorf("%s/%s has no expect block, so it asserts nothing", pkgName, caseName)
 	}
+	c.Expect = doc.Expect
 	var sd sealDoc
 	if err := readJSON(filepath.Join(pdir, "ledger", caseName+".seal.json"), &sd); err != nil {
-		return "", false, fmt.Errorf("%s/%s: %w", pkgName, caseName, err)
+		return c, fmt.Errorf("%s/%s: %w", pkgName, caseName, err)
 	}
 	lraw, err := os.ReadFile(filepath.Join(pdir, "ledger", caseName+".jsonl"))
 	if err != nil {
-		return "", false, fmt.Errorf("case %s/%s has no ledger file: %w", pkgName, caseName, err)
+		return c, fmt.Errorf("case %s/%s has no ledger file: %w", pkgName, caseName, err)
 	}
 	// THE ZONE COMES WITH THE CONTROL (R7.5 D5), so a case is judged under the
 	// declaration its project is walked under -- see bindings.ClockZoneAt.
 	l, err := ledger.Load(strings.NewReader(string(lraw)), bindings.ClockControlledAt(pdir, decl.TOML),
 		ledger.InZone(bindings.ClockZoneAt(pdir, decl.TOML)))
 	if err != nil {
-		return "", false, fmt.Errorf("%s/%s: the committed ledger does not load: %w", pkgName, caseName, err)
+		return c, fmt.Errorf("%s/%s: the committed ledger does not load: %w", pkgName, caseName, err)
 	}
 	if err := l.SealAt(sd.Seal); err != nil {
-		return "", false, fmt.Errorf("%s/%s: sealing at the recorded %d: %w", pkgName, caseName, sd.Seal, err)
+		return c, fmt.Errorf("%s/%s: sealing at the recorded %d: %w", pkgName, caseName, sd.Seal, err)
 	}
+	c.Ledger = l
 	o := doc.Input.Observation
-	f, err := engine.Evaluate(ctx, statute, rules, l, engine.Check{
+	c.Check = engine.Check{
 		Actor:  o.Actor,
 		Query:  o.Query,
 		Of:     o.Of,
 		Source: ledger.Source(o.Source),
 		Value:  o.Value,
 		Role:   o.Role,
-	})
-	if err != nil {
-		return "", false, fmt.Errorf("%s/%s: %w", pkgName, caseName, err)
 	}
+	f, err := engine.Evaluate(ctx, statute, rules, l, c.Check)
+	if err != nil {
+		return c, fmt.Errorf("%s/%s: %w", pkgName, caseName, err)
+	}
+	c.Finding = f
+	return c, nil
+}
 
-	bad := disagreements(doc.Expect, f.Rules)
+// statuteDigest identifies the statute a finding was judged under, in full: a
+// reproduction that named a truncated digest would be a weaker identity than
+// the thing it points at.
+func statuteDigest(statute string) string {
+	sum := sha256.Sum256([]byte(statute))
+	return hex.EncodeToString(sum[:])
+}
+
+// one evaluates a single case from its ledger and renders the line for it.
+func one(ctx context.Context, pdir, pkgName, caseName, statute string, rules []string) (string, bool, error) {
+	c, err := evaluate(ctx, pdir, pkgName, caseName, statute, rules)
+	if err != nil {
+		return "", false, err
+	}
+	f := c.Finding
+
+	bad := disagreements(c.Expect, f.Rules)
 	where := "no definition"
 	if len(f.Fired) == 1 {
 		where = f.Fired[0].String()
