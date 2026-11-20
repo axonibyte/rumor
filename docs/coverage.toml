@@ -425,6 +425,14 @@ path = "internal/explain/*.go"
 docs = ["docs/findings.md"]
 
 [[entry]]
+# The pinned JSON of R11 d3: the command's own output for two cases, one of
+# them clocked. They are mapped to findings.md because that document's schema
+# table IS what they pin -- an arm checks every key in both fixtures appears in
+# it, so a field cannot enter the data and skip the document.
+path = "internal/explain/testdata/**"
+docs = ["docs/findings.md"]
+
+[[entry]]
 # The handle table: design.md owns why it is per attempt and which collision
 # v1 names, and the vocabulary owns the handle's form, which this package's
 # shape duplicates deliberately so the two must agree.

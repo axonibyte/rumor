@@ -1336,7 +1336,7 @@ usage error and exits 2.
 ## `rumor explain`
 
 ```
-rumor explain PROJECT CASE
+rumor explain [--json] PROJECT CASE
 ```
 
 Prints the derivation behind one finding: what the statute held, what

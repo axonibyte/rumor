@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -715,7 +717,7 @@ func TestExplainRefusesAWrongArgumentCount(t *testing.T) {
 		if rc := run(args, bytes.NewReader(nil), &stdout, &stderr); rc != 2 {
 			t.Errorf("%v exited %d, and a usage error is 2", args, rc)
 		}
-		if !strings.Contains(stderr.String(), "rumor explain PROJECT CASE") {
+		if !strings.Contains(stderr.String(), "rumor explain [--json] PROJECT CASE") {
 			t.Errorf("%v: the usage does not name the command's own arguments: %q", args, stderr.String())
 		}
 		if stdout.Len() != 0 {
@@ -763,5 +765,132 @@ func TestExplainDoesNotReportSuccessWhenItsOutputCannotBeWritten(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "could not be written") {
 		t.Errorf("the reason is not on stderr: %q", stderr.String())
+	}
+}
+
+// --- `rumor explain --json` (R11 d3) -------------------------------------
+
+func TestExplainJSONPrintsTheDerivationAsJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if rc := run([]string{"explain", "--json", filepath.Join("..", "..", "examples", "toy"), "stale-count"},
+		bytes.NewReader(nil), &stdout, &stderr); rc != 0 {
+		t.Fatalf("exit %d, stderr %q", rc, stderr.String())
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+		t.Fatalf("the output is not JSON: %v\n%s", err, stdout.String())
+	}
+	for _, key := range []string{"selector", "verdict", "expectation", "observation", "reproduction"} {
+		if _, ok := doc[key]; !ok {
+			t.Errorf("the document carries no %q: %v", key, keysOf(doc))
+		}
+	}
+	// THE TEXT FORM IS NOT IN IT, which is what a flag means: one form or the
+	// other, never both on one stream for a reader to separate.
+	if strings.Contains(stdout.String(), "EXPLAIN toy stale-count") {
+		t.Errorf("the JSON output carries the text render too:\n%s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("a printed derivation wrote to stderr: %q", stderr.String())
+	}
+}
+
+func keysOf(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func TestExplainRefusesFlagsItDoesNotKnow(t *testing.T) {
+	toy := filepath.Join("..", "..", "examples", "toy")
+	for _, tc := range []struct {
+		name string
+		args []string
+		says string
+	}{
+		{"an unknown flag", []string{"explain", "--jsonl", toy, "stale-count"}, `unknown flag "--jsonl"`},
+		{"--json twice", []string{"explain", "--json", "--json", toy, "stale-count"}, "--json given twice"},
+		{"a flag after the positionals", []string{"explain", toy, "stale-count", "--json"}, "rumor explain [--json] PROJECT CASE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if rc := run(tc.args, bytes.NewReader(nil), &stdout, &stderr); rc != 2 {
+				t.Fatalf("exit %d, and a usage error is 2 (stderr %q)", rc, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), tc.says) {
+				t.Errorf("stderr does not say %q: %q", tc.says, stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Errorf("it printed %q before refusing", stdout.String())
+			}
+		})
+	}
+}
+
+// TestBothFormsExplainOneFinding: the two renders are of the SAME derivation,
+// so the facts a reader can check in both must agree. A JSON form that drifted
+// from the text would be two explanations of one finding.
+func TestBothFormsExplainOneFinding(t *testing.T) {
+	toy := filepath.Join("..", "..", "examples", "toy")
+	var textOut, jsonOut, stderr bytes.Buffer
+	if rc := run([]string{"explain", toy, "visibility-leak"}, bytes.NewReader(nil), &textOut, &stderr); rc != 0 {
+		t.Fatalf("text: exit %d, stderr %q", rc, stderr.String())
+	}
+	if rc := run([]string{"explain", "--json", toy, "visibility-leak"}, bytes.NewReader(nil), &jsonOut, &stderr); rc != 0 {
+		t.Fatalf("json: exit %d, stderr %q", rc, stderr.String())
+	}
+	var doc struct {
+		Verdict struct {
+			Says  string `json:"says"`
+			Rules []struct {
+				Module string `json:"module"`
+				Row    int    `json:"row"`
+			} `json:"rules"`
+		} `json:"verdict"`
+		Expectation struct {
+			Holds map[string]struct {
+				Reached bool `json:"reached"`
+			} `json:"holds"`
+		} `json:"expectation"`
+		Reproduction struct {
+			StatuteSHA string `json:"statute_sha"`
+			Events     int    `json:"events"`
+		} `json:"reproduction"`
+	}
+	if err := json.Unmarshal(jsonOut.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	text := textOut.String()
+	if !strings.Contains(text, "FINDING    "+doc.Verdict.Says) {
+		t.Errorf("the text does not state the finding the JSON names (%q)", doc.Verdict.Says)
+	}
+	for _, r := range doc.Verdict.Rules {
+		if !strings.Contains(text, fmt.Sprintf("%s:%d", r.Module, r.Row)) {
+			t.Errorf("the JSON names %s:%d and the text does not", r.Module, r.Row)
+		}
+	}
+	if !strings.Contains(text, doc.Reproduction.StatuteSHA) {
+		t.Errorf("the statute digest differs between the forms")
+	}
+	if !strings.Contains(text, fmt.Sprintf("%d trace event(s)", doc.Reproduction.Events)) {
+		t.Errorf("the event count differs between the forms")
+	}
+	// Reach agrees rule by rule, which is the field this phase added.
+	reached, unreached := 0, 0
+	for rule, h := range doc.Expectation.Holds {
+		if h.Reached {
+			reached++
+			continue
+		}
+		unreached++
+		if !strings.Contains(text, rule) {
+			t.Errorf("%s is in the JSON and not in the text", rule)
+		}
+	}
+	if reached == 0 || unreached == 0 {
+		t.Fatalf("visibility-leak reports %d reached and %d not: this arm needs both", reached, unreached)
 	}
 }

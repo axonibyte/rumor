@@ -1,0 +1,201 @@
+{
+  "selector": {
+    "actor": "bob",
+    "of": "invitation.sent",
+    "query": "invitation_expiry",
+    "source": "api",
+    "position": 9
+  },
+  "verdict": {
+    "value": "bug",
+    "defined": true,
+    "says": "bug",
+    "rules": [
+      {
+        "module": "statute.rego",
+        "row": 396,
+        "default": true
+      }
+    ],
+    "overridden": false
+  },
+  "expectation": {
+    "holds": {
+      "believed": {
+        "value": 1,
+        "rules": [
+          {
+            "module": "statute.rego",
+            "row": 147,
+            "default": false
+          }
+        ],
+        "reached": true
+      },
+      "expiry_sound": {
+        "value": true,
+        "rules": [
+          {
+            "module": "statute.rego",
+            "row": 386,
+            "default": false
+          }
+        ],
+        "reached": true
+      },
+      "has_user": {
+        "value": true,
+        "reached": false
+      },
+      "honored_past_expiry": {
+        "value": true,
+        "rules": [
+          {
+            "module": "statute.rego",
+            "row": 532,
+            "default": false
+          }
+        ],
+        "reached": true
+      },
+      "may_accept": {
+        "value": false,
+        "reached": false
+      },
+      "may_create_event": {
+        "value": true,
+        "reached": false
+      },
+      "may_create_user": {
+        "value": false,
+        "reached": false
+      },
+      "may_delete": {
+        "value": false,
+        "reached": false
+      },
+      "may_invite": {
+        "value": false,
+        "reached": false
+      },
+      "may_join": {
+        "value": false,
+        "reached": false
+      },
+      "may_leave": {
+        "value": true,
+        "reached": false
+      },
+      "may_list_attendees": {
+        "value": false,
+        "reached": false
+      },
+      "rests_on_planted": {
+        "value": false,
+        "reached": false
+      },
+      "role_sees_subject": {
+        "value": true,
+        "rules": [
+          {
+            "module": "statute.rego",
+            "row": 104,
+            "default": false
+          }
+        ],
+        "reached": true
+      }
+    },
+    "known": [
+      {
+        "ref": "alice.invitation#1",
+        "via": [
+          {
+            "kind": "tell",
+            "actor": "alice",
+            "to": "bob",
+            "position": 6
+          }
+        ]
+      },
+      {
+        "ref": "bob.accept#1",
+        "via": [
+          {
+            "kind": "claim",
+            "actor": "bob",
+            "position": 8,
+            "type": "event.joined"
+          }
+        ]
+      },
+      {
+        "ref": "bob.user#1",
+        "via": [
+          {
+            "kind": "claim",
+            "actor": "bob",
+            "position": 3,
+            "type": "user.created"
+          }
+        ]
+      }
+    ],
+    "claims": [
+      {
+        "ref": "alice.user#1",
+        "actor": "alice",
+        "type": "user.created",
+        "position": 2,
+        "at": 0
+      },
+      {
+        "ref": "bob.user#1",
+        "actor": "bob",
+        "type": "user.created",
+        "position": 3,
+        "at": 0
+      },
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 4,
+        "at": 0
+      },
+      {
+        "ref": "alice.invitation#1",
+        "actor": "alice",
+        "type": "invitation.sent",
+        "position": 5,
+        "at": 0
+      },
+      {
+        "ref": "bob.accept#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 8,
+        "at": 30000000001
+      }
+    ]
+  },
+  "observation": {
+    "actor": "bob",
+    "of": "invitation.sent",
+    "query": "invitation_expiry",
+    "source": "api",
+    "role": "guest",
+    "value": 30000000000,
+    "position": 9
+  },
+  "clock": {
+    "now": 30000000001
+  },
+  "reproduction": {
+    "package": "toy",
+    "case": "invitation-honored-late",
+    "seal": 8,
+    "statute_sha": "17690959b22a0c095704920775ddc54955466e3a2f3dc1fded722b78334b9250",
+    "events": 614
+  }
+}

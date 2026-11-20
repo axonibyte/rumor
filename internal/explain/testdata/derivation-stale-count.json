@@ -1,0 +1,153 @@
+{
+  "selector": {
+    "actor": "alice",
+    "of": "event.joined",
+    "query": "event_count",
+    "source": "api",
+    "position": 6
+  },
+  "verdict": {
+    "value": "bug",
+    "defined": true,
+    "says": "bug",
+    "rules": [
+      {
+        "module": "statute.rego",
+        "row": 396,
+        "default": true
+      }
+    ],
+    "overridden": false
+  },
+  "expectation": {
+    "holds": {
+      "believed": {
+        "value": 1,
+        "reached": false
+      },
+      "expiry_sound": {
+        "value": false,
+        "reached": false
+      },
+      "has_user": {
+        "value": false,
+        "reached": false
+      },
+      "honored_past_expiry": {
+        "value": false,
+        "reached": false
+      },
+      "may_accept": {
+        "value": false,
+        "reached": false
+      },
+      "may_create_event": {
+        "value": false,
+        "reached": false
+      },
+      "may_create_user": {
+        "value": true,
+        "reached": false
+      },
+      "may_delete": {
+        "value": false,
+        "reached": false
+      },
+      "may_invite": {
+        "value": false,
+        "reached": false
+      },
+      "may_join": {
+        "value": true,
+        "reached": false
+      },
+      "may_leave": {
+        "value": false,
+        "reached": false
+      },
+      "may_list_attendees": {
+        "value": true,
+        "reached": false
+      },
+      "rests_on_planted": {
+        "value": false,
+        "reached": false
+      },
+      "role_sees_subject": {
+        "value": true,
+        "reached": false
+      }
+    },
+    "known": [
+      {
+        "ref": "alice.del#1",
+        "via": [
+          {
+            "kind": "claim",
+            "actor": "alice",
+            "position": 5,
+            "type": "event.deleted"
+          }
+        ]
+      },
+      {
+        "ref": "alice.event#1",
+        "via": [
+          {
+            "kind": "claim",
+            "actor": "alice",
+            "position": 1,
+            "type": "event.created"
+          }
+        ]
+      },
+      {
+        "ref": "bob.join#1",
+        "via": [
+          {
+            "kind": "tell",
+            "actor": "bob",
+            "to": "alice",
+            "position": 4
+          }
+        ]
+      }
+    ],
+    "claims": [
+      {
+        "ref": "alice.event#1",
+        "actor": "alice",
+        "type": "event.created",
+        "position": 1
+      },
+      {
+        "ref": "bob.join#1",
+        "actor": "bob",
+        "type": "event.joined",
+        "position": 3
+      },
+      {
+        "ref": "alice.del#1",
+        "actor": "alice",
+        "type": "event.deleted",
+        "position": 5
+      }
+    ]
+  },
+  "observation": {
+    "actor": "alice",
+    "of": "event.joined",
+    "query": "event_count",
+    "source": "api",
+    "role": "admin",
+    "value": 1,
+    "position": 6
+  },
+  "reproduction": {
+    "package": "toy",
+    "case": "stale-count",
+    "seal": 5,
+    "statute_sha": "17690959b22a0c095704920775ddc54955466e3a2f3dc1fded722b78334b9250",
+    "events": 112
+  }
+}

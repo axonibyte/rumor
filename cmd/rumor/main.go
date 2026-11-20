@@ -48,7 +48,7 @@ import (
 	"forge.axonibyte.com/axonibyte/rumor/internal/wire"
 )
 
-const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor explain PROJECT CASE\n       rumor validate PROJECT\n       rumor attaint [--examples DIR]\n       rumor run PROJECT [--seed N] [--steps N] [--profile NAME]\n       rumor report PROJECT [--profile NAME]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S] [--stop-flow ACTION:AT:REASON[:TIMES[:THENAT]]] [--lacks KIND]"
+const usage = "usage: rumor docs --check\n       rumor check [--examples DIR]\n       rumor explain [--json] PROJECT CASE\n       rumor validate PROJECT\n       rumor attaint [--examples DIR]\n       rumor run PROJECT [--seed N] [--steps N] [--profile NAME]\n       rumor report PROJECT [--profile NAME]\n       rumor fake-adapter [--surface FILE] [--contract VERSION] [--fail KIND] [--omit KIND.FIELD] [--id-salt S] [--stop-flow ACTION:AT:REASON[:TIMES[:THENAT]]] [--lacks KIND]"
 
 // coverageCheck is a seam, not indirection for its own sake: it lets a test
 // drive the WRITE handling below -- including the failed-write path -- without
@@ -88,7 +88,7 @@ var validateProject = func(dir string) validate.Report { return validate.Run(dir
 // swapping this seam drives the argument surface and the exit codes without a
 // tree of examples on disk, and the arm below drives the real path against the
 // committed toy.
-var explainCase = func(dir, caseName string, out io.Writer) error {
+var explainCase = func(dir, caseName string, asJSON bool, out io.Writer) error {
 	c, err := examples.Load(context.Background(), dir, caseName)
 	if err != nil {
 		return err
@@ -100,6 +100,9 @@ var explainCase = func(dir, caseName string, out io.Writer) error {
 	})
 	if err != nil {
 		return err
+	}
+	if asJSON {
+		return explain.RenderJSON(out, d)
 	}
 	return explain.Render(out, d)
 }
@@ -166,11 +169,32 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		// was found in and the case that produced it, and both are required
 		// because nothing else identifies a finding (coop r11/3). A missing
 		// one is a usage error and not an empty explanation.
-		if len(args) != 3 {
+		//
+		// `--json` IS THE ONLY FLAG AND IT MUST COME FIRST, which is the
+		// surface the other subcommands here keep: flags before positionals,
+		// refused by name rather than ignored. An unknown flag is a usage
+		// error, because a caller who typed one meant something by it.
+		rest := args[1:]
+		asJSON := false
+		for len(rest) > 0 && strings.HasPrefix(rest[0], "-") {
+			if rest[0] != "--json" {
+				_, _ = fmt.Fprintf(stderr, "explain: unknown flag %q\n", rest[0])
+				_, _ = fmt.Fprintln(stderr, usage)
+				return 2
+			}
+			if asJSON {
+				_, _ = fmt.Fprintf(stderr, "explain: --json given twice\n")
+				_, _ = fmt.Fprintln(stderr, usage)
+				return 2
+			}
+			asJSON = true
+			rest = rest[1:]
+		}
+		if len(rest) != 2 {
 			_, _ = fmt.Fprintln(stderr, usage)
 			return 2
 		}
-		if err := explainCase(args[1], args[2], stdout); err != nil {
+		if err := explainCase(rest[0], rest[1], asJSON, stdout); err != nil {
 			// EVERY REFUSAL REACHES THE READER BY NAME. internal/explain
 			// refuses a finding with no trace, an unsealed ledger, an absent
 			// statute input and sources that contradict each other, and each
