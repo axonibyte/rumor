@@ -74,6 +74,33 @@ func packages(t *testing.T) []string {
 	if len(out) == 0 {
 		t.Fatal("examples/ holds no package with a statute.rego: an empty walk is not a pass")
 	}
+
+	// AND THE SET IS CHECKED AGAINST THE PACKAGES THAT EXISTED AT THE CUT,
+	// which auto-discovery alone cannot do. A package DIRECTORY that vanishes
+	// is simply not listed, and the case-count floor in the arm below cannot
+	// see it: MEASURED with examples/twin moved aside, the walk reported
+	// "built 42 derivation(s) across 4 example package(s)" and PASSED, because
+	// 42 is over the floor of 25. ibis drew the distinction this closes (coop
+	// r11/17): an absent examples/ catches a vacuous walk, and one absent
+	// package catches a walk that skips a package it should have seen. They are
+	// two checks and the phase wants both.
+	//
+	// A NEW PACKAGE IS STILL WELCOME AND WALKED THE DAY IT LANDS -- the list
+	// below is a floor and not the walk's input, so nothing here has to be
+	// edited to examine a sixth. Only a LOST one is red.
+	for _, want := range []string{"planted-lie", "role-visibility", "toy", "transitive-count", "twin"} {
+		found := false
+		for _, got := range out {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("examples/%s has a statute.rego at R11 d1's cut and is not in this walk (%v): a package that disappears is a deletion nobody meant or a rename nobody finished, and it cannot be left to the case count, which passes at 42 of 47",
+				want, out)
+		}
+	}
 	return out
 }
 
