@@ -413,6 +413,18 @@ path = "internal/engine/*.go"
 docs = ["docs/design.md", "docs/testing-methodology.md"]
 
 [[entry]]
+# A finding's derivation as data (R11 d1, issue 132). ONE DOCUMENT, which is
+# the opposite of the engine entry above and for the same reason: findings.md
+# owns "Explaining a finding" -- what a derivation contains, what it refuses
+# and why it is a view over what a run already retains rather than a second
+# store -- and that section is the whole of this package's contract to a
+# reader. docs/diagnose.md owns the VISUAL report R11 renders later, which
+# this package does not render; naming it here would point a reader at a
+# document about pictures when their question is about fields.
+path = "internal/explain/*.go"
+docs = ["docs/findings.md"]
+
+[[entry]]
 # The handle table: design.md owns why it is per attempt and which collision
 # v1 names, and the vocabulary owns the handle's form, which this package's
 # shape duplicates deliberately so the two must agree.
