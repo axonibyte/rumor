@@ -288,6 +288,33 @@ type Finding struct {
 	Rule  string       // the fully qualified rule, e.g. data.rumor.statute.finding
 	Fired []Definition // the definition(s) whose body succeeded, in row order
 
+	// Definitions are the statute lines EVERY named rule fired during THIS
+	// finding's evaluation, keyed by rule name, read off the same trace Fired
+	// comes from.
+	//
+	// WHY IT EXISTS, AND IT IS THE PHASE'S CRUX (R11, issue 132). A finding
+	// off a `default` row is INNOCENT BY CONSTRUCTION when the wrong rule is
+	// upstream of it: ibis built a statute whose `believed` forgets a
+	// departure, and the explanation could name only `statute.rego:62`, the
+	// default row, which fired exactly right given a wrong input. Naming the
+	// rule that is wrong needs the line of THAT rule, and nothing recorded it
+	// -- the engine called firedDefinitions once, for the finding, though the
+	// function takes a rule NAME and the trace already holds the events.
+	// Measured before it was written (quill, coop r11/25): over
+	// transitive-count/charlie-bug one tracer and one evaluation answer
+	// `believed` statute.rego:33, `truth` :39, `held_claims` :27.
+	//
+	// AN ABSENT ENTRY MEANS NOT REACHED BY THIS FINDING'S EVALUATION, which is
+	// a fact and not a gap: the per-rule VALUES in Rules come from their own
+	// evaluations, so a rule can be defined and still never be touched while
+	// the finding is computed -- and a rule that did not participate cannot be
+	// the error. `untold_accounts` is that case in the measurement above.
+	//
+	// NOTHING NEW IS RETAINED. One call per named rule over the trace this
+	// method already builds, so a derivation remains a view of what a run
+	// holds rather than a second source (same rule as cairn's SPEC 10.3).
+	Definitions map[string][]Definition
+
 	Rules map[string]any // every rule the caller named, absent when undefined
 
 	Trace       string // OPA's pretty trace, retained whole
@@ -562,6 +589,23 @@ func EvaluateWith(ctx context.Context, statute string, rules []string, input map
 	out.Trace = pretty.String()
 	out.TraceEvents = len(*tracer)
 	out.Fired = firedDefinitions(*tracer, FindingRule)
+	// AND THE SAME TRACE, ASKED FOR EVERY RULE THE CALLER NAMED.
+	//
+	// THE LOOP IS OVER `rules` BECAUSE THAT IS THE QUESTION, and the choice is
+	// EQUIVALENT rather than load-bearing -- said plainly because a mutation
+	// over out.Rules survived this tree's whole suite and the first version of
+	// this comment implied it would not. Storing an entry needs a non-empty
+	// firedDefinitions, and a rule missing from out.Rules is one the statute
+	// left undefined, which has no successful exit for the trace to carry. So
+	// neither reader can store it and no fixture can tell them apart. The
+	// caller's list stays because this field answers what the caller asked
+	// about, which is a reason about intent and not about behavior.
+	out.Definitions = make(map[string][]Definition, len(rules))
+	for _, rule := range rules {
+		if defs := firedDefinitions(*tracer, rule); len(defs) > 0 {
+			out.Definitions[rule] = defs
+		}
+	}
 
 	report := cov.Report(map[string]*ast.Module{moduleName: module})
 	if f, ok := report.Files[moduleName]; ok {

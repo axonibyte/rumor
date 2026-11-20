@@ -685,13 +685,14 @@ func TestHoldsCarriesTheStatutesOtherAnswersAndNotTheFinding(t *testing.T) {
 		if rule == engine.FindingRule {
 			continue
 		}
-		if got, ok := d.Expectation.Holds[rule]; !ok || !reflect.DeepEqual(got, v) {
-			t.Errorf("Holds[%q] is %v (present %v), the statute answered %v", rule, got, ok, v)
+		got, ok := d.Expectation.Holds[rule]
+		if !ok || !reflect.DeepEqual(got.Value, v) {
+			t.Errorf("Holds[%q] is %v (present %v), the statute answered %v", rule, got.Value, ok, v)
 		}
 	}
 
 	// IT IS A COPY: a view that can change its source is not a view.
-	d.Expectation.Holds["believed"] = "mutated"
+	d.Expectation.Holds["believed"] = Hold{Value: "mutated"}
 	delete(d.Expectation.Holds, "may_join")
 	if lc.finding.Rules["believed"] == "mutated" {
 		t.Error("writing through Holds changed the finding's own answer")
@@ -915,5 +916,167 @@ func TestNoEngineTypeIsEmbedded(t *testing.T) {
 		if got := foreignFields(control.ty, "control", map[reflect.Type]bool{}); len(got) == 0 {
 			t.Errorf("the reader accepts %s, so the arm above proves nothing", control.name)
 		}
+	}
+}
+
+// TestEveryReachedRuleNamesItsOwnStatuteLine is the data half of R11's crux
+// (fable's ruling, coop r11/26): a finding off a `default` row cannot name the
+// rule that is wrong when the wrong rule is upstream of it, so every rule the
+// caller named carries the lines IT fired, and an absence says so.
+func TestEveryReachedRuleNamesItsOwnStatuteLine(t *testing.T) {
+	reached, unreached := 0, 0
+	for _, pkg := range packages(t) {
+		for _, name := range cases(t, pkg) {
+			lc := load(t, pkg, name)
+			d := lc.build(t)
+			for rule, h := range d.Expectation.Holds {
+				// REACHED AND LINES ARE ONE FACT SAID TWICE, so they may never
+				// disagree: an entry with the flag and no lines, or lines and
+				// no flag, is a shape a reader cannot interpret.
+				if h.Reached != (len(h.Rules) > 0) {
+					t.Errorf("%s/%s: %s reports reached=%v with %d line(s)", pkg, name, rule, h.Reached, len(h.Rules))
+				}
+				if !h.Reached {
+					unreached++
+					// THE VALUE SURVIVES AN ABSENCE. A rule's value comes from
+					// its own evaluation, so "not reached" is about the lines
+					// and never about the answer.
+					if _, ok := lc.finding.Rules[rule]; !ok {
+						t.Errorf("%s/%s: %s is in Holds and the statute gave it no value", pkg, name, rule)
+					}
+					continue
+				}
+				reached++
+				for _, rl := range h.Rules {
+					if rl.Module != "statute.rego" {
+						t.Errorf("%s/%s: %s names module %q", pkg, name, rule, rl.Module)
+						continue
+					}
+					got, _, ok := ruleHead(lineAt(t, lc.statute, rl.Row))
+					if !ok || got != rule {
+						t.Errorf("%s/%s: %s names %s:%d, whose line defines %q (parsed %v)",
+							pkg, name, rule, rl.Module, rl.Row, got, ok)
+					}
+				}
+			}
+		}
+	}
+	if reached == 0 || unreached == 0 {
+		t.Fatalf("%d reached and %d unreached rule(s): an arm about the difference needs both", reached, unreached)
+	}
+	t.Logf("%d reached rule(s) with lines, %d not reached by their finding's evaluation", reached, unreached)
+}
+
+// TestWhatTheToyActuallyReaches pins the REACH, because the field's worth
+// depends on it and nothing else measures it.
+//
+// A RULE IS REACHED ONLY IF THE FINDING'S OWN EVALUATION TOUCHES IT, which is a
+// property of each statute and not of this package. examples/toy guards its
+// `finding` clauses before they compare anything, so stale-count reaches NONE
+// of its fourteen rules, and visibility-leak reaches two -- both on their
+// DEFAULT rows, which is the useful reading: `believed` fell back to 0 because
+// no clause held, which points at `role_sees_subject`. examples/transitive-count
+// reaches real clause rows (internal/engine's own arm pins 33 and 39). If the
+// engine's reach ever widens or narrows, this goes red and the claim in the
+// commit message has to move with it.
+func TestWhatTheToyActuallyReaches(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want map[string]int // rule -> row, for the reached ones only
+	}{
+		{"stale-count", map[string]int{}},
+		{"visibility-leak", map[string]int{"believed": 145, "role_sees_subject": 102}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := load(t, "toy", tc.name).build(t)
+			got := map[string]int{}
+			for rule, h := range d.Expectation.Holds {
+				if h.Reached {
+					if len(h.Rules) != 1 {
+						t.Errorf("%s fired %d line(s): %v", rule, len(h.Rules), h.Rules)
+						continue
+					}
+					got[rule] = h.Rules[0].Row
+				}
+			}
+			if len(got) != len(tc.want) {
+				t.Errorf("reached %v, wanted %v", got, tc.want)
+			}
+			for rule, row := range tc.want {
+				if got[rule] != row {
+					t.Errorf("%s reached at row %d, wanted %d", rule, got[rule], row)
+				}
+			}
+			if len(d.Expectation.Holds) != 14 {
+				t.Errorf("%d rule(s) in Holds, and the toy names fifteen with the finding", len(d.Expectation.Holds))
+			}
+		})
+	}
+}
+
+// TestAnUnreachedRuleSaysSoInTheJSON holds the shape d3 inherits: an absence
+// that is a fact has to be a field and not a missing key.
+func TestAnUnreachedRuleSaysSoInTheJSON(t *testing.T) {
+	d := load(t, "toy", "stale-count").build(t)
+	h, ok := d.Expectation.Holds["may_invite"]
+	if !ok {
+		t.Fatal("may_invite is not in Holds")
+	}
+	if h.Reached {
+		t.Fatalf("may_invite reads as reached: %+v", h)
+	}
+	b, err := json.Marshal(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"reached":false`) {
+		t.Errorf("the JSON leaves the absence unstated: %s", b)
+	}
+	if strings.Contains(string(b), `"rules"`) {
+		t.Errorf("an unreached rule carries a rules key: %s", b)
+	}
+}
+
+// lineAt returns one 1-based line of a statute, and fails rather than returning
+// "" for a row outside it: an out-of-range row read as an empty line would make
+// every cross-check above pass over nothing.
+func lineAt(t *testing.T, statute string, row int) string {
+	t.Helper()
+	lines := strings.Split(statute, "\n")
+	if row < 1 || row > len(lines) {
+		t.Fatalf("row %d is outside a statute of %d line(s)", row, len(lines))
+	}
+	return lines[row-1]
+}
+
+// TestStatuteLinesComeOutInOrder drives the ordering on a hand-built input,
+// because no committed fixture exercises it: every case in examples/ fires
+// exactly ONE definition per rule, so the sort inside linesOf is a no-op on
+// all 47 of them and a mutation removing it would survive the whole suite.
+// OPA can exit two clauses of one rule, which is why the sort is there.
+func TestStatuteLinesComeOutInOrder(t *testing.T) {
+	got := linesOf([]engine.Definition{
+		{Module: "statute.rego", Row: 400},
+		{Module: "statute.rego", Row: 12, Default: true},
+		{Module: "another.rego", Row: 99},
+		{Module: "statute.rego", Row: 120},
+	})
+	var want []string
+	for _, r := range []struct {
+		mod string
+		row int
+	}{{"another.rego", 99}, {"statute.rego", 12}, {"statute.rego", 120}, {"statute.rego", 400}} {
+		want = append(want, fmt.Sprintf("%s:%d", r.mod, r.row))
+	}
+	var names []string
+	for _, rl := range got {
+		names = append(names, fmt.Sprintf("%s:%d", rl.Module, rl.Row))
+	}
+	if strings.Join(names, " ") != strings.Join(want, " ") {
+		t.Errorf("order %v, wanted %v: by module, then by row", names, want)
+	}
+	// The flag rides with its row rather than with its position in the input.
+	if !got[1].Default {
+		t.Errorf("the default flag did not follow row 12: %+v", got)
 	}
 }

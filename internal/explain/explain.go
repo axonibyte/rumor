@@ -173,13 +173,35 @@ type Verdict struct {
 	Overlay      *Overlay `json:"overlay,omitempty"`
 }
 
+// Hold is one rule the caller named: the value the statute gave it, and the
+// statute lines it fired while THIS finding was evaluated.
+//
+// Reached IS THE FIELD THAT MAKES AN ABSENCE A FACT. A rule's value comes from
+// its own evaluation, so a rule can be defined -- and so carry a value here --
+// without the finding's evaluation ever touching it. No lines then, and that is
+// not a gap: a rule that did not participate cannot be the error. Said in a
+// word rather than left to be inferred from an empty list, so the JSON states
+// it (fable's ruling, coop r11/26).
+type Hold struct {
+	Value   any        `json:"value"`
+	Rules   []RuleLine `json:"rules,omitempty"`
+	Reached bool       `json:"reached"`
+}
+
 // Expectation is what the actor knew and how it came to know it, plus the
 // statute's other answers at this position.
 type Expectation struct {
 	// Holds is every rule the caller named, with the value the statute gave
-	// it -- the statute's intermediate conclusions, under the names the
-	// statute uses. The finding itself is not in here; it is the Verdict.
-	Holds map[string]any `json:"holds"`
+	// it and the lines that produced it -- the statute's intermediate
+	// conclusions, under the names the statute uses. The finding itself is not
+	// in here; it is the Verdict.
+	//
+	// THE LINES ARE WHY THE WRONG RULE CAN BE NAMED. A finding off a `default`
+	// row is innocent by construction when the wrong rule is upstream of it
+	// (ibis, coop r11/24): the default fired exactly right given a wrong
+	// input, so the row a reader is handed is not the row to go and read. The
+	// rule that IS wrong is in here, with its own line.
+	Holds map[string]Hold `json:"holds"`
 
 	Known  []KnownFact `json:"known"`
 	Claims []Claim     `json:"claims"`
@@ -330,9 +352,14 @@ func Build(f engine.Finding, l *ledger.Ledger, c engine.Check, r Run) (*Derivati
 // rulesOf reads the statute lines off the finding's fired definitions. An
 // undefined finding has none, and the empty slice is the honest answer: no
 // clause held.
-func rulesOf(f engine.Finding) []RuleLine {
-	out := make([]RuleLine, 0, len(f.Fired))
-	for _, def := range f.Fired {
+func rulesOf(f engine.Finding) []RuleLine { return linesOf(f.Fired) }
+
+// linesOf renders statute definitions in module and row order. ONE READER for
+// the finding's own lines and for every other rule's, so the two orders cannot
+// drift apart.
+func linesOf(defs []engine.Definition) []RuleLine {
+	out := make([]RuleLine, 0, len(defs))
+	for _, def := range defs {
 		out = append(out, RuleLine{Module: def.Module, Row: def.Row, Default: def.Default})
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -365,13 +392,17 @@ func overlayOf(f engine.Finding) *Overlay {
 // IT IS A COPY AND NOT THE ENGINE'S MAP: a derivation that handed out
 // f.Rules would let its reader mutate the finding, and a view that can change
 // its source is not a view.
-func holdsOf(f engine.Finding) map[string]any {
-	out := make(map[string]any, len(f.Rules))
+func holdsOf(f engine.Finding) map[string]Hold {
+	out := make(map[string]Hold, len(f.Rules))
 	for rule, v := range f.Rules {
 		if rule == engine.FindingRule {
 			continue
 		}
-		out[rule] = v
+		h := Hold{Value: v}
+		if defs, ok := f.Definitions[rule]; ok && len(defs) > 0 {
+			h.Rules, h.Reached = linesOf(defs), true
+		}
+		out[rule] = h
 	}
 	return out
 }
