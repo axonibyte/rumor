@@ -1138,3 +1138,79 @@ sees_now := input.clock.now
 			"is not about the zone")
 	}
 }
+
+// TestEveryNamedRuleCarriesTheLinesItFired is R11's crux at the layer that
+// records it: a finding off a `default` row cannot name the rule that is wrong
+// when the wrong rule is upstream of it, and the lines of those upstream rules
+// were in the trace all along -- firedDefinitions takes a rule NAME and was
+// called once, for the finding.
+func TestEveryNamedRuleCarriesTheLinesItFired(t *testing.T) {
+	l, s, st := fixture(t, "transitive-count", "charlie-bug")
+	rules := []string{"believed", "truth", "untold_accounts", FindingRule}
+	f, err := Evaluate(context.Background(), st, rules, l,
+		Check{Actor: s.Observer, Query: "user.count", Of: "user.created",
+			Source: ledger.SourceAPI, Value: caseValue(t, "transitive-count", "charlie-bug")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Definitions) == 0 {
+		t.Fatal("no named rule carries a line, so this arm passed over nothing")
+	}
+
+	// THE ROW IS CHECKED AGAINST THE STATUTE TEXT and not only against the
+	// trace: comparing the trace to itself asks the engine whether it agrees
+	// with itself, while reading the row out of the file asks whether it names
+	// a definition OF THAT RULE -- the claim `rumor explain` makes.
+	lines := strings.Split(st, "\n")
+	for rule, defs := range f.Definitions {
+		if len(defs) == 0 {
+			t.Errorf("%s has an entry with no definition, and absence is how `not reached` is said", rule)
+			continue
+		}
+		for _, d := range defs {
+			if d.Module != moduleName {
+				t.Errorf("%s names module %q and only %q is evaluated", rule, d.Module, moduleName)
+				continue
+			}
+			if d.Row < 1 || d.Row > len(lines) {
+				t.Errorf("%s names row %d, and the statute has %d line(s)", rule, d.Row, len(lines))
+				continue
+			}
+			head := strings.TrimPrefix(lines[d.Row-1], "default ")
+			if !strings.HasPrefix(head, rule) {
+				t.Errorf("%s names %s:%d, whose line is %q", rule, d.Module, d.Row, lines[d.Row-1])
+			}
+		}
+	}
+
+	// The rows this statute actually holds, so the arm is about THESE lines
+	// and not about any line that happens to start with the rule's name.
+	for rule, want := range map[string]int{"believed": 33, "truth": 39} {
+		defs := f.Definitions[rule]
+		if len(defs) != 1 || defs[0].Row != want {
+			t.Errorf("%s fired %v, wanted one definition at row %d", rule, defs, want)
+		}
+	}
+
+	// ABSENT MEANS NOT REACHED, and `untold_accounts` is that case: it is
+	// named by the caller and defined by the statute -- so it has a VALUE --
+	// and the finding's evaluation never touches it.
+	if defs, ok := f.Definitions["untold_accounts"]; ok {
+		t.Errorf("untold_accounts carries %v, and the finding's evaluation does not reach it", defs)
+	}
+	if _, ok := f.Rules["untold_accounts"]; !ok {
+		t.Error("untold_accounts has no value either, so the arm above is about an undefined rule and not about an unreached one")
+	}
+
+	// The finding's own entry is the same answer Fired gives, from the same
+	// trace: two readers of one thing must not disagree.
+	if got, want := fmt.Sprint(f.Definitions[FindingRule]), fmt.Sprint(f.Fired); got != want {
+		t.Errorf("the finding's own definitions read %s and Fired reads %s", got, want)
+	}
+
+	// A rule nobody named is absent, which is what makes the loop above a
+	// report of the CALLER's question rather than of the whole statute.
+	if defs, ok := f.Definitions["held_claims"]; ok {
+		t.Errorf("held_claims was not named by the caller and carries %v", defs)
+	}
+}
