@@ -580,6 +580,92 @@ func TestExplainsSampleInTheDocsIsTheCommandsOwnOutput(t *testing.T) {
 	}
 }
 
+// TestTheDocsHeldBlockFragmentIsTheCommandsOwnOutput pins the SECOND sample in
+// `rumor explain`'s section: the one that shows a rule with its line beside a
+// rule nothing touched.
+//
+// WHY A SECOND FRAGMENT EXISTS. The full sample is toy/stale-count, whose
+// chain shows both an own claim and a tell -- and which reaches none of its
+// fourteen rules, so the block that names the wrong rule shows no line at all
+// there. A document whose only sample hides the feature is documentation of
+// something else.
+func TestTheDocsHeldBlockFragmentIsTheCommandsOwnOutput(t *testing.T) {
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "cli.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	frag, ok := fenceStartingWith(string(doc), "## `rumor explain`", "THE STATUTE ALSO HELD")
+	if !ok {
+		t.Fatal("docs/cli.md carries no THE STATUTE ALSO HELD fragment under `rumor explain`")
+	}
+
+	var stdout, stderr bytes.Buffer
+	if rc := run([]string{"explain", filepath.Join("..", "..", "examples", "toy"), "visibility-leak"},
+		bytes.NewReader(nil), &stdout, &stderr); rc != 0 {
+		t.Fatalf("exit %d, stderr %q", rc, stderr.String())
+	}
+	var got []string
+	in := false
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if strings.HasPrefix(line, "THE STATUTE ALSO HELD") {
+			in = true
+		} else if in && strings.TrimSpace(line) == "" {
+			break
+		}
+		if in {
+			got = append(got, line)
+		}
+	}
+	if len(got) != len(frag) {
+		t.Fatalf("the fragment has %d line(s) and the command printed %d:\n--- doc\n%s\n--- got\n%s",
+			len(frag), len(got), strings.Join(frag, "\n"), strings.Join(got, "\n"))
+	}
+	for i := range frag {
+		if got[i] != frag[i] {
+			t.Errorf("line %d has drifted:\n  doc %q\n  got %q", i+1, frag[i], got[i])
+		}
+	}
+	// The fragment is only worth pinning if it shows BOTH kinds.
+	joined := strings.Join(frag, "\n")
+	if !strings.Contains(joined, "statute.rego:") || !strings.Contains(joined, "(not reached)") {
+		t.Errorf("the fragment does not show a line and an unreached rule together:\n%s", joined)
+	}
+}
+
+// fenceStartingWith returns the lines of the first fenced block under a heading
+// whose first line begins with a prefix.
+func fenceStartingWith(doc, heading, prefix string) ([]string, bool) {
+	lines := strings.Split(doc, "\n")
+	start := -1
+	for i, line := range lines {
+		if line == heading {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return nil, false
+	}
+	var cur []string
+	in := false
+	for _, line := range lines[start+1:] {
+		if strings.HasPrefix(line, "## ") {
+			break
+		}
+		if line == "```" {
+			if in && len(cur) > 0 && strings.HasPrefix(cur[0], prefix) {
+				return cur, true
+			}
+			cur, in = nil, !in
+			continue
+		}
+		if in {
+			cur = append(cur, line)
+		}
+	}
+	return nil, false
+}
+
 // sampleAfter returns the lines of the LAST fenced block under a heading,
 // which is where each command's section in cli.md puts its sample output: the
 // first fence is the usage line.

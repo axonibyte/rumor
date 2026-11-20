@@ -1366,21 +1366,21 @@ WHY THE STATUTE HELD THAT -- alice's knowledge, shortest path first
   alice.del#1        alice's own claim at 5 (event.deleted)
   bob.join#1         told to alice by bob at 4
 
-THE STATUTE ALSO HELD
-  believed               1
-  expiry_sound           false
-  has_user               false
-  honored_past_expiry    false
-  may_accept             false
-  may_create_event       false
-  may_create_user        true
-  may_delete             false
-  may_invite             false
-  may_join               true
-  may_leave              false
-  may_list_attendees     true
-  rests_on_planted       false
-  role_sees_subject      true
+THE STATUTE ALSO HELD -- reached rules first; a rule nothing touched cannot be the error
+  believed               1          (not reached)
+  expiry_sound           false      (not reached)
+  has_user               false      (not reached)
+  honored_past_expiry    false      (not reached)
+  may_accept             false      (not reached)
+  may_create_event       false      (not reached)
+  may_create_user        true       (not reached)
+  may_delete             false      (not reached)
+  may_invite             false      (not reached)
+  may_join               true       (not reached)
+  may_leave              false      (not reached)
+  may_list_attendees     true       (not reached)
+  rests_on_planted       false      (not reached)
+  role_sees_subject      true       (not reached)
 
 REPRODUCTION  toy stale-count at seal 5, statute <sha256 of statute.rego>, 112 trace event(s)
 ```
@@ -1399,6 +1399,47 @@ package this one line is the whole difference between them.
 **`shortest path first`** is the chain's order: a fact the actor claimed
 themselves is no hop and comes before one they were told, earlier positions
 first, and a fact known both ways is as short as its shortest origin.
+
+**Every rule in `THE STATUTE ALSO HELD` carries the line that produced it, or
+`(not reached)`.** That block is where the rule that is WRONG shows up: when a
+wrong rule sits upstream of the finding, the row beside `FINDING` is innocent --
+the default fired exactly right given a wrong input -- so a reader given no line
+here is sent back to the file the explanation was supposed to replace.
+`(not reached)` means the finding's own evaluation never touched that rule while
+computing its verdict, which is a fact and not a gap: a rule that did not
+participate cannot be the error. A rule can be defined, and so have a value
+here, without being reached, because its value comes from its own evaluation.
+
+**The reached rules come first**, then the rest, each group by name. Reach is
+the one ranking this output has a basis for, and it is what makes the block
+readable: `examples/toy` guards its `finding` clauses before they compare
+anything, so `stale-count` reaches none of its fourteen rules and
+`visibility-leak` reaches two -- `believed` and `role_sees_subject`, both on
+their default rows, which is exactly the reading that explains it. A statute
+whose finding compares against a rule directly reaches real clause rows:
+`examples/transitive-count` names `believed` at 33 and `truth` at 39.
+
+`rumor explain examples/toy visibility-leak` shows both kinds in one block, and
+the second row is the explanation: carol's role cannot see the subject, so her
+expectation falls to its default of 0 while the API answers 1.
+
+```
+THE STATUTE ALSO HELD -- reached rules first; a rule nothing touched cannot be the error
+  believed               0          statute.rego:145 (default)
+  role_sees_subject      false      statute.rego:102 (default)
+  expiry_sound           false      (not reached)
+  has_user               false      (not reached)
+  honored_past_expiry    false      (not reached)
+  may_accept             false      (not reached)
+  may_create_event       true       (not reached)
+  may_create_user        true       (not reached)
+  may_delete             false      (not reached)
+  may_invite             false      (not reached)
+  may_join               true       (not reached)
+  may_leave              false      (not reached)
+  may_list_attendees     false      (not reached)
+  rests_on_planted       false      (not reached)
+```
 
 **`IN THE PREFIX, NOT KNOWN TO <ACTOR>`** appears when the sealed prefix holds a
 claim the actor's knowledge does not carry -- a thing that happened and that

@@ -76,11 +76,32 @@ func Render(w io.Writer, d *Derivation) error {
 		}
 	}
 
-	// The statute's other answers, under its own names.
+	// The statute's other answers, under its own names, each with the line
+	// that produced it.
+	//
+	// THE LINE IS HERE BECAUSE THE DEFAULT ROW ABOVE IS INNOCENT. When the
+	// wrong rule is upstream of the finding, the row beside FINDING fired
+	// exactly right and the rule to go and read is in this block -- so a
+	// reader who gets no line here is sent back to the file the explanation
+	// was supposed to replace (ibis, coop r11/24; fable's ruling at r11/26).
+	//
+	// AND "not reached" IS PRINTED RATHER THAN LEFT BLANK, because a blank
+	// says nothing about why: a rule whose lines are absent was never touched
+	// while this finding was computed, and that is the one thing it proves --
+	// it cannot be the error.
+	// REACHED FIRST, THEN ALPHABETICAL WITHIN EACH GROUP. I told the room I
+	// had no basis to rank a statute's own rules and would leave the order to
+	// rook's cold read (coop r11/23); the basis arrived with the lines. A rule
+	// the finding's evaluation touched is a candidate for the error and a rule
+	// it never touched cannot be one, so the candidates go first -- which is
+	// also what makes a fourteen-rule block readable when twelve of them say
+	// "(not reached)". Deterministic either way: the group is a fact and the
+	// name breaks every tie.
 	if len(d.Expectation.Holds) > 0 {
-		fmt.Fprintf(&b, "\nTHE STATUTE ALSO HELD\n")
-		for _, rule := range sortedKeys(d.Expectation.Holds) {
-			fmt.Fprintf(&b, "  %-22s %v\n", rule, d.Expectation.Holds[rule])
+		fmt.Fprintf(&b, "\nTHE STATUTE ALSO HELD -- reached rules first; a rule nothing touched cannot be the error\n")
+		for _, rule := range holdOrder(d.Expectation.Holds) {
+			h := d.Expectation.Holds[rule]
+			fmt.Fprintf(&b, "  %-22s %-10v %s\n", rule, h.Value, holdLines(h))
 		}
 	}
 
@@ -264,12 +285,42 @@ func unknownToActor(d *Derivation) []Claim {
 	return out
 }
 
-func sortedKeys(m map[string]any) []string {
+// holdLines names where a rule's answer came from, or says that nothing
+// touched it.
+func holdLines(h Hold) string {
+	if !h.Reached {
+		return "(not reached)"
+	}
+	parts := make([]string, 0, len(h.Rules))
+	for _, rl := range h.Rules {
+		if rl.Default {
+			parts = append(parts, fmt.Sprintf("%s:%d (default)", rl.Module, rl.Row))
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s:%d", rl.Module, rl.Row))
+	}
+	if len(parts) == 0 {
+		// Not reachable from Build, which sets Reached only with lines, and
+		// said rather than left blank so the disagreement is visible.
+		return "(reached, with no line recorded -- a defect to report)"
+	}
+	return strings.Join(parts, ", ")
+}
+
+// holdOrder lists the rules reached by this finding's evaluation first, then
+// the rest, each group by name.
+func holdOrder(m map[string]Hold) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)
 	}
-	sort.Strings(out)
+	sort.Slice(out, func(i, j int) bool {
+		ri, rj := m[out[i]].Reached, m[out[j]].Reached
+		if ri != rj {
+			return ri
+		}
+		return out[i] < out[j]
+	})
 	return out
 }
 

@@ -242,30 +242,87 @@ func TestTheRenderIsByteStable(t *testing.T) {
 }
 
 // TestTheStatutesOtherAnswersAreInOrder is the DETERMINISTIC half of the arm
-// above. Byte-stability kills an unsorted render only because Go varies a map's
-// iteration order between passes -- a real kill, measured, but a probabilistic
-// one, and an arm that relies on a coin coming up differently eight times is
-// not the arm to leave guarding a contract d3 inherits.
+// above. Byte-stability kills an unordered render only because Go varies a
+// map's iteration order between passes -- a real kill, measured, but a
+// probabilistic one, and an arm that relies on a coin coming up differently
+// eight times is not the arm to leave guarding a contract d3 inherits.
+//
+// THE ORDER IS TWO GROUPS: rules the finding's evaluation reached, then the
+// rest, each by name. The group is the ranking the render has a basis for --
+// a rule nothing touched cannot be the error -- and the name breaks every tie,
+// so the order is total.
 func TestTheStatutesOtherAnswersAreInOrder(t *testing.T) {
-	text, _, d := renderOf(t, "toy", "stale-count")
+	text, _, d := renderOf(t, "toy", "visibility-leak")
 	if len(d.Expectation.Holds) < 2 {
-		t.Fatalf("stale-count holds %d rule(s): an order needs two", len(d.Expectation.Holds))
+		t.Fatalf("visibility-leak holds %d rule(s): an order needs two", len(d.Expectation.Holds))
 	}
-	block, ok := blockAfter(text, "THE STATUTE ALSO HELD")
+	block, ok := blockAfter(text, "THE STATUTE ALSO HELD -- reached rules first; a rule nothing touched cannot be the error")
 	if !ok {
 		t.Fatalf("the block is absent:\n%s", text)
 	}
+	if len(block) != len(d.Expectation.Holds) {
+		t.Errorf("%d line(s) for %d rule(s)", len(block), len(d.Expectation.Holds))
+	}
+
 	var names []string
+	seenUnreached := false
 	for _, line := range block {
-		names = append(names, strings.Fields(line)[0])
-	}
-	if len(names) != len(d.Expectation.Holds) {
-		t.Errorf("%d line(s) for %d rule(s): %v", len(names), len(d.Expectation.Holds), names)
-	}
-	for i := 1; i < len(names); i++ {
-		if names[i-1] >= names[i] {
-			t.Errorf("rule %q follows %q, which is not ascending: %v", names[i], names[i-1], names)
+		name := strings.Fields(line)[0]
+		names = append(names, name)
+		h, ok := d.Expectation.Holds[name]
+		if !ok {
+			t.Errorf("the block names %q, which is not a rule the statute answered", name)
+			continue
 		}
+		// THE GROUPS DO NOT INTERLEAVE: once an unreached rule has been
+		// printed, no reached one may follow it.
+		if !h.Reached {
+			seenUnreached = true
+		} else if seenUnreached {
+			t.Errorf("%q is reached and follows an unreached rule: %v", name, names)
+		}
+		// AND EACH ROW SAYS WHERE ITS ANSWER CAME FROM, which is the whole
+		// point of the block: a line, or why there is none.
+		if h.Reached {
+			for _, rl := range h.Rules {
+				if !strings.Contains(line, fmt.Sprintf("%s:%d", rl.Module, rl.Row)) {
+					t.Errorf("%q carries %s:%d and the row does not name it: %q", name, rl.Module, rl.Row, line)
+				}
+			}
+		} else if !strings.Contains(line, "(not reached)") {
+			t.Errorf("%q was not reached and the row does not say so: %q", name, line)
+		}
+	}
+	if !seenUnreached {
+		t.Fatal("every rule was reached, so the grouping arm above saw one group")
+	}
+
+	// Within each group, ascending by name.
+	var reached, rest []string
+	for _, n := range names {
+		if d.Expectation.Holds[n].Reached {
+			reached = append(reached, n)
+		} else {
+			rest = append(rest, n)
+		}
+	}
+	for _, group := range [][]string{reached, rest} {
+		for i := 1; i < len(group); i++ {
+			if group[i-1] >= group[i] {
+				t.Errorf("%q follows %q, which is not ascending: %v", group[i], group[i-1], group)
+			}
+		}
+	}
+
+	// THE MEASURED PIN: visibility-leak reaches exactly two rules, and the one
+	// that explains it -- carol's role cannot see the subject, so her
+	// expectation falls to its default -- is the second line of the block
+	// rather than buried among fourteen alphabetically.
+	if len(reached) != 2 || reached[0] != "believed" || reached[1] != "role_sees_subject" {
+		t.Errorf("the reached group is %v, wanted believed then role_sees_subject", reached)
+	}
+	if !strings.Contains(block[1], "role_sees_subject") || !strings.Contains(block[1], "statute.rego:102 (default)") {
+		t.Errorf("the second row is %q", block[1])
 	}
 }
 
