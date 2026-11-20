@@ -838,7 +838,7 @@ func TestInputThroughJSONBuildsTheSameDerivation(t *testing.T) {
 // rather than assertions in a loop so the arm below can run it over a shape
 // that DOES embed an engine type and check that it objects.
 func foreignFields(ty reflect.Type, path string, seen map[reflect.Type]bool) []string {
-	for ty.Kind() == reflect.Ptr || ty.Kind() == reflect.Slice || ty.Kind() == reflect.Array ||
+	for ty.Kind() == reflect.Pointer || ty.Kind() == reflect.Slice || ty.Kind() == reflect.Array ||
 		ty.Kind() == reflect.Map {
 		ty = ty.Elem()
 	}
