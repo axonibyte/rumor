@@ -97,7 +97,7 @@ func TestEveryToyBugsTextCarriesWhatTheDecisionNeeds(t *testing.T) {
 			t.Errorf("toy/%s: no statute line in the text", name)
 		}
 		// 3. what came back, which is the other half of the contradiction
-		if !strings.Contains(text, fmt.Sprintf("OBSERVED   %v", d.Observation.Value)) {
+		if !strings.Contains(text, "OBSERVED   "+num(d.Observation.Value)) {
 			t.Errorf("toy/%s: the observed value %v is not in the text:\n%s", name, d.Observation.Value, text)
 		}
 		// 4. the actor, named rather than implied
@@ -382,7 +382,11 @@ func TestAnOverlayRendersTheStatutesOwnVerdictAndItsBound(t *testing.T) {
 		says  string
 	}{
 		{"a clock bound", 30000000000, "until 30000000000"},
-		{"a quiesce bound", 0, "until the system settles"},
+		// A QUIESCE BOUND NAMES NO INSTANT IN THE VERDICT LINE: it used to say
+		// "until the system settles", which is true of a bound still waiting
+		// and FALSE of a probe that gave up -- both carry Until 0. The bound
+		// block says which way it went instead.
+		{"a quiesce bound", 0, "engine.pending overrode it"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := base.finding
@@ -447,5 +451,37 @@ func TestAFailedWriteIsReportedAndNotSwallowed(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "could not be written") {
 		t.Errorf("the error does not say what failed: %v", err)
+	}
+}
+
+// TestALargeNumberIsNotRenderedAsAnExponent pins the formatting independently
+// of the render's own helper, so the sweep arm above cannot pass by agreeing
+// with whatever num() does.
+//
+// A JSON NUMBER IS A float64, and %v prints 30000000000 as 3e+10 -- which is
+// what toy/invitation-honored-late's expiry rendered as until d4 reached it.
+// An instant a reader cannot grep, beside a clock line that prints all
+// eleven digits.
+func TestALargeNumberIsNotRenderedAsAnExponent(t *testing.T) {
+	text, _, d := renderOf(t, "toy", "invitation-honored-late")
+	if _, ok := d.Observation.Value.(float64); !ok {
+		t.Fatalf("the observed value is %T, so this arm is not about a JSON number", d.Observation.Value)
+	}
+	if !strings.Contains(text, "OBSERVED   30000000000") {
+		t.Errorf("the observation is not rendered in full:\n%s", text)
+	}
+	if strings.Contains(text, "e+") {
+		t.Errorf("an exponent reached the render:\n%s", text)
+	}
+	// AND THE SAME FOR A RULE'S VALUE, which goes through the same helper and
+	// is where an expiry sits in this very case.
+	block, ok := blockAfter(text, "THE STATUTE ALSO HELD -- reached rules first; a rule nothing touched cannot be the error")
+	if !ok {
+		t.Fatal("the held block is absent")
+	}
+	for _, line := range block {
+		if strings.Contains(line, "e+") {
+			t.Errorf("a rule's value carries an exponent: %q", line)
+		}
 	}
 }

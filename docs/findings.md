@@ -82,6 +82,45 @@ which is the most useful thing a derivation can report -- it sends the reader to
 the statute's clauses and not to the server. It is stated through the engine's
 own `says`, with no rule lines, because none held.
 
+### A pending finding
+
+Where an engine rule held a disagreement open, or ended it, the explanation
+carries a `THE BOUND` block: which bound applies, how much of it is left, and
+what would settle it.
+
+**There are two bound sources, not three.** A **declared duration** -- the
+statute's own `bound` for an eventual claim type -- and **quiesce**, which the
+stage's prober decides. The engine distinguishes them in the field it already
+carries: `verdict.overlay.until` is the instant a duration expires at, and **0
+means quiesce**. The overlay's `rule` names the OUTCOME rather than the bound:
+`engine.pending` (held open), `engine.quiesce_timeout` (the prober gave up),
+`engine.stale` (a held pending re-checked past its bound, which is a `bug` of
+kind `stale`).
+
+**The run's clock is not a third bound; it is the condition under which a
+duration is judgeable at all.** So a duration bound's explanation names the
+instant that made it judgeable. The unjudgeable case cannot appear in an
+explanation: `engine.Judge` REFUSES a duration bound with no clock fact at or
+before the claim -- "time the run does not control never decides a verdict" --
+so no finding is produced and there is nothing to explain.
+
+**What would settle it is v1's rule, and it is said only where something is
+waiting.** A pending "is re-checked at the actor's next observation of the same
+query and at every full reconciliation", so the explanation names that actor and
+query. A `quiesce_timeout` and a `stale` are verdicts rather than waits -- the
+register holds neither -- and their block says that nothing is waiting instead
+of inviting a re-ask that has already been answered.
+
+**No case under `examples/` is pending as `rumor check` reports it**, because
+that walk evaluates a statute and declares no bindings. A pending is reachable
+over the same committed ledgers by declaring the eventual type the check already
+counts, which is what a run with bindings does, so the cells in
+`internal/explain` are the only witness to this block and they drive
+`engine.Judge` rather than building an overlay by hand. One cell builds its own
+two-clock ledger: `engine.stale` needs one actor and query to disagree at two
+different clocks, and no committed pair does -- of the toy's four invitation
+cases only `invitation-honored-late` disagrees at all.
+
 ### The JSON form
 
 `rumor explain --json PROJECT CASE` writes the same derivation as JSON. It is

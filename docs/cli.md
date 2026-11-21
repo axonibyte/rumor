@@ -1448,6 +1448,15 @@ every claim. For a count that reads low against the world that block is the
 answer: `rumor explain examples/toy untold-join` names `dana.join#1`, the join
 carol was never told of.
 
+**`THE BOUND` appears for a finding an engine rule held open or ended** -- a
+`pending`, a `quiesce_timeout` or a `bug` of kind `stale`. It names which bound
+applies (a declared duration with the instant it expires at, or quiesce, where
+the stage's prober decides and no clock time applies), how much of a duration
+remains, and what would settle it -- said only where something is actually
+waiting, since a timeout and a stale are verdicts rather than waits.
+`docs/findings.md` carries the rest, including why the unjudgeable case cannot
+appear at all.
+
 **The digest is the statute's, in full.** The sample shows it as a placeholder
 because it is a sha256 over `examples/toy/statute.rego`'s bytes, and a document
 that pinned it would turn every statute edit into a documentation edit; the

@@ -15,7 +15,9 @@ package explain
 import (
 	"fmt"
 	"io"
+	"math"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -45,6 +47,20 @@ func Render(w io.Writer, d *Derivation) error {
 	// expectation, observation, chain -- is kept; only the word is right.
 	fmt.Fprintf(&b, "FINDING    %s\n", d.Verdict.Says)
 	for _, line := range verdictLines(d.Verdict) {
+		fmt.Fprintf(&b, "           %s\n", line)
+	}
+
+	// 1a. THE BOUND, for a finding an engine rule held open or ended (R11 d4).
+	//
+	// WHY IT IS ITS OWN BLOCK AND NOT A CLAUSE ON THE VERDICT: a reader of a
+	// `pending` has three questions the verdict cannot answer -- which bound
+	// applies, how much of it is left, and what would settle it -- and v1
+	// answers the third with a rule rather than a guess.
+	for i, line := range boundLines(d) {
+		if i == 0 {
+			fmt.Fprintf(&b, "\nTHE BOUND  %s\n", line)
+			continue
+		}
 		fmt.Fprintf(&b, "           %s\n", line)
 	}
 
@@ -101,7 +117,7 @@ func Render(w io.Writer, d *Derivation) error {
 		fmt.Fprintf(&b, "\nTHE STATUTE ALSO HELD -- reached rules first; a rule nothing touched cannot be the error\n")
 		for _, rule := range holdOrder(d.Expectation.Holds) {
 			h := d.Expectation.Holds[rule]
-			fmt.Fprintf(&b, "  %-22s %-10v %s\n", rule, h.Value, holdLines(h))
+			fmt.Fprintf(&b, "  %-22s %-10s %s\n", rule, num(h.Value), holdLines(h))
 		}
 	}
 
@@ -158,8 +174,8 @@ func verdictLines(v Verdict) []string {
 		out = append(out, fmt.Sprintf("%s:%d -- a clause matched", r.Module, r.Row))
 	}
 	if v.Overridden && v.Overlay != nil {
-		out = append(out, fmt.Sprintf("the statute said %v; %s overrode it%s",
-			v.StatuteValue, v.Overlay.Rule, untilClause(v.Overlay)))
+		out = append(out, fmt.Sprintf("the statute said %s; %s overrode it%s",
+			num(v.StatuteValue), v.Overlay.Rule, untilClause(v.Overlay)))
 		if v.Overlay.Reason != "" {
 			out = append(out, v.Overlay.Reason)
 		}
@@ -167,16 +183,91 @@ func verdictLines(v Verdict) []string {
 	return out
 }
 
+// untilClause names the instant a bound expires, and says NOTHING for a bound
+// that has no instant.
+//
+// IT USED TO SAY "until the system settles" FOR EVERY Until OF 0, which is
+// true of a quiesce bound still waiting and FALSE of engine.quiesce_timeout --
+// a probe that gave up is not waiting for anything. Found by rendering the
+// timed-out overlay for the first time in d4; no arm had reached it, because
+// no committed case produces one without a binding. The quiesce case is
+// explained by the bound block instead, which has room to say which way it
+// went.
 func untilClause(o *Overlay) string {
 	if o.Until == 0 {
-		return " until the system settles"
+		return ""
 	}
 	return fmt.Sprintf(" until %d", o.Until)
 }
 
+// boundLines explains the bound behind an overridden finding, and nothing at
+// all for a finding no engine rule touched.
+//
+// THE SOURCE IS THE ENGINE'S OWN, NOT A TAXONOMY. There are two bound sources
+// -- a declared duration (`Eventual.Bound`, the statute's own bound) and
+// quiesce (the stage's prober) -- and the engine distinguishes them in the one
+// field it already carries: Until is the clock time a duration expires at, and
+// 0 means quiesce. The overlay's RULE names the outcome (held open, the probe
+// gave up, past the bound), which the verdict block prints. fable settled this
+// wording at coop r11/39: issue 132's "the rule's, the stage's, the clock's"
+// named a taxonomy, and the clock is not a third bound -- it is the CONDITION
+// under which a declared duration is judgeable at all.
+//
+// AND THE UNJUDGEABLE CASE CANNOT REACH HERE, measured rather than assumed: a
+// duration bound with no clock fact at or before the claim is REFUSED by
+// engine.Judge -- "time the run does not control never decides a verdict" --
+// so no finding is produced and there is nothing to explain. The clock line
+// below therefore always has a clock to name; it is printed because the
+// reader needs to see WHICH instant made the bound judgeable, not because it
+// might be missing.
+func boundLines(d *Derivation) []string {
+	if !d.Verdict.Overridden || d.Verdict.Overlay == nil {
+		return nil
+	}
+	o := d.Verdict.Overlay
+	var out []string
+	if o.Until == 0 {
+		out = append(out, "quiesce -- the stage's prober decides, so no clock time applies")
+	} else {
+		out = append(out, fmt.Sprintf("a declared duration, expiring at %d", o.Until))
+		if d.Clock == nil {
+			// Not reachable from a finding the engine produced; said rather
+			// than left blank so a future path that reaches it is visible.
+			out = append(out, "the run has no clock, so this bound was not judgeable -- a defect to report")
+		} else {
+			out = append(out, fmt.Sprintf("the run's clock made it judgeable: now is %d", d.Clock.Now))
+			switch left := o.Until - d.Clock.Now; {
+			case left > 0:
+				out = append(out, fmt.Sprintf("%dns remain", left))
+			case left == 0:
+				out = append(out, "0ns remain: the clock is AT the bound, which is inside it")
+			default:
+				out = append(out, fmt.Sprintf("%dns past it", -left))
+			}
+		}
+	}
+	// WHAT WOULD SETTLE IT IS v1's RULE AND NOT A GUESS: a pending "is
+	// re-checked at the actor's next observation of the same query and at
+	// every full reconciliation" (the vocabulary, carried in
+	// internal/engine's Register).
+	//
+	// AND IT IS SAID ONLY FOR A FINDING THAT IS ACTUALLY HELD OPEN. Measured
+	// on the register itself: a `pending` is held (both bound sources), while
+	// engine.quiesce_timeout and engine.stale leave it holding NOTHING --
+	// they are verdicts, not waits. Inviting a re-ask for either would tell a
+	// reader to wait for an answer that has already been given.
+	if d.Verdict.Value == "pending" {
+		out = append(out, fmt.Sprintf("settled by %s asking %s again, or by the next full reconciliation",
+			d.Selector.Actor, orNone(d.Selector.Query)))
+		return out
+	}
+	out = append(out, "nothing is waiting on this bound: the run has its answer")
+	return out
+}
+
 // observedLine renders what came back, with the role where the project has one.
 func observedLine(o Observation) string {
-	s := fmt.Sprintf("%v", o.Value)
+	s := num(o.Value)
 	var tail []string
 	if o.Source != "" {
 		tail = append(tail, fmt.Sprintf("%s answered", o.Source))
@@ -194,6 +285,30 @@ func observedLine(o Observation) string {
 		return s
 	}
 	return s + "   (" + strings.Join(tail, ", ") + ")"
+}
+
+// num renders a value for a reader, and an INTEGRAL NUMBER WITHOUT AN
+// EXPONENT.
+//
+// A JSON NUMBER ARRIVES AS float64 AND %v PRINTS IT AS 3e+10, which is the
+// form an expiry instant took the first time one was rendered (d4, toy's
+// invitation cases): unreadable, and un-greppable beside the 30000000001 the
+// same explanation prints from the clock. Every earlier case observed a small
+// integer, so no arm had seen it. Anything that is not an integral number is
+// left to %v, which is the honest default for a value this package does not
+// interpret.
+func num(v any) string {
+	switch n := v.(type) {
+	case float64:
+		if n == math.Trunc(n) && !math.IsInf(n, 0) {
+			return strconv.FormatFloat(n, 'f', -1, 64)
+		}
+	case float32:
+		if float64(n) == math.Trunc(float64(n)) {
+			return strconv.FormatFloat(float64(n), 'f', -1, 32)
+		}
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // chainOrder is "shortest path first", and the metric is named here because d1

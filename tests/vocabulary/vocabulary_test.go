@@ -261,7 +261,16 @@ const root = "../.."
 // reader should see the sentence it answers. 0 absent, and the sweep found the
 // count before I did: the arm failed on the number while every quote it holds
 // was still in the document.
-const declaredQuotes = 70
+// 70 -> 71 AT R11 d4's PENDING BOUND: ONE new quote, prose rather than a copied
+// file -- `explain.boundLines`'s comment quotes v1's own re-check rule, "is
+// re-checked at the actor's next observation of the same query and at every
+// full reconciliation", because that sentence is WHY the explanation names an
+// actor and a query as what would settle a pending, and a render that invented
+// its own answer there would be guessing at the vocabulary's expense. 0 absent,
+// and the sweep found the count before I did, for the third time running: the
+// arm failed on the number while the quote it holds was already in the
+// document.
+const declaredQuotes = 71
 
 // knownChainGaps are the places where this file's warrant chain does NOT join,
 // each with what is known about why. THEY ARE DECLARED AND NOT EXCLUDED, which
